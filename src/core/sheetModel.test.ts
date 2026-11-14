@@ -11,6 +11,7 @@ import {
   createDefaultSheet,
   createDnd5ePreset,
   createGenericD20Preset,
+  createNewSheetForSystem,
   createPresetBySystemId,
   detectSystemId,
   evaluateSheet,
@@ -276,4 +277,69 @@ test('Sheet metadata contract initializes revision=1, ISO-8601 updatedAt, and pe
   assert.equal(fallbackMeta.revision, 1);
   assert.equal(fallbackMeta.deviceId, devId1);
   assert.equal(isValidIsoDateTime(fallbackMeta.updatedAt), true);
+});
+
+test('createNewSheetForSystem creates clean fillable character sheet in existing system, or empty custom sheet for blank', () => {
+  const newWod = createNewSheetForSystem('wod');
+  assert.equal(detectSystemId(newWod), 'wod');
+  assert.equal(newWod.characterName, 'NOVO PERSONAGEM');
+  assert.equal(newWod.rollLogs.length, 0);
+  assert.equal(newWod.xp?.totalEarned, 0);
+
+  const nameField = newWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_nome');
+  assert.equal(nameField?.value, '');
+  assert.equal(nameField?.placeholder, 'Julian Cross');
+
+  const clanField = newWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_clan');
+  assert.equal(clanField?.label, 'CLAN / FACTION');
+  assert.equal(clanField?.value, '');
+  assert.equal(clanField?.placeholder, 'Ventrue');
+
+  const strField = newWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_strength');
+  const brawlField = newWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_brawl');
+  const gearField = newWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_mochila');
+  assert.equal(strField?.value, 1);
+  assert.equal(brawlField?.value, 0);
+  assert.equal(gearField?.rows?.length, 0);
+  assert.equal(evaluateSheet(newWod).formulaErrors.length, 0);
+
+  const newDnd = createNewSheetForSystem('dnd5e');
+  assert.equal(detectSystemId(newDnd), 'dnd5e');
+  assert.equal(newDnd.characterName, 'NOVO PERSONAGEM');
+  assert.equal(newDnd.rollLogs.length, 0);
+  assert.ok(newDnd.cards.length > 0);
+  assert.equal(evaluateSheet(newDnd).formulaErrors.length, 0);
+
+  const newBlank = createNewSheetForSystem('blank');
+  assert.equal(detectSystemId(newBlank), 'blank');
+  assert.equal(newBlank.cards.length, 0);
+  assert.equal(newBlank.rollLogs.length, 0);
+
+  const customWod = createNewSheetForSystem('wod', {
+    characterName: 'Elena Vance',
+    secondaryTrait: 'Toreador',
+  });
+  assert.equal(detectSystemId(customWod), 'wod');
+  assert.equal(customWod.characterName, 'ELENA VANCE');
+  assert.equal(customWod.rollLogs.length, 0);
+  assert.equal(
+    customWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_nome')?.value,
+    'Elena Vance',
+  );
+  assert.equal(
+    customWod.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_clan')?.value,
+    'Toreador',
+  );
+  assert.equal(evaluateSheet(customWod).formulaErrors.length, 0);
+
+  const customDnd = createNewSheetForSystem('dnd5e', {
+    characterName: 'Lyra Vance',
+    secondaryTrait: 'Ranger · Elf',
+  });
+  assert.equal(customDnd.characterName, 'LYRA VANCE');
+  assert.equal(
+    customDnd.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_classe')?.value,
+    'Ranger · Elf',
+  );
+  assert.equal(evaluateSheet(customDnd).formulaErrors.length, 0);
 });

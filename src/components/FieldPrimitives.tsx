@@ -5,6 +5,7 @@ import {
   ComputedFieldInfo,
   resolveRollPreview,
   SheetField,
+  SystemId,
 } from '../core/sheetModel';
 import { parseWodPoolExpression, VariableMap } from '../core/formula';
 import { AppTranslations, getTranslations } from '../core/i18n';
@@ -223,6 +224,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
 interface FieldPrimitiveProps {
   field: SheetField;
   mode: AppMode;
+  systemId?: SystemId;
   variables: VariableMap;
   computed?: ComputedFieldInfo;
   totalCargoWeight: number;
@@ -247,6 +249,7 @@ const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
 export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   field,
   mode,
+  systemId = 'wod',
   variables,
   computed,
   totalCargoWeight,
@@ -262,12 +265,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onRemoveField,
 }) => {
   const inputId = `field_${field.id}`;
+  const isCustomSystem = systemId === 'blank';
 
   const renderEditStrip = () => {
     if (mode !== 'edicao') return null;
     return (
       <div className="no-print print:hidden mt-2 pt-2 border-t border-dashed border-[var(--border-ink)]/40 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[var(--bg-header-strip)] p-2 rounded-[4px]">
-        <div className="flex items-center gap-1.5">
+        <div className={`flex items-center gap-1.5 ${isCustomSystem ? '' : 'sm:col-span-2'}`}>
           <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
             RÓTULO:
           </span>
@@ -279,19 +283,21 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
           />
         </div>
-        <div className="flex items-center gap-1.5">
-          <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
-            VAR:
-          </span>
-          <input
-            type="text"
-            aria-label={`Editar variável de ${field.label}`}
-            value={field.key}
-            onChange={(e) => onUpdateSchema(field.id, { key: e.target.value })}
-            className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
-          />
-        </div>
-        {field.kind === 'calculated' && (
+        {isCustomSystem && (
+          <div className="flex items-center gap-1.5">
+            <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
+              VAR:
+            </span>
+            <input
+              type="text"
+              aria-label={`Editar variável de ${field.label}`}
+              value={field.key}
+              onChange={(e) => onUpdateSchema(field.id, { key: e.target.value })}
+              className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
+            />
+          </div>
+        )}
+        {isCustomSystem && field.kind === 'calculated' && (
           <div className="sm:col-span-2 flex items-center gap-1.5">
             <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
               FÓRMULA:
@@ -307,7 +313,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         )}
         {field.kind === 'roll' && (
           <>
-            <div className="flex items-center gap-1.5">
+            <div className={`flex items-center gap-1.5 ${isCustomSystem ? '' : 'sm:col-span-2'}`}>
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
                 BOTÃO:
               </span>
@@ -319,18 +325,20 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
               />
             </div>
-            <div className="flex items-center gap-1.5">
-              <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-                DADOS:
-              </span>
-              <input
-                type="text"
-                aria-label={`Editar expressão de dados de ${field.label}`}
-                value={field.rollExpr ?? ''}
-                onChange={(e) => onUpdateSchema(field.id, { rollExpr: e.target.value })}
-                className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
-              />
-            </div>
+            {isCustomSystem && (
+              <div className="flex items-center gap-1.5">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
+                  DADOS:
+                </span>
+                <input
+                  type="text"
+                  aria-label={`Editar expressão de dados de ${field.label}`}
+                  value={field.rollExpr ?? ''}
+                  onChange={(e) => onUpdateSchema(field.id, { rollExpr: e.target.value })}
+                  className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
+                />
+              </div>
+            )}
           </>
         )}
         {field.kind === 'resource' && (
@@ -460,6 +468,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               id={inputId}
               type="text"
               value={String(field.value ?? '')}
+              placeholder={field.placeholder}
               onChange={(e) => onChangeValue(field.id, e.target.value)}
               className="cyber-input mobile-touch-input w-full sm:w-auto sm:flex-1 sm:max-w-[260px] px-2.5 py-1.5 text-xs font-semibold"
             />
@@ -473,6 +482,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   // 2. Calculado (Somente Leitura)
   if (field.kind === 'calculated') {
     const isErr = computed && !computed.ok;
+    const showFormulaLine = (isCustomSystem && mode === 'edicao') || isErr;
     return (
       <div className="py-1">
         <div className="flex items-center justify-between gap-3">
@@ -480,14 +490,16 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase block truncate">
               {field.label}
             </span>
-            <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] block truncate">
-              = {field.formula}
-            </span>
+            {showFormulaLine && (
+              <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] block truncate">
+                = {field.formula}
+              </span>
+            )}
           </div>
           <div
             role="status"
             aria-label={`${field.label}: ${computed?.formatted ?? '0'}`}
-            title={isErr ? computed?.error : `Fórmula: ${field.formula}`}
+            title={isErr ? computed?.error : isCustomSystem ? `Fórmula: ${field.formula}` : undefined}
             className={`cyber-calc-box px-3 py-1.5 text-sm font-bold flex items-center gap-2 shrink-0 ${
               isErr ? 'is-error' : ''
             }`}

@@ -6,6 +6,7 @@ import {
   SheetCard,
   SheetEvaluation,
   SheetField,
+  SystemId,
 } from '../core/sheetModel';
 import { AppTranslations, getTranslations } from '../core/i18n';
 import { FieldPrimitive } from './FieldPrimitives';
@@ -15,6 +16,7 @@ interface BentoCardProps {
   displayFields?: SheetField[];
   filteredInfo?: { shown: number; total: number };
   mode: AppMode;
+  systemId?: SystemId;
   evaluation: SheetEvaluation;
   t?: AppTranslations['cards'];
   onChangeValue: (fieldId: string, value: number | string | boolean) => void;
@@ -52,6 +54,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   displayFields,
   filteredInfo,
   mode,
+  systemId = 'wod',
   evaluation,
   t = DEFAULT_CARDS_T,
   onChangeValue,
@@ -182,6 +185,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             key={field.id}
             field={field}
             mode={mode}
+            systemId={systemId}
             variables={evaluation.variables}
             computed={evaluation.computedByFieldId[field.id]}
             totalCargoWeight={evaluation.totalCargoWeight}

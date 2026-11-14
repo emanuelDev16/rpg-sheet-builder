@@ -130,6 +130,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 shrink-0">
           <button
             type="button"
+            data-testid="new-sheet-btn"
             onClick={onNewSheet}
             className="cyber-btn-outline px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 cursor-pointer"
           >

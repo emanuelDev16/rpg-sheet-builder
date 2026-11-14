@@ -11,12 +11,14 @@ import {
   consumeWillpowerForRoll,
   createBlankSheet,
   createDefaultSheet,
+  createNewSheetForSystem,
   createPresetBySystemId,
   detectSystemId,
   evaluateSheet,
   FieldKind,
   migrateLegacyWodSheet,
   migrateWorkspaceSheets,
+  NewSheetIdentityInput,
   removeCardFromSheet,
   removeFieldFromCard,
   removeRepeatableRow,
@@ -230,7 +232,7 @@ export default function App() {
   const [mode, setMode] = useState<AppMode>('jogo');
   const [language, setLanguage] = useState<AppLanguage>(readStoredLanguage);
   const [searchQuery, setSearchQuery] = useState('');
-  const [modalMode, setModalMode] = useState<'open' | 'save' | null>(null);
+  const [modalMode, setModalMode] = useState<'new' | 'open' | 'save' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
   const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
@@ -794,18 +796,62 @@ export default function App() {
   };
 
   const handleNewSheet = () => {
-    const blank = createBlankSheet();
+    setMobileSidebarOpen(false);
+    setModalMode('new');
+  };
+
+  const handleCreateNewSheet = (
+    targetSystemId: SystemId,
+    identity?: NewSheetIdentityInput,
+  ) => {
+    const existingTarget = workspaceRef.current.sheetsBySystem[targetSystemId];
+    const baseRev = baseRevisionsRef.current[targetSystemId] ?? existingTarget?.revision ?? 1;
+    baseRevisionsRef.current[targetSystemId] = baseRev;
+    dirtySystemsRef.current[targetSystemId] = true;
+
+    const customName = identity?.characterName?.trim() ?? '';
+    if (targetSystemId === 'blank') {
+      const blank: CharacterSheetState = {
+        ...createNewSheetForSystem('blank', identity),
+        characterName: customName ? customName.toUpperCase() : t.modal.newCharacterName,
+        revision: baseRev,
+      };
+      setWorkspace((prevWs) => ({
+        activeSystemId: 'blank',
+        sheetsBySystem: {
+          ...prevWs.sheetsBySystem,
+          blank,
+        },
+      }));
+      setActiveTab('geral');
+      setMode('edicao');
+      setSearchQuery('');
+      setMobileSidebarOpen(false);
+      dismissMobileRollToast();
+      triggerFlash('// STATUS: FICHA EM BRANCO · CRIE SEUS BLOCOS');
+      return;
+    }
+
+    const baseFresh = createNewSheetForSystem(targetSystemId, identity);
+    const fresh: CharacterSheetState = {
+      ...baseFresh,
+      characterName: customName ? customName.toUpperCase() : t.modal.newCharacterName,
+      revision: baseRev,
+    };
     setWorkspace((prevWs) => ({
-      activeSystemId: 'blank',
+      activeSystemId: targetSystemId,
       sheetsBySystem: {
         ...prevWs.sheetsBySystem,
-        blank,
+        [targetSystemId]: fresh,
       },
     }));
     setActiveTab('geral');
-    setMode('edicao');
+    setMode('jogo');
     setSearchQuery('');
-    triggerFlash('// STATUS: FICHA EM BRANCO · CRIE SEUS BLOCOS');
+    setMobileSidebarOpen(false);
+    dismissMobileRollToast();
+    const sysLabel = SYSTEM_OPTIONS.find((s) => s.id === targetSystemId)?.shortLabel ?? targetSystemId;
+    triggerFlash(`// NOVA FICHA: ${sysLabel}`);
   };
 
   const handleSwitchSystem = (nextSystemId: SystemId) => {
@@ -822,13 +868,23 @@ export default function App() {
     if (nextSystemId === 'blank' && nextSheet.cards.length === 0) {
       if (activeTab === 'xp') setActiveTab('geral');
       setMode('edicao');
+    } else if (activeSystemId === 'blank' && nextSystemId !== 'blank') {
+      setMode('jogo');
     }
     const sysLabel = SYSTEM_OPTIONS.find((s) => s.id === nextSystemId)?.shortLabel ?? nextSystemId;
     triggerFlash(`// SISTEMA ATIVO: ${sysLabel}`);
   };
 
   const handleLoadPreset = (presetId: SystemId) => {
-    const fresh = createPresetBySystemId(presetId);
+    const existingTarget = workspaceRef.current.sheetsBySystem[presetId];
+    const baseRev = baseRevisionsRef.current[presetId] ?? existingTarget?.revision ?? 1;
+    baseRevisionsRef.current[presetId] = baseRev;
+    dirtySystemsRef.current[presetId] = true;
+
+    const fresh: CharacterSheetState = {
+      ...createPresetBySystemId(presetId),
+      revision: baseRev,
+    };
     setWorkspace((prevWs) => ({
       activeSystemId: presetId,
       sheetsBySystem: {
@@ -838,8 +894,12 @@ export default function App() {
     }));
     setActiveTab('geral');
     setSearchQuery('');
+    setMobileSidebarOpen(false);
+    dismissMobileRollToast();
     if (presetId === 'blank' && fresh.cards.length === 0) {
       setMode('edicao');
+    } else {
+      setMode('jogo');
     }
     triggerFlash('// STATUS: MODELO CARREGADO');
   };
@@ -999,6 +1059,7 @@ export default function App() {
                           : undefined
                       }
                       mode={mode}
+                      systemId={activeSystemId}
                       evaluation={evaluation}
                       t={t.cards}
                       onChangeValue={(fid, val) =>
@@ -1232,6 +1293,7 @@ export default function App() {
         activeSystemId={activeSystemId}
         t={t.modal}
         onClose={() => setModalMode(null)}
+        onCreateNewSheet={handleCreateNewSheet}
         onLoadPreset={handleLoadPreset}
         onPrintPdf={handlePrintPdf}
         onImportJson={(next) => {

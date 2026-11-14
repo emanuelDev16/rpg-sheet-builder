@@ -146,6 +146,7 @@ export interface SheetField {
   col2Type?: 'number' | 'text';
   rows?: RepeatableRow[];
   hint?: string;
+  placeholder?: string;
 }
 
 export interface SheetCard {
@@ -2110,6 +2111,150 @@ export function createPresetBySystemId(systemId: SystemId): CharacterSheetState 
     default:
       return createBlankSheet();
   }
+}
+
+const WOD_BASE_ONE_KEYS = new Set([
+  'strength',
+  'dexterity',
+  'stamina',
+  'charisma',
+  'manipulation',
+  'wits',
+]);
+
+const DND_ABILITY_KEYS = new Set([
+  'strength',
+  'dexterity',
+  'constitution',
+  'intelligence',
+  'wisdom',
+  'charisma',
+  'forca',
+  'destreza',
+  'constituicao',
+  'inteligencia',
+  'sabedoria',
+  'carisma',
+  'intelecto',
+]);
+
+export interface NewSheetIdentityInput {
+  characterName?: string;
+  secondaryTrait?: string;
+}
+
+export function createNewSheetForSystem(
+  systemId: SystemId,
+  identity?: NewSheetIdentityInput,
+): CharacterSheetState {
+  const validIds: SystemId[] = ['wod', 'dnd5e', 'cyberpunk', 'default', 'blank'];
+  const resolvedId: SystemId = validIds.includes(systemId) ? systemId : 'blank';
+  const customCharName = identity?.characterName?.trim() ?? '';
+  const customSecondaryTrait = identity?.secondaryTrait?.trim() ?? '';
+
+  if (resolvedId === 'blank') {
+    const blank = createBlankSheet();
+    return customCharName
+      ? { ...blank, characterName: customCharName.toUpperCase() }
+      : blank;
+  }
+
+  const preset = createPresetBySystemId(resolvedId);
+  return {
+    ...preset,
+    systemId: resolvedId,
+    characterName: customCharName ? customCharName.toUpperCase() : 'NOVO PERSONAGEM',
+    revision: 1,
+    updatedAt: nowIsoUtc(),
+    deviceId: getOrCreateDeviceId(),
+    cards: preset.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((field) => {
+        const k = (field.key ?? '').trim().toLowerCase();
+
+        if (field.kind === 'text') {
+          const sample = typeof field.value === 'string' ? field.value.trim() : '';
+          const shouldHint =
+            sample.length > 0 && sample.length <= 48 && field.key !== 'notas_campanha';
+          let nextTextVal = '';
+          if (
+            customCharName &&
+            (field.id === 'f_nome' || k === 'character_name' || k === 'nome_personagem')
+          ) {
+            nextTextVal = customCharName;
+          } else if (
+            customSecondaryTrait &&
+            (field.id === 'f_clan' ||
+              field.id === 'f_classe' ||
+              field.id === 'f_arquetipo' ||
+              k === 'clan' ||
+              k === 'class_race' ||
+              k === 'arquetipo')
+          ) {
+            nextTextVal = customSecondaryTrait;
+          }
+          return {
+            ...field,
+            value: nextTextVal,
+            placeholder: shouldHint ? sample : field.placeholder,
+          };
+        }
+
+        if (field.kind === 'number') {
+          let nextNum = 0;
+          if (resolvedId === 'wod') {
+            if (k === 'generation') nextNum = 13;
+            else if (WOD_BASE_ONE_KEYS.has(k)) nextNum = 1;
+            else nextNum = 0;
+          } else if (resolvedId === 'cyberpunk') {
+            if (k === 'nivel' || k === 'level') nextNum = 1;
+            else if (DND_ABILITY_KEYS.has(k)) nextNum = 5;
+            else nextNum = 0;
+          } else {
+            if (k === 'level' || k === 'nivel') nextNum = 1;
+            else if (DND_ABILITY_KEYS.has(k)) nextNum = 10;
+            else nextNum = 0;
+          }
+          return { ...field, value: nextNum };
+        }
+
+        if (field.kind === 'resource') {
+          const max = Math.max(1, field.max ?? 10);
+          if (field.damageTrack) {
+            return {
+              ...field,
+              value: max,
+              superficialDamage: 0,
+              aggravatedDamage: 0,
+            };
+          }
+          if (k === 'hunger') {
+            return { ...field, value: 1 };
+          }
+          if (k === 'humanity') {
+            return { ...field, value: Math.min(max, 7) };
+          }
+          return { ...field, value: max };
+        }
+
+        if (field.kind === 'boolean') {
+          return { ...field, value: false };
+        }
+
+        if (field.kind === 'repeatable') {
+          return { ...field, rows: [] };
+        }
+
+        return field;
+      }),
+    })),
+    rollLogs: [],
+    xp: {
+      totalEarned: 0,
+      spent: 0,
+      ledger: [],
+    },
+  };
 }
 
 function sanitizeCanonicalFieldId(rawId: string, fallbackIndex: number): string {
