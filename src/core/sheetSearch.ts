@@ -1,4 +1,4 @@
-import type { SheetCard, SheetField } from './sheetModel';
+import type { SheetCard, SheetField } from './sheetModel.ts';
 
 export interface FilteredCardResult {
   card: SheetCard;

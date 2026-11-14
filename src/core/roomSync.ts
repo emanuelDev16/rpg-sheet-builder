@@ -14,7 +14,7 @@ import {
   toCanonicalSheet,
   touchSheetMetadata,
   type WorkspaceState,
-} from './sheetModel';
+} from './sheetModel.ts';
 
 export const ROOM_SYNC_META_KEY = 'grid_sheet_room_sync_meta_v1';
 

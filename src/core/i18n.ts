@@ -1,4 +1,4 @@
-import type { SystemId } from './sheetModel';
+import type { SystemId } from './sheetModel.ts';
 
 export type AppLanguage = 'pt-BR' | 'en' | 'es';
 

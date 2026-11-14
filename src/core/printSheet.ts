@@ -1,5 +1,5 @@
-import { CharacterSheetState, detectSystemId, SystemId, TabId } from './sheetModel';
-import { AppLanguage, getLocalizedTabLabels } from './i18n';
+import { type CharacterSheetState, detectSystemId, type SystemId, type TabId } from './sheetModel.ts';
+import { type AppLanguage, getLocalizedTabLabels } from './i18n.ts';
 
 export function getTabLabelsForSystem(
   systemId: SystemId,

@@ -120,10 +120,13 @@ function tokenize(input: string): Token[] {
 
 class Parser {
   private pos = 0;
-  constructor(
-    private readonly tokens: Token[],
-    private readonly vars: VariableMap,
-  ) {}
+  private readonly tokens: Token[];
+  private readonly vars: VariableMap;
+
+  constructor(tokens: Token[], vars: VariableMap) {
+    this.tokens = tokens;
+    this.vars = vars;
+  }
 
   parse(): number {
     if (this.tokens.length === 0) {
