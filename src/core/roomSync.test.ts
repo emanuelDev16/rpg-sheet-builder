@@ -26,6 +26,7 @@ import {
 import {
   requireSyncAuth,
   resolveAllowedCorsOrigins,
+  resolveBindHost,
   SYNC_TOKEN,
   verifySyncBearerToken,
 } from '../../server';
@@ -449,4 +450,11 @@ test('requireSyncAuth validates Bearer token with timingSafeEqual and rejects in
   const origins = resolveAllowedCorsOrigins('https://app.example.com, * , http://localhost:3000');
   assert.deepEqual(origins, ['https://app.example.com', 'http://localhost:3000']);
   assert.equal(origins.includes('*'), false);
+
+  // Cloud Run / production binds 0.0.0.0 even when ALLOW_LAN_SYNC is false or unset
+  assert.equal(resolveBindHost({ NODE_ENV: 'production', ALLOW_LAN_SYNC: 'false' }), '0.0.0.0');
+  assert.equal(resolveBindHost({ K_SERVICE: 'grid-sheet', ALLOW_LAN_SYNC: 'false' }), '0.0.0.0');
+  assert.equal(resolveBindHost({ PORT: '8080' }), '0.0.0.0');
+  assert.equal(resolveBindHost({ ALLOW_LAN_SYNC: 'false' }), '127.0.0.1');
+  assert.equal(resolveBindHost({ ALLOW_LAN_SYNC: 'true' }), '0.0.0.0');
 });

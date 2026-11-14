@@ -214,6 +214,19 @@ export interface AppTranslations {
     roomSyncedFlash: string;
   };
   modal: {
+    newTitle: string;
+    newSubtitle: string;
+    newSystemListLabel: string;
+    newCurrentBadge: string;
+    newIdentityHeading: string;
+    newCharNameLabel: string;
+    newClanFactionLabel: string;
+    newClassAncestryLabel: string;
+    newArchetypeLabel: string;
+    newBlankTitle: string;
+    newBlankDesc: string;
+    createAction: string;
+    newCharacterName: string;
     openTitle: string;
     saveTitle: string;
     closeAria: string;
@@ -337,6 +350,19 @@ const PT_BR: AppTranslations = {
     roomSyncedFlash: '// ROOM DB: SINCRONIZADO AGORA',
   },
   modal: {
+    newTitle: 'CRIAR NOVA FICHA',
+    newSubtitle: 'Selecione o sistema e informe os dados básicos do personagem:',
+    newSystemListLabel: 'SISTEMA DE RPG',
+    newCurrentBadge: 'ATUAL',
+    newIdentityHeading: 'IDENTIDADE DO PERSONAGEM',
+    newCharNameLabel: 'NOME DO PERSONAGEM',
+    newClanFactionLabel: 'CLAN / FACTION',
+    newClassAncestryLabel: 'CLASSE & ANCESTRALIDADE',
+    newArchetypeLabel: 'ARQUÉTIPO / CLASSE',
+    newBlankTitle: 'CUSTOM · CRIAR DO ZERO',
+    newBlankDesc: 'Começar com uma ficha vazia para montar seus próprios blocos',
+    createAction: 'CRIAR FICHA ↗',
+    newCharacterName: 'NOVO PERSONAGEM',
     openTitle: 'CARREGAR FICHA OU MODELO',
     saveTitle: 'SALVAR & EXPORTAR PROTÓTIPO',
     closeAria: 'Fechar janela',
@@ -460,6 +486,19 @@ const EN: AppTranslations = {
     roomSyncedFlash: '// ROOM DB: SYNCED NOW',
   },
   modal: {
+    newTitle: 'CREATE NEW SHEET',
+    newSubtitle: 'Select an RPG system and enter your core character details:',
+    newSystemListLabel: 'RPG SYSTEM',
+    newCurrentBadge: 'ACTIVE',
+    newIdentityHeading: 'CHARACTER IDENTITY',
+    newCharNameLabel: 'CHARACTER NAME',
+    newClanFactionLabel: 'CLAN / FACTION',
+    newClassAncestryLabel: 'CLASS & ANCESTRY',
+    newArchetypeLabel: 'ARCHETYPE / CLASS',
+    newBlankTitle: 'CUSTOM · BUILD FROM SCRATCH',
+    newBlankDesc: 'Start with an empty sheet to build your own sections',
+    createAction: 'CREATE SHEET ↗',
+    newCharacterName: 'NEW CHARACTER',
     openTitle: 'LOAD SHEET OR PRESET',
     saveTitle: 'SAVE & EXPORT SHEET',
     closeAria: 'Close modal',
@@ -583,6 +622,19 @@ const ES: AppTranslations = {
     roomSyncedFlash: '// ROOM DB: SINCRONIZADO AHORA',
   },
   modal: {
+    newTitle: 'CREAR NUEVA HOJA',
+    newSubtitle: 'Elige el sistema de RPG e ingresa los datos iniciales del personaje:',
+    newSystemListLabel: 'SISTEMA DE RPG',
+    newCurrentBadge: 'ACTUAL',
+    newIdentityHeading: 'IDENTIDAD DEL PERSONAJE',
+    newCharNameLabel: 'NOMBRE DEL PERSONAJE',
+    newClanFactionLabel: 'CLAN / FACCIÓN',
+    newClassAncestryLabel: 'CLASE Y ASCENDENCIA',
+    newArchetypeLabel: 'ARQUETIPO / CLASE',
+    newBlankTitle: 'CUSTOM · DESDE CERO',
+    newBlankDesc: 'Comenzar con una hoja vacía para crear tus propios bloques',
+    createAction: 'CREAR HOJA ↗',
+    newCharacterName: 'NUEVO PERSONAJE',
     openTitle: 'CARGAR HOJA O PLANTILLA',
     saveTitle: 'GUARDAR Y EXPORTAR HOJA',
     closeAria: 'Cerrar ventana',

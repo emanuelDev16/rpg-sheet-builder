@@ -33,7 +33,7 @@
   /* --- Cores de Tinta & Destaque --- */
   --ink-primary: #0B0B0B;
   --ink-secondary: #3D332D;
-  --ink-muted: #6E6258;
+  --ink-muted: #574D45;
   --ink-inverse: #F8F1E7;
 
   --accent-black: #0B0B0B;
@@ -315,8 +315,9 @@ body {
    ============================================================================ */
 @media (max-width: 1023px) {
   .print-shell {
-    min-height: 100dvh;
-    overflow-x: hidden;
+    height: 100dvh;
+    max-height: 100dvh;
+    overflow: hidden;
   }
 
   .topbar-root {
@@ -328,21 +329,35 @@ body {
   .print-main {
     padding-left: max(12px, env(safe-area-inset-left, 0px));
     padding-right: max(12px, env(safe-area-inset-right, 0px));
-    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: 16px;
+  }
+
+  .mobile-bottom-dock {
+    padding-top: 6px;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-bottom: max(8px, env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-roll-toast {
+    left: max(12px, env(safe-area-inset-left, 0px));
+    right: max(12px, env(safe-area-inset-right, 0px));
   }
 
   .statusbar-root {
     height: auto;
-    min-height: 36px;
-    padding-top: 6px;
-    padding-left: max(12px, env(safe-area-inset-left, 0px));
-    padding-right: calc(136px + env(safe-area-inset-right, 0px));
-    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+    min-height: 32px;
+    padding: 0;
+    border-top: 0;
+    background-color: transparent;
+    gap: 4px 8px;
   }
 
-  .mobile-drawer-fab {
-    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    right: calc(16px + env(safe-area-inset-right, 0px));
+  .statusbar-root > div:last-child {
+    flex-wrap: wrap;
+    white-space: normal;
+    gap: 4px 6px;
+    max-width: 100%;
   }
 
   .mobile-drawer-panel {

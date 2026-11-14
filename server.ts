@@ -33,7 +33,21 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
-const BIND_HOST = process.env.ALLOW_LAN_SYNC === 'true' ? '0.0.0.0' : '127.0.0.1';
+
+export function resolveBindHost(env: NodeJS.ProcessEnv = process.env): string {
+  if (
+    env.ALLOW_LAN_SYNC === 'true' ||
+    env.NODE_ENV === 'production' ||
+    Boolean(env.K_SERVICE || env.K_REVISION || env.PORT)
+  ) {
+    return '0.0.0.0';
+  }
+  if (env.ALLOW_LAN_SYNC === 'false') {
+    return '127.0.0.1';
+  }
+  return '0.0.0.0';
+}
+
 const ROOM_MIRROR_DIR = path.resolve(__dirname, '.data');
 const ROOM_MIRROR_FILE = path.join(ROOM_MIRROR_DIR, 'room-sync-mirror.json');
 const SHEETS_STORE_FILE = path.join(ROOM_MIRROR_DIR, 'sheets-store.json');
@@ -502,7 +516,7 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  const bindHost = process.env.ALLOW_LAN_SYNC === 'true' ? '0.0.0.0' : BIND_HOST;
+  const bindHost = resolveBindHost();
   app.listen(PORT, bindHost, () => {
     console.log(`GRID//SHEET server running on http://${bindHost}:${PORT}`);
   });
