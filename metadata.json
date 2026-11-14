@@ -1,0 +1,6 @@
+{
+  "name": "GRID//SHEET — Ficha Agnóstica de RPG",
+  "description": "Protótipo de aplicativo desktop para fichas agnósticas de RPG de mesa com identidade visual Light Cyber-Brutalism e Bento Grid modular.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

@@ -1,0 +1,210 @@
+@import "tailwindcss";
+
+/* ============================================================================
+   CYBER-BRUTALISM EDITORIAL — VARIÁVEIS DE DESIGN (:root)
+   Paleta: Burgundy Wine (#5B0F18) + Soft Cream (#F8F1E7) + Deep Black (#0B0B0B)
+   Organizadas de forma limpa para conversão direta para PySide6 (QSS)
+   ============================================================================ */
+:root {
+  /* --- Superfícies (Soft Cream) --- */
+  --bg-canvas: #F8F1E7;
+  --bg-grid-line: rgba(11, 11, 11, 0.075);
+  --bg-grid-cross: #5B0F18;
+  --bg-card: #FFFDF9;
+  --bg-card-alt: #F3E9DB;
+  --bg-header-strip: #EFE3D2;
+  --bg-input: #F8F1E7;
+  --bg-hover: #EAE0D0;
+
+  /* --- Bordas e Estrutura (Deep Black) --- */
+  --border-ink: #0B0B0B;
+  --border-subtle: #DFD2C0;
+  --border-width: 1.5px;
+  --border-width-strong: 2px;
+  --radius-card: 10px;
+  --radius-control: 6px;
+  --radius-sm: 4px;
+
+  /* --- Tipografia --- */
+  --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+  --font-mono: 'JetBrains Mono', 'Consolas', monospace;
+  --font-ui: 'DM Sans', system-ui, -apple-system, sans-serif;
+
+  /* --- Cores de Tinta & Destaque --- */
+  --ink-primary: #0B0B0B;
+  --ink-secondary: #3D332D;
+  --ink-muted: #6E6258;
+  --ink-inverse: #F8F1E7;
+
+  --accent-black: #0B0B0B;
+  --accent-wine: #5B0F18;
+  --accent-wine-hover: #731621;
+  --accent-wine-soft: #E9D7D6;
+  --accent-cream-badge: #EFE3D2;
+  --accent-danger: #B91C1C;
+  --accent-danger-soft: #FEE2E2;
+
+  /* --- Sombras Brutalistas --- */
+  --shadow-card: 0 2px 0 rgba(11, 11, 11, 0.09);
+  --shadow-btn: 2px 2px 0 #0B0B0B;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  font-family: var(--font-ui);
+  color: var(--ink-primary);
+  background-color: var(--bg-canvas);
+  -webkit-font-smoothing: antialiased;
+}
+
+/* Grade técnica com linhas sutis e pequenas cruzes de registro (+) nos cruzamentos */
+.cyber-grid-canvas {
+  background-color: var(--bg-canvas);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M36 0H0v36' fill='none' stroke='%230B0B0B' stroke-opacity='0.075' stroke-width='1'/%3E%3Cpath d='M0 0h4M0 0v4M36 0h-4M0 36v-4' stroke='%235B0F18' stroke-opacity='0.35' stroke-width='1'/%3E%3C/svg%3E");
+  background-size: 36px 36px;
+}
+
+.font-display {
+  font-family: var(--font-display);
+}
+
+.font-mono-tech {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Cartão Bento Brutalista */
+.bento-card {
+  background-color: var(--bg-card);
+  border: var(--border-width-strong) solid var(--border-ink);
+  border-radius: var(--radius-card);
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.bento-card-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 14px;
+  background-color: var(--bg-header-strip);
+  border-bottom: var(--border-width) solid var(--border-ink);
+}
+
+/* Inputs técnicos */
+.cyber-input {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--bg-input);
+  color: var(--ink-primary);
+  border: var(--border-width) solid var(--border-ink);
+  border-radius: var(--radius-control);
+  transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+.cyber-input:focus {
+  outline: none;
+  border-color: var(--accent-wine);
+  background-color: var(--bg-card);
+  box-shadow: 0 0 0 2px rgba(91, 15, 24, 0.22);
+}
+
+/* Botões compactos com borda escura */
+.cyber-btn-outline {
+  font-family: var(--font-mono);
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: var(--border-width) solid var(--border-ink);
+  border-radius: var(--radius-control);
+  transition: background-color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
+}
+
+.cyber-btn-outline:hover {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+  transform: translate(-1px, -1px);
+}
+
+.cyber-btn-outline:active {
+  transform: translate(0, 0);
+  box-shadow: none;
+}
+
+.cyber-btn-outline:focus-visible,
+.cyber-roll-btn:focus-visible,
+.cyber-tab-btn:focus-visible {
+  outline: 2px solid var(--accent-wine);
+  outline-offset: 2px;
+}
+
+/* Botão de Rolagem Brutalista Preto */
+.cyber-roll-btn {
+  font-family: var(--font-mono);
+  background-color: var(--accent-black);
+  color: var(--ink-inverse);
+  border: var(--border-width-strong) solid var(--accent-black);
+  border-radius: var(--radius-control);
+  transition: background-color 140ms ease, border-color 140ms ease, transform 100ms ease;
+}
+
+.cyber-roll-btn:hover {
+  background-color: var(--accent-wine);
+  border-color: var(--border-ink);
+  transform: translateY(-1px);
+}
+
+.cyber-roll-btn:active {
+  transform: translateY(0);
+}
+
+/* Caixa Calculada (Somente Leitura) */
+.cyber-calc-box {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: var(--border-width) dashed var(--accent-wine);
+  border-radius: var(--radius-control);
+}
+
+.cyber-calc-box.is-error {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+/* Barra segmentada estilo CPU_USAGE / MEMORY */
+.seg-block {
+  flex: 1;
+  min-width: 6px;
+  height: 14px;
+  border-radius: 2px;
+  background-color: var(--accent-wine-soft);
+  border: 1px solid rgba(91, 15, 24, 0.28);
+  transition: background-color 120ms ease, transform 120ms ease;
+}
+
+.seg-block.is-filled {
+  background-color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+/* Tag inclinada na barra inferior */
+.cyber-slant-pill {
+  background-color: var(--accent-wine);
+  color: var(--ink-inverse);
+  clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
+}

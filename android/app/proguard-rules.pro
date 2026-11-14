@@ -1,0 +1,3 @@
+-keepattributes *Annotation*
+-keepclassmembers class com.gridsheet.app.core.** { *; }
+-keepclassmembers class com.gridsheet.app.data.** { *; }

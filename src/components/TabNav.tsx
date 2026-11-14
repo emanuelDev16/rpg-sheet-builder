@@ -1,0 +1,122 @@
+import React from 'react';
+import { AppMode, SystemId, TabId } from '../core/sheetModel';
+
+interface TabNavProps {
+  activeTab: TabId;
+  systemId: SystemId;
+  onSelectTab: (tab: TabId) => void;
+  characterName: string;
+  mode: AppMode;
+  onChangeCharacterName: (name: string) => void;
+}
+
+function getTabLabels(systemId: SystemId): { tab1: string; tab2: string } {
+  if (systemId === 'wod') {
+    return {
+      tab1: '/01 ATTRIBUTES & COMBAT',
+      tab2: '/02 DISCIPLINES & NOTES',
+    };
+  }
+  if (systemId === 'dnd5e') {
+    return {
+      tab1: '/01 ABILITIES & COMBAT',
+      tab2: '/02 SPELLS & NOTES',
+    };
+  }
+  if (systemId === 'cyberpunk') {
+    return {
+      tab1: '/01 STATS & COMBAT',
+      tab2: '/02 NETRUNNING & NOTES',
+    };
+  }
+  if (systemId === 'blank') {
+    return {
+      tab1: '/01 FICHA PRINCIPAL',
+      tab2: '/02 EXTRAS & NOTAS',
+    };
+  }
+  return {
+    tab1: '/01 GERAL & COMBATE',
+    tab2: '/02 MAGIAS & NOTAS',
+  };
+}
+
+export const TabNav: React.FC<TabNavProps> = ({
+  activeTab,
+  systemId,
+  onSelectTab,
+  characterName,
+  mode,
+  onChangeCharacterName,
+}) => {
+  const { tab1, tab2 } = getTabLabels(systemId);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+      <nav aria-label="Navegação de seções da ficha" role="tablist" className="flex flex-wrap items-center gap-2.5">
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'geral'}
+          onClick={() => onSelectTab('geral')}
+          className={`cyber-tab-btn font-mono-tech px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+            activeTab === 'geral'
+              ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#5B0F18]'
+              : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+          }`}
+        >
+          {tab1}
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'magias'}
+          onClick={() => onSelectTab('magias')}
+          className={`cyber-tab-btn font-mono-tech px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+            activeTab === 'magias'
+              ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#5B0F18]'
+              : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+          }`}
+        >
+          {tab2}
+        </button>
+
+        <button
+          type="button"
+          role="tab"
+          aria-selected={activeTab === 'xp'}
+          onClick={() => onSelectTab('xp')}
+          className={`cyber-tab-btn font-mono-tech px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+            activeTab === 'xp'
+              ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#0B0B0B]'
+              : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+          }`}
+        >
+          /03 XP &amp; UPGRADES
+        </button>
+      </nav>
+
+      <div className="flex items-center gap-2.5">
+        {mode === 'edicao' ? (
+          <input
+            type="text"
+            aria-label="Título do personagem"
+            value={characterName}
+            onChange={(e) => onChangeCharacterName(e.target.value)}
+            className="cyber-input px-2.5 py-1 text-xs font-bold uppercase tracking-wider w-[230px] sm:w-[260px]"
+          />
+        ) : (
+          <span className="font-mono-tech text-xs font-semibold text-[var(--ink-secondary)] uppercase tracking-wider">
+            {characterName}
+          </span>
+        )}
+        {mode === 'edicao' && (
+          <span className="font-mono-tech text-[11px] font-bold px-2.5 py-1 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[1.5px] border-[var(--border-ink)] rounded-[4px] uppercase">
+            SCHEMA EDITÁVEL
+          </span>
+        )}
+      </div>
+    </div>
+  );
+};

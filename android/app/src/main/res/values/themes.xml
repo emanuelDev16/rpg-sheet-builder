@@ -1,0 +1,6 @@
+<resources>
+    <style name="Theme.GridSheet" parent="android:Theme.Material.Light.NoActionBar">
+        <item name="android:statusBarColor">#0B0B0B</item>
+        <item name="android:navigationBarColor">#F8F1E7</item>
+    </style>
+</resources>
