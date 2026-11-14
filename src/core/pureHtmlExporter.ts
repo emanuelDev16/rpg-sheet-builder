@@ -1,4 +1,4 @@
-import { CharacterSheetState, evaluateSheet, resolveRollPreview } from './sheetModel';
+import { type CharacterSheetState, evaluateSheet, resolveRollPreview } from './sheetModel.ts';
 
 export const QSS_VARIABLES_GUIDE = `/* ==========================================================================
    TOKENS DE ESTILO — BURGUNDY WINE + SOFT CREAM + DEEP BLACK (PYSIDE6 / QSS)

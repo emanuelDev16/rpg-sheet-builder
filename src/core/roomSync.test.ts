@@ -186,7 +186,7 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
 
 test('Optimistic sync server contract: 201 creation, 200 update (revision + 1), 400 schema failure, 412 missing If-Match, and 409 REVISION_CONFLICT', () => {
   const store = new OptimisticSheetStore();
-  const baseChar = createWorldOfDarknessSheet('dev-client-a');
+  const baseChar = createWorldOfDarknessSheet();
   const initialCanonical = toCanonicalSheet({
     ...baseChar,
     id: 'sheet-wod-1',
@@ -276,7 +276,7 @@ test('Optimistic sync server contract: 201 creation, 200 update (revision + 1), 
 
 test('WorkspaceSyncEngine tracks baseRevision vs isDirty, sends If-Match: "<baseRevision>", and exposes 409 Conflict without silent overwrite', async () => {
   const store = new OptimisticSheetStore();
-  const initialWod = createWorldOfDarknessSheet('device-web-1');
+  const initialWod = { ...createWorldOfDarknessSheet(), deviceId: 'device-web-1' };
 
   const storeFetch: typeof fetch = async (_url, init) => {
     const method = (init?.method ?? 'PUT').toUpperCase() as 'POST' | 'PUT';

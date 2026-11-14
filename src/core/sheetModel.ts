@@ -4,7 +4,7 @@ import {
   rollDiceExpression,
   type VariableMap,
   type WodOutcome,
-} from './formula';
+} from './formula.ts';
 
 export const DEVICE_ID_STORAGE_KEY = 'grid_sheet_device_id_v1';
 

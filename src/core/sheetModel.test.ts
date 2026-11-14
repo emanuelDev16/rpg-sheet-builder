@@ -247,7 +247,7 @@ test('Sheet metadata contract initializes revision=1, ISO-8601 updatedAt, and pe
     tabs: [{ id: 'geral', label: '01. CORE' }],
     cards: [],
   };
-  const migrated = migrateLocalStorageSheet(legacyRaw, 'wod', mockStorage);
+  const migrated = migrateLocalStorageSheet(legacyRaw, { storage: mockStorage });
   assert.ok(migrated);
   assert.equal(migrated.revision, 1);
   assert.equal(migrated.deviceId, devId1);
@@ -269,7 +269,7 @@ test('Sheet metadata contract initializes revision=1, ISO-8601 updatedAt, and pe
     revision: 0,
     updatedAt: 'not-a-date',
     deviceId: '',
-  }, mockStorage);
+  }, { storage: mockStorage });
   assert.equal(fallbackMeta.revision, 1);
   assert.equal(fallbackMeta.deviceId, devId1);
   assert.equal(isValidIsoDateTime(fallbackMeta.updatedAt), true);

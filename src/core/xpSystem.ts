@@ -5,7 +5,7 @@ import type {
   XpLedgerEntry,
   XpState,
   XpUpgradeCategory,
-} from './sheetModel';
+} from './sheetModel.ts';
 
 export interface UpgradableTrait {
   fieldId: string;
