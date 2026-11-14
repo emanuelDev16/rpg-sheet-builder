@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { RefreshCw } from 'lucide-react';
 import { AppMode } from '../core/sheetModel';
 import { formatRoomSyncIndicator, RoomSyncIndicatorState } from '../core/roomSync';
+import { AppTranslations } from '../core/i18n';
 
 interface StatusBarProps {
   mode: AppMode;
@@ -12,6 +13,7 @@ interface StatusBarProps {
   rollCount: number;
   flashMessage?: string | null;
   roomSyncState: RoomSyncIndicatorState;
+  t: AppTranslations['statusBar'];
   onForceRoomSync: () => void;
 }
 
@@ -24,6 +26,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   rollCount,
   flashMessage,
   roomSyncState,
+  t,
   onForceRoomSync,
 }) => {
   const hasError = errorCount > 0;
@@ -42,7 +45,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   return (
     <footer
       className="no-print print:hidden flex items-center justify-between gap-3 px-4 h-[34px] bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] font-mono-tech text-[11px] shrink-0 overflow-hidden"
-      aria-label="Barra de status da ficha"
+      aria-label={t.ariaFooter}
     >
       <div className="flex items-center gap-2 min-w-0 truncate">
         <span
@@ -55,11 +58,11 @@ export const StatusBar: React.FC<StatusBarProps> = ({
           <span className="font-bold text-[var(--accent-wine)] truncate">{flashMessage}</span>
         ) : hasError ? (
           <span className="font-bold text-[var(--accent-danger)] truncate">
-            // STATUS: {errorCount} ERRO(S) DE FÓRMULA · {firstError}
+            {t.formulaErrors(errorCount, firstError)}
           </span>
         ) : (
           <span className="font-semibold text-[var(--ink-primary)] truncate">
-            // STATUS: PRONTO · SEM ERROS DE FÓRMULA
+            {t.ready}
           </span>
         )}
       </div>
@@ -71,17 +74,21 @@ export const StatusBar: React.FC<StatusBarProps> = ({
             : 'cyber-slant-pill'
         }`}
       >
-        {mode === 'edicao' ? '> SCHEMA_UNLOCKED_' : '> ACCESS GRANTED_'}
+        {mode === 'edicao' ? t.schemaUnlocked : t.accessGranted}
       </div>
 
       <div className="flex items-center gap-2.5 sm:gap-3 text-[var(--ink-secondary)] font-semibold whitespace-nowrap shrink-0">
-        <span className="hidden md:inline">//CARGA: {totalCargoWeight} KG</span>
+        <span className="hidden md:inline">
+          {t.cargo} {totalCargoWeight} KG
+        </span>
         <span className="hidden md:inline" aria-hidden="true">
           ·
         </span>
         <span className="text-[var(--accent-wine)] font-bold tabular-nums">XP: {availableXp}</span>
         <span aria-hidden="true">·</span>
-        <span>LOGS: {rollCount}</span>
+        <span>
+          {t.logs} {rollCount}
+        </span>
         <span aria-hidden="true">·</span>
         <button
           type="button"

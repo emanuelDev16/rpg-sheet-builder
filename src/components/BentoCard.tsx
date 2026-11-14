@@ -7,14 +7,23 @@ import {
   SheetEvaluation,
   SheetField,
 } from '../core/sheetModel';
+import { AppTranslations, getTranslations } from '../core/i18n';
 import { FieldPrimitive } from './FieldPrimitives';
 
 interface BentoCardProps {
   card: SheetCard;
+  displayFields?: SheetField[];
+  filteredInfo?: { shown: number; total: number };
   mode: AppMode;
   evaluation: SheetEvaluation;
+  t?: AppTranslations['cards'];
   onChangeValue: (fieldId: string, value: number | string | boolean) => void;
   onAdjustResource: (fieldId: string, delta: number) => void;
+  onAdjustHealthDamage?: (
+    fieldId: string,
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
   onRoll: (field: SheetField) => void;
   onAddRow: (fieldId: string) => void;
   onUpdateRow: (fieldId: string, rowId: string, col: 'col1' | 'col2', val: string | number) => void;
@@ -36,12 +45,18 @@ const ALL_FIELD_KINDS: Array<{ kind: FieldKind; label: string }> = [
   { kind: 'repeatable', label: 'LISTA' },
 ];
 
+const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
+
 export const BentoCard: React.FC<BentoCardProps> = ({
   card,
+  displayFields,
+  filteredInfo,
   mode,
   evaluation,
+  t = DEFAULT_CARDS_T,
   onChangeValue,
   onAdjustResource,
+  onAdjustHealthDamage,
   onRoll,
   onAddRow,
   onUpdateRow,
@@ -54,11 +69,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
+  const fieldsToRender = displayFields ?? card.fields;
 
   const canUseTwoColBody =
     card.colSpan === 2 &&
-    card.fields.length >= 2 &&
-    card.fields.every((f) => f.kind !== 'repeatable' && f.key !== 'notas_campanha');
+    fieldsToRender.length >= 2 &&
+    fieldsToRender.every((f) => f.kind !== 'repeatable' && f.key !== 'notas_campanha');
   const useTwoColBody = mode === 'jogo' && canUseTwoColBody;
 
   return (
@@ -102,37 +118,45 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           </div>
         )}
 
-        {mode === 'edicao' ? (
-          <>
-            <div className="no-print print:hidden flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                onClick={() => onUpdateCard(card.id, { colSpan: card.colSpan === 2 ? 1 : 2 })}
-                title="Alternar largura entre 1 e 2 colunas"
-                className="font-mono-tech text-[10px] font-bold px-2 py-0.5 border border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] cursor-pointer"
-              >
-                {card.colSpan === 2 ? '2 COL' : '1 COL'}
-              </button>
-              <button
-                type="button"
-                aria-label={`Remover bloco ${card.title}`}
-                onClick={() => onRemoveCard(card.id)}
-                className="w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
-              >
-                <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-              </button>
-            </div>
-            <div className="hidden print:flex items-center gap-1.5 shrink-0" aria-hidden="true">
+        <div className="flex items-center gap-1.5 shrink-0">
+          {filteredInfo && (
+            <span className="no-print print:hidden font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] tabular-nums whitespace-nowrap">
+              {t.filteredPill(filteredInfo.shown, filteredInfo.total)}
+            </span>
+          )}
+
+          {mode === 'edicao' ? (
+            <>
+              <div className="no-print print:hidden flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => onUpdateCard(card.id, { colSpan: card.colSpan === 2 ? 1 : 2 })}
+                  title="Alternar largura entre 1 e 2 colunas"
+                  className="font-mono-tech text-[10px] font-bold px-2 py-0.5 border border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] cursor-pointer"
+                >
+                  {card.colSpan === 2 ? '2 COL' : '1 COL'}
+                </button>
+                <button
+                  type="button"
+                  aria-label={`Remover bloco ${card.title}`}
+                  onClick={() => onRemoveCard(card.id)}
+                  className="w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
+                >
+                  <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+              </div>
+              <div className="hidden print:flex items-center gap-1.5 shrink-0" aria-hidden="true">
+                <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-card)]" />
+                <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-wine)]" />
+              </div>
+            </>
+          ) : (
+            <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
               <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-card)]" />
               <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-wine)]" />
             </div>
-          </>
-        ) : (
-          <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
-            <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-card)]" />
-            <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-wine)]" />
-          </div>
-        )}
+          )}
+        </div>
       </header>
 
       <div
@@ -142,13 +166,13 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             : 'flex flex-col gap-3'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
-        {card.fields.length === 0 && mode === 'edicao' && (
+        {fieldsToRender.length === 0 && mode === 'edicao' && (
           <p className="no-print print:hidden font-mono-tech text-[11px] text-[var(--ink-muted)] py-2">
-            Bloco vazio. Escolha o tipo de campo abaixo para adicionar o primeiro campo.
+            {t.emptyBlockEdit}
           </p>
         )}
 
-        {card.fields.map((field) => (
+        {fieldsToRender.map((field) => (
           <FieldPrimitive
             key={field.id}
             field={field}
@@ -156,8 +180,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             variables={evaluation.variables}
             computed={evaluation.computedByFieldId[field.id]}
             totalCargoWeight={evaluation.totalCargoWeight}
+            t={t}
             onChangeValue={onChangeValue}
             onAdjustResource={onAdjustResource}
+            onAdjustHealthDamage={onAdjustHealthDamage}
             onRoll={onRoll}
             onAddRow={onAddRow}
             onUpdateRow={onUpdateRow}
@@ -171,14 +197,14 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           <div className="no-print print:hidden mt-auto pt-3 border-t border-dashed border-[var(--border-ink)]/40 flex flex-col gap-2">
             <div className="flex flex-wrap items-center gap-1.5">
               <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] shrink-0">
-                + NOVO CAMPO:
+                {t.addFieldHeading}:
               </span>
               <input
                 type="text"
                 aria-label={`Nome do novo campo em ${card.title}`}
                 value={newFieldLabel}
                 onChange={(e) => setNewFieldLabel(e.target.value)}
-                placeholder="Nome opcional (ex: ENERGIA)"
+                placeholder={t.newFieldPlaceholder}
                 className="cyber-input px-2 py-1 text-[11px] flex-1 min-w-[140px]"
               />
             </div>

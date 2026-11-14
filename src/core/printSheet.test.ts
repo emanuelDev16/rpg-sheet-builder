@@ -12,6 +12,7 @@ test('getTabLabelsForSystem and getActiveTabSectionLabel match system and active
   assert.deepEqual(getTabLabelsForSystem('wod'), {
     tab1: '/01 ATTRIBUTES & COMBAT',
     tab2: '/02 DISCIPLINES & NOTES',
+    tab3: '/03 XP & UPGRADES',
   });
   assert.equal(getActiveTabSectionLabel('dnd5e', 'magias'), '/02 SPELLS & NOTES');
   assert.equal(getActiveTabSectionLabel('blank', 'geral'), '/01 FICHA PRINCIPAL');

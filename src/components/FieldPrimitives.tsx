@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useEffect, useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
 import {
   AppMode,
@@ -6,7 +6,73 @@ import {
   resolveRollPreview,
   SheetField,
 } from '../core/sheetModel';
-import { VariableMap } from '../core/formula';
+import { parseWodPoolExpression, VariableMap } from '../core/formula';
+import { AppTranslations, getTranslations } from '../core/i18n';
+
+interface ClampedNumberInputProps {
+  value: number;
+  min: number;
+  max: number;
+  ariaLabel: string;
+  testId: string;
+  onCommit: (next: number) => void;
+}
+
+const ClampedNumberInput: React.FC<ClampedNumberInputProps> = ({
+  value,
+  min,
+  max,
+  ariaLabel,
+  testId,
+  onCommit,
+}) => {
+  const [focused, setFocused] = useState(false);
+  const [draft, setDraft] = useState(String(value));
+
+  useEffect(() => {
+    if (!focused) {
+      setDraft(String(value));
+    }
+  }, [value, focused]);
+
+  return (
+    <input
+      type="number"
+      min={min}
+      max={max}
+      aria-label={ariaLabel}
+      data-testid={testId}
+      value={focused ? draft : String(value)}
+      onFocus={() => {
+        setFocused(true);
+        setDraft(String(value));
+      }}
+      onChange={(e) => {
+        const rawText = e.target.value;
+        setDraft(rawText);
+        if (rawText.trim() === '' || rawText.trim() === '-') return;
+        const parsed = Number(rawText);
+        if (Number.isFinite(parsed) && parsed >= min && parsed <= max) {
+          onCommit(Math.round(parsed));
+        }
+      }}
+      onBlur={() => {
+        setFocused(false);
+        const parsed = Number(draft);
+        if (!Number.isFinite(parsed) || draft.trim() === '' || draft.trim() === '-') {
+          setDraft(String(value));
+          return;
+        }
+        const clamped = Math.max(min, Math.min(max, Math.round(parsed)));
+        setDraft(String(clamped));
+        if (clamped !== value) {
+          onCommit(clamped);
+        }
+      }}
+      className="cyber-input w-12 px-1 py-0.5 text-[11px] font-bold text-center tabular-nums"
+    />
+  );
+};
 
 interface FieldPrimitiveProps {
   field: SheetField;
@@ -14,8 +80,14 @@ interface FieldPrimitiveProps {
   variables: VariableMap;
   computed?: ComputedFieldInfo;
   totalCargoWeight: number;
+  t?: AppTranslations['cards'];
   onChangeValue: (fieldId: string, value: number | string | boolean) => void;
   onAdjustResource: (fieldId: string, delta: number) => void;
+  onAdjustHealthDamage?: (
+    fieldId: string,
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
   onRoll: (field: SheetField) => void;
   onAddRow: (fieldId: string) => void;
   onUpdateRow: (fieldId: string, rowId: string, col: 'col1' | 'col2', val: string | number) => void;
@@ -24,14 +96,18 @@ interface FieldPrimitiveProps {
   onRemoveField: (fieldId: string) => void;
 }
 
+const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
+
 export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   field,
   mode,
   variables,
   computed,
   totalCargoWeight,
+  t = DEFAULT_CARDS_T,
   onChangeValue,
   onAdjustResource,
+  onAdjustHealthDamage,
   onRoll,
   onAddRow,
   onUpdateRow,
@@ -277,7 +353,153 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     );
   }
 
-  // 3. Recurso (Barra Segmentada estilo CPU_USAGE / MEMORY)
+  // 3A. Recurso especial: WoD Health Damage Track (Superficial + Aggravated, 1 AGG = max SUP)
+  if (field.kind === 'resource' && field.damageTrack) {
+    const max = Math.max(1, field.max ?? 7);
+    const agg = Math.max(
+      0,
+      Math.min(
+        max,
+        typeof field.aggravatedDamage === 'number'
+          ? field.aggravatedDamage
+          : Math.max(0, max - (typeof field.value === 'number' ? field.value : max)),
+      ),
+    );
+    const sup = agg >= max ? 0 : Math.max(0, Math.min(max - 1, field.superficialDamage ?? 0));
+    const healthy = Math.max(0, max - agg);
+    const totalSupEq = agg * max + sup;
+    const boxes = Array.from({ length: max }, (_, idx) => {
+      if (idx < agg) return 'aggravated' as const;
+      if (idx < agg + sup) return 'superficial' as const;
+      return 'healthy' as const;
+    });
+
+    return (
+      <div
+        data-testid={`health-damage-track-${field.id}`}
+        className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] flex flex-col gap-2"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+              {field.label}
+            </span>
+            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[3px] whitespace-nowrap">
+              {t.aggEqRule(max)}
+            </span>
+          </div>
+          <span
+            data-testid="health-healthy-summary"
+            className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] tabular-nums whitespace-nowrap"
+            aria-live="polite"
+          >
+            {healthy} / {max} {t.healthyRemaining}
+          </span>
+        </div>
+
+        {/* Segmented WoD Health Boxes: [X Aggravated] [/ Superficial] [ ] Healthy */}
+        <div
+          className="flex items-center gap-[3px]"
+          role="meter"
+          aria-label={field.label}
+          aria-valuemin={0}
+          aria-valuemax={max}
+          aria-valuenow={healthy}
+        >
+          {boxes.map((state, idx) => (
+            <div
+              key={idx}
+              aria-hidden="true"
+              className={`seg-block h-[18px] flex items-center justify-center font-mono-tech text-[10px] font-extrabold select-none ${
+                state === 'aggravated'
+                  ? 'is-aggravated'
+                  : state === 'superficial'
+                    ? 'is-superficial'
+                    : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+              }`}
+            >
+              {state === 'aggravated' ? '✕' : state === 'superficial' ? '/' : ''}
+            </div>
+          ))}
+        </div>
+
+        {/* Aggravated + Superficial Steppers */}
+        <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+          <div className="flex items-center justify-between gap-2">
+            <div className="flex items-center gap-1.5 min-w-0">
+              <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase truncate">
+                {t.aggravatedDmg}
+              </span>
+              <span className="font-mono-tech text-[9px] font-semibold text-[var(--ink-muted)] tabular-nums shrink-0">
+                ({t.supEqTag(totalSupEq)})
+              </span>
+            </div>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                data-testid="health-aggravated-dec"
+                aria-label={`${t.aggravatedDmg} -`}
+                onClick={() => onAdjustHealthDamage?.(field.id, 'aggravated', -1)}
+                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              >
+                -
+              </button>
+              <span
+                data-testid="health-aggravated-value"
+                className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--ink-primary)]"
+              >
+                {agg} / {max}
+              </span>
+              <button
+                type="button"
+                data-testid="health-aggravated-inc"
+                aria-label={`${t.aggravatedDmg} +`}
+                onClick={() => onAdjustHealthDamage?.(field.id, 'aggravated', 1)}
+                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+
+          <div className="flex items-center justify-between gap-2">
+            <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase truncate">
+              {t.superficialDmg}
+            </span>
+            <div className="flex items-center gap-1 shrink-0">
+              <button
+                type="button"
+                data-testid="health-superficial-dec"
+                aria-label={`${t.superficialDmg} -`}
+                onClick={() => onAdjustHealthDamage?.(field.id, 'superficial', -1)}
+                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              >
+                -
+              </button>
+              <span
+                data-testid="health-superficial-value"
+                className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--accent-wine)]"
+              >
+                {sup} / {max}
+              </span>
+              <button
+                type="button"
+                data-testid="health-superficial-inc"
+                aria-label={`${t.superficialDmg} +`}
+                onClick={() => onAdjustHealthDamage?.(field.id, 'superficial', 1)}
+                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              >
+                +
+              </button>
+            </div>
+          </div>
+        </div>
+        {renderEditStrip()}
+      </div>
+    );
+  }
+
+  // 3B. Recurso Padrão (Barra Segmentada estilo CPU_USAGE / MEMORY)
   if (field.kind === 'resource') {
     const max = Math.max(1, field.max ?? 12);
     const current = Math.max(0, Math.min(max, typeof field.value === 'number' ? field.value : 0));
@@ -344,6 +566,69 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   // 4. Booleano / Contador
   if (field.kind === 'boolean') {
     const checked = Boolean(field.value);
+    const isWillpowerAutoSuccess = field.id === 'f_wp_boost' || field.key === 'wp_boost';
+
+    if (isWillpowerAutoSuccess) {
+      const currentWillpower = typeof variables.willpower === 'number' ? variables.willpower : 0;
+      const isEmpty = currentWillpower <= 0;
+      const effectiveChecked = checked && !isEmpty;
+      const badgeLabel = isEmpty ? 'EMPTY' : effectiveChecked ? 'ACTIVE' : 'INACTIVE';
+
+      return (
+        <div className="py-1">
+          <button
+            type="button"
+            role="checkbox"
+            aria-checked={effectiveChecked}
+            disabled={isEmpty}
+            data-testid="willpower-auto-success-toggle"
+            onClick={() => {
+              if (!isEmpty) {
+                onChangeValue(field.id, !checked);
+              }
+            }}
+            className={`w-full flex items-center justify-between gap-2.5 px-2.5 py-2 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] transition-colors text-left ${
+              isEmpty
+                ? 'bg-[var(--bg-header-strip)] opacity-65 cursor-not-allowed'
+                : effectiveChecked
+                  ? 'bg-[var(--accent-cream-badge)] hover:bg-[var(--bg-hover)] cursor-pointer'
+                  : 'bg-[var(--bg-card-alt)] hover:bg-[var(--bg-hover)] cursor-pointer'
+            }`}
+          >
+            <div className="flex items-center gap-2.5 min-w-0">
+              <span
+                className={`w-5 h-5 rounded-[4px] border-2 border-[var(--border-ink)] flex items-center justify-center shrink-0 transition-colors ${
+                  effectiveChecked
+                    ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
+                    : isEmpty
+                      ? 'bg-[var(--bg-header-strip)] text-transparent'
+                      : 'bg-[var(--bg-card)] text-transparent'
+                }`}
+              >
+                <Check className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
+              </span>
+              <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase truncate">
+                {field.label}
+              </span>
+            </div>
+            <span
+              data-testid="willpower-auto-success-badge"
+              className={`font-mono-tech text-[10px] font-extrabold px-2 py-0.5 rounded-[3px] border shrink-0 tracking-wider uppercase ${
+                isEmpty
+                  ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                  : effectiveChecked
+                    ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
+                    : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-ink)]/60'
+              }`}
+            >
+              {badgeLabel}
+            </span>
+          </button>
+          {renderEditStrip()}
+        </div>
+      );
+    }
+
     return (
       <div className="py-1">
         <button
@@ -369,7 +654,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           </div>
           {field.hint && (
             <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] hidden sm:inline shrink-0">
-              {checked ? 'ATIVO' : 'INATIVO'}
+              {checked ? t.active : t.inactive}
             </span>
           )}
         </button>
@@ -380,12 +665,102 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
   // 5. Botão de Rolagem
   if (field.kind === 'roll') {
+    const parsedPool = parseWodPoolExpression(field.rollExpr ?? '');
+
+    if (parsedPool) {
+      const exprDiff = Number(parsedPool.diffExpr);
+      const difficulty = Math.max(
+        2,
+        Math.min(
+          10,
+          Math.round(field.rollDifficulty ?? (Number.isFinite(exprDiff) ? exprDiff : 6)),
+        ),
+      );
+      const specialty = Boolean(field.rollSpecialty);
+      const modifier =
+        typeof field.rollMod === 'number' && Number.isFinite(field.rollMod)
+          ? Math.round(field.rollMod)
+          : 0;
+      const previewExpr = resolveRollPreview(field.rollExpr ?? 'pool(1, 6)', variables, {
+        difficulty,
+        modifier,
+        specialty,
+      });
+      const wpArmed = Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
+      const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
+
+      return (
+        <div className="py-0.5">
+          <button
+            type="button"
+            data-testid={`roll-btn-${field.id}`}
+            onClick={() => onRoll(field)}
+            className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
+          >
+            <span className="truncate">{displayLabel}</span>
+            <div className="flex items-center gap-1.5 shrink-0">
+              {wpArmed && (
+                <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--ink-inverse)]/40 rounded-[3px]">
+                  +1 WP
+                </span>
+              )}
+              <span className="text-sm leading-none" aria-hidden="true">
+                ↗
+              </span>
+            </div>
+          </button>
+
+          <div className="no-print print:hidden mt-1 px-2 py-1.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)]/70 rounded-[var(--radius-control)] flex flex-wrap items-center justify-between gap-2">
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
+                <span>DIFF</span>
+                <ClampedNumberInput
+                  min={2}
+                  max={10}
+                  ariaLabel={`Difficulty for ${field.rollLabel ?? field.label}`}
+                  testId={`roll-diff-${field.id}`}
+                  value={difficulty}
+                  onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
+                />
+              </label>
+
+              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
+                <span>MOD</span>
+                <ClampedNumberInput
+                  min={-10}
+                  max={20}
+                  ariaLabel={`Pool modifier for ${field.rollLabel ?? field.label}`}
+                  testId={`roll-mod-${field.id}`}
+                  value={modifier}
+                  onCommit={(next) => onUpdateSchema(field.id, { rollMod: next })}
+                />
+              </label>
+            </div>
+
+            <label className="inline-flex items-center gap-1.5 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
+              <input
+                type="checkbox"
+                data-testid={`roll-spec-${field.id}`}
+                checked={specialty}
+                onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
+                className="w-3.5 h-3.5 accent-[#5B0F18] cursor-pointer"
+              />
+              <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>SPECIALTY</span>
+            </label>
+          </div>
+
+          {renderEditStrip()}
+        </div>
+      );
+    }
+
     const previewExpr = resolveRollPreview(field.rollExpr ?? '1d20', variables);
     const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
     return (
       <div className="py-0.5">
         <button
           type="button"
+          data-testid={`roll-btn-${field.id}`}
           onClick={() => onRoll(field)}
           className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
         >
@@ -413,7 +788,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           </span>
           {field.col2Type === 'number' && (
             <span className="font-mono-tech text-[11px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px]">
-              //CARGA: {totalCargoWeight} KG
+              {t.cargoBadge} {totalCargoWeight} KG
             </span>
           )}
         </div>
@@ -431,7 +806,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               {rows.length === 0 ? (
                 <tr>
                   <td colSpan={3} className="py-4 px-3 text-center text-[11px] text-[var(--ink-muted)]">
-                    Nenhum registro na lista.
+                    {t.emptyTable}
                   </td>
                 </tr>
               ) : (
@@ -489,7 +864,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           className="no-print print:hidden font-mono-tech self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase border-[1.5px] border-dashed border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-          <span>ADICIONAR LINHA</span>
+          <span>{t.addRow}</span>
         </button>
         {renderEditStrip()}
       </div>

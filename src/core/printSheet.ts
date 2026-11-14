@@ -1,41 +1,22 @@
 import { CharacterSheetState, detectSystemId, SystemId, TabId } from './sheetModel';
+import { AppLanguage, getLocalizedTabLabels } from './i18n';
 
-export function getTabLabelsForSystem(systemId: SystemId): { tab1: string; tab2: string } {
-  if (systemId === 'wod') {
-    return {
-      tab1: '/01 ATTRIBUTES & COMBAT',
-      tab2: '/02 DISCIPLINES & NOTES',
-    };
-  }
-  if (systemId === 'dnd5e') {
-    return {
-      tab1: '/01 ABILITIES & COMBAT',
-      tab2: '/02 SPELLS & NOTES',
-    };
-  }
-  if (systemId === 'cyberpunk') {
-    return {
-      tab1: '/01 STATS & COMBAT',
-      tab2: '/02 NETRUNNING & NOTES',
-    };
-  }
-  if (systemId === 'blank') {
-    return {
-      tab1: '/01 FICHA PRINCIPAL',
-      tab2: '/02 EXTRAS & NOTAS',
-    };
-  }
-  return {
-    tab1: '/01 GERAL & COMBATE',
-    tab2: '/02 MAGIAS & NOTAS',
-  };
+export function getTabLabelsForSystem(
+  systemId: SystemId,
+  lang: AppLanguage = 'pt-BR',
+): { tab1: string; tab2: string; tab3: string } {
+  return getLocalizedTabLabels(systemId, lang);
 }
 
-export function getActiveTabSectionLabel(systemId: SystemId, activeTab: TabId): string {
+export function getActiveTabSectionLabel(
+  systemId: SystemId,
+  activeTab: TabId,
+  lang: AppLanguage = 'pt-BR',
+): string {
+  const { tab1, tab2, tab3 } = getTabLabelsForSystem(systemId, lang);
   if (activeTab === 'xp') {
-    return '/03 XP & UPGRADES';
+    return tab3;
   }
-  const { tab1, tab2 } = getTabLabelsForSystem(systemId);
   return activeTab === 'geral' ? tab1 : tab2;
 }
 

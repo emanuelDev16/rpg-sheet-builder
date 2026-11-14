@@ -1,4 +1,10 @@
-import { evaluateFormula, rollDiceExpression, VariableMap } from './formula';
+import {
+  evaluateFormula,
+  parseWodPoolExpression,
+  rollDiceExpression,
+  VariableMap,
+  WodOutcome,
+} from './formula';
 
 export type TabId = 'geral' | 'magias' | 'xp';
 export type AppMode = 'jogo' | 'edicao';
@@ -16,7 +22,7 @@ export const SYSTEM_OPTIONS: SystemOption[] = [
     id: 'wod',
     label: 'WORLD OF DARKNESS (STORYTELLER d10)',
     shortLabel: 'WOD · STORYTELLER d10',
-    description: 'Atributos, Health, Willpower, Blood Pool, Disciplines e pools Nd10',
+    description: 'Atributos, Health (Superficial/Aggravated), Willpower, Hunger, Disciplines e pools Nd10',
   },
   {
     id: 'dnd5e',
@@ -66,10 +72,17 @@ export interface SheetField {
   kind: FieldKind;
   value?: number | string | boolean;
   max?: number;
+  damageTrack?: boolean;
+  superficialDamage?: number;
+  aggravatedDamage?: number;
   formula?: string;
   showPlus?: boolean;
   rollLabel?: string;
   rollExpr?: string;
+  rollDifficulty?: number;
+  rollSpecialty?: boolean;
+  rollMod?: number;
+  isSoak?: boolean;
   columns?: [string, string];
   col2Type?: 'number' | 'text';
   rows?: RepeatableRow[];
@@ -92,6 +105,15 @@ export interface RollLogEntry {
   total: number;
   formula: string;
   breakdown: string;
+  rolls?: number[];
+  difficulty?: number;
+  specialty?: boolean;
+  willpowerUsed?: boolean;
+  isSoak?: boolean;
+  onesCount?: number;
+  canceledOnes?: number;
+  doubledTensCount?: number;
+  outcome?: WodOutcome;
   isCritical?: boolean;
   isFumble?: boolean;
   isPoolRoll?: boolean;
@@ -226,7 +248,7 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
         id: 'card_combate',
         tab: 'geral',
         code: '//VITAL_STATUS',
-        title: 'HEALTH · WILLPOWER · BLOOD',
+        title: 'HEALTH · WILLPOWER · HUNGER',
         colSpan: 1,
         fields: [
           {
@@ -236,6 +258,9 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             kind: 'resource',
             value: 7,
             max: 7,
+            damageTrack: true,
+            superficialDamage: 0,
+            aggravatedDamage: 0,
           },
           {
             id: 'f_willpower',
@@ -246,12 +271,12 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             max: 8,
           },
           {
-            id: 'f_blood_pool',
-            key: 'blood_pool',
-            label: 'BLOOD POOL',
+            id: 'f_hunger',
+            key: 'hunger',
+            label: 'HUNGER',
             kind: 'resource',
-            value: 9,
-            max: 13,
+            value: 1,
+            max: 5,
           },
           {
             id: 'f_humanity',
@@ -262,12 +287,19 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             max: 10,
           },
           {
+            id: 'f_fortitude_armor',
+            key: 'fortitude_armor',
+            label: 'FORTITUDE / ARMOR',
+            kind: 'number',
+            value: 0,
+          },
+          {
             id: 'f_wp_boost',
             key: 'wp_boost',
-            label: 'WILLPOWER SURGE (+1 DIE)',
+            label: 'WILLPOWER (+1 AUTO SUCCESS)',
             kind: 'boolean',
             value: false,
-            hint: 'SPENT THIS TURN',
+            hint: 'SPENT ON NEXT ROLL',
           },
           {
             id: 'f_soak',
@@ -275,7 +307,11 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             label: 'SOAK DAMAGE',
             kind: 'roll',
             rollLabel: 'ROLL SOAK',
-            rollExpr: 'pool(stamina, 6)',
+            rollExpr: 'pool(stamina + fortitude_armor, 6)',
+            rollDifficulty: 6,
+            rollSpecialty: false,
+            rollMod: 0,
+            isSoak: true,
           },
         ],
       },
@@ -296,7 +332,10 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             label: 'MELEE / BRAWL',
             kind: 'roll',
             rollLabel: 'ROLL BRAWL',
-            rollExpr: 'pool(strength + brawl + wp_boost, 6)',
+            rollExpr: 'pool(strength + brawl, 6)',
+            rollDifficulty: 6,
+            rollSpecialty: false,
+            rollMod: 0,
           },
           {
             id: 'f_roll_firearms',
@@ -304,7 +343,21 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             label: 'RANGED ATTACK',
             kind: 'roll',
             rollLabel: 'ROLL FIREARMS',
-            rollExpr: 'pool(dexterity + firearms + wp_boost, 6)',
+            rollExpr: 'pool(dexterity + firearms, 6)',
+            rollDifficulty: 6,
+            rollSpecialty: false,
+            rollMod: 0,
+          },
+          {
+            id: 'f_roll_stealth',
+            key: 'roll_stealth',
+            label: 'STEALTH / SNEAK',
+            kind: 'roll',
+            rollLabel: 'ROLL STEALTH',
+            rollExpr: 'pool(dexterity + stealth, 6)',
+            rollDifficulty: 6,
+            rollSpecialty: false,
+            rollMod: 0,
           },
           {
             id: 'f_roll_subterfuge',
@@ -312,7 +365,10 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             label: 'SOCIAL MANIPULATION',
             kind: 'roll',
             rollLabel: 'ROLL SUBTERFUGE',
-            rollExpr: 'pool(manipulation + subterfuge + wp_boost, 6)',
+            rollExpr: 'pool(manipulation + subterfuge, 6)',
+            rollDifficulty: 6,
+            rollSpecialty: false,
+            rollMod: 0,
           },
         ],
       },
@@ -371,7 +427,10 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             label: 'MESMERIZE / COMMAND',
             kind: 'roll',
             rollLabel: 'ROLL DOMINATE',
-            rollExpr: 'pool(manipulation + dominate + wp_boost, 6)',
+            rollExpr: 'pool(manipulation + dominate, 6)',
+            rollDifficulty: 6,
+            rollSpecialty: false,
+            rollMod: 0,
           },
           {
             id: 'f_roll_occult',
@@ -379,7 +438,10 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             label: 'ARCANE LORE CHECK',
             kind: 'roll',
             rollLabel: 'ROLL OCCULT',
-            rollExpr: 'pool(wits + occult + wp_boost, 7)',
+            rollExpr: 'pool(wits + occult, 7)',
+            rollDifficulty: 7,
+            rollSpecialty: false,
+            rollMod: 0,
           },
         ],
       },
@@ -440,6 +502,9 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
         total: 4,
         formula: '8d10 (DIFF 6)',
         breakdown: '8d10[9, 6, 3, 10, 7, 2, 8, 5] ≥6 → 4 SUCESSOS',
+        rolls: [9, 6, 3, 10, 7, 2, 8, 5],
+        difficulty: 6,
+        outcome: 'success',
         isPoolRoll: true,
       },
       {
@@ -448,7 +513,12 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
         label: 'ROLL DOMINATE',
         total: 3,
         formula: '7d10 (DIFF 6)',
-        breakdown: '7d10[8, 6, 4, 9, 2, 7, 1] ≥6 → 3 SUCESSOS',
+        breakdown: '7d10[8, 6, 4, 9, 2, 7, 1] ≥6 (-1 CANC BY 1s) → 3 SUCESSOS',
+        rolls: [8, 6, 4, 9, 2, 7, 1],
+        difficulty: 6,
+        onesCount: 1,
+        canceledOnes: 1,
+        outcome: 'success',
         isPoolRoll: true,
       },
     ],
@@ -1249,9 +1319,17 @@ export function evaluateSheet(sheet: CharacterSheetState): SheetEvaluation {
         const num = typeof field.value === 'number' ? field.value : Number(field.value ?? 0);
         variables[key] = Number.isFinite(num) ? num : 0;
       } else if (field.kind === 'resource') {
+        const max = Math.max(1, field.max ?? 12);
         const num = typeof field.value === 'number' ? field.value : 0;
         variables[key] = num;
-        variables[`${key}_max`] = field.max ?? num;
+        variables[`${key}_max`] = max;
+        if (field.damageTrack) {
+          const sup = Math.max(0, field.superficialDamage ?? 0);
+          const agg = Math.max(0, field.aggravatedDamage ?? 0);
+          variables[`${key}_superficial`] = sup;
+          variables[`${key}_aggravated`] = agg;
+          variables[`${key}_total_sup_eq`] = agg * max + sup;
+        }
       } else if (field.kind === 'boolean') {
         variables[key] = field.value ? 1 : 0;
       } else if (field.kind === 'repeatable' && field.col2Type === 'number') {
@@ -1314,40 +1392,30 @@ export function evaluateSheet(sheet: CharacterSheetState): SheetEvaluation {
   };
 }
 
-export function resolveRollPreview(expression: string, vars: VariableMap): string {
+export function resolveRollPreview(
+  expression: string,
+  vars: VariableMap,
+  options?: { difficulty?: number; modifier?: number; specialty?: boolean },
+): string {
   const cleaned = expression.trim();
   if (!cleaned) return '';
 
-  const poolFnMatch = cleaned.match(/^pool\((.+)\)$/i);
-  if (poolFnMatch) {
-    const inner = poolFnMatch[1];
-    let depth = 0;
-    let splitIdx = -1;
-    for (let i = 0; i < inner.length; i += 1) {
-      if (inner[i] === '(') depth += 1;
-      else if (inner[i] === ')') depth -= 1;
-      else if (inner[i] === ',' && depth === 0) {
-        splitIdx = i;
-        break;
-      }
-    }
-    const countPart = splitIdx === -1 ? inner : inner.slice(0, splitIdx);
-    const diffPart = splitIdx === -1 ? '6' : inner.slice(splitIdx + 1);
-    const countRes = evaluateFormula(countPart, vars, false);
-    const diffRes = evaluateFormula(diffPart, vars, false);
-    if (countRes.ok && diffRes.ok) {
-      const poolSize = Math.max(0, Math.min(30, Math.round(countRes.value)));
-      const diff = Math.max(2, Math.min(10, Math.round(diffRes.value)));
-      return `${poolSize}d10 @ DIFF ${diff}`;
-    }
-  }
-
-  const shortPoolMatch = cleaned.match(/^(.+?)d10\s*(?:@|>=)\s*(\d+)$/i);
-  if (shortPoolMatch) {
-    const countRes = evaluateFormula(shortPoolMatch[1], vars, false);
-    if (countRes.ok) {
-      const poolSize = Math.max(0, Math.min(30, Math.round(countRes.value)));
-      return `${poolSize}d10 @ DIFF ${shortPoolMatch[2]}`;
+  const parsedPool = parseWodPoolExpression(cleaned);
+  if (parsedPool) {
+    const countRes = evaluateFormula(parsedPool.countExpr, vars, false);
+    const diffRes = evaluateFormula(parsedPool.diffExpr, vars, false);
+    if (countRes.ok && (diffRes.ok || options?.difficulty !== undefined)) {
+      const mod =
+        typeof options?.modifier === 'number' && Number.isFinite(options.modifier)
+          ? Math.round(options.modifier)
+          : 0;
+      const poolSize = Math.max(0, Math.min(30, Math.round(countRes.value) + mod));
+      const rawDiff =
+        typeof options?.difficulty === 'number' && Number.isFinite(options.difficulty)
+          ? options.difficulty
+          : diffRes.value;
+      const diff = Math.max(2, Math.min(10, Math.round(rawDiff)));
+      return `${poolSize}d10 @ DIFF ${diff}${options?.specialty ? ' · SPEC' : ''}`;
     }
   }
 
@@ -1363,23 +1431,109 @@ export function resolveRollPreview(expression: string, vars: VariableMap): strin
     .replace(/\+\s*-(\d+)/g, '- $1');
 }
 
+function syncWillpowerToggleWithResource(sheet: CharacterSheetState): CharacterSheetState {
+  const wpField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_willpower' || f.key === 'willpower');
+  const wpVal = typeof wpField?.value === 'number' ? wpField.value : 0;
+  if (wpVal > 0) return sheet;
+
+  const boostField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_wp_boost' || f.key === 'wp_boost');
+  if (!boostField || !boostField.value) return sheet;
+
+  return {
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) =>
+        f.id === boostField.id ? { ...f, value: false } : f,
+      ),
+    })),
+  };
+}
+
 export function updateFieldValue(
   sheet: CharacterSheetState,
   fieldId: string,
   nextValue: number | string | boolean,
 ): CharacterSheetState {
-  return {
+  const updated: CharacterSheetState = {
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
       fields: card.fields.map((f) => (f.id === fieldId ? { ...f, value: nextValue } : f)),
     })),
   };
+  return syncWillpowerToggleWithResource(updated);
 }
 
 export function adjustResourceValue(
   sheet: CharacterSheetState,
   fieldId: string,
+  delta: number,
+): CharacterSheetState {
+  const updated: CharacterSheetState = {
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id !== fieldId || f.kind !== 'resource') return f;
+        const max = Math.max(1, f.max ?? 12);
+        const current = typeof f.value === 'number' ? f.value : 0;
+        const clamped = Math.max(0, Math.min(max, current + delta));
+        if (f.damageTrack) {
+          const nextAgg = Math.max(0, max - clamped);
+          const nextSup = clamped === 0 ? 0 : Math.min(max - 1, f.superficialDamage ?? 0);
+          return {
+            ...f,
+            value: clamped,
+            aggravatedDamage: nextAgg,
+            superficialDamage: nextSup,
+          };
+        }
+        return { ...f, value: clamped };
+      }),
+    })),
+  };
+  return syncWillpowerToggleWithResource(updated);
+}
+
+export function consumeWillpowerForRoll(sheet: CharacterSheetState): CharacterSheetState {
+  const wpField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_willpower' || f.key === 'willpower');
+  const wpVal = typeof wpField?.value === 'number' ? wpField.value : 0;
+  const boostField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_wp_boost' || f.key === 'wp_boost');
+
+  if (!wpField || !boostField || !boostField.value || wpVal <= 0) {
+    return syncWillpowerToggleWithResource(sheet);
+  }
+
+  return {
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id === wpField.id && f.kind === 'resource') {
+          return { ...f, value: Math.max(0, wpVal - 1) };
+        }
+        if (f.id === boostField.id && f.kind === 'boolean') {
+          return { ...f, value: false };
+        }
+        return f;
+      }),
+    })),
+  };
+}
+
+export function adjustHealthDamage(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  damageType: 'superficial' | 'aggravated',
   delta: number,
 ): CharacterSheetState {
   return {
@@ -1388,13 +1542,142 @@ export function adjustResourceValue(
       ...card,
       fields: card.fields.map((f) => {
         if (f.id !== fieldId || f.kind !== 'resource') return f;
-        const max = f.max ?? 12;
-        const current = typeof f.value === 'number' ? f.value : 0;
-        const clamped = Math.max(0, Math.min(max, current + delta));
-        return { ...f, value: clamped };
+        const max = Math.max(1, f.max ?? 7);
+        const currentAgg = Math.max(
+          0,
+          Math.min(
+            max,
+            typeof f.aggravatedDamage === 'number'
+              ? f.aggravatedDamage
+              : Math.max(0, max - (typeof f.value === 'number' ? f.value : max)),
+          ),
+        );
+        const currentSup =
+          currentAgg >= max ? 0 : Math.max(0, Math.min(max - 1, f.superficialDamage ?? 0));
+
+        const totalSup = currentAgg * max + currentSup;
+        const maxTotalSup = max * max;
+        const deltaSup = damageType === 'aggravated' ? delta * max : delta;
+        const nextTotalSup = Math.max(0, Math.min(maxTotalSup, totalSup + deltaSup));
+
+        const nextAgg = Math.floor(nextTotalSup / max);
+        const nextSup = nextAgg >= max ? 0 : nextTotalSup % max;
+        const nextHealth = Math.max(0, max - nextAgg);
+
+        return {
+          ...f,
+          damageTrack: true,
+          max,
+          value: nextHealth,
+          superficialDamage: nextSup,
+          aggravatedDamage: nextAgg,
+        };
       }),
     })),
   };
+}
+
+export function migrateLegacyWodSheet(sheet: CharacterSheetState): CharacterSheetState {
+  if (detectSystemId(sheet) !== 'wod') return sheet;
+  let changed = false;
+
+  const cards = sheet.cards.map((card) => {
+    let cardChanged = false;
+    let nextTitle = card.title;
+
+    if (card.id === 'card_combate' && card.title === 'HEALTH · WILLPOWER · BLOOD') {
+      nextTitle = 'HEALTH · WILLPOWER · HUNGER';
+      cardChanged = true;
+    }
+
+    let fields = card.fields.map((field) => {
+      if (card.id === 'card_combate' && (field.id === 'f_blood_pool' || field.key === 'blood_pool')) {
+        cardChanged = true;
+        return {
+          id: 'f_hunger',
+          key: 'hunger',
+          label: 'HUNGER',
+          kind: 'resource' as const,
+          value: 1,
+          max: 5,
+        };
+      }
+      if (card.id === 'card_combate' && field.id === 'f_health' && !field.damageTrack) {
+        cardChanged = true;
+        const max = Math.max(1, field.max ?? 7);
+        const currVal = typeof field.value === 'number' ? Math.max(0, Math.min(max, field.value)) : max;
+        return {
+          ...field,
+          max,
+          value: currVal,
+          damageTrack: true,
+          superficialDamage: field.superficialDamage ?? 0,
+          aggravatedDamage: field.aggravatedDamage ?? Math.max(0, max - currVal),
+        };
+      }
+      if (
+        (field.id === 'f_wp_boost' || field.key === 'wp_boost') &&
+        field.label !== 'WILLPOWER (+1 AUTO SUCCESS)'
+      ) {
+        cardChanged = true;
+        return {
+          ...field,
+          label: 'WILLPOWER (+1 AUTO SUCCESS)',
+          hint: 'SPENT ON NEXT ROLL',
+        };
+      }
+      if (
+        field.id === 'f_soak' &&
+        (field.rollExpr === 'pool(stamina, 6)' || !field.isSoak)
+      ) {
+        cardChanged = true;
+        return {
+          ...field,
+          rollExpr: 'pool(stamina + fortitude_armor, 6)',
+          rollDifficulty: field.rollDifficulty ?? 6,
+          rollSpecialty: field.rollSpecialty ?? false,
+          rollMod: field.rollMod ?? 0,
+          isSoak: true,
+        };
+      }
+      if (field.kind === 'roll' && field.rollExpr && /\+\s*wp_boost\b/i.test(field.rollExpr)) {
+        cardChanged = true;
+        return {
+          ...field,
+          rollExpr: field.rollExpr.replace(/\s*\+\s*wp_boost\b/gi, ''),
+        };
+      }
+      return field;
+    });
+
+    if (
+      card.id === 'card_combate' &&
+      !fields.some((f) => f.id === 'f_fortitude_armor' || f.key === 'fortitude_armor')
+    ) {
+      cardChanged = true;
+      const armorField: SheetField = {
+        id: 'f_fortitude_armor',
+        key: 'fortitude_armor',
+        label: 'FORTITUDE / ARMOR',
+        kind: 'number',
+        value: 0,
+      };
+      const wpIdx = fields.findIndex((f) => f.id === 'f_wp_boost');
+      if (wpIdx !== -1) {
+        fields = [...fields.slice(0, wpIdx), armorField, ...fields.slice(wpIdx)];
+      } else {
+        fields = [...fields, armorField];
+      }
+    }
+
+    if (cardChanged) {
+      changed = true;
+      return { ...card, title: nextTitle, fields };
+    }
+    return card;
+  });
+
+  return changed ? syncWillpowerToggleWithResource({ ...sheet, cards }) : syncWillpowerToggleWithResource(sheet);
 }
 
 export function addRepeatableRow(

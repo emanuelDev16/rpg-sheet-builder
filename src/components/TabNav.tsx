@@ -1,10 +1,13 @@
 import React from 'react';
 import { AppMode, SystemId, TabId } from '../core/sheetModel';
 import { getTabLabelsForSystem } from '../core/printSheet';
+import { AppLanguage, AppTranslations } from '../core/i18n';
 
 interface TabNavProps {
   activeTab: TabId;
   systemId: SystemId;
+  language: AppLanguage;
+  t: AppTranslations['tabNav'];
   onSelectTab: (tab: TabId) => void;
   characterName: string;
   mode: AppMode;
@@ -14,16 +17,18 @@ interface TabNavProps {
 export const TabNav: React.FC<TabNavProps> = ({
   activeTab,
   systemId,
+  language,
+  t,
   onSelectTab,
   characterName,
   mode,
   onChangeCharacterName,
 }) => {
-  const { tab1, tab2 } = getTabLabelsForSystem(systemId);
+  const { tab1, tab2, tab3 } = getTabLabelsForSystem(systemId, language);
 
   return (
     <div className="no-print print:hidden flex flex-wrap items-center justify-between gap-4 mb-5">
-      <nav aria-label="Navegação de seções da ficha" role="tablist" className="flex flex-wrap items-center gap-2.5">
+      <nav aria-label={t.ariaLabel} role="tablist" className="flex flex-wrap items-center gap-2.5">
         <button
           type="button"
           role="tab"
@@ -63,7 +68,7 @@ export const TabNav: React.FC<TabNavProps> = ({
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
           }`}
         >
-          /03 XP &amp; UPGRADES
+          {tab3}
         </button>
       </nav>
 
@@ -71,7 +76,7 @@ export const TabNav: React.FC<TabNavProps> = ({
         {mode === 'edicao' ? (
           <input
             type="text"
-            aria-label="Título do personagem"
+            aria-label={t.characterAria}
             value={characterName}
             onChange={(e) => onChangeCharacterName(e.target.value)}
             className="cyber-input px-2.5 py-1 text-xs font-bold uppercase tracking-wider w-[230px] sm:w-[260px]"
@@ -83,7 +88,7 @@ export const TabNav: React.FC<TabNavProps> = ({
         )}
         {mode === 'edicao' && (
           <span className="font-mono-tech text-[11px] font-bold px-2.5 py-1 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[1.5px] border-[var(--border-ink)] rounded-[4px] uppercase">
-            SCHEMA EDITÁVEL
+            {t.editableSchema}
           </span>
         )}
       </div>

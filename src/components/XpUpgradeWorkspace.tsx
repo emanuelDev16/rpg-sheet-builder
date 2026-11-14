@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowUpRight, RotateCcw } from 'lucide-react';
 import { CharacterSheetState, XpUpgradeCategory } from '../core/sheetModel';
+import { AppTranslations, getTranslations } from '../core/i18n';
 import {
   extractAllTraits,
   getAvailableXp,
@@ -13,6 +14,7 @@ import {
 
 interface XpUpgradeWorkspaceProps {
   sheet: CharacterSheetState;
+  t?: AppTranslations['xp'];
   onAwardXp: (delta: number, reason: string) => { ok: boolean; error?: string };
   onUpgradeTrait: (fieldId: string) => void;
   onUndoLastUpgrade: () => void;
@@ -26,8 +28,11 @@ const CATEGORY_LABELS: Record<XpUpgradeCategory, string> = {
   discipline: 'DISCIPLINE',
 };
 
+const DEFAULT_XP_T = getTranslations('pt-BR').xp;
+
 export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   sheet,
+  t = DEFAULT_XP_T,
   onAwardXp,
   onUpgradeTrait,
   onUndoLastUpgrade,
@@ -46,14 +51,14 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     () =>
       categoryFilter === 'all'
         ? allPossible
-        : allPossible.filter((t) => t.category === categoryFilter),
+        : allPossible.filter((item) => item.category === categoryFilter),
     [allPossible, categoryFilter],
   );
 
   const countsByCategory = useMemo(() => {
     const counts = { all: allPossible.length, attribute: 0, skill: 0, discipline: 0 };
-    for (const t of allPossible) {
-      counts[t.category] += 1;
+    for (const item of allPossible) {
+      counts[item.category] += 1;
     }
     return counts;
   }, [allPossible]);
@@ -101,14 +106,14 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   return (
     <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
       {/* LEFT CARD: XP MONITOR */}
-      <section className="bento-card" aria-label="Monitor de Experiência (XP)">
+      <section className="bento-card" aria-label={t.monitorTitle}>
         <header className="bento-card-header">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               //XP_MONITOR
             </span>
             <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
-              EXPERIENCE MONITOR
+              {t.monitorTitle}
             </h2>
           </div>
           <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
@@ -122,7 +127,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           <div className="grid grid-cols-3 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] divide-x divide-[var(--border-ink)]">
             <div className="p-3 flex flex-col gap-0.5">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                AVAILABLE XP
+                {t.availableXp}
               </span>
               <span
                 data-testid="xp-available"
@@ -133,7 +138,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             </div>
             <div className="p-3 flex flex-col gap-0.5">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                TOTAL EARNED
+                {t.totalEarned}
               </span>
               <span
                 data-testid="xp-earned"
@@ -144,7 +149,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             </div>
             <div className="p-3 flex flex-col gap-0.5">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                TOTAL SPENT
+                {t.totalSpent}
               </span>
               <span
                 data-testid="xp-spent"
@@ -158,15 +163,15 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           {/* Segmented XP allocation meter */}
           <div className="flex flex-col gap-1.5">
             <div className="flex items-center justify-between font-mono-tech text-[11px] font-semibold">
-              <span className="text-[var(--ink-secondary)] uppercase">XP ALLOCATION</span>
+              <span className="text-[var(--ink-secondary)] uppercase">{t.allocation}</span>
               <span className="text-[var(--ink-primary)] tabular-nums">
-                {xpState.spent} / {xpState.totalEarned} SPENT · {spentPercent}%
+                {xpState.spent} / {xpState.totalEarned} {t.spentLabel} · {spentPercent}%
               </span>
             </div>
             <div
               className="flex items-center gap-1"
               role="meter"
-              aria-label="XP gasto em relação ao total ganho"
+              aria-label={t.allocation}
               aria-valuemin={0}
               aria-valuemax={Math.max(1, xpState.totalEarned)}
               aria-valuenow={xpState.spent}
@@ -184,7 +189,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           <div className="no-print print:hidden pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
-                AJUSTE RÁPIDO DE XP
+                {t.quickAdjust}
               </span>
               <div className="flex items-center gap-1.5">
                 {[1, 3, 5].map((amt) => (
@@ -211,24 +216,24 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             <form onSubmit={handleCustomSubmit} className="flex flex-wrap sm:flex-nowrap items-center gap-2">
               <input
                 type="number"
-                aria-label="Quantidade de XP"
+                aria-label={t.availableXp}
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
                 className="cyber-input w-20 px-2.5 py-1.5 text-xs font-bold text-center shrink-0"
               />
               <input
                 type="text"
-                aria-label="Motivo do ajuste de XP"
+                aria-label={t.notePlaceholder}
                 value={reasonInput}
                 onChange={(e) => setReasonInput(e.target.value)}
-                placeholder="Nota da sessão (ex: Capítulo 04)"
+                placeholder={t.notePlaceholder}
                 className="cyber-input flex-1 min-w-0 px-2.5 py-1.5 text-xs"
               />
               <button
                 type="submit"
                 className="cyber-roll-btn px-3 py-1.5 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
               >
-                ADICIONAR XP ↗
+                {t.addXpBtn}
               </button>
             </form>
 
@@ -246,7 +251,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
-                XP LEDGER ({xpState.ledger.length})
+                {t.ledgerTitle} ({xpState.ledger.length})
               </span>
               {hasUndoableUpgrade && (
                 <button
@@ -255,14 +260,14 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   className="no-print print:hidden cyber-btn-outline px-2.5 py-1 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" aria-hidden="true" />
-                  <span>DESFAZER ÚLTIMO UPGRADE</span>
+                  <span>{t.undoLastUpgrade}</span>
                 </button>
               )}
             </div>
 
             {xpState.ledger.length === 0 ? (
               <div className="p-3 border-[1.5px] border-dashed border-[var(--border-ink)]/35 rounded-[var(--radius-control)] font-mono-tech text-[11px] text-[var(--ink-muted)] text-center">
-                Nenhum registro de XP ainda. Adicione XP ganho acima para começar.
+                {t.emptyLedger}
               </div>
             ) : (
               <ul className="max-h-[240px] overflow-y-auto print:max-h-none print:overflow-visible border border-[var(--border-subtle)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]">
@@ -295,43 +300,43 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
       </section>
 
       {/* RIGHT CARD: POSSIBLE TRAIT UPGRADES */}
-      <section className="bento-card" aria-label="Upgrades Disponíveis na Ficha">
+      <section className="bento-card" aria-label={t.possibleTitle}>
         <header className="bento-card-header">
           <div className="flex items-center gap-2.5 min-w-0">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               //TRAIT_UPGRADES
             </span>
             <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
-              POSSIBLE UPGRADES
+              {t.possibleTitle}
             </h2>
           </div>
           <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] whitespace-nowrap shrink-0">
-            {allPossible.length} DISPONÍVEIS
+            {t.availableCount(allPossible.length)}
           </span>
         </header>
 
         <div className="p-4 flex flex-col gap-3">
           {/* Transparent cost rules line (unboxed metadata) */}
           <div className="font-mono-tech text-[10px] font-semibold text-[var(--ink-muted)] flex flex-wrap items-center gap-1.5">
-            <span>REGRAS DE CUSTO:</span>
+            <span>{t.costRulesLabel}</span>
             {costRulesSummary.map((rule) => (
               <React.Fragment key={rule}>
                 <span>{rule}</span>
                 <span aria-hidden="true">·</span>
               </React.Fragment>
             ))}
-            <span>ORÇAMENTO: {availableXp} XP</span>
+            <span>{t.budgetLabel(availableXp)}</span>
           </div>
 
           {/* Interactive category filter tabs */}
           <div
             role="tablist"
-            aria-label="Filtrar upgrades possíveis por categoria"
+            aria-label={t.possibleTitle}
             className="flex flex-wrap items-center gap-1.5"
           >
             {(
               [
-                { id: 'all', label: 'TODOS' },
+                { id: 'all', label: t.filterAll },
                 { id: 'attribute', label: isWod ? 'ATTRIBUTES' : 'ABILITIES' },
                 { id: 'skill', label: 'SKILLS' },
                 { id: 'discipline', label: isWod ? 'DISCIPLINES' : 'POWERS' },
@@ -370,12 +375,12 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                     onClick={() => setCategoryFilter('all')}
                     className="cyber-btn-outline self-center px-3 py-1 text-[11px] font-bold uppercase cursor-pointer"
                   >
-                    VER TODOS ({allPossible.length})
+                    {t.filterAll} ({allPossible.length})
                   </button>
                 </>
               ) : allTraits.length === 0 ? (
                 <p className="font-mono-tech text-xs text-[var(--ink-muted)]">
-                  Nenhum atributo, perícia ou disciplina numérico encontrado na ficha atual.
+                  {t.emptyLedger}
                 </p>
               ) : cheapestBlocked ? (
                 <>
@@ -383,15 +388,14 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                     XP INSUFICIENTE PARA UPGRADES
                   </p>
                   <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
-                    Disponível: <strong className="font-mono-tech">{availableXp} XP</strong>. Próximo
-                    upgrade mais acessível: <strong className="font-mono-tech">{cheapestBlocked.label}</strong>{' '}
-                    ({cheapestBlocked.currentValue} → {cheapestBlocked.nextValue}) custa{' '}
+                    {availableXp} XP · <strong className="font-mono-tech">{cheapestBlocked.label}</strong>{' '}
+                    ({cheapestBlocked.currentValue} → {cheapestBlocked.nextValue}) ={' '}
                     <strong className="font-mono-tech">{cheapestBlocked.cost} XP</strong>.
                   </p>
                 </>
               ) : (
                 <p className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] uppercase">
-                  TODOS OS ATRIBUTOS, PERÍCIAS E DISCIPLINAS ESTÃO NO MÁXIMO.
+                  MAX REACHED
                 </p>
               )}
             </div>
@@ -411,7 +415,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                         {CATEGORY_LABELS[trait.category]}
                       </span>
                       <span aria-hidden="true">·</span>
-                      <span>FÓRMULA: {trait.formulaLabel}</span>
+                      <span>{trait.formulaLabel}</span>
                     </div>
 
                     <div className="flex items-center gap-2.5 min-w-0">
@@ -452,7 +456,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                     aria-label={`Upgrade ${trait.label} de ${trait.currentValue} para ${trait.nextValue} por ${trait.cost} XP`}
                     className="cyber-roll-btn px-3 py-1.5 text-[11px] font-bold uppercase inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"
                   >
-                    <span>UPGRADE · {trait.cost} XP</span>
+                    <span>{t.upgradeBtn(trait.cost)}</span>
                     <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
                   </button>
                 </li>

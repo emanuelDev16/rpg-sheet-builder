@@ -3,15 +3,18 @@ import {
   addCardToSheet,
   addFieldToCard,
   addRepeatableRow,
+  adjustHealthDamage,
   adjustResourceValue,
   AppMode,
   CharacterSheetState,
+  consumeWillpowerForRoll,
   createBlankSheet,
   createDefaultSheet,
   createPresetBySystemId,
   detectSystemId,
   evaluateSheet,
   FieldKind,
+  migrateLegacyWodSheet,
   removeCardFromSheet,
   removeFieldFromCard,
   removeRepeatableRow,
@@ -39,10 +42,23 @@ import {
   RoomSyncIndicatorState,
   RoomSyncLocalMeta,
 } from './core/roomSync';
-import { rollDiceExpression } from './core/formula';
+import {
+  isWodPoolExpression,
+  rollDiceExpression,
+  WodPoolOptions,
+} from './core/formula';
 import { playDiceClatter } from './core/diceAudio';
+import {
+  AppLanguage,
+  getTranslations,
+  LANGUAGE_OPTIONS,
+  LANGUAGE_STORAGE_KEY,
+  readStoredLanguage,
+} from './core/i18n';
+import { filterCardsByQuery } from './core/sheetSearch';
 import { TopBar } from './components/TopBar';
 import { TabNav } from './components/TabNav';
+import { SheetSearchBar } from './components/SheetSearchBar';
 import { BentoCard } from './components/BentoCard';
 import { CustomCardBuilder } from './components/CustomCardBuilder';
 import { RollLogSidebar } from './components/RollLogSidebar';
@@ -71,11 +87,12 @@ interface InitialWorkspaceBootstrap {
 
 function withSafeXpState(parsed: CharacterSheetState): CharacterSheetState {
   const sysId = detectSystemId(parsed);
-  if (parsed.xp) {
-    return { ...parsed, systemId: sysId, xp: normalizeXpState(parsed.xp) };
+  const migrated = migrateLegacyWodSheet({ ...parsed, systemId: sysId });
+  if (migrated.xp) {
+    return { ...migrated, systemId: sysId, xp: normalizeXpState(migrated.xp) };
   }
   return {
-    ...parsed,
+    ...migrated,
     systemId: sysId,
     xp: {
       totalEarned: 14,
@@ -204,6 +221,8 @@ export default function App() {
   const [workspace, setWorkspace] = useState<WorkspaceState>(bootstrap.workspace);
   const [activeTab, setActiveTab] = useState<TabId>('geral');
   const [mode, setMode] = useState<AppMode>('jogo');
+  const [language, setLanguage] = useState<AppLanguage>(readStoredLanguage);
+  const [searchQuery, setSearchQuery] = useState('');
   const [modalMode, setModalMode] = useState<'open' | 'save' | null>(null);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
@@ -211,6 +230,20 @@ export default function App() {
     nextSyncAtMillis: Date.now() + ROOM_PERIODIC_SYNC_INTERVAL_MS,
     lastSyncedAtMillis: bootstrap.lastMirroredDigest ? bootstrap.updatedAtMillis : null,
   }));
+
+  const t = useMemo(() => getTranslations(language), [language]);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LANGUAGE_STORAGE_KEY, language);
+    } catch {
+      // Ignore storage errors
+    }
+    const langMeta = LANGUAGE_OPTIONS.find((opt) => opt.id === language);
+    if (langMeta && typeof document !== 'undefined') {
+      document.documentElement.lang = langMeta.htmlLang;
+    }
+  }, [language]);
 
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
@@ -287,7 +320,7 @@ export default function App() {
         });
       }
       if (options.flashOnSuccess) {
-        triggerFlash('// ROOM DB: SINCRONIZADO AGORA');
+        triggerFlash(t.statusBar.roomSyncedFlash);
       }
     } else if (latestDigest === outcome.digest) {
       setRoomSyncState((prev) => ({
@@ -313,14 +346,24 @@ export default function App() {
         { hadLocalWorkspace: bootstrap.hadLocalWorkspace },
       );
       if (reconciled.adoptedRemote) {
-        const adoptedDigest = computeWorkspaceDigest(reconciled.workspace);
+        const adoptedActive = reconciled.workspace.sheetsBySystem[reconciled.workspace.activeSystemId];
+        const migratedWorkspace: WorkspaceState = adoptedActive
+          ? {
+              ...reconciled.workspace,
+              sheetsBySystem: {
+                ...reconciled.workspace.sheetsBySystem,
+                [reconciled.workspace.activeSystemId]: withSafeXpState(adoptedActive),
+              },
+            }
+          : reconciled.workspace;
+        const adoptedDigest = computeWorkspaceDigest(migratedWorkspace);
         updatedAtRef.current = reconciled.updatedAtMillis;
         lastMirroredDigestRef.current = adoptedDigest;
         writeRoomSyncLocalMeta({
           updatedAtMillis: reconciled.updatedAtMillis,
           lastMirroredDigest: adoptedDigest,
         });
-        setWorkspace(reconciled.workspace);
+        setWorkspace(migratedWorkspace);
         const syncedAt = Date.now();
         setRoomSyncState({
           phase: 'synced',
@@ -343,6 +386,10 @@ export default function App() {
 
     const nextTimestamp = Math.max(Date.now(), updatedAtRef.current + 1);
     updatedAtRef.current = nextTimestamp;
+    writeRoomSyncLocalMeta({
+      updatedAtMillis: nextTimestamp,
+      lastMirroredDigest: lastMirroredDigestRef.current,
+    });
 
     if (editDebounceTimerRef.current !== null) {
       window.clearTimeout(editDebounceTimerRef.current);
@@ -495,12 +542,42 @@ export default function App() {
     [sheet.cards, activeTab],
   );
 
-  const appendRollLog = (label: string, expression: string) => {
-    const result = rollDiceExpression(expression, evaluation.variables);
+  const filteredCards = useMemo(
+    () => filterCardsByQuery(visibleCards, searchQuery),
+    [visibleCards, searchQuery],
+  );
+
+  const matchedFieldCount = useMemo(
+    () => filteredCards.reduce((sum, entry) => sum + entry.matchedFields.length, 0),
+    [filteredCards],
+  );
+
+  const appendRollLog = (
+    label: string,
+    expression: string,
+    poolOptions?: WodPoolOptions,
+  ) => {
+    const isPool = isWodPoolExpression(expression);
+    const allFields = sheet.cards.flatMap((c) => c.fields);
+    const willpowerField = allFields.find((f) => f.id === 'f_willpower' || f.key === 'willpower');
+    const wpBoostField = allFields.find((f) => f.id === 'f_wp_boost' || f.key === 'wp_boost');
+    const currentWillpower =
+      typeof willpowerField?.value === 'number'
+        ? willpowerField.value
+        : evaluation.variables.willpower ?? 0;
+    const wpAutoSuccess = isPool && Boolean(wpBoostField?.value) && currentWillpower > 0;
+
+    const result = rollDiceExpression(
+      expression,
+      evaluation.variables,
+      Math.random,
+      isPool ? { ...poolOptions, willpowerAutoSuccess: wpAutoSuccess } : undefined,
+    );
     if (!result.ok) {
       triggerFlash(`ERRO NA ROLAGEM: ${result.error}`);
       return;
     }
+
     const entry: RollLogEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: nowTimeString(),
@@ -508,6 +585,15 @@ export default function App() {
       total: result.total,
       formula: result.resolvedExpression,
       breakdown: result.breakdown,
+      rolls: result.rolls,
+      difficulty: result.difficulty,
+      specialty: result.specialty,
+      willpowerUsed: result.willpowerUsed,
+      isSoak: result.isSoak,
+      onesCount: result.onesCount,
+      canceledOnes: result.canceledOnes,
+      doubledTensCount: result.doubledTensCount,
+      outcome: result.outcome,
       isCritical: result.isCritical,
       isFumble: result.isFumble,
       isPoolRoll: result.isPoolRoll,
@@ -517,14 +603,31 @@ export default function App() {
       isCritical: result.isCritical,
       isFumble: result.isFumble,
     });
-    setSheet((prev) => ({
-      ...prev,
-      rollLogs: [entry, ...prev.rollLogs].slice(0, 30),
-    }));
+    setSheet((prev) => {
+      const updatedSheet = wpAutoSuccess ? consumeWillpowerForRoll(prev) : prev;
+      return {
+        ...updatedSheet,
+        rollLogs: [entry, ...updatedSheet.rollLogs].slice(0, 30),
+      };
+    });
   };
 
   const handleFieldRoll = (field: SheetField) => {
-    appendRollLog(field.rollLabel ?? field.label, field.rollExpr ?? '2d6');
+    const expr = field.rollExpr ?? '2d6';
+    const isPool = isWodPoolExpression(expr);
+    const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
+    appendRollLog(
+      field.rollLabel ?? field.label,
+      expr,
+      isPool
+        ? {
+            difficulty: field.rollDifficulty,
+            specialty: field.rollSpecialty,
+            modifier: field.rollMod,
+            isSoak,
+          }
+        : undefined,
+    );
   };
 
   const handleAddField = (cardId: string, kind: FieldKind, customLabel?: string) => {
@@ -614,6 +717,7 @@ export default function App() {
     }));
     setActiveTab('geral');
     setMode('edicao');
+    setSearchQuery('');
     triggerFlash('// STATUS: FICHA EM BRANCO · CRIE SEUS BLOCOS');
   };
 
@@ -627,6 +731,7 @@ export default function App() {
         [nextSystemId]: nextSheet,
       },
     }));
+    setSearchQuery('');
     if (nextSystemId === 'blank' && nextSheet.cards.length === 0) {
       if (activeTab === 'xp') setActiveTab('geral');
       setMode('edicao');
@@ -645,6 +750,7 @@ export default function App() {
       },
     }));
     setActiveTab('geral');
+    setSearchQuery('');
     if (presetId === 'blank' && fresh.cards.length === 0) {
       setMode('edicao');
     }
@@ -711,8 +817,11 @@ export default function App() {
         systemCode={sheet.systemCode}
         activeSystemId={activeSystemId}
         mode={mode}
+        language={language}
+        t={t.topBar}
         onChangeSystemCode={(systemCode) => setSheet((prev) => ({ ...prev, systemCode }))}
         onSwitchSystem={handleSwitchSystem}
+        onChangeLanguage={setLanguage}
         onModeChange={setMode}
         onNewSheet={handleNewSheet}
         onOpenModal={() => setModalMode('open')}
@@ -727,6 +836,7 @@ export default function App() {
               sheet={sheet}
               systemId={activeSystemId}
               activeTab={activeTab}
+              language={language}
               availableXp={availableXp}
               totalCargoWeight={evaluation.totalCargoWeight}
             />
@@ -734,6 +844,8 @@ export default function App() {
             <TabNav
               activeTab={activeTab}
               systemId={activeSystemId}
+              language={language}
+              t={t.tabNav}
               onSelectTab={setActiveTab}
               characterName={sheet.characterName}
               mode={mode}
@@ -742,61 +854,106 @@ export default function App() {
               }
             />
 
+            {activeTab !== 'xp' && (
+              <SheetSearchBar
+                query={searchQuery}
+                onChangeQuery={setSearchQuery}
+                matchedFieldCount={matchedFieldCount}
+                matchedCardCount={filteredCards.length}
+                t={t.searchBar}
+              />
+            )}
+
             {activeTab === 'xp' ? (
               <XpUpgradeWorkspace
                 sheet={sheet}
+                t={t.xp}
                 onAwardXp={handleAwardXp}
                 onUpgradeTrait={handleUpgradeTrait}
                 onUndoLastUpgrade={handleUndoLastUpgrade}
               />
             ) : (
               <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
-                {visibleCards.map((card) => (
-                  <BentoCard
-                    key={card.id}
-                    card={card}
-                    mode={mode}
-                    evaluation={evaluation}
-                    onChangeValue={(fid, val) => setSheet((prev) => updateFieldValue(prev, fid, val))}
-                    onAdjustResource={(fid, delta) =>
-                      setSheet((prev) => adjustResourceValue(prev, fid, delta))
-                    }
-                    onRoll={handleFieldRoll}
-                    onAddRow={(fid) =>
-                      setSheet((prev) =>
-                        addRepeatableRow(
-                          prev,
-                          fid,
-                          `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 4)}`,
-                        ),
-                      )
-                    }
-                    onUpdateRow={(fid, rid, col, val) =>
-                      setSheet((prev) => updateRepeatableRow(prev, fid, rid, col, val))
-                    }
-                    onRemoveRow={(fid, rid) =>
-                      setSheet((prev) => removeRepeatableRow(prev, fid, rid))
-                    }
-                    onUpdateSchema={(fid, patch) =>
-                      setSheet((prev) => updateFieldSchema(prev, fid, patch))
-                    }
-                    onRemoveField={(cid, fid) =>
-                      setSheet((prev) => removeFieldFromCard(prev, cid, fid))
-                    }
-                    onAddField={handleAddField}
-                    onUpdateCard={(cid, patch) =>
-                      setSheet((prev) => updateCardSchema(prev, cid, patch))
-                    }
-                    onRemoveCard={(cid) => {
-                      setSheet((prev) => removeCardFromSheet(prev, cid));
-                      triggerFlash('// BLOCO REMOVIDO');
-                    }}
-                  />
-                ))}
+                {searchQuery.trim() && filteredCards.length === 0 ? (
+                  <section
+                    data-testid="sheet-search-empty"
+                    className="bento-card lg:col-span-2 p-6 text-center flex flex-col items-center gap-2 border-dashed"
+                  >
+                    <p className="font-mono-tech text-xs font-bold uppercase text-[var(--ink-primary)]">
+                      {t.searchBar.emptyTitle(searchQuery.trim())}
+                    </p>
+                    <p className="font-mono-tech text-[11px] text-[var(--ink-muted)]">
+                      {t.searchBar.emptyHint}
+                    </p>
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="cyber-btn-outline mt-1 px-3 py-1 text-[11px] font-bold uppercase cursor-pointer"
+                    >
+                      {t.searchBar.clearText}
+                    </button>
+                  </section>
+                ) : (
+                  filteredCards.map((entry) => (
+                    <BentoCard
+                      key={entry.card.id}
+                      card={entry.card}
+                      displayFields={entry.matchedFields}
+                      filteredInfo={
+                        entry.isFiltered
+                          ? { shown: entry.matchedFields.length, total: entry.totalFieldCount }
+                          : undefined
+                      }
+                      mode={mode}
+                      evaluation={evaluation}
+                      t={t.cards}
+                      onChangeValue={(fid, val) =>
+                        setSheet((prev) => updateFieldValue(prev, fid, val))
+                      }
+                      onAdjustResource={(fid, delta) =>
+                        setSheet((prev) => adjustResourceValue(prev, fid, delta))
+                      }
+                      onAdjustHealthDamage={(fid, dmgType, delta) =>
+                        setSheet((prev) => adjustHealthDamage(prev, fid, dmgType, delta))
+                      }
+                      onRoll={handleFieldRoll}
+                      onAddRow={(fid) =>
+                        setSheet((prev) =>
+                          addRepeatableRow(
+                            prev,
+                            fid,
+                            `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 4)}`,
+                          ),
+                        )
+                      }
+                      onUpdateRow={(fid, rid, col, val) =>
+                        setSheet((prev) => updateRepeatableRow(prev, fid, rid, col, val))
+                      }
+                      onRemoveRow={(fid, rid) =>
+                        setSheet((prev) => removeRepeatableRow(prev, fid, rid))
+                      }
+                      onUpdateSchema={(fid, patch) =>
+                        setSheet((prev) => updateFieldSchema(prev, fid, patch))
+                      }
+                      onRemoveField={(cid, fid) =>
+                        setSheet((prev) => removeFieldFromCard(prev, cid, fid))
+                      }
+                      onAddField={handleAddField}
+                      onUpdateCard={(cid, patch) =>
+                        setSheet((prev) => updateCardSchema(prev, cid, patch))
+                      }
+                      onRemoveCard={(cid) => {
+                        setSheet((prev) => removeCardFromSheet(prev, cid));
+                        triggerFlash('// BLOCO REMOVIDO');
+                      }}
+                    />
+                  ))
+                )}
                 {(visibleCards.length === 0 || mode === 'edicao') && (
                   <CustomCardBuilder
                     activeTab={activeTab}
                     isEmptySheet={visibleCards.length === 0}
+                    t={t.customBuilder}
                     onCreateCard={handleCreateCard}
                   />
                 )}
@@ -809,6 +966,7 @@ export default function App() {
           logs={sheet.rollLogs}
           systemId={activeSystemId}
           systemName={sheet.systemName}
+          t={t.sidebar}
           onQuickRoll={(expr) => appendRollLog(`ROLAGEM · ${expr.toUpperCase()}`, expr)}
           onClearLogs={() => setSheet((prev) => ({ ...prev, rollLogs: [] }))}
         />
@@ -823,6 +981,7 @@ export default function App() {
         rollCount={sheet.rollLogs.length}
         flashMessage={flashMessage}
         roomSyncState={roomSyncState}
+        t={t.statusBar}
         onForceRoomSync={() => {
           if (editDebounceTimerRef.current !== null) {
             window.clearTimeout(editDebounceTimerRef.current);
@@ -838,6 +997,7 @@ export default function App() {
         mode={modalMode}
         sheet={sheet}
         activeSystemId={activeSystemId}
+        t={t.modal}
         onClose={() => setModalMode(null)}
         onLoadPreset={handleLoadPreset}
         onPrintPdf={handlePrintPdf}
@@ -851,6 +1011,7 @@ export default function App() {
               [nextId]: normalized,
             },
           }));
+          setSearchQuery('');
           triggerFlash('// STATUS: JSON IMPORTADO COM SUCESSO');
         }}
         onSaveLocal={() => {

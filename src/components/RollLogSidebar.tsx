@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useState } from 'react';
 import { Trash2 } from 'lucide-react';
 import { RollLogEntry, SystemId } from '../core/sheetModel';
+import { AppTranslations } from '../core/i18n';
 import { RulesSearchPanel } from './RulesSearchPanel';
 
 export type SidebarTab = 'logs' | 'rules';
@@ -9,6 +10,7 @@ interface RollLogSidebarProps {
   logs: RollLogEntry[];
   systemId: SystemId;
   systemName: string;
+  t: AppTranslations['sidebar'];
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
 }
@@ -30,6 +32,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   logs,
   systemId,
   systemName,
+  t,
   onQuickRoll,
   onClearLogs,
 }) => {
@@ -49,12 +52,12 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
 
   return (
     <aside
-      aria-label="Painel lateral de rolagens e consulta de regras"
+      aria-label={t.ariaAside}
       className="no-print print:hidden w-full lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--border-ink)] flex flex-col min-h-0"
     >
       {/* Seletor superior do painel lateral */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] shrink-0">
-        <div role="tablist" aria-label="Modo do painel lateral" className="flex items-center gap-1.5 flex-1 min-w-0">
+        <div role="tablist" aria-label={t.ariaAside} className="flex items-center gap-1.5 flex-1 min-w-0">
           <button
             type="button"
             role="tab"
@@ -66,7 +69,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            // LOG_ROLAGENS
+            {t.rollLogsTab}
           </button>
           <button
             type="button"
@@ -79,7 +82,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            // REGRAS
+            {t.rulesTab}
           </button>
         </div>
 
@@ -87,8 +90,8 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
           <button
             type="button"
             onClick={onClearLogs}
-            aria-label="Limpar log de rolagens"
-            title="Limpar histórico"
+            aria-label={t.clearLogsAria}
+            title={t.clearLogsAria}
             className="p-1 rounded-[4px] text-[var(--ink-muted)] hover:text-[var(--accent-danger)] hover:bg-[var(--accent-danger-soft)] transition-colors cursor-pointer shrink-0"
           >
             <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
@@ -97,7 +100,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
       </div>
 
       {sidebarTab === 'rules' ? (
-        <RulesSearchPanel systemName={systemName} />
+        <RulesSearchPanel systemName={systemName} t={t} />
       ) : (
         <>
           {/* Rolagem rápida manual */}
@@ -108,7 +111,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
             <div className="flex items-center gap-1.5">
               <input
                 type="text"
-                aria-label="Expressão rápida de dados"
+                aria-label={t.quickExprAria}
                 value={customExpr}
                 onChange={(e) => setCustomExpr(e.target.value)}
                 placeholder={
@@ -120,7 +123,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 type="submit"
                 className="cyber-roll-btn px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
               >
-                ROLAR ↗
+                {t.rollBtn}
               </button>
             </div>
             <div className="flex items-center gap-1">
@@ -142,57 +145,143 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
             {logs.length === 0 ? (
               <div className="p-4 border-[1.5px] border-dashed border-[var(--border-ink)]/40 rounded-[var(--radius-control)] text-center">
                 <p className="font-mono-tech text-[11px] text-[var(--ink-muted)]">
-                  Nenhuma rolagem registrada. Clique em um botão de rolagem ou use a barra acima.
+                  {t.emptyLogs}
                 </p>
               </div>
             ) : (
-              logs.map((entry, idx) => (
-                <article
-                  key={entry.id}
-                  className={`p-3 rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] transition-colors ${
-                    idx === 0 ? 'bg-[var(--bg-card)] shadow-[2px_2px_0_#5B0F18]' : 'bg-[var(--bg-card-alt)]'
-                  }`}
-                >
-                  <div className="flex items-center justify-between gap-2 mb-1">
-                    <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)] truncate">
-                      {entry.label}
-                    </span>
-                    <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] shrink-0">
-                      {entry.timestamp}
-                    </span>
-                  </div>
+              logs.map((entry, idx) => {
+                const poolOutcome = entry.isPoolRoll
+                  ? entry.outcome ??
+                    (entry.isFumble ? 'botch' : entry.total > 0 ? 'success' : 'failure')
+                  : null;
+                const diffThreshold = entry.difficulty ?? 6;
 
-                  <div className="flex items-baseline justify-between gap-2 my-1">
-                    <div className="flex items-baseline gap-1.5">
-                      <span className="font-display text-4xl font-extrabold leading-none tracking-tight text-[var(--ink-primary)] tabular-nums">
-                        {entry.total}
+                return (
+                  <article
+                    key={entry.id}
+                    data-testid={idx === 0 ? 'latest-roll-log-entry' : undefined}
+                    className={`p-3 rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] transition-colors ${
+                      idx === 0 ? 'bg-[var(--bg-card)] shadow-[2px_2px_0_#5B0F18]' : 'bg-[var(--bg-card-alt)]'
+                    }`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)] truncate">
+                        {entry.label}
                       </span>
-                      {entry.isPoolRoll && !entry.isFumble && (
-                        <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                          {entry.total === 1 ? 'SUC' : 'SUCS'}
+                      <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] shrink-0">
+                        {entry.timestamp}
+                      </span>
+                    </div>
+
+                    <div className="flex items-baseline justify-between gap-2 my-1">
+                      <div className="flex items-baseline gap-1.5">
+                        <span
+                          data-testid={idx === 0 ? 'latest-roll-total' : undefined}
+                          className="font-display text-4xl font-extrabold leading-none tracking-tight text-[var(--ink-primary)] tabular-nums"
+                        >
+                          {entry.total}
                         </span>
+                        {entry.isPoolRoll && poolOutcome !== 'botch' && (
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
+                            {entry.isSoak ? 'SOAKED' : entry.total === 1 ? 'SUC' : 'SUCS'}
+                          </span>
+                        )}
+                      </div>
+
+                      {entry.isPoolRoll ? (
+                        poolOutcome === 'botch' ? (
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px] uppercase">
+                            BOTCH!
+                          </span>
+                        ) : poolOutcome === 'failure' ? (
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--ink-secondary)] border border-[var(--border-ink)] rounded-[3px] uppercase">
+                            FAILURE
+                          </span>
+                        ) : entry.isCritical ? (
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase">
+                            EXCEPTIONAL
+                          </span>
+                        ) : (
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase">
+                            SUCCESS
+                          </span>
+                        )
+                      ) : (
+                        <>
+                          {entry.isCritical && (
+                            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px]">
+                              CRÍTICO 20
+                            </span>
+                          )}
+                          {entry.isFumble && (
+                            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px]">
+                              FALHA 1
+                            </span>
+                          )}
+                        </>
                       )}
                     </div>
-                    {entry.isCritical && (
-                      <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px]">
-                        {entry.isPoolRoll ? 'EXCEPCIONAL' : 'CRÍTICO 20'}
-                      </span>
-                    )}
-                    {entry.isFumble && (
-                      <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px]">
-                        {entry.isPoolRoll ? 'BOTCH!' : 'FALHA 1'}
-                      </span>
-                    )}
-                  </div>
 
-                  <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
-                    {entry.breakdown}
-                  </div>
-                  <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
-                    {entry.formula}
-                  </div>
-                </article>
-              ))
+                    {entry.isPoolRoll && entry.rolls && entry.rolls.length > 0 && (
+                      <div className="flex flex-wrap items-center gap-1 my-1.5" aria-label="Dice results">
+                        {entry.rolls.map((dieVal, dIdx) => {
+                          const isDoubledTen = Boolean(entry.specialty) && dieVal === 10;
+                          const isSuccessDie = dieVal >= diffThreshold;
+                          const isOne = dieVal === 1;
+                          return (
+                            <span
+                              key={dIdx}
+                              className={`font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 rounded-[3px] border tabular-nums leading-none ${
+                                isDoubledTen
+                                  ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
+                                  : isSuccessDie
+                                    ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
+                                    : isOne
+                                      ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                                      : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-ink)]/40'
+                              }`}
+                            >
+                              {isDoubledTen ? '10×2' : dieVal}
+                            </span>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    {(entry.willpowerUsed ||
+                      (entry.canceledOnes ?? 0) > 0 ||
+                      (entry.doubledTensCount ?? 0) > 0) && (
+                      <div className="flex flex-wrap items-center gap-1 mb-1">
+                        {entry.willpowerUsed && (
+                          <span
+                            data-testid="roll-log-wp-chip"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[3px] uppercase"
+                          >
+                            +1 WILLPOWER
+                          </span>
+                        )}
+                        {(entry.doubledTensCount ?? 0) > 0 && (
+                          <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--accent-wine)] border border-[var(--border-ink)]/60 rounded-[3px] uppercase">
+                            SPEC 10s×2 ({entry.doubledTensCount})
+                          </span>
+                        )}
+                        {(entry.canceledOnes ?? 0) > 0 && (
+                          <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)]/60 rounded-[3px] uppercase">
+                            -{entry.canceledOnes} CANCELED BY 1s
+                          </span>
+                        )}
+                      </div>
+                    )}
+
+                    <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
+                      {entry.breakdown}
+                    </div>
+                    <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
+                      {entry.formula}
+                    </div>
+                  </article>
+                );
+              })
             )}
           </div>
         </>

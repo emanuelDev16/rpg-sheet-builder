@@ -221,6 +221,10 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         updateActiveSheet { SheetMutators.adjustResourceValue(it, fieldId, delta) }
     }
 
+    fun adjustHealthDamage(fieldId: String, damageType: String, delta: Int) {
+        updateActiveSheet { SheetMutators.adjustHealthDamage(it, fieldId, damageType, delta) }
+    }
+
     fun setResource(fieldId: String, target: Int) {
         updateActiveSheet { SheetMutators.setResourceValue(it, fieldId, target) }
     }

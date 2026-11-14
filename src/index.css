@@ -202,6 +202,24 @@ body {
   border-color: var(--accent-wine);
 }
 
+.seg-block.is-superficial {
+  background-image: repeating-linear-gradient(
+    -45deg,
+    var(--accent-wine) 0px,
+    var(--accent-wine) 2px,
+    var(--accent-cream-badge) 2px,
+    var(--accent-cream-badge) 6px
+  );
+  border-color: var(--accent-wine);
+  color: var(--accent-wine);
+}
+
+.seg-block.is-aggravated {
+  background-color: var(--accent-black);
+  border-color: var(--accent-black);
+  color: var(--ink-inverse);
+}
+
 /* Tag inclinada na barra inferior */
 .cyber-slant-pill {
   background-color: var(--accent-wine);

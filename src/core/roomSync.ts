@@ -1,4 +1,4 @@
-import { CharacterSheetState, SystemId, WorkspaceState } from './sheetModel';
+import type { CharacterSheetState, SystemId, WorkspaceState } from './sheetModel';
 
 export const ROOM_SYNC_META_KEY = 'grid_sheet_room_sync_meta_v1';
 

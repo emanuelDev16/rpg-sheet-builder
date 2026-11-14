@@ -1,9 +1,11 @@
 import React, { useMemo, useState } from 'react';
 import { ExternalLink, RotateCcw, Search } from 'lucide-react';
 import { RulesSearchResponse, validateRulesQuery } from '../core/rulesSearch';
+import { AppTranslations, getTranslations } from '../core/i18n';
 
 interface RulesSearchPanelProps {
   systemName: string;
+  t?: AppTranslations['sidebar'];
 }
 
 function formatAnswerBlocks(rawText: string): string[] {
@@ -15,7 +17,12 @@ function formatAnswerBlocks(rawText: string): string[] {
     .filter(Boolean);
 }
 
-export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({ systemName }) => {
+const DEFAULT_SIDEBAR_T = getTranslations('pt-BR').sidebar;
+
+export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
+  systemName,
+  t = DEFAULT_SIDEBAR_T,
+}) => {
   const [query, setQuery] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -25,7 +32,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({ systemName }
   const suggestions = useMemo(() => {
     const upper = systemName.toUpperCase();
     if (upper.includes('DARKNESS') || upper.includes('VAMPIRE') || upper.includes('STORYTELLER')) {
-      return ['Frenzy check', 'Soak & Damage', 'Botch rules', 'Blood Pool spending'];
+      return ['Frenzy check', 'Superficial & Aggravated damage', 'Botch rules', 'Hunger & Rouse check'];
     }
     if (upper.includes('CYBERPUNK') || upper.includes('RUNNER')) {
       return ['Netrunning actions', 'Armor SP', 'Critical injuries', 'Fumble'];
@@ -96,15 +103,15 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({ systemName }
         className="p-3 border-b-[1.5px] border-[var(--border-subtle)] bg-[var(--bg-card-alt)] flex flex-col gap-2 shrink-0"
       >
         <div className="font-mono-tech text-[10px] font-semibold text-[var(--ink-muted)] truncate">
-          CONTEXTO · {systemName}
+          {t.rulesContext} {systemName}
         </div>
         <div className="flex items-center gap-1.5">
           <input
             type="text"
-            aria-label="Pesquisar regra de RPG"
+            aria-label={t.rulesSearchAria}
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            placeholder="ex: Frenzy, Soak, Botch"
+            placeholder={t.rulesPlaceholder}
             className="cyber-input flex-1 min-w-0 px-2 py-1.5 text-xs font-semibold"
           />
           <button
@@ -112,7 +119,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({ systemName }
             disabled={loading}
             className="cyber-roll-btn px-2.5 py-1.5 text-[11px] font-bold uppercase shrink-0 cursor-pointer disabled:opacity-60"
           >
-            {loading ? '...' : 'BUSCAR ↗'}
+            {loading ? '...' : t.rulesSearchBtn}
           </button>
         </div>
 

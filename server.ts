@@ -13,7 +13,7 @@ import {
 import {
   createWorkspaceMirrorPayload,
   validateWorkspaceMirrorInput,
-  WorkspaceMirrorPayload,
+  type WorkspaceMirrorPayload,
 } from './src/core/roomSync.ts';
 
 const __filename = fileURLToPath(import.meta.url);

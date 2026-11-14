@@ -70,7 +70,11 @@ class WorkspaceRepository(context: Context) {
 
     fun loadWorkspace(): WorkspaceState {
         val (prefsWs, _) = readPrefsWorkspaceRaw()
-        if (prefsWs != null) return prefsWs
+        if (prefsWs != null) {
+            return prefsWs.copy(
+                sheetsBySystem = prefsWs.sheetsBySystem.mapValues { (_, s) -> Presets.migrateLegacyWodSheet(s) }
+            )
+        }
 
         val initialWod = Presets.createWorldOfDarknessSheet()
         return WorkspaceState(
@@ -130,11 +134,15 @@ class WorkspaceRepository(context: Context) {
             metadata = reconciled.metadataToUpsertIntoRoom
         )
 
-        if (reconciled.shouldUpdatePrefs) {
-            saveWorkspace(reconciled.workspace, reconciled.resolvedTimestamp)
+        val migratedWorkspace = reconciled.workspace.copy(
+            sheetsBySystem = reconciled.workspace.sheetsBySystem.mapValues { (_, s) -> Presets.migrateLegacyWodSheet(s) }
+        )
+
+        if (reconciled.shouldUpdatePrefs || migratedWorkspace != reconciled.workspace) {
+            saveWorkspace(migratedWorkspace, reconciled.resolvedTimestamp)
         }
 
-        reconciled.workspace
+        migratedWorkspace
     }
 
     fun exportSheetJson(sheet: CharacterSheetState): String =

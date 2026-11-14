@@ -1,16 +1,21 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
 import { SheetCard, TabId } from '../core/sheetModel';
+import { AppTranslations, getTranslations } from '../core/i18n';
 
 interface CustomCardBuilderProps {
   activeTab: Exclude<TabId, 'xp'>;
   isEmptySheet: boolean;
+  t?: AppTranslations['customBuilder'];
   onCreateCard: (card: SheetCard) => void;
 }
+
+const DEFAULT_BUILDER_T = getTranslations('pt-BR').customBuilder;
 
 export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   activeTab,
   isEmptySheet,
+  t = DEFAULT_BUILDER_T,
   onCreateCard,
 }) => {
   const [title, setTitle] = useState('');
@@ -51,19 +56,18 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
             //CONSTRUTOR_CUSTOM
           </span>
           <h2 className="font-display text-xl font-extrabold tracking-wide uppercase text-[var(--ink-primary)]">
-            {isEmptySheet ? 'CRIAR FICHA DO ZERO' : 'ADICIONAR NOVO BLOCO'}
+            {isEmptySheet ? t.createFromZero : t.addNewBlock}
           </h2>
         </div>
         <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] uppercase">
-          {activeTab === 'geral' ? 'ABA 01' : 'ABA 02'}
+          {activeTab === 'geral' ? '01' : '02'}
         </span>
       </header>
 
       <form onSubmit={handleCreate} className="p-4 flex flex-col gap-3">
         {isEmptySheet && (
           <p className="font-mono-tech text-xs text-[var(--ink-secondary)] leading-relaxed">
-            Nenhum campo pré-definido foi carregado. Crie seu primeiro bloco (ex: Atributos,
-            Recursos, Perícias, Equipamentos) e depois adicione cada campo individualmente dentro dele.
+            {t.emptyHint}
           </p>
         )}
 
@@ -73,14 +77,14 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               htmlFor="new-card-title"
               className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase"
             >
-              TÍTULO DO BLOCO
+              {t.blockTitle}
             </label>
             <input
               id="new-card-title"
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="Ex: ATRIBUTOS, STATUS VITAL, MOCHILA..."
+              placeholder={t.blockTitlePlaceholder}
               className="cyber-input px-2.5 py-1.5 text-xs font-bold uppercase"
             />
           </div>
@@ -90,7 +94,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               htmlFor="new-card-code"
               className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase"
             >
-              TAG TÉCNICA
+              {t.techTag}
             </label>
             <input
               id="new-card-code"
@@ -104,7 +108,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
 
           <div className="md:col-span-2 flex flex-col gap-1">
             <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase">
-              LARGURA
+              {t.width}
             </span>
             <div className="flex border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] overflow-hidden">
               <button
@@ -138,7 +142,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               className="cyber-roll-btn w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>CRIAR BLOCO</span>
+              <span>{t.createBtn}</span>
             </button>
           </div>
         </div>

@@ -1,12 +1,14 @@
 import React, { useRef, useState } from 'react';
 import { X, Download, Copy, Check, Upload, Printer } from 'lucide-react';
 import { CharacterSheetState, SYSTEM_OPTIONS, SystemId } from '../core/sheetModel';
+import { AppTranslations, getTranslations } from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 
 interface SheetModalProps {
   mode: 'open' | 'save' | null;
   sheet: CharacterSheetState;
   activeSystemId: SystemId;
+  t?: AppTranslations['modal'];
   onClose: () => void;
   onLoadPreset: (presetId: SystemId) => void;
   onImportJson: (nextSheet: CharacterSheetState) => void;
@@ -14,10 +16,13 @@ interface SheetModalProps {
   onPrintPdf: () => void;
 }
 
+const DEFAULT_MODAL_T = getTranslations('pt-BR').modal;
+
 export const SheetModal: React.FC<SheetModalProps> = ({
   mode,
   sheet,
   activeSystemId,
+  t = DEFAULT_MODAL_T,
   onClose,
   onLoadPreset,
   onImportJson,
@@ -84,22 +89,22 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       <div
         role="dialog"
         aria-modal="true"
-        aria-label={mode === 'open' ? 'Abrir Ficha ou Sistema' : 'Salvar e Exportar Ficha'}
+        aria-label={mode === 'open' ? t.openTitle : t.saveTitle}
         className="bento-card w-full max-w-lg bg-[var(--bg-card)] shadow-[6px_6px_0_#0B0B0B]"
       >
         <header className="bento-card-header">
           <div className="flex items-center gap-2">
             <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)]">
-              {mode === 'open' ? '//ABRIR_SISTEMA' : '//EXPORTAR_SALVAR'}
+              {mode === 'open' ? '//OPEN_SYSTEM' : '//EXPORT_SAVE'}
             </span>
             <h2 className="font-display text-xl font-extrabold uppercase">
-              {mode === 'open' ? 'CARREGAR FICHA OU MODELO' : 'SALVAR & EXPORTAR PROTÓTIPO'}
+              {mode === 'open' ? t.openTitle : t.saveTitle}
             </h2>
           </div>
           <button
             type="button"
             onClick={onClose}
-            aria-label="Fechar janela"
+            aria-label={t.closeAria}
             className="cyber-btn-outline w-7 h-7 flex items-center justify-center cursor-pointer"
           >
             <X className="w-4 h-4" aria-hidden="true" />
@@ -110,7 +115,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
           {mode === 'open' ? (
             <>
               <p className="font-mono-tech text-xs text-[var(--ink-secondary)]">
-                Selecione um template agnóstico pronto ou importe uma ficha `.json`:
+                {t.presetsTitle}
               </p>
 
               <div className="grid grid-cols-1 gap-2">
@@ -143,7 +148,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           isActive ? 'text-[var(--accent-wine)]' : ''
                         }`}
                       >
-                        {isActive ? 'REINICIAR ↗' : 'CARREGAR ↗'}
+                        {isActive ? 'RESET ↗' : 'LOAD ↗'}
                       </span>
                     </button>
                   );
@@ -164,7 +169,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   className="cyber-roll-btn px-3 py-2 text-xs font-bold uppercase inline-flex items-center gap-2 cursor-pointer"
                 >
                   <Upload className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>IMPORTAR ARQUIVO .JSON</span>
+                  <span>{t.importBtn}</span>
                 </button>
                 {importError && (
                   <span className="font-mono-tech text-[11px] text-[var(--accent-danger)]">
@@ -185,12 +190,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   className="cyber-roll-btn p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div>
-                    <div className="text-xs font-bold uppercase">SALVAR NO NAVEGADOR (LOCAL)</div>
-                    <div className="text-[11px] opacity-80">
-                      Persiste automaticamente os valores e o schema da ficha atual
-                    </div>
+                    <div className="text-xs font-bold uppercase">{t.saveLocalTitle}</div>
+                    <div className="text-[11px] opacity-80">{t.saveLocalDesc}</div>
                   </div>
-                  <span className="text-xs font-bold whitespace-nowrap shrink-0">SALVAR ↗</span>
+                  <span className="text-xs font-bold whitespace-nowrap shrink-0">OK ↗</span>
                 </button>
 
                 <button
@@ -203,10 +206,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 >
                   <div>
                     <div className="text-xs font-bold uppercase text-[var(--accent-wine)]">
-                      IMPRIMIR / SALVAR PDF (FICHA ATIVA)
+                      {t.printPdfTitle}
                     </div>
                     <div className="text-[11px] text-[var(--ink-secondary)]">
-                      Gera PDF estilizado em Light Cyber-Brutalism mantendo o Bento Grid atual
+                      {t.printPdfDesc}
                     </div>
                   </div>
                   <Printer className="w-4 h-4 shrink-0 text-[var(--accent-wine)]" aria-hidden="true" />
@@ -224,10 +227,8 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div>
-                    <div className="text-xs font-bold uppercase">BAIXAR FICHA (.JSON)</div>
-                    <div className="text-[11px] text-[var(--ink-muted)]">
-                      Exporta dados, fórmulas e histórico de rolagens
-                    </div>
+                    <div className="text-xs font-bold uppercase">{t.downloadJsonTitle}</div>
+                    <div className="text-[11px] text-[var(--ink-muted)]">{t.downloadJsonDesc}</div>
                   </div>
                   <Download className="w-4 h-4 shrink-0" aria-hidden="true" />
                 </button>
@@ -245,10 +246,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 >
                   <div>
                     <div className="text-xs font-bold uppercase text-[var(--accent-wine)]">
-                      BAIXAR HTML + CSS PURO (ARQUIVO ÚNICO)
+                      {t.downloadHtmlTitle}
                     </div>
                     <div className="text-[11px] text-[var(--ink-secondary)]">
-                      Exporta protótipo autônomo em arquivo único com variáveis :root
+                      {t.downloadHtmlDesc}
                     </div>
                   </div>
                   <Download className="w-4 h-4 shrink-0 text-[var(--accent-wine)]" aria-hidden="true" />
@@ -257,7 +258,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
               <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3">
                 <span className="font-mono-tech text-[11px] text-[var(--ink-muted)]">
-                  Tokens :root prontos para conversão PySide6 (QSS)
+                  Tokens :root (PySide6 QSS)
                 </span>
                 <button
                   type="button"
@@ -267,12 +268,12 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   {copiedQss ? (
                     <>
                       <Check className="w-3.5 h-3.5 text-[var(--accent-wine)]" aria-hidden="true" />
-                      <span>COPIADO</span>
+                      <span>{t.copiedQss}</span>
                     </>
                   ) : (
                     <>
                       <Copy className="w-3.5 h-3.5" aria-hidden="true" />
-                      <span>COPIAR TOKENS QSS</span>
+                      <span>{t.copyQss}</span>
                     </>
                   )}
                 </button>

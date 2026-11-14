@@ -1,11 +1,13 @@
 import React from 'react';
 import { CharacterSheetState, SystemId, TabId } from '../core/sheetModel';
 import { getActiveTabSectionLabel } from '../core/printSheet';
+import { AppLanguage } from '../core/i18n';
 
 interface PrintSheetHeaderProps {
   sheet: CharacterSheetState;
   systemId: SystemId;
   activeTab: TabId;
+  language?: AppLanguage;
   availableXp: number;
   totalCargoWeight: number;
 }
@@ -14,10 +16,11 @@ export const PrintSheetHeader: React.FC<PrintSheetHeaderProps> = ({
   sheet,
   systemId,
   activeTab,
+  language = 'pt-BR',
   availableXp,
   totalCargoWeight,
 }) => {
-  const sectionLabel = getActiveTabSectionLabel(systemId, activeTab);
+  const sectionLabel = getActiveTabSectionLabel(systemId, activeTab, language);
 
   return (
     <header

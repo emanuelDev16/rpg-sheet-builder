@@ -118,6 +118,7 @@ fun BentoCardView(
     onUpdateText: (String, String) -> Unit,
     onUpdateBoolean: (String, Boolean) -> Unit,
     onAdjustResource: (String, Int) -> Unit,
+    onAdjustHealthDamage: (String, String, Int) -> Unit,
     onSetResource: (String, Int) -> Unit,
     onRoll: (String, String) -> Unit,
     onAddRow: (String) -> Unit,
@@ -227,6 +228,7 @@ fun BentoCardView(
                         onUpdateText = onUpdateText,
                         onUpdateBoolean = onUpdateBoolean,
                         onAdjustResource = onAdjustResource,
+                        onAdjustHealthDamage = onAdjustHealthDamage,
                         onSetResource = onSetResource,
                         onRoll = onRoll,
                         onAddRow = onAddRow,
@@ -392,6 +394,7 @@ private fun FieldRenderer(
     onUpdateText: (String, String) -> Unit,
     onUpdateBoolean: (String, Boolean) -> Unit,
     onAdjustResource: (String, Int) -> Unit,
+    onAdjustHealthDamage: (String, String, Int) -> Unit,
     onSetResource: (String, Int) -> Unit,
     onRoll: (String, String) -> Unit,
     onAddRow: (String) -> Unit,
@@ -584,6 +587,175 @@ private fun FieldRenderer(
             }
 
             FieldKind.RESOURCE -> {
+                if (field.damageTrack == true) {
+                    val maxVal = (field.max ?: 7).coerceAtLeast(1)
+                    val agg = (field.aggravatedDamage ?: kotlin.math.max(0, maxVal - (field.numValue ?: maxVal.toDouble()).roundToInt())).coerceIn(0, maxVal)
+                    val sup = if (agg >= maxVal) 0 else (field.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
+                    val healthy = (maxVal - agg).coerceAtLeast(0)
+                    val totalSupEq = agg * maxVal + sup
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+                            .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                            .padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = field.label,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = CyberColors.InkPrimary
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .background(CyberColors.AccentCreamBadge, RoundedCornerShape(3.dp))
+                                        .border(1.dp, CyberColors.AccentWine, RoundedCornerShape(3.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = "1 AGRAV = $maxVal SUP",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        color = CyberColors.AccentWine
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "$healthy / $maxVal SAUDÁVEL",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = CyberColors.InkPrimary
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            for (idx in 0 until maxVal) {
+                                val state = when {
+                                    idx < agg -> "aggravated"
+                                    idx < agg + sup -> "superficial"
+                                    else -> "healthy"
+                                }
+                                val bg = when (state) {
+                                    "aggravated" -> CyberColors.AccentBlack
+                                    "superficial" -> CyberColors.AccentWine
+                                    else -> CyberColors.BgCard
+                                }
+                                val borderCol = when (state) {
+                                    "aggravated" -> CyberColors.AccentBlack
+                                    "superficial" -> CyberColors.AccentWine
+                                    else -> CyberColors.BorderInk.copy(alpha = 0.45f)
+                                }
+                                val mark = when (state) {
+                                    "aggravated" -> "✕"
+                                    "superficial" -> "/"
+                                    else -> ""
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(18.dp)
+                                        .clip(RoundedCornerShape(2.dp))
+                                        .background(bg)
+                                        .border(1.dp, borderCol, RoundedCornerShape(2.dp)),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (mark.isNotEmpty()) {
+                                        Text(
+                                            text = mark,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 10.sp,
+                                            color = CyberColors.InkInverse
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(CyberColors.BorderSubtle)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "DANO AGRAVADO ($totalSupEq SUP EQ)",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = CyberColors.InkPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                SmallSquareButton(label = "-") { onAdjustHealthDamage(field.id, "aggravated", -1) }
+                                Text(
+                                    text = "$agg / $maxVal",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = CyberColors.InkPrimary
+                                )
+                                SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "aggravated", +1) }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "DANO SUPERFICIAL",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = CyberColors.AccentWine,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                SmallSquareButton(label = "-") { onAdjustHealthDamage(field.id, "superficial", -1) }
+                                Text(
+                                    text = "$sup / $maxVal",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = CyberColors.AccentWine
+                                )
+                                SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "superficial", +1) }
+                            }
+                        }
+                    }
+                } else {
                 val maxVal = (field.max ?: 10).coerceIn(1, 50)
                 val current = (field.numValue ?: 0.0).roundToInt().coerceIn(0, maxVal)
 
@@ -655,6 +827,7 @@ private fun FieldRenderer(
                             )
                         }
                     }
+                }
                 }
             }
 

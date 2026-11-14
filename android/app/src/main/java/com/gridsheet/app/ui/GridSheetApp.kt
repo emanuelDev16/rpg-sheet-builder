@@ -223,6 +223,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onUpdateText = vm::updateTextField,
                             onUpdateBoolean = vm::updateBooleanField,
                             onAdjustResource = vm::adjustResource,
+                            onAdjustHealthDamage = vm::adjustHealthDamage,
                             onSetResource = vm::setResource,
                             onRoll = vm::rollExpression,
                             onAddRow = vm::addRepeatableRow,

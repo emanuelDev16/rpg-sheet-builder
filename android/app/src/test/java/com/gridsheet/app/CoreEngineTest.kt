@@ -111,4 +111,40 @@ class CoreEngineTest {
         sheet = SheetMutators.removeCardFromSheet(sheet, "c_custom_1")
         assertTrue(sheet.cards.isEmpty())
     }
+
+    @Test
+    fun wodVitalStatusUsesHungerAndRollsOverSuperficialDamageToAggravated() {
+        var wod = Presets.createWorldOfDarknessSheet()
+        val combatCard = wod.cards.find { it.id == "card_combate" }!!
+        val hunger = combatCard.fields.find { it.id == "f_hunger" }
+        val legacyBlood = combatCard.fields.find { it.id == "f_blood_pool" }
+        val health = combatCard.fields.find { it.id == "f_health" }
+
+        assertTrue(hunger != null)
+        assertEquals(1.0, hunger?.numValue ?: -1.0, 0.01)
+        assertEquals(5, hunger?.max)
+        assertTrue(legacyBlood == null)
+        assertTrue(health?.damageTrack == true)
+        assertEquals(7, health?.max)
+
+        // 7 superficial damage == 1 aggravated damage (full health track)
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "superficial", 6)
+        val afterSix = wod.cards.find { it.id == "card_combate" }!!.fields.find { it.id == "f_health" }!!
+        assertEquals(6, afterSix.superficialDamage)
+        assertEquals(0, afterSix.aggravatedDamage)
+        assertEquals(7.0, afterSix.numValue ?: 0.0, 0.01)
+
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "superficial", 1)
+        val afterSeven = wod.cards.find { it.id == "card_combate" }!!.fields.find { it.id == "f_health" }!!
+        assertEquals(0, afterSeven.superficialDamage)
+        assertEquals(1, afterSeven.aggravatedDamage)
+        assertEquals(6.0, afterSeven.numValue ?: 0.0, 0.01)
+
+        // Healing 1 superficial rolls back from 1 aggravated to 6 superficial
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "superficial", -1)
+        val afterHeal = wod.cards.find { it.id == "card_combate" }!!.fields.find { it.id == "f_health" }!!
+        assertEquals(6, afterHeal.superficialDamage)
+        assertEquals(0, afterHeal.aggravatedDamage)
+        assertEquals(7.0, afterHeal.numValue ?: 0.0, 0.01)
+    }
 }

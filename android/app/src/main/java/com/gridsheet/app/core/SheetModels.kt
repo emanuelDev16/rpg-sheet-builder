@@ -70,6 +70,9 @@ data class SheetField(
     val textValue: String? = null,
     val boolValue: Boolean? = null,
     val max: Int? = null,
+    val damageTrack: Boolean? = null,
+    val superficialDamage: Int? = null,
+    val aggravatedDamage: Int? = null,
     val formula: String? = null,
     val showPlus: Boolean? = null,
     val rollLabel: String? = null,
@@ -178,9 +181,17 @@ object SheetEvaluator {
                         variables[key] = if (num.isFinite()) num else 0.0
                     }
                     FieldKind.RESOURCE -> {
+                        val maxVal = max(1, field.max ?: 12)
                         val num = field.numValue ?: 0.0
                         variables[key] = num
-                        variables["${key}_max"] = (field.max ?: num.roundToInt()).toDouble()
+                        variables["${key}_max"] = maxVal.toDouble()
+                        if (field.damageTrack == true) {
+                            val sup = max(0, field.superficialDamage ?: 0)
+                            val agg = max(0, field.aggravatedDamage ?: 0)
+                            variables["${key}_superficial"] = sup.toDouble()
+                            variables["${key}_aggravated"] = agg.toDouble()
+                            variables["${key}_total_sup_eq"] = (agg * maxVal + sup).toDouble()
+                        }
                     }
                     FieldKind.BOOLEAN -> {
                         variables[key] = if (field.boolValue == true) 1.0 else 0.0
@@ -271,17 +282,57 @@ object SheetMutators {
     fun adjustResourceValue(sheet: CharacterSheetState, fieldId: String, delta: Int): CharacterSheetState =
         mapField(sheet, fieldId) { field ->
             if (field.kind != FieldKind.RESOURCE) return@mapField field
-            val maxVal = field.max ?: 12
+            val maxVal = max(1, field.max ?: 12)
             val current = (field.numValue ?: 0.0).roundToInt()
             val clamped = max(0, min(maxVal, current + delta))
+            if (field.damageTrack == true) {
+                val nextAgg = max(0, maxVal - clamped)
+                val nextSup = if (clamped == 0) 0 else min(maxVal - 1, field.superficialDamage ?: 0)
+                return@mapField field.copy(
+                    numValue = clamped.toDouble(),
+                    aggravatedDamage = nextAgg,
+                    superficialDamage = nextSup
+                )
+            }
             field.copy(numValue = clamped.toDouble())
         }
 
     fun setResourceValue(sheet: CharacterSheetState, fieldId: String, target: Int): CharacterSheetState =
         mapField(sheet, fieldId) { field ->
             if (field.kind != FieldKind.RESOURCE) return@mapField field
-            val maxVal = field.max ?: 12
+            val maxVal = max(1, field.max ?: 12)
             field.copy(numValue = max(0, min(maxVal, target)).toDouble())
+        }
+
+    fun adjustHealthDamage(
+        sheet: CharacterSheetState,
+        fieldId: String,
+        damageType: String,
+        delta: Int
+    ): CharacterSheetState =
+        mapField(sheet, fieldId) { field ->
+            if (field.kind != FieldKind.RESOURCE) return@mapField field
+            val maxVal = max(1, field.max ?: 7)
+            val currentAgg = (field.aggravatedDamage ?: max(0, maxVal - (field.numValue ?: maxVal.toDouble()).roundToInt()))
+                .coerceIn(0, maxVal)
+            val currentSup = if (currentAgg >= maxVal) 0 else (field.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
+
+            val totalSup = currentAgg * maxVal + currentSup
+            val maxTotalSup = maxVal * maxVal
+            val deltaSup = if (damageType == "aggravated") delta * maxVal else delta
+            val nextTotalSup = (totalSup + deltaSup).coerceIn(0, maxTotalSup)
+
+            val nextAgg = nextTotalSup / maxVal
+            val nextSup = if (nextAgg >= maxVal) 0 else nextTotalSup % maxVal
+            val nextHealth = max(0, maxVal - nextAgg)
+
+            field.copy(
+                damageTrack = true,
+                max = maxVal,
+                numValue = nextHealth.toDouble(),
+                superficialDamage = nextSup,
+                aggravatedDamage = nextAgg
+            )
         }
 
     fun addRepeatableRow(sheet: CharacterSheetState, fieldId: String, newId: String): CharacterSheetState =

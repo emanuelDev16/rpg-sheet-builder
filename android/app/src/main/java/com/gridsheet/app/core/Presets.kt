@@ -6,7 +6,7 @@ object Presets {
             id = SystemId.WOD,
             label = "WORLD OF DARKNESS (STORYTELLER d10)",
             shortLabel = "WOD · STORYTELLER d10",
-            description = "Atributos, Health, Willpower, Blood Pool, Disciplines e pools Nd10"
+            description = "Atributos, Health (Superficial/Aggravated), Willpower, Hunger, Disciplines e pools Nd10"
         ),
         SystemOption(
             id = SystemId.DND5E,
@@ -74,12 +74,22 @@ object Presets {
                 id = "card_combate",
                 tab = TabId.GERAL,
                 code = "//VITAL_STATUS",
-                title = "HEALTH · WILLPOWER · BLOOD",
+                title = "HEALTH · WILLPOWER · HUNGER",
                 colSpan = 1,
                 fields = listOf(
-                    SheetField(id = "f_health", key = "health", label = "HEALTH", kind = FieldKind.RESOURCE, numValue = 7.0, max = 7),
+                    SheetField(
+                        id = "f_health",
+                        key = "health",
+                        label = "HEALTH",
+                        kind = FieldKind.RESOURCE,
+                        numValue = 7.0,
+                        max = 7,
+                        damageTrack = true,
+                        superficialDamage = 0,
+                        aggravatedDamage = 0
+                    ),
                     SheetField(id = "f_willpower", key = "willpower", label = "WILLPOWER", kind = FieldKind.RESOURCE, numValue = 6.0, max = 8),
-                    SheetField(id = "f_blood_pool", key = "blood_pool", label = "BLOOD POOL", kind = FieldKind.RESOURCE, numValue = 9.0, max = 13),
+                    SheetField(id = "f_hunger", key = "hunger", label = "HUNGER", kind = FieldKind.RESOURCE, numValue = 1.0, max = 5),
                     SheetField(id = "f_humanity", key = "humanity", label = "HUMANITY", kind = FieldKind.RESOURCE, numValue = 7.0, max = 10),
                     SheetField(id = "f_wp_boost", key = "wp_boost", label = "WILLPOWER SURGE (+1 DIE)", kind = FieldKind.BOOLEAN, boolValue = false, hint = "SPENT THIS TURN"),
                     SheetField(id = "f_soak", key = "soak_roll", label = "SOAK DAMAGE", kind = FieldKind.ROLL, rollLabel = "ROLL SOAK", rollExpr = "pool(stamina, 6)")
@@ -539,6 +549,56 @@ object Presets {
             sig.contains("GENÉRICO") || sig.contains("GENERICO") -> SystemId.DEFAULT
             else -> SystemId.BLANK
         }
+    }
+
+    fun migrateLegacyWodSheet(sheet: CharacterSheetState): CharacterSheetState {
+        if (detectSystemId(sheet) != SystemId.WOD) return sheet
+        var changed = false
+        val updatedCards = sheet.cards.map { card ->
+            if (card.id != "card_combate") return@map card
+            var cardChanged = false
+            val nextTitle = if (card.title == "HEALTH · WILLPOWER · BLOOD") {
+                cardChanged = true
+                "HEALTH · WILLPOWER · HUNGER"
+            } else {
+                card.title
+            }
+            val nextFields = card.fields.map { field ->
+                when {
+                    field.id == "f_blood_pool" || field.key == "blood_pool" -> {
+                        cardChanged = true
+                        SheetField(
+                            id = "f_hunger",
+                            key = "hunger",
+                            label = "HUNGER",
+                            kind = FieldKind.RESOURCE,
+                            numValue = 1.0,
+                            max = 5
+                        )
+                    }
+                    field.id == "f_health" && field.damageTrack != true -> {
+                        cardChanged = true
+                        val maxVal = kotlin.math.max(1, field.max ?: 7)
+                        val curr = kotlin.math.max(0, kotlin.math.min(maxVal, (field.numValue ?: maxVal.toDouble()).toInt()))
+                        field.copy(
+                            max = maxVal,
+                            numValue = curr.toDouble(),
+                            damageTrack = true,
+                            superficialDamage = field.superficialDamage ?: 0,
+                            aggravatedDamage = field.aggravatedDamage ?: kotlin.math.max(0, maxVal - curr)
+                        )
+                    }
+                    else -> field
+                }
+            }
+            if (cardChanged) {
+                changed = true
+                card.copy(title = nextTitle, fields = nextFields)
+            } else {
+                card
+            }
+        }
+        return if (changed) sheet.copy(cards = updatedCards) else sheet
     }
 
     fun createPresetBySystemId(systemId: SystemId): CharacterSheetState = when (systemId) {
