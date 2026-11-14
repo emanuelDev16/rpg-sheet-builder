@@ -13,6 +13,7 @@ import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
+import java.net.HttpURLConnection
 import java.time.Instant
 import kotlin.math.max
 
@@ -57,6 +58,42 @@ object WorkspaceSyncEngine {
         "\"${max(1, baseRevision)}\""
 
     fun buildIfNoneMatchHeader(): String = "*"
+
+    fun buildAuthorizationHeader(token: String): String =
+        "Bearer ${token.trim()}"
+
+    fun buildSyncHeaders(
+        syncToken: String,
+        baseRevision: Int? = null,
+        isCreate: Boolean = false
+    ): Map<String, String> {
+        val headers = linkedMapOf(
+            "Authorization" to buildAuthorizationHeader(syncToken),
+            "Content-Type" to "application/json; charset=UTF-8"
+        )
+        if (isCreate) {
+            headers["If-None-Match"] = buildIfNoneMatchHeader()
+        } else if (baseRevision != null) {
+            headers["If-Match"] = buildIfMatchHeader(baseRevision)
+        }
+        return headers
+    }
+
+    fun applySyncHeaders(
+        connection: HttpURLConnection,
+        syncToken: String,
+        baseRevision: Int? = null,
+        isCreate: Boolean = false
+    ) {
+        val headers = buildSyncHeaders(
+            syncToken = syncToken,
+            baseRevision = baseRevision,
+            isCreate = isCreate
+        )
+        for ((name, value) in headers) {
+            connection.setRequestProperty(name, value)
+        }
+    }
 
     fun parseETagRevision(etag: String?): Int? {
         if (etag.isNullOrBlank()) return null

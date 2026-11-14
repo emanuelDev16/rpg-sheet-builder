@@ -142,18 +142,23 @@ class RoomWorkspaceRepository(context: Context) {
     }
 
     suspend fun pullRemoteMirror(
-        baseUrl: String = BuildConfig.RULES_API_BASE_URL
+        baseUrl: String = BuildConfig.RULES_API_BASE_URL,
+        syncToken: String = BuildConfig.SYNC_TOKEN
     ): RemoteWorkspaceMirrorDto? = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trimEnd('/')
         if (cleanBase.isEmpty()) return@withContext null
 
         var conn: HttpURLConnection? = null
         try {
-            val url = URL("$cleanBase/api/workspace-sync")
+            val url = URL("$cleanBase/api/sync")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "GET"
                 connectTimeout = 8000
                 readTimeout = 10000
+                WorkspaceSyncEngine.applySyncHeaders(
+                    connection = this,
+                    syncToken = syncToken
+                )
             }
             if (conn.responseCode !in 200..299) return@withContext null
             val body = BufferedReader(InputStreamReader(conn.inputStream, Charsets.UTF_8)).use { it.readText() }
@@ -169,7 +174,8 @@ class RoomWorkspaceRepository(context: Context) {
     suspend fun pushRemoteMirror(
         workspace: WorkspaceState,
         updatedAtMillis: Long,
-        baseUrl: String = BuildConfig.RULES_API_BASE_URL
+        baseUrl: String = BuildConfig.RULES_API_BASE_URL,
+        syncToken: String = BuildConfig.SYNC_TOKEN
     ): Boolean = withContext(Dispatchers.IO) {
         val cleanBase = baseUrl.trimEnd('/')
         if (cleanBase.isEmpty()) return@withContext false
@@ -181,14 +187,17 @@ class RoomWorkspaceRepository(context: Context) {
 
         var conn: HttpURLConnection? = null
         try {
-            val url = URL("$cleanBase/api/workspace-sync")
+            val url = URL("$cleanBase/api/sync")
             conn = (url.openConnection() as HttpURLConnection).apply {
                 requestMethod = "PUT"
                 connectTimeout = 8000
                 readTimeout = 10000
                 doOutput = true
-                setRequestProperty("Content-Type", "application/json; charset=UTF-8")
-                setRequestProperty("If-Match", WorkspaceSyncEngine.buildIfMatchHeader(baseRevision))
+                WorkspaceSyncEngine.applySyncHeaders(
+                    connection = this,
+                    syncToken = syncToken,
+                    baseRevision = baseRevision
+                )
             }
             val payload = json.encodeToString(
                 RemoteWorkspacePutRequest.serializer(),
@@ -207,16 +216,25 @@ class RoomWorkspaceRepository(context: Context) {
             val responseBody = stream?.let { BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() } }
             val etagHeader = conn.getHeaderField("ETag")
 
-            if (activeEntity != null) {
+            if (activeEntity != null && activeSheet != null) {
                 val pushOutcome = WorkspaceSyncEngine.handlePushResponse(
-                    entity = activeEntity,
+                    localSheet = activeSheet,
+                    baseRevision = baseRevision,
                     statusCode = statusCode,
-                    etagHeader = etagHeader,
                     responseBody = responseBody,
-                    nowMillis = System.currentTimeMillis(),
+                    etagHeader = etagHeader,
                     json = json
                 )
-                sheetDao.upsertSheet(pushOutcome.updatedEntity)
+                val updatedEntity = WorkspaceSyncEngine.toEntity(
+                    systemId = workspace.activeSystemId,
+                    sheet = pushOutcome.sheet,
+                    updatedAtMillis = System.currentTimeMillis(),
+                    json = json,
+                    syncState = if (pushOutcome.ok) "SYNCED" else if (pushOutcome.statusCode == 409) "CONFLICT" else "ERROR",
+                    baseRevision = pushOutcome.baseRevision,
+                    isDirty = pushOutcome.isDirty
+                )
+                sheetDao.upsertSheets(listOf(updatedEntity))
             }
             statusCode in 200..299
         } catch (_: Exception) {
@@ -227,9 +245,10 @@ class RoomWorkspaceRepository(context: Context) {
     }
 
     suspend fun syncWithRemoteMirror(
-        baseUrl: String = BuildConfig.RULES_API_BASE_URL
+        baseUrl: String = BuildConfig.RULES_API_BASE_URL,
+        syncToken: String = BuildConfig.SYNC_TOKEN
     ): RoomMirrorSyncOutcome? = withContext(Dispatchers.IO) {
-        val remote = pullRemoteMirror(baseUrl)
+        val remote = pullRemoteMirror(baseUrl, syncToken)
         val roomSheets = sheetDao.getAllSheets()
         val roomMeta = sheetDao.getMetadata()
         val now = System.currentTimeMillis()
@@ -243,6 +262,8 @@ class RoomWorkspaceRepository(context: Context) {
             json = json
         )
 
+        val conflictsMap = reconciled.conflicts.associateBy { it.systemId }
+
         if (reconciled.adoptedRemoteMirror) {
             sheetDao.mirrorWorkspaceTransaction(
                 reconciled.entitiesToMirrorIntoRoom,
@@ -252,16 +273,16 @@ class RoomWorkspaceRepository(context: Context) {
                 workspace = reconciled.workspace,
                 updatedAtMillis = reconciled.resolvedTimestamp,
                 updatedFromRemote = true,
-                conflicts = reconciled.conflictsBySystem
+                conflicts = conflictsMap
             )
         }
 
-        if (reconciled.conflictsBySystem.isNotEmpty()) {
+        if (conflictsMap.isNotEmpty()) {
             return@withContext RoomMirrorSyncOutcome(
                 workspace = reconciled.workspace,
                 updatedAtMillis = reconciled.resolvedTimestamp,
                 updatedFromRemote = false,
-                conflicts = reconciled.conflictsBySystem
+                conflicts = conflictsMap
             )
         }
 
@@ -269,7 +290,8 @@ class RoomWorkspaceRepository(context: Context) {
             pushRemoteMirror(
                 workspace = reconciled.workspace,
                 updatedAtMillis = reconciled.resolvedTimestamp,
-                baseUrl = baseUrl
+                baseUrl = baseUrl,
+                syncToken = syncToken
             )
         }
 

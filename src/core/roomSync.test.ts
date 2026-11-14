@@ -23,6 +23,12 @@ import {
   updateFieldValue,
   WorkspaceState,
 } from './sheetModel';
+import {
+  requireSyncAuth,
+  resolveAllowedCorsOrigins,
+  SYNC_TOKEN,
+  verifySyncBearerToken,
+} from '../../server';
 
 test('computeWorkspaceDigest is deterministic and detects changes across systems', () => {
   const wod = createWorldOfDarknessSheet();
@@ -186,7 +192,7 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
 
 test('Optimistic sync server contract: 201 creation, 200 update (revision + 1), 400 schema failure, 412 missing If-Match, and 409 REVISION_CONFLICT', () => {
   const store = new OptimisticSheetStore();
-  const baseChar = createWorldOfDarknessSheet('dev-client-a');
+  const baseChar = createWorldOfDarknessSheet();
   const initialCanonical = toCanonicalSheet({
     ...baseChar,
     id: 'sheet-wod-1',
@@ -276,7 +282,7 @@ test('Optimistic sync server contract: 201 creation, 200 update (revision + 1), 
 
 test('WorkspaceSyncEngine tracks baseRevision vs isDirty, sends If-Match: "<baseRevision>", and exposes 409 Conflict without silent overwrite', async () => {
   const store = new OptimisticSheetStore();
-  const initialWod = createWorldOfDarknessSheet('device-web-1');
+  const initialWod = { ...createWorldOfDarknessSheet(), deviceId: 'device-web-1' };
 
   const storeFetch: typeof fetch = async (_url, init) => {
     const method = (init?.method ?? 'PUT').toUpperCase() as 'POST' | 'PUT';
@@ -391,4 +397,56 @@ test('WorkspaceSyncEngine tracks baseRevision vs isDirty, sends If-Match: "<base
   assert.equal(isIfNoneMatchWildcard('*'), true);
   assert.equal(formatETagHeader(4), '"4"');
   assert.equal(validateCanonicalSheetPayload({ invalid: true }).ok, false);
+});
+
+test('requireSyncAuth validates Bearer token with timingSafeEqual and rejects invalid/missing tokens with 401', () => {
+  assert.equal(verifySyncBearerToken(`Bearer ${SYNC_TOKEN}`, SYNC_TOKEN), true);
+  assert.equal(verifySyncBearerToken('Bearer wrong-length-token', SYNC_TOKEN), false);
+  assert.equal(
+    verifySyncBearerToken(`Bearer ${'0'.repeat(SYNC_TOKEN.length)}`, SYNC_TOKEN),
+    false,
+  );
+  assert.equal(verifySyncBearerToken(undefined, SYNC_TOKEN), false);
+
+  let statusCode = 200;
+  let nextCalled = false;
+  requireSyncAuth(
+    { header: () => undefined } as unknown as Parameters<typeof requireSyncAuth>[0],
+    {
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json() {
+        return this;
+      },
+    } as unknown as Parameters<typeof requireSyncAuth>[1],
+    () => {
+      nextCalled = true;
+    },
+  );
+  assert.equal(statusCode, 401);
+  assert.equal(nextCalled, false);
+
+  requireSyncAuth(
+    { header: () => `Bearer ${SYNC_TOKEN}` } as unknown as Parameters<typeof requireSyncAuth>[0],
+    {
+      status(code: number) {
+        statusCode = code;
+        return this;
+      },
+      json() {
+        return this;
+      },
+    } as unknown as Parameters<typeof requireSyncAuth>[1],
+    () => {
+      nextCalled = true;
+    },
+  );
+  assert.equal(nextCalled, true);
+
+  // CORS origin list filters out '*' and falls back to localhost in dev
+  const origins = resolveAllowedCorsOrigins('https://app.example.com, * , http://localhost:3000');
+  assert.deepEqual(origins, ['https://app.example.com', 'http://localhost:3000']);
+  assert.equal(origins.includes('*'), false);
 });

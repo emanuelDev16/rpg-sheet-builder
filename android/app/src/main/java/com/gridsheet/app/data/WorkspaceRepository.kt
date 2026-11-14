@@ -165,7 +165,7 @@ class WorkspaceRepository(context: Context) {
             prefsUpdatedAt = prefsUpdatedAt,
             nowMillis = nowMillis,
             json = json,
-            localDeviceId = localDeviceId
+            deviceId = localDeviceId
         )
 
         roomRepository.upsertReconciledEntities(

@@ -19,11 +19,13 @@ android {
 
         // Optional backend URL for // REGRAS Google Search Grounding proxy
         buildConfigField("String", "RULES_API_BASE_URL", "\"https://ais-pre-hpyrcjlwksdvevcd2vvsl5-858489851321.us-east1.run.app\"")
+        buildConfigField("String", "SYNC_TOKEN", "\"\"")
     }
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro"

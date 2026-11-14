@@ -1,5 +1,6 @@
 import 'dotenv/config';
 import express from 'express';
+import crypto from 'node:crypto';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -32,10 +33,96 @@ const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
+const BIND_HOST = process.env.ALLOW_LAN_SYNC === 'true' ? '0.0.0.0' : '127.0.0.1';
 const ROOM_MIRROR_DIR = path.resolve(__dirname, '.data');
 const ROOM_MIRROR_FILE = path.join(ROOM_MIRROR_DIR, 'room-sync-mirror.json');
 const SHEETS_STORE_FILE = path.join(ROOM_MIRROR_DIR, 'sheets-store.json');
 const SHEET_SCHEMA_PATH = path.resolve(__dirname, 'shared-specs/sheet.schema.json');
+
+const ENV_SYNC_TOKEN = process.env.SYNC_TOKEN?.trim();
+export const SYNC_TOKEN: string =
+  ENV_SYNC_TOKEN && ENV_SYNC_TOKEN.length > 0
+    ? ENV_SYNC_TOKEN
+    : (() => {
+        const generated = crypto.randomBytes(16).toString('hex');
+        console.log(`[SYNC AUTH] SYNC_TOKEN ausente no ambiente. Token efêmero gerado: ${generated}`);
+        return generated;
+      })();
+
+const DEFAULT_DEV_ORIGINS = [
+  `http://localhost:${PORT}`,
+  `http://127.0.0.1:${PORT}`,
+  'http://localhost:5173',
+  'http://127.0.0.1:5173',
+];
+
+export function resolveAllowedCorsOrigins(rawCorsOrigin = process.env.CORS_ORIGIN): string[] {
+  if (typeof rawCorsOrigin === 'string' && rawCorsOrigin.trim().length > 0) {
+    return rawCorsOrigin
+      .split(',')
+      .map((origin) => origin.trim())
+      .filter((origin) => origin.length > 0 && origin !== '*');
+  }
+  return DEFAULT_DEV_ORIGINS;
+}
+
+export function cors(options?: { origins?: string[] }): express.RequestHandler {
+  const allowedOrigins = new Set(options?.origins ?? resolveAllowedCorsOrigins());
+  return (req, res, next) => {
+    const requestOrigin = req.header('origin');
+    if (requestOrigin && allowedOrigins.has(requestOrigin)) {
+      res.setHeader('Access-Control-Allow-Origin', requestOrigin);
+      res.setHeader('Vary', 'Origin');
+      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, PUT, OPTIONS');
+      res.setHeader(
+        'Access-Control-Allow-Headers',
+        'Content-Type, Authorization, If-Match, If-None-Match',
+      );
+      res.setHeader('Access-Control-Expose-Headers', 'ETag');
+    }
+    if (req.method.toUpperCase() === 'OPTIONS') {
+      res.status(204).end();
+      return;
+    }
+    next();
+  };
+}
+
+export function verifySyncBearerToken(
+  authHeader: string | undefined,
+  expectedToken: string = SYNC_TOKEN,
+): boolean {
+  if (typeof authHeader !== 'string' || !authHeader.startsWith('Bearer ')) {
+    return false;
+  }
+  const providedToken = authHeader.slice('Bearer '.length).trim();
+  if (!providedToken || !expectedToken) {
+    return false;
+  }
+  const providedBuffer = Buffer.from(providedToken, 'utf8');
+  const expectedBuffer = Buffer.from(expectedToken, 'utf8');
+  if (providedBuffer.length !== expectedBuffer.length) {
+    return false;
+  }
+  return crypto.timingSafeEqual(providedBuffer, expectedBuffer);
+}
+
+export function requireSyncAuth(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void {
+  const authHeader = req.header('authorization') ?? undefined;
+  if (!verifySyncBearerToken(authHeader)) {
+    res.status(401).json({
+      ok: false,
+      error: 'UNAUTHORIZED',
+      message: 'Cabeçalho Authorization: Bearer <token> inválido ou ausente.',
+    });
+    return;
+  }
+  next();
+}
 
 export function createAjvSheetValidator() {
   const rawSchema = JSON.parse(fs.readFileSync(SHEET_SCHEMA_PATH, 'utf8')) as Record<string, unknown>;
@@ -119,7 +206,8 @@ function createGeminiClient() {
 
 export function createSyncApp(initialSheets?: CanonicalSheet[]) {
   const app = express();
-  app.use(express.json({ limit: '2mb' }));
+  app.use(cors({ origins: resolveAllowedCorsOrigins() }));
+  app.use(express.json({ limit: '1mb' }));
 
   let currentRoomMirror: WorkspaceMirrorPayload | null = loadPersistedMirror();
   const seededSheets =
@@ -278,6 +366,14 @@ export function createSyncApp(initialSheets?: CanonicalSheet[]) {
     res.status(outcome.status).json(outcome.body);
   };
 
+  app.use('/api/sync', requireSyncAuth);
+  app.get('/api/sync', handleSheetSyncHttp);
+  app.get('/api/sync/:id', handleSheetSyncHttp);
+  app.post('/api/sync', handleSheetSyncHttp);
+  app.post('/api/sync/:id', handleSheetSyncHttp);
+  app.put('/api/sync', handleSheetSyncHttp);
+  app.put('/api/sync/:id', handleSheetSyncHttp);
+
   app.get('/api/workspace-sync', handleSheetSyncHttp);
   app.get('/api/workspace-sync/:id', handleSheetSyncHttp);
   app.post('/api/workspace-sync', handleSheetSyncHttp);
@@ -404,8 +500,9 @@ async function startServer() {
     app.use(vite.middlewares);
   }
 
-  app.listen(PORT, '0.0.0.0', () => {
-    console.log(`GRID//SHEET server running on http://localhost:${PORT}`);
+  const bindHost = process.env.ALLOW_LAN_SYNC === 'true' ? '0.0.0.0' : BIND_HOST;
+  app.listen(PORT, bindHost, () => {
+    console.log(`GRID//SHEET server running on http://${bindHost}:${PORT}`);
   });
 }
 

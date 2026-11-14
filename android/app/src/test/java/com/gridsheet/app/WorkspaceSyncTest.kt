@@ -160,29 +160,27 @@ class WorkspaceSyncTest {
         assertEquals("android-device-uuid-1", initialSheet.deviceId)
         assertTrue(initialSheet.updatedAt.endsWith("Z"))
 
-        // 1. Create initial entity (201 Created)
-        val createdEntity = WorkspaceSyncEngine.toEntity(
-            systemId = SystemId.WOD,
-            sheet = initialSheet,
-            updatedAtMillis = 1000L,
-            json = json,
-            syncState = "DIRTY",
+        // 1. Create initial entity (201 Created) and verify Authorization: Bearer <token> header
+        val syncHeaders = WorkspaceSyncEngine.buildSyncHeaders(
+            syncToken = "secret-sync-token-123",
             baseRevision = 1,
-            isDirty = true
+            isCreate = true
         )
+        assertEquals("Bearer secret-sync-token-123", syncHeaders["Authorization"])
+        assertEquals("*", syncHeaders["If-None-Match"])
+
         val res201 = WorkspaceSyncEngine.handlePushResponse(
-            entity = createdEntity,
+            localSheet = initialSheet,
+            baseRevision = 1,
             statusCode = 201,
-            etagHeader = "\"1\"",
             responseBody = """{"ok":true}""",
-            nowMillis = 1100L,
+            etagHeader = "\"1\"",
             json = json
         )
         assertTrue(res201.ok)
         assertEquals(201, res201.statusCode)
-        assertEquals(1, res201.newRevision)
-        assertEquals(1, res201.updatedEntity.baseRevision)
-        assertFalse(res201.updatedEntity.isDirty)
+        assertEquals(1, res201.baseRevision)
+        assertFalse(res201.isDirty)
 
         // 2. Local edit marks isDirty = true while keeping baseRevision = 1
         val locallyEditedSheet = SheetMutators.updateFieldValue(
@@ -193,12 +191,11 @@ class WorkspaceSyncTest {
         )
         assertEquals(1, locallyEditedSheet.revision)
         val dirtyEntity = WorkspaceSyncEngine.markLocalEdit(
-            existing = res201.updatedEntity,
-            systemId = SystemId.WOD,
-            editedSheet = locallyEditedSheet,
+            sheet = locallyEditedSheet,
+            baseRevision = res201.baseRevision,
+            deviceId = "android-device-uuid-1",
             nowMillis = 2000L,
-            json = json,
-            localDeviceId = "android-device-uuid-1"
+            json = json
         )
         assertEquals(1, dirtyEntity.baseRevision)
         assertTrue(dirtyEntity.isDirty)
@@ -206,39 +203,32 @@ class WorkspaceSyncTest {
 
         // 3. Valid update (200 OK) advances baseRevision and revision to 2 and clears isDirty
         val res200 = WorkspaceSyncEngine.handlePushResponse(
-            entity = dirtyEntity,
+            localSheet = locallyEditedSheet,
+            baseRevision = dirtyEntity.baseRevision,
             statusCode = 200,
-            etagHeader = "\"2\"",
             responseBody = """{"ok":true}""",
-            nowMillis = 2100L,
+            etagHeader = "\"2\"",
             json = json
         )
         assertTrue(res200.ok)
         assertEquals(200, res200.statusCode)
-        assertEquals(2, res200.updatedEntity.revision)
-        assertEquals(2, res200.updatedEntity.baseRevision)
-        assertFalse(res200.updatedEntity.isDirty)
+        assertEquals(2, res200.sheet.revision)
+        assertEquals(2, res200.baseRevision)
+        assertFalse(res200.isDirty)
 
         // 4. Schema failure (400 Bad Request) returns error without losing dirty state
-        val secondDirty = WorkspaceSyncEngine.markLocalEdit(
-            existing = res200.updatedEntity,
-            systemId = SystemId.WOD,
-            editedSheet = locallyEditedSheet.copy(characterName = "SECOND EDIT", revision = 2),
-            nowMillis = 3000L,
-            json = json,
-            localDeviceId = "android-device-uuid-1"
-        )
+        val secondDirtySheet = locallyEditedSheet.copy(characterName = "SECOND EDIT", revision = 2)
         val res400 = WorkspaceSyncEngine.handlePushResponse(
-            entity = secondDirty,
+            localSheet = secondDirtySheet,
+            baseRevision = 2,
             statusCode = 400,
-            etagHeader = null,
             responseBody = """{"ok":false,"error":"SCHEMA_VALIDATION_FAILED"}""",
-            nowMillis = 3100L,
+            etagHeader = null,
             json = json
         )
         assertFalse(res400.ok)
         assertEquals(400, res400.statusCode)
-        assertTrue(res400.updatedEntity.isDirty)
+        assertTrue(res400.isDirty)
 
         // 5. Revision conflict (409 Conflict) exposes serverSheet vs localSheet without silent overwrite
         val conflictBody = """
@@ -257,11 +247,11 @@ class WorkspaceSyncTest {
             }
         """.trimIndent()
         val res409 = WorkspaceSyncEngine.handlePushResponse(
-            entity = secondDirty,
+            localSheet = secondDirtySheet,
+            baseRevision = 2,
             statusCode = 409,
-            etagHeader = "\"3\"",
             responseBody = conflictBody,
-            nowMillis = 3200L,
+            etagHeader = "\"3\"",
             json = json
         )
         assertFalse(res409.ok)
@@ -271,19 +261,15 @@ class WorkspaceSyncTest {
         assertEquals(3, res409.conflict?.serverSheet?.revision)
         assertEquals("SERVER VERSION REV 3", res409.conflict?.serverSheet?.characterName)
         assertEquals("SECOND EDIT", res409.conflict?.localSheet?.characterName)
-        assertTrue(res409.updatedEntity.isDirty)
-        assertEquals("CONFLICT", res409.updatedEntity.syncState)
+        assertTrue(res409.isDirty)
 
-        // Resolve conflict keeping local rebases baseRevision to 3 while remaining dirty for retry
-        val resolvedKeepLocal = WorkspaceSyncEngine.resolveConflict(
-            entity = res409.updatedEntity,
+        // Resolve conflict keeping local rebases revision to 3 while remaining dirty for retry
+        val (resolvedSheet, resolvedDirty) = WorkspaceSyncEngine.resolveConflict(
             conflict = res409.conflict!!,
-            acceptServer = false,
-            nowMillis = 3300L,
-            json = json
+            acceptServer = false
         )
-        assertEquals(3, resolvedKeepLocal.baseRevision)
-        assertTrue(resolvedKeepLocal.isDirty)
+        assertEquals(3, resolvedSheet.revision)
+        assertTrue(resolvedDirty)
         assertNull(res200.conflict)
     }
 }
