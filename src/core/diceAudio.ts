@@ -12,8 +12,46 @@ export interface DiceClatterOptions {
   isFumble?: boolean;
 }
 
+export type OutcomeAudioCue = 'critical' | 'fumble' | 'none';
+
+export const DICE_AUDIO_MUTE_STORAGE_KEY = 'grid_sheet_audio_muted_v1';
+
 let sharedAudioCtx: AudioContext | null = null;
 let cachedNoiseBuffer: AudioBuffer | null = null;
+let memoryMuted: boolean | null = null;
+
+export function isDiceAudioMuted(): boolean {
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      const raw = window.localStorage.getItem(DICE_AUDIO_MUTE_STORAGE_KEY);
+      if (raw === 'true') return true;
+      if (raw === 'false') return false;
+    } catch {
+      // Ignore storage errors and fall back to memory state
+    }
+  }
+  return memoryMuted ?? false;
+}
+
+export function setDiceAudioMuted(muted: boolean): boolean {
+  memoryMuted = Boolean(muted);
+  if (typeof window !== 'undefined' && window.localStorage) {
+    try {
+      window.localStorage.setItem(DICE_AUDIO_MUTE_STORAGE_KEY, String(memoryMuted));
+    } catch {
+      // Ignore storage errors
+    }
+  }
+  return memoryMuted;
+}
+
+export function computeOutcomeAudioCue(
+  options: Pick<DiceClatterOptions, 'isCritical' | 'isFumble'> = {},
+): OutcomeAudioCue {
+  if (options.isCritical) return 'critical';
+  if (options.isFumble) return 'fumble';
+  return 'none';
+}
 
 /**
  * Generates a subtle multi-tap rhythmic schedule resembling polyhedral dice
@@ -82,9 +120,11 @@ function getNoiseBuffer(ctx: AudioContext): AudioBuffer {
 
 /**
  * Synthesizes a subtle tactile dice-clatter sound using the Web Audio API.
- * Safe no-op in headless/non-browser environments or if audio is blocked.
+ * Safe no-op in headless/non-browser environments, when muted, or if audio is blocked.
  */
 export function playDiceClatter(options: DiceClatterOptions = {}): boolean {
+  if (isDiceAudioMuted()) return false;
+
   try {
     const ctx = getOrCreateAudioContext();
     if (!ctx) return false;
@@ -145,9 +185,11 @@ export function playDiceClatter(options: DiceClatterOptions = {}): boolean {
       osc.stop(stop + 0.005);
     }
 
+    const settleTime = now + (taps[taps.length - 1]?.delaySec ?? 0.1) + 0.03;
+    const outcomeCue = computeOutcomeAudioCue(options);
+
     // Subtle harmonic settle ping on critical roll
-    if (options.isCritical) {
-      const settleTime = now + (taps[taps.length - 1]?.delaySec ?? 0.1) + 0.03;
+    if (outcomeCue === 'critical') {
       const chime = ctx.createOscillator();
       const chimeGain = ctx.createGain();
       chime.type = 'sine';
@@ -160,6 +202,39 @@ export function playDiceClatter(options: DiceClatterOptions = {}): boolean {
       chimeGain.connect(master);
       chime.start(settleTime);
       chime.stop(settleTime + 0.13);
+    } else if (outcomeCue === 'fumble') {
+      // Distinct low descending discordant two-note thud on botch / critical fumble
+      const lowFilter = ctx.createBiquadFilter();
+      lowFilter.type = 'lowpass';
+      lowFilter.frequency.setValueAtTime(620, settleTime);
+      lowFilter.connect(master);
+
+      const firstTone = ctx.createOscillator();
+      const firstGain = ctx.createGain();
+      firstTone.type = 'sawtooth';
+      firstTone.frequency.setValueAtTime(185, settleTime);
+      firstTone.frequency.exponentialRampToValueAtTime(92, settleTime + 0.12);
+      firstGain.gain.setValueAtTime(0.0001, settleTime);
+      firstGain.gain.linearRampToValueAtTime(0.045, settleTime + 0.01);
+      firstGain.gain.exponentialRampToValueAtTime(0.0001, settleTime + 0.14);
+      firstTone.connect(firstGain);
+      firstGain.connect(lowFilter);
+      firstTone.start(settleTime);
+      firstTone.stop(settleTime + 0.15);
+
+      const secondStart = settleTime + 0.085;
+      const secondTone = ctx.createOscillator();
+      const secondGain = ctx.createGain();
+      secondTone.type = 'triangle';
+      secondTone.frequency.setValueAtTime(128, secondStart);
+      secondTone.frequency.exponentialRampToValueAtTime(58, secondStart + 0.18);
+      secondGain.gain.setValueAtTime(0.0001, secondStart);
+      secondGain.gain.linearRampToValueAtTime(0.06, secondStart + 0.012);
+      secondGain.gain.exponentialRampToValueAtTime(0.0001, secondStart + 0.2);
+      secondTone.connect(secondGain);
+      secondGain.connect(lowFilter);
+      secondTone.start(secondStart);
+      secondTone.stop(secondStart + 0.21);
     }
 
     return true;

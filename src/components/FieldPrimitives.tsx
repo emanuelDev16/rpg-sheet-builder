@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Check, Plus, X } from 'lucide-react';
+import { Check, ChevronDown, Plus, SlidersHorizontal, X } from 'lucide-react';
 import {
   AppMode,
   ComputedFieldInfo,
@@ -71,6 +71,152 @@ const ClampedNumberInput: React.FC<ClampedNumberInputProps> = ({
       }}
       className="cyber-input mobile-touch-input w-14 sm:w-12 px-1 py-0.5 text-[11px] font-bold text-center tabular-nums"
     />
+  );
+};
+
+interface WodPoolRollFieldProps {
+  field: SheetField;
+  variables: VariableMap;
+  defaultDifficulty: number;
+  onRoll: (field: SheetField) => void;
+  onUpdateSchema: (fieldId: string, patch: Partial<SheetField>) => void;
+  editStrip: React.ReactNode;
+}
+
+const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
+  field,
+  variables,
+  defaultDifficulty,
+  onRoll,
+  onUpdateSchema,
+  editStrip,
+}) => {
+  const [optionsOpen, setOptionsOpen] = useState(false);
+
+  const clampedDefaultDiff = Math.max(2, Math.min(10, Math.round(defaultDifficulty)));
+  const difficulty = Math.max(
+    2,
+    Math.min(10, Math.round(field.rollDifficulty ?? clampedDefaultDiff)),
+  );
+  const specialty = Boolean(field.rollSpecialty);
+  const modifier =
+    typeof field.rollMod === 'number' && Number.isFinite(field.rollMod)
+      ? Math.round(field.rollMod)
+      : 0;
+
+  const previewExpr = resolveRollPreview(field.rollExpr ?? 'pool(1, 6)', variables, {
+    difficulty,
+    modifier,
+    specialty,
+  });
+  const wpArmed = Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
+  const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
+
+  const summaryParts = [`DIFF ${difficulty}`];
+  if (modifier !== 0) {
+    summaryParts.push(`${modifier > 0 ? `+${modifier}` : modifier} MOD`);
+  }
+  if (specialty) {
+    summaryParts.push('SPEC');
+  }
+  const isCustomized = difficulty !== clampedDefaultDiff || modifier !== 0 || specialty;
+
+  return (
+    <div className="py-0.5">
+      <button
+        type="button"
+        data-testid={`roll-btn-${field.id}`}
+        onClick={() => onRoll(field)}
+        className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
+      >
+        <span className="text-left break-words whitespace-normal leading-snug min-w-0">
+          {displayLabel}
+        </span>
+        <div className="flex items-center gap-1.5 shrink-0">
+          {wpArmed && (
+            <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--ink-inverse)]/40 rounded-[3px]">
+              +1 WP
+            </span>
+          )}
+          <span className="text-sm leading-none" aria-hidden="true">
+            ↗
+          </span>
+        </div>
+      </button>
+
+      <div className="no-print print:hidden mt-1.5 flex flex-col gap-1.5">
+        <div className="flex items-center justify-between gap-2">
+          <button
+            type="button"
+            data-testid={`roll-opts-toggle-${field.id}`}
+            aria-expanded={optionsOpen}
+            aria-controls={`roll-opts-panel-${field.id}`}
+            onClick={() => setOptionsOpen((prev) => !prev)}
+            className={`font-mono-tech text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-[4px] border inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+              optionsOpen || isCustomized
+                ? 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                : 'bg-[var(--bg-card-alt)] text-[var(--ink-secondary)] border-[var(--border-ink)]/55 hover:border-[var(--border-ink)] hover:bg-[var(--bg-hover)]'
+            }`}
+          >
+            <SlidersHorizontal className="w-3 h-3 shrink-0" aria-hidden="true" />
+            <span>{summaryParts.join(' · ')}</span>
+            <ChevronDown
+              className={`w-3 h-3 shrink-0 transition-transform duration-150 ${
+                optionsOpen ? 'rotate-180' : ''
+              }`}
+              aria-hidden="true"
+            />
+          </button>
+        </div>
+
+        {optionsOpen && (
+          <div
+            id={`roll-opts-panel-${field.id}`}
+            data-testid={`roll-opts-panel-${field.id}`}
+            className="px-2 py-1.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)]/75 rounded-[var(--radius-control)] flex flex-wrap items-center justify-between gap-2"
+          >
+            <div className="flex items-center gap-2.5 flex-wrap">
+              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
+                <span>DIFF</span>
+                <ClampedNumberInput
+                  min={2}
+                  max={10}
+                  ariaLabel={`Difficulty for ${field.rollLabel ?? field.label}`}
+                  testId={`roll-diff-${field.id}`}
+                  value={difficulty}
+                  onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
+                />
+              </label>
+
+              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
+                <span>MOD</span>
+                <ClampedNumberInput
+                  min={-10}
+                  max={20}
+                  ariaLabel={`Pool modifier for ${field.rollLabel ?? field.label}`}
+                  testId={`roll-mod-${field.id}`}
+                  value={modifier}
+                  onCommit={(next) => onUpdateSchema(field.id, { rollMod: next })}
+                />
+              </label>
+            </div>
+
+            <label className="inline-flex items-center gap-1.5 min-h-[36px] md:min-h-0 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
+              <input
+                type="checkbox"
+                data-testid={`roll-spec-${field.id}`}
+                checked={specialty}
+                onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
+                className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[#5B0F18] cursor-pointer"
+              />
+              <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>SPECIALTY</span>
+            </label>
+          </div>
+        )}
+      </div>
+
+      {editStrip}
+    </div>
   );
 };
 
@@ -624,7 +770,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             }}
             className={`w-full flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 px-2.5 py-2 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] transition-colors text-left ${
               isEmpty
-                ? 'bg-[var(--bg-header-strip)] opacity-65 cursor-not-allowed'
+                ? 'bg-[var(--bg-header-strip)] border-dashed cursor-not-allowed'
                 : effectiveChecked
                   ? 'bg-[var(--accent-cream-badge)] hover:bg-[var(--bg-hover)] cursor-pointer'
                   : 'bg-[var(--bg-card-alt)] hover:bg-[var(--bg-hover)] cursor-pointer'
@@ -632,17 +778,21 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           >
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <span
-                className={`w-5 h-5 rounded-[4px] border-2 border-[var(--border-ink)] flex items-center justify-center shrink-0 transition-colors ${
+                className={`w-5 h-5 rounded-[4px] border-2 flex items-center justify-center shrink-0 transition-colors ${
                   effectiveChecked
-                    ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
+                    ? 'border-[var(--border-ink)] bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
                     : isEmpty
-                      ? 'bg-[var(--bg-header-strip)] text-transparent'
-                      : 'bg-[var(--bg-card)] text-transparent'
+                      ? 'border-dashed border-[var(--ink-muted)] bg-[var(--bg-card)] text-transparent'
+                      : 'border-[var(--border-ink)] bg-[var(--bg-card)] text-transparent'
                 }`}
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
               </span>
-              <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words leading-snug">
+              <span
+                className={`font-mono-tech text-xs font-bold tracking-wide uppercase break-words leading-snug ${
+                  isEmpty ? 'text-[var(--ink-secondary)]' : 'text-[var(--ink-primary)]'
+                }`}
+              >
                 {field.label}
               </span>
             </div>
@@ -650,10 +800,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               data-testid="willpower-auto-success-badge"
               className={`font-mono-tech text-[10px] font-extrabold px-2 py-0.5 rounded-[3px] border shrink-0 tracking-wider uppercase ${
                 isEmpty
-                  ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                  ? 'bg-[var(--accent-danger-soft)] text-[#991B1B] border-[var(--accent-danger)]'
                   : effectiveChecked
                     ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
-                    : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-ink)]/60'
+                    : 'bg-[var(--bg-card)] text-[var(--ink-secondary)] border-[var(--border-ink)]/65'
               }`}
             >
               {badgeLabel}
@@ -704,90 +854,16 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
     if (parsedPool) {
       const exprDiff = Number(parsedPool.diffExpr);
-      const difficulty = Math.max(
-        2,
-        Math.min(
-          10,
-          Math.round(field.rollDifficulty ?? (Number.isFinite(exprDiff) ? exprDiff : 6)),
-        ),
-      );
-      const specialty = Boolean(field.rollSpecialty);
-      const modifier =
-        typeof field.rollMod === 'number' && Number.isFinite(field.rollMod)
-          ? Math.round(field.rollMod)
-          : 0;
-      const previewExpr = resolveRollPreview(field.rollExpr ?? 'pool(1, 6)', variables, {
-        difficulty,
-        modifier,
-        specialty,
-      });
-      const wpArmed = Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
-      const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
-
+      const defaultDiff = Number.isFinite(exprDiff) ? exprDiff : 6;
       return (
-        <div className="py-0.5">
-          <button
-            type="button"
-            data-testid={`roll-btn-${field.id}`}
-            onClick={() => onRoll(field)}
-            className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
-          >
-            <span className="text-left break-words whitespace-normal leading-snug min-w-0">
-              {displayLabel}
-            </span>
-            <div className="flex items-center gap-1.5 shrink-0">
-              {wpArmed && (
-                <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--ink-inverse)]/40 rounded-[3px]">
-                  +1 WP
-                </span>
-              )}
-              <span className="text-sm leading-none" aria-hidden="true">
-                ↗
-              </span>
-            </div>
-          </button>
-
-          <div className="no-print print:hidden mt-1 px-2 py-1.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)]/70 rounded-[var(--radius-control)] flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2.5 flex-wrap">
-              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
-                <span>DIFF</span>
-                <ClampedNumberInput
-                  min={2}
-                  max={10}
-                  ariaLabel={`Difficulty for ${field.rollLabel ?? field.label}`}
-                  testId={`roll-diff-${field.id}`}
-                  value={difficulty}
-                  onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
-                />
-              </label>
-
-              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
-                <span>MOD</span>
-                <ClampedNumberInput
-                  min={-10}
-                  max={20}
-                  ariaLabel={`Pool modifier for ${field.rollLabel ?? field.label}`}
-                  testId={`roll-mod-${field.id}`}
-                  value={modifier}
-                  onCommit={(next) => onUpdateSchema(field.id, { rollMod: next })}
-                />
-              </label>
-            </div>
-
-            <label className="inline-flex items-center gap-1.5 min-h-[36px] md:min-h-0 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
-              <input
-                type="checkbox"
-                data-testid={`roll-spec-${field.id}`}
-                checked={specialty}
-                onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
-                className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[#5B0F18] cursor-pointer"
-              />
-              <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>SPECIALTY</span>
-            </label>
-          </div>
-
-          {renderEditStrip()}
-        </div>
+        <WodPoolRollField
+          field={field}
+          variables={variables}
+          defaultDifficulty={defaultDiff}
+          onRoll={onRoll}
+          onUpdateSchema={onUpdateSchema}
+          editStrip={renderEditStrip()}
+        />
       );
     }
 

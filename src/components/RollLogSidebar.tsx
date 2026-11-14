@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { RollLogEntry, SystemId } from '../core/sheetModel';
 import { AppTranslations } from '../core/i18n';
@@ -43,21 +43,38 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('logs');
   const quickDice = useMemo(() => getQuickDicePresets(systemId), [systemId]);
   const [customExpr, setCustomExpr] = useState(systemId === 'wod' ? '5d10@6' : quickDice[0]);
+  const mobileCloseBtnRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseMobileRef = useRef(onCloseMobile);
+  onCloseMobileRef.current = onCloseMobile;
 
   useEffect(() => {
     setCustomExpr(systemId === 'wod' ? '5d10@6' : getQuickDicePresets(systemId)[0]);
   }, [systemId]);
 
   useEffect(() => {
-    if (!isMobileOpen || !onCloseMobile) return;
+    if (!isMobileOpen || !onCloseMobileRef.current) return;
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const rafId = window.requestAnimationFrame(() => {
+      mobileCloseBtnRef.current?.focus();
+    });
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
-        onCloseMobile();
+        e.preventDefault();
+        onCloseMobileRef.current?.();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isMobileOpen, onCloseMobile]);
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus?.();
+      previousFocusRef.current = null;
+    };
+  }, [isMobileOpen]);
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -113,6 +130,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
 
           {showMobileClose && onCloseMobile && (
             <button
+              ref={mobileCloseBtnRef}
               type="button"
               data-testid="mobile-drawer-close"
               aria-label="Fechar painel"

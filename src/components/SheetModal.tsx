@@ -1,4 +1,4 @@
-import React, { useRef, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { X, Download, Copy, Check, Upload, Printer } from 'lucide-react';
 import { CharacterSheetState, SYSTEM_OPTIONS, SystemId } from '../core/sheetModel';
 import { AppTranslations, getTranslations } from '../core/i18n';
@@ -32,6 +32,35 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const [importError, setImportError] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  onCloseRef.current = onClose;
+
+  useEffect(() => {
+    if (!mode) return;
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const rafId = window.requestAnimationFrame(() => {
+      closeButtonRef.current?.focus();
+    });
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        onCloseRef.current();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      window.cancelAnimationFrame(rafId);
+      window.removeEventListener('keydown', handleKeyDown);
+      previousFocusRef.current?.focus?.();
+      previousFocusRef.current = null;
+    };
+  }, [mode]);
 
   if (!mode) return null;
 
@@ -102,6 +131,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
             </h2>
           </div>
           <button
+            ref={closeButtonRef}
             type="button"
             onClick={onClose}
             aria-label={t.closeAria}

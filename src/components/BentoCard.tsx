@@ -166,10 +166,15 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             : 'flex flex-col gap-3'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
-        {fieldsToRender.length === 0 && mode === 'edicao' && (
-          <p className="no-print print:hidden font-mono-tech text-[11px] text-[var(--ink-muted)] py-2">
-            {t.emptyBlockEdit}
-          </p>
+        {fieldsToRender.length === 0 && (
+          <div
+            data-testid={mode === 'jogo' ? `empty-card-play-${card.id}` : undefined}
+            className="no-print print:hidden p-3 border-[1.5px] border-dashed border-[var(--border-ink)]/45 rounded-[var(--radius-control)] bg-[var(--bg-card-alt)]"
+          >
+            <p className="font-mono-tech text-[11px] font-semibold text-[var(--ink-secondary)]">
+              {mode === 'edicao' ? t.emptyBlockEdit : t.emptyBlockPlay}
+            </p>
+          </div>
         )}
 
         {fieldsToRender.map((field) => (

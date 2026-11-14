@@ -1,5 +1,5 @@
 import React from 'react';
-import { Globe, Printer } from 'lucide-react';
+import { Globe, Printer, Volume2, VolumeX } from 'lucide-react';
 import { AppMode, SYSTEM_OPTIONS, SystemId } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, LANGUAGE_OPTIONS } from '../core/i18n';
 
@@ -8,10 +8,12 @@ interface TopBarProps {
   activeSystemId: SystemId;
   mode: AppMode;
   language: AppLanguage;
+  isAudioMuted: boolean;
   t: AppTranslations['topBar'];
   onChangeSystemCode: (nextCode: string) => void;
   onSwitchSystem: (systemId: SystemId) => void;
   onChangeLanguage: (lang: AppLanguage) => void;
+  onToggleAudioMute: () => void;
   onModeChange: (mode: AppMode) => void;
   onNewSheet: () => void;
   onOpenModal: () => void;
@@ -24,10 +26,12 @@ export const TopBar: React.FC<TopBarProps> = ({
   activeSystemId,
   mode,
   language,
+  isAudioMuted,
   t,
   onChangeSystemCode,
   onSwitchSystem,
   onChangeLanguage,
+  onToggleAudioMute,
   onModeChange,
   onNewSheet,
   onOpenModal,
@@ -104,6 +108,24 @@ export const TopBar: React.FC<TopBarProps> = ({
             ))}
           </select>
         </div>
+
+        <button
+          type="button"
+          data-testid="audio-mute-toggle"
+          aria-pressed={isAudioMuted}
+          aria-label={isAudioMuted ? 'Unmute dice sound' : 'Mute dice sound'}
+          title={isAudioMuted ? 'Unmute dice sound' : 'Mute dice sound'}
+          onClick={onToggleAudioMute}
+          className={`cyber-btn-outline mobile-touch-stepper w-8 h-8 sm:w-auto sm:h-auto sm:px-2 sm:py-1.5 inline-flex items-center justify-center shrink-0 cursor-pointer ${
+            isAudioMuted ? 'bg-[var(--bg-header-strip)] text-[var(--ink-secondary)]' : ''
+          }`}
+        >
+          {isAudioMuted ? (
+            <VolumeX className="w-3.5 h-3.5 text-[var(--accent-danger)]" aria-hidden="true" />
+          ) : (
+            <Volume2 className="w-3.5 h-3.5 text-[var(--accent-wine)]" aria-hidden="true" />
+          )}
+        </button>
 
         <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 shrink-0">
           <button

@@ -1,6 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { computeClatterImpulseSchedule, playDiceClatter } from './diceAudio';
+import {
+  computeClatterImpulseSchedule,
+  computeOutcomeAudioCue,
+  isDiceAudioMuted,
+  playDiceClatter,
+  setDiceAudioMuted,
+} from './diceAudio';
 
 test('computeClatterImpulseSchedule scales tap count and strictly increases delays', () => {
   const single = computeClatterImpulseSchedule(1, () => 0.5);
@@ -18,6 +24,19 @@ test('computeClatterImpulseSchedule scales tap count and strictly increases dela
   assert.ok(pool[pool.length - 1].gain < pool[0].gain);
 });
 
-test('playDiceClatter fails gracefully without throwing in non-browser environment', () => {
+test('computeOutcomeAudioCue selects critical, fumble, or none deterministically', () => {
+  assert.equal(computeOutcomeAudioCue({ isCritical: true, isFumble: false }), 'critical');
+  assert.equal(computeOutcomeAudioCue({ isCritical: false, isFumble: true }), 'fumble');
+  assert.equal(computeOutcomeAudioCue({ isCritical: false, isFumble: false }), 'none');
+  assert.equal(computeOutcomeAudioCue({ isCritical: true, isFumble: true }), 'critical');
+});
+
+test('setDiceAudioMuted updates mute state and playDiceClatter returns false safely', () => {
+  setDiceAudioMuted(true);
+  assert.equal(isDiceAudioMuted(), true);
+  assert.equal(playDiceClatter({ diceCount: 4, isFumble: true }), false);
+
+  setDiceAudioMuted(false);
+  assert.equal(isDiceAudioMuted(), false);
   assert.equal(playDiceClatter({ diceCount: 4 }), false);
 });

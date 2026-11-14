@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Dices } from 'lucide-react';
+import { Dices, X } from 'lucide-react';
 import {
   addCardToSheet,
   addFieldToCard,
@@ -50,7 +50,7 @@ import {
   rollDiceExpression,
   WodPoolOptions,
 } from './core/formula';
-import { playDiceClatter } from './core/diceAudio';
+import { isDiceAudioMuted, playDiceClatter, setDiceAudioMuted } from './core/diceAudio';
 import {
   AppLanguage,
   getTranslations,
@@ -232,6 +232,9 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [modalMode, setModalMode] = useState<'open' | 'save' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
+  const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
+  const mobileRollToastTimerRef = useRef<number | null>(null);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
     phase: 'synced',
@@ -580,6 +583,30 @@ export default function App() {
     };
   }, [lastMirroredDigestRef, updatedAtRef, workspaceRef]);
 
+  useEffect(() => {
+    return () => {
+      if (mobileRollToastTimerRef.current !== null) {
+        window.clearTimeout(mobileRollToastTimerRef.current);
+      }
+    };
+  }, []);
+
+  const dismissMobileRollToast = () => {
+    if (mobileRollToastTimerRef.current !== null) {
+      window.clearTimeout(mobileRollToastTimerRef.current);
+      mobileRollToastTimerRef.current = null;
+    }
+    setMobileRollToast(null);
+  };
+
+  const handleToggleAudioMute = () => {
+    setIsAudioMuted((prev) => {
+      const next = !prev;
+      setDiceAudioMuted(next);
+      return next;
+    });
+  };
+
   const triggerFlash = (msg: string) => {
     setFlashMessage(msg);
     window.setTimeout(() => {
@@ -655,6 +682,14 @@ export default function App() {
       isCritical: result.isCritical,
       isFumble: result.isFumble,
     });
+    setMobileRollToast(entry);
+    if (mobileRollToastTimerRef.current !== null) {
+      window.clearTimeout(mobileRollToastTimerRef.current);
+    }
+    mobileRollToastTimerRef.current = window.setTimeout(() => {
+      mobileRollToastTimerRef.current = null;
+      setMobileRollToast((curr) => (curr?.id === entry.id ? null : curr));
+    }, 4000);
     setSheet((prev) => {
       const updatedSheet = wpAutoSuccess ? consumeWillpowerForRoll(prev) : prev;
       return {
@@ -864,16 +899,18 @@ export default function App() {
   };
 
   return (
-    <div className="print-shell min-h-screen lg:h-screen print:h-auto flex flex-col bg-[var(--bg-canvas)] text-[var(--ink-primary)] overflow-x-hidden lg:overflow-hidden print:overflow-visible">
+    <div className="print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-canvas)] text-[var(--ink-primary)] overflow-hidden print:overflow-visible">
       <TopBar
         systemCode={sheet.systemCode}
         activeSystemId={activeSystemId}
         mode={mode}
         language={language}
+        isAudioMuted={isAudioMuted}
         t={t.topBar}
         onChangeSystemCode={(systemCode) => setSheet((prev) => ({ ...prev, systemCode }))}
         onSwitchSystem={handleSwitchSystem}
         onChangeLanguage={setLanguage}
+        onToggleAudioMute={handleToggleAudioMute}
         onModeChange={setMode}
         onNewSheet={handleNewSheet}
         onOpenModal={() => setModalMode('open')}
@@ -882,7 +919,7 @@ export default function App() {
       />
 
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-        <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 pb-20 lg:pb-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
+        <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
           <div className="max-w-[1140px] mx-auto">
             <PrintSheetHeader
               sheet={sheet}
@@ -906,17 +943,22 @@ export default function App() {
               }
             />
 
-            {activeTab !== 'xp' && (
-              <SheetSearchBar
-                query={searchQuery}
-                onChangeQuery={setSearchQuery}
-                matchedFieldCount={matchedFieldCount}
-                matchedCardCount={filteredCards.length}
-                t={t.searchBar}
-              />
-            )}
+            <div
+              role="tabpanel"
+              id={`sheet-tabpanel-${activeTab}`}
+              aria-labelledby={`sheet-tab-${activeTab}`}
+            >
+              {activeTab !== 'xp' && (
+                <SheetSearchBar
+                  query={searchQuery}
+                  onChangeQuery={setSearchQuery}
+                  matchedFieldCount={matchedFieldCount}
+                  matchedCardCount={filteredCards.length}
+                  t={t.searchBar}
+                />
+              )}
 
-            {activeTab === 'xp' ? (
+              {activeTab === 'xp' ? (
               <XpUpgradeWorkspace
                 sheet={sheet}
                 t={t.xp}
@@ -1011,6 +1053,7 @@ export default function App() {
                 )}
               </div>
             )}
+            </div>
           </div>
         </main>
 
@@ -1026,41 +1069,162 @@ export default function App() {
         />
       </div>
 
-      <button
-        type="button"
-        data-testid="mobile-drawer-fab"
-        aria-label={`${t.sidebar.rollLogsTab} / ${t.sidebar.rulesTab}`}
-        aria-expanded={mobileSidebarOpen}
-        onClick={() => setMobileSidebarOpen((prev) => !prev)}
-        className="no-print print:hidden lg:hidden fixed z-30 mobile-drawer-fab cyber-roll-btn px-3 py-2 text-[11px] font-bold tracking-wider uppercase flex items-center gap-1.5 shadow-[3px_3px_0_#5B0F18] cursor-pointer"
-      >
-        <Dices className="w-4 h-4 shrink-0" aria-hidden="true" />
-        <span>LOGS</span>
-        <span className="px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums leading-none">
-          {sheet.rollLogs.length}
-        </span>
-      </button>
+      <div className="no-print print:hidden relative shrink-0 mobile-bottom-dock bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] lg:border-t-0 lg:bg-transparent">
+        {mobileRollToast && (
+          <div
+            role="status"
+            aria-live="polite"
+            data-testid="mobile-roll-toast"
+            className="mobile-roll-toast lg:hidden absolute bottom-full mb-2 z-30 flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-card)] border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] shadow-[3px_3px_0_#0B0B0B]"
+          >
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
+              <span
+                data-testid="mobile-roll-toast-total"
+                className="font-display text-2xl font-extrabold leading-none text-[var(--ink-primary)] tabular-nums shrink-0"
+              >
+                {mobileRollToast.total}
+              </span>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-1.5 min-w-0">
+                  <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)] truncate">
+                    {mobileRollToast.label}
+                  </span>
+                  {(() => {
+                    if (mobileRollToast.isPoolRoll) {
+                      const outcome =
+                        mobileRollToast.outcome ??
+                        (mobileRollToast.isFumble
+                          ? 'botch'
+                          : mobileRollToast.total > 0
+                            ? 'success'
+                            : 'failure');
+                      if (outcome === 'botch') {
+                        return (
+                          <span
+                            data-testid="mobile-roll-toast-status"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[#991B1B] border border-[var(--accent-danger)] rounded-[3px] uppercase shrink-0"
+                          >
+                            BOTCH!
+                          </span>
+                        );
+                      }
+                      if (outcome === 'failure') {
+                        return (
+                          <span
+                            data-testid="mobile-roll-toast-status"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--ink-secondary)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
+                          >
+                            FAILURE
+                          </span>
+                        );
+                      }
+                      return (
+                        <span
+                          data-testid="mobile-roll-toast-status"
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
+                        >
+                          SUCCESS
+                        </span>
+                      );
+                    }
+                    if (mobileRollToast.isCritical) {
+                      return (
+                        <span
+                          data-testid="mobile-roll-toast-status"
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
+                        >
+                          CRÍTICO
+                        </span>
+                      );
+                    }
+                    if (mobileRollToast.isFumble) {
+                      return (
+                        <span
+                          data-testid="mobile-roll-toast-status"
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[#991B1B] border border-[var(--accent-danger)] rounded-[3px] uppercase shrink-0"
+                        >
+                          FALHA 1
+                        </span>
+                      );
+                    }
+                    return null;
+                  })()}
+                </div>
+                <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
+                  {mobileRollToast.isPoolRoll
+                    ? `${mobileRollToast.total} ${
+                        mobileRollToast.isSoak ? 'SOAKED' : mobileRollToast.total === 1 ? 'SUC' : 'SUCS'
+                      } · ${mobileRollToast.formula}`
+                    : mobileRollToast.breakdown}
+                </div>
+              </div>
+            </div>
 
-      <StatusBar
-        mode={mode}
-        errorCount={evaluation.formulaErrors.length}
-        firstError={evaluation.formulaErrors[0]?.error}
-        totalCargoWeight={evaluation.totalCargoWeight}
-        availableXp={availableXp}
-        rollCount={sheet.rollLogs.length}
-        flashMessage={flashMessage}
-        roomSyncState={roomSyncState}
-        t={t.statusBar}
-        onForceRoomSync={() => {
-          if (editDebounceTimerRef.current !== null) {
-            window.clearTimeout(editDebounceTimerRef.current);
-            editDebounceTimerRef.current = null;
-          }
-          const nextTs = Math.max(Date.now(), updatedAtRef.current + 1);
-          updatedAtRef.current = nextTs;
-          void executeRoomSync(workspaceRef.current, nextTs, { flashOnSuccess: true });
-        }}
-      />
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                data-testid="mobile-roll-toast-open-log"
+                onClick={() => {
+                  dismissMobileRollToast();
+                  setMobileSidebarOpen(true);
+                }}
+                className="cyber-btn-outline px-2 py-1 text-[10px] font-bold uppercase cursor-pointer"
+              >
+                LOG
+              </button>
+              <button
+                type="button"
+                data-testid="mobile-roll-toast-close"
+                aria-label="Fechar aviso de rolagem"
+                onClick={dismissMobileRollToast}
+                className="cyber-btn-outline w-7 h-7 flex items-center justify-center cursor-pointer"
+              >
+                <X className="w-3.5 h-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          </div>
+        )}
+
+        <div className="flex items-center justify-between gap-2 lg:block">
+          <div className="flex-1 min-w-0">
+            <StatusBar
+              mode={mode}
+              errorCount={evaluation.formulaErrors.length}
+              firstError={evaluation.formulaErrors[0]?.error}
+              totalCargoWeight={evaluation.totalCargoWeight}
+              availableXp={availableXp}
+              rollCount={sheet.rollLogs.length}
+              flashMessage={flashMessage}
+              roomSyncState={roomSyncState}
+              t={t.statusBar}
+              onForceRoomSync={() => {
+                if (editDebounceTimerRef.current !== null) {
+                  window.clearTimeout(editDebounceTimerRef.current);
+                  editDebounceTimerRef.current = null;
+                }
+                const nextTs = Math.max(Date.now(), updatedAtRef.current + 1);
+                updatedAtRef.current = nextTs;
+                void executeRoomSync(workspaceRef.current, nextTs, { flashOnSuccess: true });
+              }}
+            />
+          </div>
+
+          <button
+            type="button"
+            data-testid="mobile-drawer-fab"
+            aria-label={`${t.sidebar.rollLogsTab} / ${t.sidebar.rulesTab}`}
+            aria-expanded={mobileSidebarOpen}
+            onClick={() => setMobileSidebarOpen((prev) => !prev)}
+            className="lg:hidden mobile-drawer-fab cyber-roll-btn px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shrink-0 cursor-pointer"
+          >
+            <Dices className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+            <span>LOGS</span>
+            <span className="px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums leading-none">
+              {sheet.rollLogs.length}
+            </span>
+          </button>
+        </div>
+      </div>
 
       <SheetModal
         mode={modalMode}
