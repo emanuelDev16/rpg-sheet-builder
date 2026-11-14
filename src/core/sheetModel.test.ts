@@ -14,10 +14,16 @@ import {
   createPresetBySystemId,
   detectSystemId,
   evaluateSheet,
+  fromCanonicalSheet,
+  getOrCreateDeviceId,
+  isValidIsoDateTime,
+  migrateLegacySheetMetadata,
   migrateLegacyWodSheet,
+  migrateLocalStorageSheet,
   removeCardFromSheet,
   removeRepeatableRow,
   resolveRollPreview,
+  toCanonicalSheet,
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
@@ -208,4 +214,63 @@ test('Custom blank sheet starts empty without D&D defaults and supports building
 
   sheet = removeCardFromSheet(sheet, 'c_custom_1');
   assert.equal(sheet.cards.length, 0);
+});
+
+test('Sheet metadata contract initializes revision=1, ISO-8601 updatedAt, and persistent deviceId, and migrates legacy localStorage sheets', () => {
+  const store = new Map<string, string>();
+  const mockStorage = {
+    getItem: (k: string) => store.get(k) ?? null,
+    setItem: (k: string, v: string) => {
+      store.set(k, v);
+    },
+  };
+
+  const devId1 = getOrCreateDeviceId(mockStorage);
+  const devId2 = getOrCreateDeviceId(mockStorage);
+  assert.equal(devId1, devId2);
+  assert.ok(devId1.length >= 8);
+
+  const fresh = createDefaultSheet();
+  assert.equal(fresh.revision, 1);
+  assert.equal(isValidIsoDateTime(fresh.updatedAt), true);
+  assert.ok(fresh.deviceId.length >= 1);
+
+  // Local edits update updatedAt and keep revision unchanged (only server increments revision)
+  const mutated = updateFieldValue(fresh, 'f_strength', 5);
+  assert.equal(mutated.revision, 1);
+  assert.equal(isValidIsoDateTime(mutated.updatedAt), true);
+
+  // Migrate legacy localStorage sheet lacking revision/updatedAt/deviceId
+  const legacyRaw = {
+    characterName: 'LEGACY VAMPIRE',
+    systemName: 'WORLD OF DARKNESS // V5',
+    tabs: [{ id: 'geral', label: '01. CORE' }],
+    cards: [],
+  };
+  const migrated = migrateLocalStorageSheet(legacyRaw, 'wod', mockStorage);
+  assert.ok(migrated);
+  assert.equal(migrated.revision, 1);
+  assert.equal(migrated.deviceId, devId1);
+  assert.equal(isValidIsoDateTime(migrated.updatedAt), true);
+
+  // Canonical conversion preserves metadata and round-trips cleanly
+  const canonical = toCanonicalSheet(fresh);
+  assert.equal(canonical.revision, 1);
+  assert.equal(canonical.deviceId, fresh.deviceId);
+  assert.equal(canonical.updatedAt, fresh.updatedAt);
+
+  const roundTripped = fromCanonicalSheet(canonical, fresh);
+  assert.equal(roundTripped.revision, 1);
+  assert.equal(roundTripped.deviceId, fresh.deviceId);
+  assert.equal(roundTripped.characterName, fresh.characterName);
+
+  const fallbackMeta = migrateLegacySheetMetadata({
+    ...fresh,
+    revision: 0,
+    updatedAt: 'not-a-date',
+    deviceId: '',
+  }, mockStorage);
+  assert.equal(fallbackMeta.revision, 1);
+  assert.equal(fallbackMeta.deviceId, devId1);
+  assert.equal(isValidIsoDateTime(fallbackMeta.updatedAt), true);
 });

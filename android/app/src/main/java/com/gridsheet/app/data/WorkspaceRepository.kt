@@ -19,6 +19,7 @@ import java.io.InputStreamReader
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.util.UUID
 
 @Serializable
 data class GroundedSource(
@@ -52,31 +53,50 @@ class WorkspaceRepository(context: Context) {
         prettyPrint = true
     }
 
+    fun getOrCreateDeviceId(): String {
+        val existing = prefs.getString(DEVICE_ID_KEY, null)?.trim()
+        if (!existing.isNullOrEmpty()) {
+            return existing
+        }
+        val created = UUID.randomUUID().toString()
+        prefs.edit().putString(DEVICE_ID_KEY, created).apply()
+        return created
+    }
+
     fun observeOfflineSheetCount(): Flow<Int> = roomRepository.observeOfflineSheetCount()
 
     private fun readPrefsWorkspaceRaw(): Pair<WorkspaceState?, Long> {
         val raw = prefs.getString(WORKSPACE_KEY, null)
         val updatedAt = prefs.getLong(WORKSPACE_UPDATED_AT_KEY, 0L)
+        val localDeviceId = getOrCreateDeviceId()
         if (!raw.isNullOrBlank()) {
             val parsed = runCatching {
                 json.decodeFromString<WorkspaceState>(raw)
             }.getOrNull()
             if (parsed != null && parsed.sheetsBySystem.isNotEmpty()) {
-                return parsed to updatedAt
+                val migrated = parsed.copy(
+                    sheetsBySystem = parsed.sheetsBySystem.mapValues { (sysId, s) ->
+                        Presets.migrateSheetMetadata(s.copy(systemId = sysId), localDeviceId)
+                    }
+                )
+                return migrated to updatedAt
             }
         }
         return null to updatedAt
     }
 
     fun loadWorkspace(): WorkspaceState {
+        val localDeviceId = getOrCreateDeviceId()
         val (prefsWs, _) = readPrefsWorkspaceRaw()
         if (prefsWs != null) {
             return prefsWs.copy(
-                sheetsBySystem = prefsWs.sheetsBySystem.mapValues { (_, s) -> Presets.migrateLegacyWodSheet(s) }
+                sheetsBySystem = prefsWs.sheetsBySystem.mapValues { (_, s) ->
+                    Presets.migrateLegacyWodSheet(s, localDeviceId)
+                }
             )
         }
 
-        val initialWod = Presets.createWorldOfDarknessSheet()
+        val initialWod = Presets.createWorldOfDarknessSheet(localDeviceId)
         return WorkspaceState(
             activeSystemId = SystemId.WOD,
             sheetsBySystem = mapOf(SystemId.WOD to initialWod)
@@ -85,7 +105,13 @@ class WorkspaceRepository(context: Context) {
 
     fun saveWorkspace(workspace: WorkspaceState, timestampMillis: Long = System.currentTimeMillis()) {
         runCatching {
-            val encoded = json.encodeToString(WorkspaceState.serializer(), workspace)
+            val localDeviceId = getOrCreateDeviceId()
+            val normalized = workspace.copy(
+                sheetsBySystem = workspace.sheetsBySystem.mapValues { (sysId, sheet) ->
+                    Presets.migrateSheetMetadata(sheet.copy(systemId = sysId), localDeviceId)
+                }
+            )
+            val encoded = json.encodeToString(WorkspaceState.serializer(), normalized)
             prefs.edit()
                 .putString(WORKSPACE_KEY, encoded)
                 .putLong(WORKSPACE_UPDATED_AT_KEY, timestampMillis)
@@ -93,11 +119,22 @@ class WorkspaceRepository(context: Context) {
         }
     }
 
-    suspend fun saveToRoom(workspace: WorkspaceState, timestampMillis: Long = System.currentTimeMillis()) {
+    suspend fun saveToRoom(
+        workspace: WorkspaceState,
+        timestampMillis: Long = System.currentTimeMillis(),
+        isDirty: Boolean = true
+    ) {
+        val localDeviceId = getOrCreateDeviceId()
+        val normalized = workspace.copy(
+            sheetsBySystem = workspace.sheetsBySystem.mapValues { (sysId, sheet) ->
+                Presets.migrateSheetMetadata(sheet.copy(systemId = sysId), localDeviceId)
+            }
+        )
         roomRepository.mirrorWorkspaceIntoRoom(
-            workspace = workspace,
+            workspace = normalized,
             updatedAtMillis = timestampMillis,
-            syncState = "SYNCED"
+            syncState = if (isDirty) "DIRTY" else "SYNCED",
+            isDirty = isDirty
         )
     }
 
@@ -120,13 +157,15 @@ class WorkspaceRepository(context: Context) {
         val (prefsWs, prefsUpdatedAt) = readPrefsWorkspaceRaw()
         val nowMillis = System.currentTimeMillis()
 
+        val localDeviceId = getOrCreateDeviceId()
         val reconciled = WorkspaceSyncEngine.reconcile(
             roomSheets = roomSheets,
             roomMeta = roomMeta,
             prefsWorkspace = prefsWs,
             prefsUpdatedAt = prefsUpdatedAt,
             nowMillis = nowMillis,
-            json = json
+            json = json,
+            localDeviceId = localDeviceId
         )
 
         roomRepository.upsertReconciledEntities(
@@ -135,7 +174,9 @@ class WorkspaceRepository(context: Context) {
         )
 
         val migratedWorkspace = reconciled.workspace.copy(
-            sheetsBySystem = reconciled.workspace.sheetsBySystem.mapValues { (_, s) -> Presets.migrateLegacyWodSheet(s) }
+            sheetsBySystem = reconciled.workspace.sheetsBySystem.mapValues { (_, s) ->
+                Presets.migrateLegacyWodSheet(s, localDeviceId)
+            }
         )
 
         if (reconciled.shouldUpdatePrefs || migratedWorkspace != reconciled.workspace) {
@@ -197,5 +238,6 @@ class WorkspaceRepository(context: Context) {
     companion object {
         private const val WORKSPACE_KEY = "grid_sheet_workspace_v2"
         private const val WORKSPACE_UPDATED_AT_KEY = "grid_sheet_workspace_updated_at"
+        private const val DEVICE_ID_KEY = "grid_sheet_device_id"
     }
 }

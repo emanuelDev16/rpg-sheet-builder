@@ -2,9 +2,68 @@ import {
   evaluateFormula,
   parseWodPoolExpression,
   rollDiceExpression,
-  VariableMap,
-  WodOutcome,
+  type VariableMap,
+  type WodOutcome,
 } from './formula';
+
+export const DEVICE_ID_STORAGE_KEY = 'grid_sheet_device_id_v1';
+
+let fallbackInMemoryDeviceId: string | null = null;
+
+function generateUuidV4(): string {
+  if (typeof globalThis.crypto !== 'undefined' && typeof globalThis.crypto.randomUUID === 'function') {
+    return globalThis.crypto.randomUUID();
+  }
+  return 'xxxxxxxx-xxxx-4xxx-yxxx-xxxxxxxxxxxx'.replace(/[xy]/g, (ch) => {
+    const r = (Math.random() * 16) | 0;
+    const v = ch === 'x' ? r : (r & 0x3) | 0x8;
+    return v.toString(16);
+  });
+}
+
+export function getOrCreateDeviceId(
+  storage?: Pick<Storage, 'getItem' | 'setItem'> | null,
+): string {
+  const targetStorage =
+    storage !== undefined
+      ? storage
+      : typeof globalThis !== 'undefined' && 'localStorage' in globalThis
+        ? globalThis.localStorage
+        : null;
+
+  if (targetStorage) {
+    try {
+      const existing = targetStorage.getItem(DEVICE_ID_STORAGE_KEY);
+      if (typeof existing === 'string' && existing.trim().length > 0) {
+        return existing.trim();
+      }
+      const created = generateUuidV4();
+      targetStorage.setItem(DEVICE_ID_STORAGE_KEY, created);
+      fallbackInMemoryDeviceId = created;
+      return created;
+    } catch {
+      // Fall through to in-memory UUID when storage is blocked
+    }
+  }
+
+  if (!fallbackInMemoryDeviceId) {
+    fallbackInMemoryDeviceId = generateUuidV4();
+  }
+  return fallbackInMemoryDeviceId;
+}
+
+export function nowIsoUtc(): string {
+  return new Date().toISOString();
+}
+
+export function isValidIsoDateTime(value: unknown): value is string {
+  if (typeof value !== 'string' || value.trim().length === 0) return false;
+  if (!/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(?:\.\d+)?(?:Z|[+-]\d{2}:\d{2})$/.test(value)) {
+    return false;
+  }
+  return !Number.isNaN(Date.parse(value));
+}
+
 
 export type TabId = 'geral' | 'magias' | 'xp';
 export type AppMode = 'jogo' | 'edicao';
@@ -140,13 +199,74 @@ export interface XpState {
 }
 
 export interface CharacterSheetState {
+  id?: string;
   systemId?: SystemId;
   systemName: string;
   systemCode: string;
   characterName: string;
+  revision: number;
+  updatedAt: string;
+  deviceId: string;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
   xp?: XpState;
+}
+
+export type Sheet = CharacterSheetState;
+
+export type CanonicalFieldType =
+  | 'number'
+  | 'text'
+  | 'resource'
+  | 'calculated'
+  | 'boolean'
+  | 'dots'
+  | 'roll_button'
+  | 'repeatable_list';
+
+export interface CanonicalRollConfig {
+  mode: 'standard' | 'storyteller_skill' | 'storyteller_soak';
+  expression: string;
+  difficulty?: number;
+  specialty?: boolean;
+  useWillpower?: boolean;
+}
+
+export interface CanonicalField {
+  id: string;
+  label: string;
+  type: CanonicalFieldType;
+  value?: number | string | boolean | null;
+  maxValue?: number | null;
+  maxDots?: number;
+  formula?: string;
+  rollConfig?: CanonicalRollConfig;
+  subFields?: CanonicalField[];
+  rows?: Array<Record<string, number | string | boolean | null>>;
+}
+
+export interface CanonicalBentoCard {
+  id: string;
+  tag?: string;
+  title: string;
+  columns: number;
+  fields: CanonicalField[];
+}
+
+export interface CanonicalTab {
+  id: string;
+  title: string;
+  cards: CanonicalBentoCard[];
+}
+
+export interface CanonicalSheet {
+  id: string;
+  name: string;
+  systemId: string;
+  revision: number;
+  updatedAt: string;
+  deviceId: string;
+  tabs: CanonicalTab[];
 }
 
 export interface WorkspaceState {
@@ -170,10 +290,14 @@ export interface SheetEvaluation {
 
 export function createWorldOfDarknessSheet(): CharacterSheetState {
   return {
+    id: 'sheet_wod',
     systemId: 'wod',
     systemName: 'WORLD OF DARKNESS // STORYTELLER',
     systemCode: '/SYS: WORLD OF DARKNESS · d10 STORYTELLER',
     characterName: 'JULIAN CROSS · NEONATE (VENTRUE)',
+    revision: 1,
+    updatedAt: nowIsoUtc(),
+    deviceId: getOrCreateDeviceId(),
     cards: [
       {
         id: 'card_identidade',
@@ -544,10 +668,14 @@ export function createDefaultSheet(): CharacterSheetState {
 
 export function createDnd5ePreset(): CharacterSheetState {
   return {
+    id: 'sheet_dnd5e',
     systemId: 'dnd5e',
     systemName: 'D&D 5E // D20 SYSTEM',
     systemCode: '/SYS: D&D 5E · D20 HEROIC EDITION',
     characterName: 'LYRA VANCE · ELDRITCH KNIGHT (LV 5)',
+    revision: 1,
+    updatedAt: nowIsoUtc(),
+    deviceId: getOrCreateDeviceId(),
     cards: [
       {
         id: 'card_identidade',
@@ -925,10 +1053,14 @@ export function createDnd5ePreset(): CharacterSheetState {
 
 export function createGenericD20Preset(): CharacterSheetState {
   return {
+    id: 'sheet_default',
     systemId: 'default',
     systemName: 'SISTEMA GENÉRICO EXEMPLO',
     systemCode: '/SYS: SISTEMA GENÉRICO EXEMPLO',
     characterName: 'KAELEN VANCE · OPERADOR',
+    revision: 1,
+    updatedAt: nowIsoUtc(),
+    deviceId: getOrCreateDeviceId(),
     cards: [
       {
         id: 'card_identidade',
@@ -1235,10 +1367,14 @@ export function createGenericD20Preset(): CharacterSheetState {
 
 export function createBlankSheet(): CharacterSheetState {
   return {
+    id: 'sheet_blank',
     systemId: 'blank',
     systemName: 'SISTEMA CUSTOMIZADO',
     systemCode: '/SYS: SISTEMA CUSTOMIZADO',
     characterName: 'NOVO PERSONAGEM',
+    revision: 1,
+    updatedAt: nowIsoUtc(),
+    deviceId: getOrCreateDeviceId(),
     cards: [],
     rollLogs: [],
     xp: {
@@ -1253,10 +1389,14 @@ export function createCyberpunkPreset(): CharacterSheetState {
   const base = createGenericD20Preset();
   return {
     ...base,
+    id: 'sheet_cyberpunk',
     systemId: 'cyberpunk',
     systemName: 'NET//RUNNER D10 PROTOCOL',
     systemCode: '/SYS: CYBERPUNK D10 PROTOCOL',
     characterName: 'ZERO_K · NETRUNNER',
+    revision: 1,
+    updatedAt: nowIsoUtc(),
+    deviceId: getOrCreateDeviceId(),
     cards: base.cards.map((c) => {
       if (c.id === 'card_atributos') {
         return {
@@ -1431,6 +1571,68 @@ export function resolveRollPreview(
     .replace(/\+\s*-(\d+)/g, '- $1');
 }
 
+export function touchSheetMetadata(
+  sheet: CharacterSheetState,
+  options?: { updatedAt?: string; deviceId?: string },
+): CharacterSheetState {
+  const sysId = detectSystemId(sheet);
+  const revision =
+    typeof sheet.revision === 'number' && Number.isInteger(sheet.revision) && sheet.revision >= 1
+      ? sheet.revision
+      : 1;
+  return {
+    ...sheet,
+    id:
+      typeof sheet.id === 'string' && sheet.id.trim().length > 0
+        ? sheet.id.trim()
+        : `sheet_${sysId}`,
+    systemId: sysId,
+    revision,
+    updatedAt: options?.updatedAt ?? nowIsoUtc(),
+    deviceId:
+      options?.deviceId ??
+      (typeof sheet.deviceId === 'string' && sheet.deviceId.trim().length > 0
+        ? sheet.deviceId.trim()
+        : getOrCreateDeviceId()),
+  };
+}
+
+export function migrateLegacySheetMetadata(
+  sheet: Partial<CharacterSheetState> & Pick<CharacterSheetState, 'systemName' | 'systemCode' | 'characterName' | 'cards'>,
+  options?: {
+    deviceId?: string;
+    nowIso?: string;
+    storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
+  },
+): CharacterSheetState {
+  const sysId = detectSystemId(sheet as CharacterSheetState);
+  const revision =
+    typeof sheet.revision === 'number' && Number.isInteger(sheet.revision) && sheet.revision >= 1
+      ? sheet.revision
+      : 1;
+  const updatedAt = isValidIsoDateTime(sheet.updatedAt)
+    ? sheet.updatedAt
+    : options?.nowIso ?? nowIsoUtc();
+  const deviceId =
+    typeof sheet.deviceId === 'string' && sheet.deviceId.trim().length > 0
+      ? sheet.deviceId.trim()
+      : options?.deviceId ?? getOrCreateDeviceId(options?.storage);
+  const id =
+    typeof sheet.id === 'string' && /^[a-zA-Z0-9_-]{1,64}$/.test(sheet.id.trim())
+      ? sheet.id.trim()
+      : `sheet_${sysId}`;
+
+  return {
+    ...sheet,
+    id,
+    systemId: sysId,
+    revision,
+    updatedAt,
+    deviceId,
+    rollLogs: Array.isArray(sheet.rollLogs) ? sheet.rollLogs : [],
+  };
+}
+
 function syncWillpowerToggleWithResource(sheet: CharacterSheetState): CharacterSheetState {
   const wpField = sheet.cards
     .flatMap((c) => c.fields)
@@ -1459,13 +1661,13 @@ export function updateFieldValue(
   fieldId: string,
   nextValue: number | string | boolean,
 ): CharacterSheetState {
-  const updated: CharacterSheetState = {
+  const updated: CharacterSheetState = touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
       fields: card.fields.map((f) => (f.id === fieldId ? { ...f, value: nextValue } : f)),
     })),
-  };
+  });
   return syncWillpowerToggleWithResource(updated);
 }
 
@@ -1474,7 +1676,7 @@ export function adjustResourceValue(
   fieldId: string,
   delta: number,
 ): CharacterSheetState {
-  const updated: CharacterSheetState = {
+  const updated: CharacterSheetState = touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
@@ -1496,7 +1698,7 @@ export function adjustResourceValue(
         return { ...f, value: clamped };
       }),
     })),
-  };
+  });
   return syncWillpowerToggleWithResource(updated);
 }
 
@@ -1513,7 +1715,7 @@ export function consumeWillpowerForRoll(sheet: CharacterSheetState): CharacterSh
     return syncWillpowerToggleWithResource(sheet);
   }
 
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
@@ -1527,7 +1729,7 @@ export function consumeWillpowerForRoll(sheet: CharacterSheetState): CharacterSh
         return f;
       }),
     })),
-  };
+  });
 }
 
 export function adjustHealthDamage(
@@ -1536,7 +1738,7 @@ export function adjustHealthDamage(
   damageType: 'superficial' | 'aggravated',
   delta: number,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
@@ -1574,14 +1776,22 @@ export function adjustHealthDamage(
         };
       }),
     })),
-  };
+  });
 }
 
-export function migrateLegacyWodSheet(sheet: CharacterSheetState): CharacterSheetState {
-  if (detectSystemId(sheet) !== 'wod') return sheet;
+export function migrateLegacyWodSheet(
+  sheet: CharacterSheetState,
+  options?: {
+    deviceId?: string;
+    nowIso?: string;
+    storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
+  },
+): CharacterSheetState {
+  const withMeta = migrateLegacySheetMetadata(sheet, options);
+  if (detectSystemId(withMeta) !== 'wod') return withMeta;
   let changed = false;
 
-  const cards = sheet.cards.map((card) => {
+  const cards = withMeta.cards.map((card) => {
     let cardChanged = false;
     let nextTitle = card.title;
 
@@ -1677,7 +1887,65 @@ export function migrateLegacyWodSheet(sheet: CharacterSheetState): CharacterShee
     return card;
   });
 
-  return changed ? syncWillpowerToggleWithResource({ ...sheet, cards }) : syncWillpowerToggleWithResource(sheet);
+  return changed
+    ? syncWillpowerToggleWithResource({ ...withMeta, cards })
+    : syncWillpowerToggleWithResource(withMeta);
+}
+
+export function migrateLocalStorageSheet(
+  raw: unknown,
+  options?: {
+    deviceId?: string;
+    nowIso?: string;
+    storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
+  },
+): CharacterSheetState | null {
+  try {
+    const parsed = typeof raw === 'string' ? (JSON.parse(raw) as unknown) : raw;
+    if (!parsed || typeof parsed !== 'object') return null;
+    const candidate = parsed as Partial<CharacterSheetState>;
+    if (!Array.isArray(candidate.cards)) return null;
+    const base: CharacterSheetState = {
+      id: candidate.id,
+      systemId: candidate.systemId,
+      systemName: typeof candidate.systemName === 'string' ? candidate.systemName : 'SISTEMA CUSTOMIZADO',
+      systemCode: typeof candidate.systemCode === 'string' ? candidate.systemCode : '/SYS: CUSTOM',
+      characterName:
+        typeof candidate.characterName === 'string' && candidate.characterName.trim().length > 0
+          ? candidate.characterName
+          : 'NOVO PERSONAGEM',
+      revision: candidate.revision as number,
+      updatedAt: candidate.updatedAt as string,
+      deviceId: candidate.deviceId as string,
+      cards: candidate.cards,
+      rollLogs: Array.isArray(candidate.rollLogs) ? candidate.rollLogs : [],
+      xp: candidate.xp,
+    };
+    return migrateLegacyWodSheet(base, options);
+  } catch {
+    return null;
+  }
+}
+
+export function migrateWorkspaceSheets(
+  workspace: WorkspaceState,
+  options?: {
+    deviceId?: string;
+    nowIso?: string;
+    storage?: Pick<Storage, 'getItem' | 'setItem'> | null;
+  },
+): WorkspaceState {
+  const migratedSheets: Partial<Record<SystemId, CharacterSheetState>> = {};
+  for (const [key, sheetVal] of Object.entries(workspace.sheetsBySystem)) {
+    if (!sheetVal) continue;
+    const sysId = key as SystemId;
+    const migrated = migrateLegacyWodSheet({ ...sheetVal, systemId: sysId }, options);
+    migratedSheets[sysId] = { ...migrated, systemId: sysId };
+  }
+  return {
+    activeSystemId: workspace.activeSystemId,
+    sheetsBySystem: migratedSheets,
+  };
 }
 
 export function addRepeatableRow(
@@ -1685,7 +1953,7 @@ export function addRepeatableRow(
   fieldId: string,
   newId: string,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
@@ -1696,7 +1964,7 @@ export function addRepeatableRow(
         return { ...f, rows };
       }),
     })),
-  };
+  });
 }
 
 export function updateRepeatableRow(
@@ -1706,7 +1974,7 @@ export function updateRepeatableRow(
   col: 'col1' | 'col2',
   val: string | number,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
@@ -1716,7 +1984,7 @@ export function updateRepeatableRow(
         return { ...f, rows };
       }),
     })),
-  };
+  });
 }
 
 export function removeRepeatableRow(
@@ -1724,7 +1992,7 @@ export function removeRepeatableRow(
   fieldId: string,
   rowId: string,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
@@ -1734,7 +2002,7 @@ export function removeRepeatableRow(
         return { ...f, rows };
       }),
     })),
-  };
+  });
 }
 
 export function updateFieldSchema(
@@ -1742,13 +2010,13 @@ export function updateFieldSchema(
   fieldId: string,
   patch: Partial<SheetField>,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
       fields: card.fields.map((f) => (f.id === fieldId ? { ...f, ...patch } : f)),
     })),
-  };
+  });
 }
 
 export function addFieldToCard(
@@ -1756,12 +2024,12 @@ export function addFieldToCard(
   cardId: string,
   newField: SheetField,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) =>
       card.id === cardId ? { ...card, fields: [...card.fields, newField] } : card,
     ),
-  };
+  });
 }
 
 export function removeFieldFromCard(
@@ -1769,24 +2037,24 @@ export function removeFieldFromCard(
   cardId: string,
   fieldId: string,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) =>
       card.id === cardId
         ? { ...card, fields: card.fields.filter((f) => f.id !== fieldId) }
         : card,
     ),
-  };
+  });
 }
 
 export function addCardToSheet(
   sheet: CharacterSheetState,
   newCard: SheetCard,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: [...sheet.cards, newCard],
-  };
+  });
 }
 
 export function updateCardSchema(
@@ -1794,20 +2062,20 @@ export function updateCardSchema(
   cardId: string,
   patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'tab'>>,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => (card.id === cardId ? { ...card, ...patch } : card)),
-  };
+  });
 }
 
 export function removeCardFromSheet(
   sheet: CharacterSheetState,
   cardId: string,
 ): CharacterSheetState {
-  return {
+  return touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.filter((card) => card.id !== cardId),
-  };
+  });
 }
 
 export function detectSystemId(sheet: CharacterSheetState): SystemId {
@@ -1843,4 +2111,227 @@ export function createPresetBySystemId(systemId: SystemId): CharacterSheetState 
       return createBlankSheet();
   }
 }
+
+function sanitizeCanonicalFieldId(rawId: string, fallbackIndex: number): string {
+  const cleaned = rawId.trim().replace(/[^a-zA-Z0-9_]/g, '_');
+  const prefixed = /^[a-zA-Z_]/.test(cleaned) ? cleaned : `f_${cleaned || fallbackIndex}`;
+  return prefixed.slice(0, 64);
+}
+
+export function toCanonicalSheet(sheet: CharacterSheetState): CanonicalSheet {
+  const migrated = migrateLegacySheetMetadata(sheet);
+  const sysId = detectSystemId(migrated);
+  const tabDefs: Array<{ id: TabId; title: string }> = [
+    { id: 'geral', title: 'GERAL' },
+    { id: 'magias', title: 'MAGIAS' },
+    { id: 'xp', title: 'XP' },
+  ];
+
+  const tabs: CanonicalTab[] = tabDefs.map((tabDef) => {
+    const tabCards = migrated.cards.filter((c) => c.tab === tabDef.id);
+    const cards: CanonicalBentoCard[] = tabCards.slice(0, 50).map((card, cIdx) => {
+      const fields: CanonicalField[] = card.fields.slice(0, 100).map((field, fIdx) => {
+        const canonicalId = sanitizeCanonicalFieldId(field.key || field.id, fIdx);
+        const label = (field.label || canonicalId).slice(0, 100);
+
+        if (field.kind === 'roll') {
+          const expr = (field.rollExpr || '1d20').slice(0, 256);
+          const isPool = Boolean(parseWodPoolExpression(expr));
+          const mode: CanonicalRollConfig['mode'] = field.isSoak
+            ? 'storyteller_soak'
+            : isPool
+              ? 'storyteller_skill'
+              : 'standard';
+          const rollConfig: CanonicalRollConfig = {
+            mode,
+            expression: expr,
+          };
+          if (typeof field.rollDifficulty === 'number') {
+            rollConfig.difficulty = Math.max(2, Math.min(10, Math.round(field.rollDifficulty)));
+          }
+          if (typeof field.rollSpecialty === 'boolean') {
+            rollConfig.specialty = field.rollSpecialty;
+          }
+          return {
+            id: canonicalId,
+            label,
+            type: 'roll_button',
+            rollConfig,
+          };
+        }
+
+        if (field.kind === 'repeatable') {
+          return {
+            id: canonicalId,
+            label,
+            type: 'repeatable_list',
+            rows: (field.rows ?? []).slice(0, 200).map((r) => ({
+              id: r.id,
+              col1: r.col1,
+              col2: r.col2,
+            })),
+          };
+        }
+
+        if (field.kind === 'calculated') {
+          return {
+            id: canonicalId,
+            label,
+            type: 'calculated',
+            formula: (field.formula ?? '0').slice(0, 256),
+          };
+        }
+
+        if (field.kind === 'resource') {
+          return {
+            id: canonicalId,
+            label,
+            type: 'resource',
+            value: typeof field.value === 'number' ? field.value : 0,
+            maxValue: typeof field.max === 'number' ? field.max : 10,
+          };
+        }
+
+        if (field.kind === 'boolean') {
+          return {
+            id: canonicalId,
+            label,
+            type: 'boolean',
+            value: Boolean(field.value),
+          };
+        }
+
+        if (field.kind === 'text') {
+          return {
+            id: canonicalId,
+            label,
+            type: 'text',
+            value: typeof field.value === 'string' ? field.value : String(field.value ?? ''),
+          };
+        }
+
+        return {
+          id: canonicalId,
+          label,
+          type: 'number',
+          value: typeof field.value === 'number' ? field.value : Number(field.value ?? 0),
+        };
+      });
+
+      const canonicalCard: CanonicalBentoCard = {
+        id: (card.id || `card_${cIdx}`).slice(0, 64),
+        title: (card.title || 'BLOCO').slice(0, 80),
+        columns: Math.max(1, Math.min(4, card.colSpan ?? 1)),
+        fields,
+      };
+      if (card.code) {
+        canonicalCard.tag = card.code.slice(0, 40);
+      }
+      return canonicalCard;
+    });
+
+    return {
+      id: tabDef.id,
+      title: tabDef.title,
+      cards,
+    };
+  });
+
+  return {
+    id: (migrated.id || `sheet_${sysId}`).replace(/[^a-zA-Z0-9_-]/g, '_').slice(0, 64),
+    name: (migrated.characterName || 'NOVO PERSONAGEM').slice(0, 120),
+    systemId: sysId,
+    revision: Math.max(1, Math.floor(migrated.revision)),
+    updatedAt: migrated.updatedAt,
+    deviceId: migrated.deviceId,
+    tabs,
+  };
+}
+
+export function fromCanonicalSheet(
+  canonical: CanonicalSheet,
+  baseSheet?: CharacterSheetState,
+): CharacterSheetState {
+  const validSysIds: SystemId[] = ['wod', 'dnd5e', 'cyberpunk', 'default', 'blank'];
+  const sysId: SystemId = validSysIds.includes(canonical.systemId as SystemId)
+    ? (canonical.systemId as SystemId)
+    : baseSheet
+      ? detectSystemId(baseSheet)
+      : 'wod';
+
+  const template = baseSheet ?? createPresetBySystemId(sysId);
+  const existingFieldsById = new Map<string, SheetField>();
+  for (const c of template.cards) {
+    for (const f of c.fields) {
+      existingFieldsById.set(f.id, f);
+      existingFieldsById.set(f.key, f);
+    }
+  }
+
+  const cards: SheetCard[] = [];
+  for (const tab of canonical.tabs) {
+    const tabId: TabId =
+      tab.id === 'magias' || tab.id === 'xp' ? (tab.id as TabId) : 'geral';
+    for (const cCard of tab.cards) {
+      const existingCard = template.cards.find((c) => c.id === cCard.id);
+      const fields: SheetField[] = cCard.fields.map((cf) => {
+        const prev = existingFieldsById.get(cf.id);
+        const kind: FieldKind =
+          cf.type === 'roll_button'
+            ? 'roll'
+            : cf.type === 'repeatable_list'
+              ? 'repeatable'
+              : cf.type === 'dots'
+                ? 'number'
+                : (cf.type as FieldKind);
+
+        return {
+          ...prev,
+          id: prev?.id ?? cf.id,
+          key: prev?.key ?? cf.id,
+          label: cf.label,
+          kind,
+          value: cf.value !== null && cf.value !== undefined ? cf.value : prev?.value,
+          max: typeof cf.maxValue === 'number' ? cf.maxValue : prev?.max,
+          formula: cf.formula ?? prev?.formula,
+          rollExpr: cf.rollConfig?.expression ?? prev?.rollExpr,
+          rollDifficulty: cf.rollConfig?.difficulty ?? prev?.rollDifficulty,
+          rollSpecialty: cf.rollConfig?.specialty ?? prev?.rollSpecialty,
+          isSoak:
+            cf.rollConfig?.mode === 'storyteller_soak'
+              ? true
+              : prev?.isSoak,
+          rows: Array.isArray(cf.rows)
+            ? cf.rows.map((r, idx) => ({
+                id: String(r.id ?? `r_${idx}`),
+                col1: String(r.col1 ?? ''),
+                col2: typeof r.col2 === 'number' || typeof r.col2 === 'string' ? r.col2 : String(r.col2 ?? ''),
+              }))
+            : prev?.rows,
+        };
+      });
+
+      cards.push({
+        id: cCard.id,
+        tab: tabId,
+        code: cCard.tag ?? existingCard?.code ?? '//BLOCO',
+        title: cCard.title,
+        colSpan: cCard.columns === 2 ? 2 : 1,
+        fields,
+      });
+    }
+  }
+
+  return {
+    ...template,
+    id: canonical.id,
+    systemId: sysId,
+    characterName: canonical.name,
+    revision: Math.max(1, Math.floor(canonical.revision)),
+    updatedAt: canonical.updatedAt,
+    deviceId: canonical.deviceId,
+    cards,
+  };
+}
+
 

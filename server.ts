@@ -3,6 +3,8 @@ import express from 'express';
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import { GoogleGenAI } from '@google/genai';
 import {
   buildRulesSearchPrompt,
@@ -12,9 +14,19 @@ import {
 } from './src/core/rulesSearch.ts';
 import {
   createWorkspaceMirrorPayload,
+  formatETagHeader,
+  isIfNoneMatchWildcard,
+  OptimisticSheetStore,
+  parseIfMatchRevision,
+  validateCanonicalSheetPayload,
   validateWorkspaceMirrorInput,
   type WorkspaceMirrorPayload,
 } from './src/core/roomSync.ts';
+import {
+  type CanonicalSheet,
+  fromCanonicalSheet,
+  toCanonicalSheet,
+} from './src/core/sheetModel.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -22,6 +34,45 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 const ROOM_MIRROR_DIR = path.resolve(__dirname, '.data');
 const ROOM_MIRROR_FILE = path.join(ROOM_MIRROR_DIR, 'room-sync-mirror.json');
+const SHEETS_STORE_FILE = path.join(ROOM_MIRROR_DIR, 'sheets-store.json');
+const SHEET_SCHEMA_PATH = path.resolve(__dirname, 'shared-specs/sheet.schema.json');
+
+export function createAjvSheetValidator() {
+  const rawSchema = JSON.parse(fs.readFileSync(SHEET_SCHEMA_PATH, 'utf8')) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  return ajv.compile(rawSchema);
+}
+
+const ajvValidateSheet = createAjvSheetValidator();
+
+function loadPersistedSheets(): CanonicalSheet[] {
+  try {
+    if (!fs.existsSync(SHEETS_STORE_FILE)) return [];
+    const raw = fs.readFileSync(SHEETS_STORE_FILE, 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    if (!Array.isArray(parsed)) return [];
+    return parsed.filter((item): item is CanonicalSheet => {
+      const check = validateCanonicalSheetPayload(item, ajvValidateSheet);
+      return check.ok;
+    });
+  } catch {
+    return [];
+  }
+}
+
+function savePersistedSheets(sheets: CanonicalSheet[]): void {
+  try {
+    fs.mkdirSync(ROOM_MIRROR_DIR, { recursive: true });
+    const tmpFile = `${SHEETS_STORE_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(sheets, null, 2), 'utf8');
+    fs.renameSync(tmpFile, SHEETS_STORE_FILE);
+  } catch {
+    // Non-fatal fallback to in-memory store
+  }
+}
 
 function loadPersistedMirror(): WorkspaceMirrorPayload | null {
   try {
@@ -66,55 +117,179 @@ function createGeminiClient() {
   });
 }
 
-async function startServer() {
+export function createSyncApp(initialSheets?: CanonicalSheet[]) {
   const app = express();
   app.use(express.json({ limit: '2mb' }));
 
   let currentRoomMirror: WorkspaceMirrorPayload | null = loadPersistedMirror();
+  const seededSheets =
+    initialSheets ??
+    (loadPersistedSheets().length > 0
+      ? loadPersistedSheets()
+      : currentRoomMirror?.sheet
+        ? [currentRoomMirror.sheet]
+        : []);
+  const sheetStore = new OptimisticSheetStore(seededSheets, ajvValidateSheet);
 
-  app.get('/api/workspace-sync', (_req, res) => {
-    res.json({
-      ok: true,
-      mirror: currentRoomMirror,
-    });
-  });
+  const handleSheetSyncHttp = (req: express.Request, res: express.Response) => {
+    const method = (req.method.toUpperCase() as 'GET' | 'POST' | 'PUT');
+    const sheetIdParam = typeof req.params?.id === 'string' ? req.params.id : undefined;
 
-  const handleUpsertWorkspaceMirror = (req: express.Request, res: express.Response) => {
-    const validated = validateWorkspaceMirrorInput(req.body);
-    if (!validated.ok) {
-      res.status(400).json({ ok: false, error: validated.error });
-      return;
-    }
-
-    if (
-      currentRoomMirror &&
-      validated.updatedAtMillis < currentRoomMirror.updatedAtMillis
-    ) {
-      res.json({
-        ok: true,
-        staleIgnored: true,
+    if (method === 'GET') {
+      const outcome = sheetStore.handleRequest({
+        method: 'GET',
+        headers: req.headers,
+        body: req.body,
+        sheetIdParam,
+      });
+      for (const [hk, hv] of Object.entries(outcome.headers)) {
+        res.setHeader(hk, hv);
+      }
+      res.status(outcome.status).json({
+        ...outcome.body,
         mirror: currentRoomMirror,
       });
       return;
     }
 
-    const nextMirror = createWorkspaceMirrorPayload(
-      validated.workspace,
-      validated.updatedAtMillis,
-      validated.source,
-    );
-    currentRoomMirror = nextMirror;
-    savePersistedMirror(nextMirror);
+    // Extract sheet payload for Ajv validation against @shared-specs/sheet.schema.json
+    const rawBody = req.body as Record<string, unknown> | null | undefined;
+    const isWorkspaceEnvelope =
+      Boolean(
+        rawBody &&
+          typeof rawBody === 'object' &&
+          !Array.isArray(rawBody) &&
+          'workspace' in rawBody,
+      );
 
-    res.json({
-      ok: true,
-      staleIgnored: false,
-      mirror: nextMirror,
+    const candidateSheet =
+      rawBody &&
+      typeof rawBody === 'object' &&
+      !Array.isArray(rawBody) &&
+      'sheet' in rawBody &&
+      rawBody.sheet !== undefined
+        ? rawBody.sheet
+        : rawBody;
+
+    // 1. Validate payload against @shared-specs/sheet.schema.json using ajv + ajv-formats
+    const schemaValidation = validateCanonicalSheetPayload(candidateSheet, ajvValidateSheet);
+    if (!schemaValidation.ok) {
+      res.status(400).json({
+        ok: false,
+        error: 'SCHEMA_VALIDATION_FAILED',
+        details: schemaValidation.details,
+      });
+      return;
+    }
+
+    // 2. Enforce If-Match: "<revision>" on PUT updates (If-None-Match: * on creation) -> 412 Precondition Failed
+    const ifMatchHeader = req.header('if-match');
+    const ifNoneMatchHeader = req.header('if-none-match');
+    const isCreate = method === 'POST' || isIfNoneMatchWildcard(ifNoneMatchHeader);
+    const expectedRevision = parseIfMatchRevision(ifMatchHeader);
+
+    if (isCreate && !isIfNoneMatchWildcard(ifNoneMatchHeader)) {
+      res.status(412).json({
+        ok: false,
+        error: 'PRECONDITION_REQUIRED',
+        message: 'Cabeçalho If-None-Match: * é obrigatório na criação.',
+      });
+      return;
+    }
+
+    if (!isCreate && expectedRevision === null) {
+      res.status(412).json({
+        ok: false,
+        error: 'PRECONDITION_REQUIRED',
+        message: 'Cabeçalho If-Match: "<revision>" é obrigatório na atualização.',
+      });
+      return;
+    }
+
+    // 3. Compare revision and persist with revision + 1 (or reject with 409 Conflict)
+    const outcome = sheetStore.handleRequest({
+      method,
+      headers: {
+        'if-match': ifMatchHeader ?? undefined,
+        'if-none-match': ifNoneMatchHeader ?? undefined,
+      },
+      body: schemaValidation.sheet,
+      sheetIdParam,
     });
+
+    for (const [hk, hv] of Object.entries(outcome.headers)) {
+      res.setHeader(hk, hv);
+    }
+
+    if (outcome.status === 200 || outcome.status === 201) {
+      const persistedSheet = outcome.body.sheet as CanonicalSheet;
+      savePersistedSheets(sheetStore.getAllSheets());
+
+      if (isWorkspaceEnvelope) {
+        const wsValidation = validateWorkspaceMirrorInput(rawBody);
+        if (wsValidation.ok) {
+          const activeId = wsValidation.workspace.activeSystemId;
+          const prevActive = wsValidation.workspace.sheetsBySystem[activeId];
+          const syncedCharSheet = fromCanonicalSheet(persistedSheet, prevActive);
+          const nextWorkspace = {
+            ...wsValidation.workspace,
+            sheetsBySystem: {
+              ...wsValidation.workspace.sheetsBySystem,
+              [activeId]: {
+                ...syncedCharSheet,
+                revision: persistedSheet.revision,
+              },
+            },
+          };
+          currentRoomMirror = createWorkspaceMirrorPayload(
+            nextWorkspace,
+            wsValidation.updatedAtMillis,
+            wsValidation.source,
+          );
+          savePersistedMirror(currentRoomMirror);
+        }
+      } else {
+        const syncedCharSheet = fromCanonicalSheet(persistedSheet);
+        const sysId = syncedCharSheet.systemId ?? 'wod';
+        currentRoomMirror = createWorkspaceMirrorPayload(
+          {
+            activeSystemId: sysId,
+            sheetsBySystem: {
+              ...(currentRoomMirror?.workspace.sheetsBySystem ?? {}),
+              [sysId]: syncedCharSheet,
+            },
+          },
+          Date.parse(persistedSheet.updatedAt) || Date.now(),
+          'web',
+        );
+        savePersistedMirror(currentRoomMirror);
+      }
+
+      res.setHeader('ETag', formatETagHeader(persistedSheet.revision));
+      res.status(outcome.status).json({
+        ok: true,
+        sheet: persistedSheet,
+        staleIgnored: false,
+        mirror: currentRoomMirror,
+      });
+      return;
+    }
+
+    res.status(outcome.status).json(outcome.body);
   };
 
-  app.put('/api/workspace-sync', handleUpsertWorkspaceMirror);
-  app.post('/api/workspace-sync', handleUpsertWorkspaceMirror);
+  app.get('/api/workspace-sync', handleSheetSyncHttp);
+  app.get('/api/workspace-sync/:id', handleSheetSyncHttp);
+  app.post('/api/workspace-sync', handleSheetSyncHttp);
+  app.put('/api/workspace-sync', handleSheetSyncHttp);
+  app.put('/api/workspace-sync/:id', handleSheetSyncHttp);
+
+  app.get('/api/sheets', handleSheetSyncHttp);
+  app.get('/api/sheets/:id', handleSheetSyncHttp);
+  app.post('/api/sheets', handleSheetSyncHttp);
+  app.post('/api/sheets/:id', handleSheetSyncHttp);
+  app.put('/api/sheets', handleSheetSyncHttp);
+  app.put('/api/sheets/:id', handleSheetSyncHttp);
 
   app.post('/api/rules-search', async (req, res) => {
     const validation = validateRulesQuery(req.body?.query);
@@ -208,6 +383,12 @@ async function startServer() {
     res.download(apkPath, 'grid-sheet-debug.apk');
   });
 
+  return { app, sheetStore, toCanonicalSheet };
+}
+
+async function startServer() {
+  const { app } = createSyncApp();
+
   if (process.env.NODE_ENV === 'production') {
     const distDir = path.resolve(__dirname, 'dist');
     app.use(express.static(distDir));
@@ -228,7 +409,9 @@ async function startServer() {
   });
 }
 
-startServer().catch((err) => {
-  console.error('Failed to start server:', err);
-  process.exit(1);
-});
+if (process.argv[1] && path.resolve(process.argv[1]) === __filename) {
+  startServer().catch((err) => {
+    console.error('Failed to start server:', err);
+    process.exit(1);
+  });
+}

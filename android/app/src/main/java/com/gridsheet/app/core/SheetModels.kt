@@ -2,6 +2,7 @@ package com.gridsheet.app.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import java.time.Instant
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -128,13 +129,69 @@ data class XpState(
 
 @Serializable
 data class CharacterSheetState(
+    val id: String = "sheet_wod",
     val systemId: SystemId? = null,
     val systemName: String,
     val systemCode: String,
     val characterName: String,
+    val revision: Int = 1,
+    val updatedAt: String = "1970-01-01T00:00:00Z",
+    val deviceId: String = "local-device",
     val cards: List<SheetCard>,
     val rollLogs: List<RollLogEntry> = emptyList(),
     val xp: XpState = XpState()
+)
+
+typealias Sheet = CharacterSheetState
+
+@Serializable
+data class CanonicalRollConfig(
+    val mode: String,
+    val expression: String,
+    val difficulty: Int? = null,
+    val specialty: Boolean? = null,
+    val useWillpower: Boolean? = null
+)
+
+@Serializable
+data class CanonicalField(
+    val id: String,
+    val label: String,
+    val type: String,
+    val value: String? = null,
+    val maxValue: Double? = null,
+    val maxDots: Int? = null,
+    val formula: String? = null,
+    val rollConfig: CanonicalRollConfig? = null,
+    val subFields: List<CanonicalField>? = null,
+    val rows: List<Map<String, String>>? = null
+)
+
+@Serializable
+data class CanonicalBentoCard(
+    val id: String,
+    val tag: String? = null,
+    val title: String,
+    val columns: Int = 1,
+    val fields: List<CanonicalField> = emptyList()
+)
+
+@Serializable
+data class CanonicalTab(
+    val id: String,
+    val title: String,
+    val cards: List<CanonicalBentoCard> = emptyList()
+)
+
+@Serializable
+data class CanonicalSheet(
+    val id: String,
+    val name: String,
+    val systemId: String,
+    val revision: Int,
+    val updatedAt: String,
+    val deviceId: String = "local-device",
+    val tabs: List<CanonicalTab> = emptyList()
 )
 
 @Serializable
@@ -378,43 +435,61 @@ object SheetMutators {
     ): CharacterSheetState = mapField(sheet, fieldId, transform)
 
     fun addFieldToCard(sheet: CharacterSheetState, cardId: String, newField: SheetField): CharacterSheetState =
-        sheet.copy(
-            cards = sheet.cards.map { card ->
-                if (card.id == cardId) card.copy(fields = card.fields + newField) else card
-            }
+        touchMetadata(
+            sheet.copy(
+                cards = sheet.cards.map { card ->
+                    if (card.id == cardId) card.copy(fields = card.fields + newField) else card
+                }
+            )
         )
 
     fun removeFieldFromCard(sheet: CharacterSheetState, cardId: String, fieldId: String): CharacterSheetState =
-        sheet.copy(
-            cards = sheet.cards.map { card ->
-                if (card.id == cardId) card.copy(fields = card.fields.filterNot { it.id == fieldId }) else card
-            }
+        touchMetadata(
+            sheet.copy(
+                cards = sheet.cards.map { card ->
+                    if (card.id == cardId) card.copy(fields = card.fields.filterNot { it.id == fieldId }) else card
+                }
+            )
         )
 
     fun addCardToSheet(sheet: CharacterSheetState, newCard: SheetCard): CharacterSheetState =
-        sheet.copy(cards = sheet.cards + newCard)
+        touchMetadata(sheet.copy(cards = sheet.cards + newCard))
 
     fun updateCardSchema(
         sheet: CharacterSheetState,
         cardId: String,
         transform: (SheetCard) -> SheetCard
     ): CharacterSheetState =
-        sheet.copy(
-            cards = sheet.cards.map { card -> if (card.id == cardId) transform(card) else card }
+        touchMetadata(
+            sheet.copy(
+                cards = sheet.cards.map { card -> if (card.id == cardId) transform(card) else card }
+            )
         )
 
     fun removeCardFromSheet(sheet: CharacterSheetState, cardId: String): CharacterSheetState =
-        sheet.copy(cards = sheet.cards.filterNot { it.id == cardId })
+        touchMetadata(sheet.copy(cards = sheet.cards.filterNot { it.id == cardId }))
+
+    fun touchMetadata(
+        sheet: CharacterSheetState,
+        nowIso: String = Instant.now().toString(),
+        deviceId: String? = null
+    ): CharacterSheetState = sheet.copy(
+        revision = max(1, sheet.revision),
+        updatedAt = nowIso,
+        deviceId = deviceId?.takeIf { it.isNotBlank() } ?: sheet.deviceId.ifBlank { "local-device" }
+    )
 
     private inline fun mapField(
         sheet: CharacterSheetState,
         fieldId: String,
         crossinline transform: (SheetField) -> SheetField
-    ): CharacterSheetState = sheet.copy(
-        cards = sheet.cards.map { card ->
-            card.copy(
-                fields = card.fields.map { f -> if (f.id == fieldId) transform(f) else f }
-            )
-        }
+    ): CharacterSheetState = touchMetadata(
+        sheet.copy(
+            cards = sheet.cards.map { card ->
+                card.copy(
+                    fields = card.fields.map { f -> if (f.id == fieldId) transform(f) else f }
+                )
+            }
+        )
     )
 }

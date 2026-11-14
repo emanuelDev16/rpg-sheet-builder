@@ -16,6 +16,7 @@ import {
   evaluateSheet,
   FieldKind,
   migrateLegacyWodSheet,
+  migrateWorkspaceSheets,
   removeCardFromSheet,
   removeFieldFromCard,
   removeRepeatableRow,
@@ -25,6 +26,7 @@ import {
   SYSTEM_OPTIONS,
   SystemId,
   TabId,
+  touchSheetMetadata,
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
@@ -120,6 +122,8 @@ function readRoomSyncLocalMeta(): RoomSyncLocalMeta | null {
       return {
         updatedAtMillis: parsed.updatedAtMillis,
         lastMirroredDigest: typeof parsed.lastMirroredDigest === 'string' ? parsed.lastMirroredDigest : '',
+        baseRevisions: parsed.baseRevisions,
+        dirtySystems: parsed.dirtySystems,
       };
     }
   } catch {
@@ -145,14 +149,15 @@ function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
     if (rawWorkspace) {
       const parsed = JSON.parse(rawWorkspace) as WorkspaceState;
       if (parsed && parsed.activeSystemId && parsed.sheetsBySystem) {
-        const activeSheet = parsed.sheetsBySystem[parsed.activeSystemId];
+        const migratedWs = migrateWorkspaceSheets(parsed);
+        const activeSheet = migratedWs.sheetsBySystem[migratedWs.activeSystemId];
         if (activeSheet && Array.isArray(activeSheet.cards)) {
           return {
             workspace: {
-              activeSystemId: parsed.activeSystemId,
+              activeSystemId: migratedWs.activeSystemId,
               sheetsBySystem: {
-                ...parsed.sheetsBySystem,
-                [parsed.activeSystemId]: withSafeXpState(activeSheet),
+                ...migratedWs.sheetsBySystem,
+                [migratedWs.activeSystemId]: withSafeXpState(activeSheet),
               },
             },
             hadLocalWorkspace: true,
@@ -186,11 +191,12 @@ function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
     if (bridgeRaw) {
       const parsed = JSON.parse(bridgeRaw) as WorkspaceState;
       if (parsed && parsed.activeSystemId && parsed.sheetsBySystem) {
+        const migratedBridge = migrateWorkspaceSheets(parsed);
         return {
-          workspace: parsed,
+          workspace: migratedBridge,
           hadLocalWorkspace: false,
           updatedAtMillis: now,
-          lastMirroredDigest: computeWorkspaceDigest(parsed),
+          lastMirroredDigest: computeWorkspaceDigest(migratedBridge),
         };
       }
     }
@@ -251,6 +257,12 @@ export default function App() {
   workspaceRef.current = workspace;
   const updatedAtRef = useRef(bootstrap.updatedAtMillis);
   const lastMirroredDigestRef = useRef(bootstrap.lastMirroredDigest);
+  const baseRevisionsRef = useRef<Partial<Record<SystemId, number>>>(
+    readRoomSyncLocalMeta()?.baseRevisions ?? {},
+  );
+  const dirtySystemsRef = useRef<Partial<Record<SystemId, boolean>>>(
+    readRoomSyncLocalMeta()?.dirtySystems ?? {},
+  );
   const hydratedRemoteRef = useRef(false);
   const editDebounceTimerRef = useRef<number | null>(null);
   const syncRunIdRef = useRef(0);
@@ -266,16 +278,24 @@ export default function App() {
     updater: CharacterSheetState | ((prev: CharacterSheetState) => CharacterSheetState),
   ) => {
     setWorkspace((prevWs) => {
+      const sysId = prevWs.activeSystemId;
       const currentSheet =
-        prevWs.sheetsBySystem[prevWs.activeSystemId] ??
-        createPresetBySystemId(prevWs.activeSystemId);
-      const nextSheet =
+        prevWs.sheetsBySystem[sysId] ??
+        createPresetBySystemId(sysId);
+      const rawNext =
         typeof updater === 'function' ? updater(currentSheet) : updater;
+      const baseRev = baseRevisionsRef.current[sysId] ?? currentSheet.revision ?? 1;
+      baseRevisionsRef.current[sysId] = baseRev;
+      dirtySystemsRef.current[sysId] = true;
+      const nextSheet = {
+        ...touchSheetMetadata(rawNext),
+        revision: baseRev,
+      };
       return {
         ...prevWs,
         sheetsBySystem: {
           ...prevWs.sheetsBySystem,
-          [prevWs.activeSystemId]: nextSheet,
+          [sysId]: nextSheet,
         },
       };
     });
@@ -295,23 +315,51 @@ export default function App() {
     options: { flashOnSuccess?: boolean } = {},
   ) => {
     const runId = ++syncRunIdRef.current;
+    const sysId = targetWorkspace.activeSystemId;
+    const targetSheet = targetWorkspace.sheetsBySystem[sysId];
+    const baseRevision = baseRevisionsRef.current[sysId] ?? targetSheet?.revision ?? 1;
+
     setRoomSyncState((prev) => ({
       phase: 'syncing',
       nextSyncAtMillis: null,
       lastSyncedAtMillis: prev.lastSyncedAtMillis,
+      conflict: prev.conflict,
     }));
 
-    const outcome = await mirrorWorkspaceToRoom(targetWorkspace, { updatedAtMillis: timestamp });
+    const outcome = await mirrorWorkspaceToRoom(targetWorkspace, {
+      updatedAtMillis: timestamp,
+      baseRevision,
+    });
     if (runId !== syncRunIdRef.current) {
+      return;
+    }
+
+    if (outcome.status === 409 && outcome.conflict) {
+      dirtySystemsRef.current[sysId] = true;
+      setRoomSyncState((prev) => ({
+        phase: 'conflict',
+        nextSyncAtMillis: null,
+        lastSyncedAtMillis: prev.lastSyncedAtMillis,
+        lastError: 'REVISION_CONFLICT',
+        conflict: outcome.conflict,
+      }));
+      triggerFlash(
+        `// CONFLITO DE REVISÃO (409): LOCAL R${outcome.conflict.baseRevision} vs SERVIDOR R${outcome.conflict.serverSheet.revision}`,
+      );
       return;
     }
 
     const latestDigest = computeWorkspaceDigest(workspaceRef.current);
     if (outcome.ok) {
+      const confirmedRevision = outcome.confirmedRevision ?? baseRevision + 1;
+      baseRevisionsRef.current[sysId] = confirmedRevision;
+      dirtySystemsRef.current[sysId] = latestDigest !== outcome.digest;
       lastMirroredDigestRef.current = outcome.digest;
       writeRoomSyncLocalMeta({
         updatedAtMillis: outcome.updatedAtMillis,
         lastMirroredDigest: outcome.digest,
+        baseRevisions: baseRevisionsRef.current,
+        dirtySystems: dirtySystemsRef.current,
       });
       if (latestDigest === outcome.digest) {
         const completedAt = Date.now();
@@ -319,6 +367,7 @@ export default function App() {
           phase: 'synced',
           nextSyncAtMillis: completedAt + ROOM_PERIODIC_SYNC_INTERVAL_MS,
           lastSyncedAtMillis: completedAt,
+          conflict: null,
         });
       }
       if (options.flashOnSuccess) {
@@ -330,6 +379,7 @@ export default function App() {
         nextSyncAtMillis: Date.now() + ROOM_RETRY_INTERVAL_MS,
         lastSyncedAtMillis: prev.lastSyncedAtMillis,
         lastError: outcome.error ?? 'Falha na sincronização Room.',
+        conflict: null,
       }));
     }
   };

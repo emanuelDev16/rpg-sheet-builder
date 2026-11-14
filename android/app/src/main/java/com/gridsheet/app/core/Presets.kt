@@ -1,5 +1,7 @@
 package com.gridsheet.app.core
 
+import java.time.Instant
+
 object Presets {
     val SYSTEM_OPTIONS = listOf(
         SystemOption(
@@ -34,11 +36,15 @@ object Presets {
         )
     )
 
-    fun createWorldOfDarknessSheet(): CharacterSheetState = CharacterSheetState(
+    fun createWorldOfDarknessSheet(deviceId: String = "local-device"): CharacterSheetState = CharacterSheetState(
+        id = "sheet_wod",
         systemId = SystemId.WOD,
         systemName = "WORLD OF DARKNESS // STORYTELLER",
         systemCode = "/SYS: WORLD OF DARKNESS · d10 STORYTELLER",
         characterName = "JULIAN CROSS · NEONATE (VENTRUE)",
+        revision = 1,
+        updatedAt = Instant.now().toString(),
+        deviceId = deviceId,
         cards = listOf(
             SheetCard(
                 id = "card_identidade",
@@ -204,11 +210,15 @@ object Presets {
         )
     )
 
-    fun createDnd5ePreset(): CharacterSheetState = CharacterSheetState(
+    fun createDnd5ePreset(deviceId: String = "local-device"): CharacterSheetState = CharacterSheetState(
+        id = "sheet_dnd5e",
         systemId = SystemId.DND5E,
         systemName = "D&D 5E // D20 SYSTEM",
         systemCode = "/SYS: D&D 5E · D20 HEROIC EDITION",
         characterName = "LYRA VANCE · ELDRITCH KNIGHT (LV 5)",
+        revision = 1,
+        updatedAt = Instant.now().toString(),
+        deviceId = deviceId,
         cards = listOf(
             SheetCard(
                 id = "card_identidade",
@@ -369,11 +379,15 @@ object Presets {
         )
     )
 
-    fun createGenericD20Preset(): CharacterSheetState = CharacterSheetState(
+    fun createGenericD20Preset(deviceId: String = "local-device"): CharacterSheetState = CharacterSheetState(
+        id = "sheet_default",
         systemId = SystemId.DEFAULT,
         systemName = "SISTEMA GENÉRICO EXEMPLO",
         systemCode = "/SYS: SISTEMA GENÉRICO EXEMPLO",
         characterName = "KAELEN VANCE · OPERADOR",
+        revision = 1,
+        updatedAt = Instant.now().toString(),
+        deviceId = deviceId,
         cards = listOf(
             SheetCard(
                 id = "card_identidade",
@@ -503,13 +517,17 @@ object Presets {
         xp = XpState(totalEarned = 12, spent = 0)
     )
 
-    fun createCyberpunkPreset(): CharacterSheetState {
-        val base = createGenericD20Preset()
+    fun createCyberpunkPreset(deviceId: String = "local-device"): CharacterSheetState {
+        val base = createGenericD20Preset(deviceId)
         return base.copy(
+            id = "sheet_cyberpunk",
             systemId = SystemId.CYBERPUNK,
             systemName = "NET//RUNNER D10 PROTOCOL",
             systemCode = "/SYS: CYBERPUNK D10 PROTOCOL",
             characterName = "ZERO_K · NETRUNNER",
+            revision = 1,
+            updatedAt = Instant.now().toString(),
+            deviceId = deviceId,
             cards = base.cards.map { c ->
                 if (c.id == "card_atributos") {
                     c.copy(
@@ -529,11 +547,15 @@ object Presets {
         )
     }
 
-    fun createBlankSheet(): CharacterSheetState = CharacterSheetState(
+    fun createBlankSheet(deviceId: String = "local-device"): CharacterSheetState = CharacterSheetState(
+        id = "sheet_blank",
         systemId = SystemId.BLANK,
         systemName = "SISTEMA CUSTOMIZADO (DO ZERO)",
         systemCode = "/SYS: CUSTOM · DO ZERO",
         characterName = "NOVO PERSONAGEM",
+        revision = 1,
+        updatedAt = Instant.now().toString(),
+        deviceId = deviceId,
         cards = emptyList(),
         rollLogs = emptyList(),
         xp = XpState()
@@ -551,10 +573,42 @@ object Presets {
         }
     }
 
-    fun migrateLegacyWodSheet(sheet: CharacterSheetState): CharacterSheetState {
-        if (detectSystemId(sheet) != SystemId.WOD) return sheet
+    fun migrateSheetMetadata(
+        sheet: CharacterSheetState,
+        deviceId: String = "local-device",
+        nowIso: String = Instant.now().toString()
+    ): CharacterSheetState {
+        val sysId = detectSystemId(sheet)
+        val validRevision = if (sheet.revision >= 1) sheet.revision else 1
+        val validUpdatedAt = if (sheet.updatedAt.isNotBlank() && sheet.updatedAt != "1970-01-01T00:00:00Z") {
+            sheet.updatedAt
+        } else {
+            nowIso
+        }
+        val validDeviceId = if (sheet.deviceId.isNotBlank() && sheet.deviceId != "local-device") {
+            sheet.deviceId
+        } else {
+            deviceId.ifBlank { "local-device" }
+        }
+        val validId = sheet.id.ifBlank { "sheet_${sysId.name.lowercase()}" }
+        return sheet.copy(
+            id = validId,
+            systemId = sysId,
+            revision = validRevision,
+            updatedAt = validUpdatedAt,
+            deviceId = validDeviceId
+        )
+    }
+
+    fun migrateLegacyWodSheet(
+        sheet: CharacterSheetState,
+        deviceId: String = "local-device",
+        nowIso: String = Instant.now().toString()
+    ): CharacterSheetState {
+        val withMeta = migrateSheetMetadata(sheet, deviceId, nowIso)
+        if (detectSystemId(withMeta) != SystemId.WOD) return withMeta
         var changed = false
-        val updatedCards = sheet.cards.map { card ->
+        val updatedCards = withMeta.cards.map { card ->
             if (card.id != "card_combate") return@map card
             var cardChanged = false
             val nextTitle = if (card.title == "HEALTH · WILLPOWER · BLOOD") {
@@ -598,14 +652,14 @@ object Presets {
                 card
             }
         }
-        return if (changed) sheet.copy(cards = updatedCards) else sheet
+        return if (changed) withMeta.copy(cards = updatedCards) else withMeta
     }
 
-    fun createPresetBySystemId(systemId: SystemId): CharacterSheetState = when (systemId) {
-        SystemId.WOD -> createWorldOfDarknessSheet()
-        SystemId.DND5E -> createDnd5ePreset()
-        SystemId.CYBERPUNK -> createCyberpunkPreset()
-        SystemId.DEFAULT -> createGenericD20Preset()
-        SystemId.BLANK -> createBlankSheet()
+    fun createPresetBySystemId(systemId: SystemId, deviceId: String = "local-device"): CharacterSheetState = when (systemId) {
+        SystemId.WOD -> createWorldOfDarknessSheet(deviceId)
+        SystemId.DND5E -> createDnd5ePreset(deviceId)
+        SystemId.CYBERPUNK -> createCyberpunkPreset(deviceId)
+        SystemId.DEFAULT -> createGenericD20Preset(deviceId)
+        SystemId.BLANK -> createBlankSheet(deviceId)
     }
 }

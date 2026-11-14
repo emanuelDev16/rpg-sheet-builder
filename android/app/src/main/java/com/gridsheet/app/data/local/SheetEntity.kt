@@ -10,6 +10,11 @@ data class SheetEntity(
     val systemName: String,
     val characterName: String,
     val sheetJson: String,
+    val revision: Int = 1,
+    val updatedAt: String = "1970-01-01T00:00:00Z",
+    val deviceId: String = "local-device",
+    val baseRevision: Int = 1,
+    val isDirty: Boolean = false,
     val updatedAtMillis: Long,
     val syncState: String = "SYNCED"
 )

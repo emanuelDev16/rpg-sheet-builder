@@ -44,7 +44,8 @@ private data class RemoteWorkspacePutRequest(
 data class RoomMirrorSyncOutcome(
     val workspace: WorkspaceState,
     val updatedAtMillis: Long,
-    val updatedFromRemote: Boolean
+    val updatedFromRemote: Boolean,
+    val conflicts: Map<SystemId, SyncConflict> = emptyMap()
 )
 
 /**
@@ -105,15 +106,21 @@ class RoomWorkspaceRepository(context: Context) {
     suspend fun mirrorWorkspaceIntoRoom(
         workspace: WorkspaceState,
         updatedAtMillis: Long = System.currentTimeMillis(),
-        syncState: String = "MIRRORED"
+        syncState: String = "MIRRORED",
+        isDirty: Boolean = false
     ) = withContext(Dispatchers.IO) {
+        val existingBySystem = sheetDao.getAllSheets().associateBy { it.systemId }
         val entities = workspace.sheetsBySystem.map { (sysId, sheet) ->
+            val prev = existingBySystem[sysId.name]
+            val baseRev = prev?.baseRevision ?: sheet.revision.coerceAtLeast(1)
             WorkspaceSyncEngine.toEntity(
                 systemId = sysId,
                 sheet = sheet.copy(systemId = sysId),
                 updatedAtMillis = updatedAtMillis,
                 json = json,
-                syncState = syncState
+                syncState = syncState,
+                baseRevision = baseRev,
+                isDirty = isDirty
             )
         }
         val metadata = WorkspaceMetadataEntity(
@@ -167,6 +174,11 @@ class RoomWorkspaceRepository(context: Context) {
         val cleanBase = baseUrl.trimEnd('/')
         if (cleanBase.isEmpty()) return@withContext false
 
+        val existingEntities = sheetDao.getAllSheets().associateBy { it.systemId }
+        val activeEntity = existingEntities[workspace.activeSystemId.name]
+        val activeSheet = workspace.sheetsBySystem[workspace.activeSystemId]
+        val baseRevision = (activeEntity?.baseRevision ?: activeSheet?.revision ?: 1).coerceAtLeast(1)
+
         var conn: HttpURLConnection? = null
         try {
             val url = URL("$cleanBase/api/workspace-sync")
@@ -176,6 +188,7 @@ class RoomWorkspaceRepository(context: Context) {
                 readTimeout = 10000
                 doOutput = true
                 setRequestProperty("Content-Type", "application/json; charset=UTF-8")
+                setRequestProperty("If-Match", WorkspaceSyncEngine.buildIfMatchHeader(baseRevision))
             }
             val payload = json.encodeToString(
                 RemoteWorkspacePutRequest.serializer(),
@@ -189,7 +202,23 @@ class RoomWorkspaceRepository(context: Context) {
                 writer.write(payload)
                 writer.flush()
             }
-            conn.responseCode in 200..299
+            val statusCode = conn.responseCode
+            val stream = if (statusCode in 200..299) conn.inputStream else conn.errorStream
+            val responseBody = stream?.let { BufferedReader(InputStreamReader(it, Charsets.UTF_8)).use { r -> r.readText() } }
+            val etagHeader = conn.getHeaderField("ETag")
+
+            if (activeEntity != null) {
+                val pushOutcome = WorkspaceSyncEngine.handlePushResponse(
+                    entity = activeEntity,
+                    statusCode = statusCode,
+                    etagHeader = etagHeader,
+                    responseBody = responseBody,
+                    nowMillis = System.currentTimeMillis(),
+                    json = json
+                )
+                sheetDao.upsertSheet(pushOutcome.updatedEntity)
+            }
+            statusCode in 200..299
         } catch (_: Exception) {
             false
         } finally {
@@ -222,7 +251,17 @@ class RoomWorkspaceRepository(context: Context) {
             return@withContext RoomMirrorSyncOutcome(
                 workspace = reconciled.workspace,
                 updatedAtMillis = reconciled.resolvedTimestamp,
-                updatedFromRemote = true
+                updatedFromRemote = true,
+                conflicts = reconciled.conflictsBySystem
+            )
+        }
+
+        if (reconciled.conflictsBySystem.isNotEmpty()) {
+            return@withContext RoomMirrorSyncOutcome(
+                workspace = reconciled.workspace,
+                updatedAtMillis = reconciled.resolvedTimestamp,
+                updatedFromRemote = false,
+                conflicts = reconciled.conflictsBySystem
             )
         }
 

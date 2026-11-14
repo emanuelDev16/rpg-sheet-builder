@@ -4,7 +4,7 @@
   "title": "GridSheet Canonical Character Sheet",
   "type": "object",
   "additionalProperties": false,
-  "required": ["id", "name", "systemId", "revision", "updatedAt", "tabs"],
+  "required": ["id", "name", "systemId", "revision", "updatedAt", "deviceId", "tabs"],
   "properties": {
     "id": {
       "type": "string",
@@ -30,6 +30,12 @@
     "updatedAt": {
       "type": "string",
       "format": "date-time"
+    },
+    "deviceId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 128,
+      "description": "UUID persistente por instalação do dispositivo de origem."
     },
     "tabs": {
       "type": "array",

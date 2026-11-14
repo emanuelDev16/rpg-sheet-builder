@@ -5,12 +5,24 @@ import {
   computeRemainingSyncSeconds,
   computeWorkspaceDigest,
   createWorkspaceMirrorPayload,
+  formatETagHeader,
   formatRoomSyncIndicator,
+  isIfNoneMatchWildcard,
   mirrorWorkspaceToRoom,
+  OptimisticSheetStore,
+  parseIfMatchRevision,
   reconcileWorkspaceWithMirror,
+  validateCanonicalSheetPayload,
   validateWorkspaceMirrorInput,
+  WorkspaceSyncEngine,
 } from './roomSync';
-import { createDnd5ePreset, createWorldOfDarknessSheet, WorkspaceState } from './sheetModel';
+import {
+  createDnd5ePreset,
+  createWorldOfDarknessSheet,
+  toCanonicalSheet,
+  updateFieldValue,
+  WorkspaceState,
+} from './sheetModel';
 
 test('computeWorkspaceDigest is deterministic and detects changes across systems', () => {
   const wod = createWorldOfDarknessSheet();
@@ -163,4 +175,220 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
   assert.equal(errored.label, 'ROOM RETRY: 4s');
   assert.equal(errored.isError, true);
   assert.match(errored.tooltip, /HTTP 503/);
+
+  const conflict = formatRoomSyncIndicator(
+    { phase: 'conflict', nextSyncAtMillis: null, lastSyncedAtMillis: 10_000 },
+    12_000,
+  );
+  assert.equal(conflict.label, 'SYNC CONFLICT (R?≠R?)');
+  assert.equal(conflict.isError, true);
+});
+
+test('Optimistic sync server contract: 201 creation, 200 update (revision + 1), 400 schema failure, 412 missing If-Match, and 409 REVISION_CONFLICT', () => {
+  const store = new OptimisticSheetStore();
+  const baseChar = createWorldOfDarknessSheet('dev-client-a');
+  const initialCanonical = toCanonicalSheet({
+    ...baseChar,
+    id: 'sheet-wod-1',
+    revision: 1,
+    updatedAt: '2026-11-14T12:00:00.000Z',
+    deviceId: 'dev-client-a',
+  });
+
+  // 1. Creation (201 Created) with If-None-Match: * starts at revision 1 and returns ETag "1"
+  const createRes = store.handleRequest({
+    method: 'POST',
+    headers: { 'if-none-match': '*' },
+    body: initialCanonical,
+  });
+  assert.equal(createRes.status, 201);
+  assert.equal(createRes.headers.ETag, '"1"');
+  assert.equal((createRes.body.sheet as typeof initialCanonical).revision, 1);
+
+  // 2. Valid update (200 OK) with If-Match: "1" increments server revision to 2 and returns ETag "2"
+  const updatedCanonical = {
+    ...initialCanonical,
+    name: 'ELENA VANCE // ARCHON',
+    updatedAt: '2026-11-14T12:05:00.000Z',
+    deviceId: 'dev-client-a',
+  };
+  const updateRes = store.handleRequest({
+    method: 'PUT',
+    headers: { 'if-match': '"1"' },
+    body: updatedCanonical,
+    sheetIdParam: 'sheet-wod-1',
+  });
+  assert.equal(updateRes.status, 200);
+  assert.equal(updateRes.headers.ETag, '"2"');
+  assert.equal((updateRes.body.sheet as typeof initialCanonical).revision, 2);
+  assert.equal((updateRes.body.sheet as typeof initialCanonical).name, 'ELENA VANCE // ARCHON');
+
+  // 3. Schema failure (400 Bad Request) when payload violates @shared-specs/sheet.schema.json
+  const invalidPayload = {
+    ...updatedCanonical,
+    revision: 0, // minimum is 1
+    updatedAt: 'invalid-timestamp',
+    deviceId: '',
+    extraUnsupportedProp: true,
+  };
+  const schemaFailRes = store.handleRequest({
+    method: 'PUT',
+    headers: { 'if-match': '"2"' },
+    body: invalidPayload,
+    sheetIdParam: 'sheet-wod-1',
+  });
+  assert.equal(schemaFailRes.status, 400);
+  assert.equal(schemaFailRes.body.error, 'SCHEMA_VALIDATION_FAILED');
+  assert.ok(Array.isArray(schemaFailRes.body.details));
+  assert.ok((schemaFailRes.body.details as string[]).length >= 1);
+
+  // 4. Missing If-Match header on PUT returns 412 Precondition Failed
+  const missingPreconditionRes = store.handleRequest({
+    method: 'PUT',
+    headers: {},
+    body: updatedCanonical,
+    sheetIdParam: 'sheet-wod-1',
+  });
+  assert.equal(missingPreconditionRes.status, 412);
+  assert.equal(missingPreconditionRes.body.error, 'PRECONDITION_REQUIRED');
+
+  // 5. Revision conflict (409 Conflict) when client sends stale If-Match: "1" against server revision 2
+  const conflictingClientSheet = {
+    ...initialCanonical,
+    name: 'STALE DEVICE EDIT',
+    updatedAt: '2026-11-14T12:06:00.000Z',
+    deviceId: 'dev-client-b',
+  };
+  const conflictRes = store.handleRequest({
+    method: 'PUT',
+    headers: { 'if-match': '"1"' },
+    body: conflictingClientSheet,
+    sheetIdParam: 'sheet-wod-1',
+  });
+  assert.equal(conflictRes.status, 409);
+  assert.equal(conflictRes.headers.ETag, '"2"');
+  assert.equal(conflictRes.body.error, 'REVISION_CONFLICT');
+  const serverSheetOnConflict = conflictRes.body.serverSheet as typeof initialCanonical;
+  assert.ok(serverSheetOnConflict);
+  assert.equal(serverSheetOnConflict.revision, 2);
+  assert.equal(serverSheetOnConflict.name, 'ELENA VANCE // ARCHON');
+});
+
+test('WorkspaceSyncEngine tracks baseRevision vs isDirty, sends If-Match: "<baseRevision>", and exposes 409 Conflict without silent overwrite', async () => {
+  const store = new OptimisticSheetStore();
+  const initialWod = createWorldOfDarknessSheet('device-web-1');
+
+  const storeFetch: typeof fetch = async (_url, init) => {
+    const method = (init?.method ?? 'PUT').toUpperCase() as 'POST' | 'PUT';
+    const headers = (init?.headers ?? {}) as Record<string, string>;
+    const body = JSON.parse(String(init?.body ?? '{}'));
+    const res = store.handleRequest({
+      method,
+      headers: {
+        'if-match': headers['If-Match'] ?? headers['if-match'],
+        'if-none-match': headers['If-None-Match'] ?? headers['if-none-match'],
+      },
+      body,
+    });
+    return new Response(JSON.stringify(res.body), {
+      status: res.status,
+      headers: res.headers,
+    });
+  };
+
+  const engine = new WorkspaceSyncEngine({
+    initialSheet: initialWod,
+    deviceId: 'device-web-1',
+    fetchImpl: storeFetch,
+  });
+
+  // First creation on server via If-None-Match: * (201 Created, revision 1)
+  const createOutcome = await engine.create();
+  assert.equal(createOutcome.ok, true);
+  assert.equal(createOutcome.status, 201);
+  assert.equal(engine.getBaseRevision(), 1);
+  assert.equal(engine.isDirty(), false);
+
+  // Local edit marks engine as dirty while baseRevision remains 1
+  engine.applyLocalEdit((prev) => {
+    const updated = updateFieldValue(prev, 'f_strength', 5);
+    return { ...updated, characterName: 'LOCAL EDIT V1' };
+  });
+  assert.equal(engine.getBaseRevision(), 1);
+  assert.equal(engine.isDirty(), true);
+  assert.equal(engine.getLocalSheet().revision, 1);
+
+  // Push valid update with If-Match: "1" -> 200 OK, baseRevision advances to 2, isDirty becomes false
+  let sentIfMatch = '';
+  const pushOk = await engine.push({
+    fetchImpl: async (url, init) => {
+      const headers = (init?.headers ?? {}) as Record<string, string>;
+      sentIfMatch = headers['If-Match'] ?? '';
+      return storeFetch(url, init);
+    },
+  });
+  assert.equal(sentIfMatch, '"1"');
+  assert.equal(pushOk.ok, true);
+  assert.equal(pushOk.status, 200);
+  assert.equal(engine.getBaseRevision(), 2);
+  assert.equal(engine.isDirty(), false);
+  assert.equal(engine.getLocalSheet().revision, 2);
+
+  // Simulate another device updating the server to revision 3
+  const currentServerSheet = store.getSheet(engine.getLocalSheet().id!)!;
+  const remoteEditRes = store.handleRequest({
+    method: 'PUT',
+    headers: { 'if-match': '"2"' },
+    body: {
+      ...currentServerSheet,
+      name: 'REMOTE DEVICE V3',
+      updatedAt: '2026-11-14T15:00:00.000Z',
+      deviceId: 'device-android-2',
+    },
+  });
+  assert.equal(remoteEditRes.status, 200);
+  assert.equal(store.getSheet(engine.getLocalSheet().id!)?.revision, 3);
+
+  // Now user makes a local edit on Web (still at baseRevision 2, isDirty = true)
+  engine.applyLocalEdit((prev) => ({
+    ...prev,
+    characterName: 'UNSAVED LOCAL WEB EDIT',
+  }));
+  assert.equal(engine.getBaseRevision(), 2);
+  assert.equal(engine.isDirty(), true);
+
+  // Pushing with If-Match: "2" against server revision 3 returns 409 Conflict
+  // Engine MUST expose serverSheet vs localSheet and NOT overwrite localSheet
+  const conflictOutcome = await engine.push();
+  assert.equal(conflictOutcome.ok, false);
+  assert.equal(conflictOutcome.status, 409);
+  assert.ok(conflictOutcome.conflict);
+  assert.equal(conflictOutcome.conflict.baseRevision, 2);
+  assert.equal(conflictOutcome.conflict.serverSheet.revision, 3);
+  assert.equal(conflictOutcome.conflict.serverSheet.name, 'REMOTE DEVICE V3');
+  assert.equal(conflictOutcome.conflict.localSheet.characterName, 'UNSAVED LOCAL WEB EDIT');
+  assert.equal(engine.getLocalSheet().characterName, 'UNSAVED LOCAL WEB EDIT');
+  assert.equal(engine.isDirty(), true);
+
+  // Resolving conflict by keeping local rebases baseRevision to serverSheet.revision (3) and keeps isDirty=true
+  engine.resolveConflict('keep_local');
+  assert.equal(engine.getBaseRevision(), 3);
+  assert.equal(engine.isDirty(), true);
+  assert.equal(engine.getConflict(), null);
+
+  // Subsequent push now sends If-Match: "3" and succeeds -> revision 4
+  const retryOutcome = await engine.push();
+  assert.equal(retryOutcome.ok, true);
+  assert.equal(retryOutcome.status, 200);
+  assert.equal(engine.getBaseRevision(), 4);
+  assert.equal(engine.isDirty(), false);
+  assert.equal(store.getSheet(engine.getLocalSheet().id!)?.name, 'UNSAVED LOCAL WEB EDIT');
+
+  // Helper unit checks for header parsing/formatting
+  assert.equal(parseIfMatchRevision('"4"'), 4);
+  assert.equal(parseIfMatchRevision('W/"12"'), 12);
+  assert.equal(parseIfMatchRevision('invalid'), null);
+  assert.equal(isIfNoneMatchWildcard('*'), true);
+  assert.equal(formatETagHeader(4), '"4"');
+  assert.equal(validateCanonicalSheetPayload({ invalid: true }).ok, false);
 });
