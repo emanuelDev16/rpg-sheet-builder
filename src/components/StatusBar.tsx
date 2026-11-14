@@ -44,7 +44,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
   return (
     <footer
-      className="no-print print:hidden flex items-center justify-between gap-3 px-4 h-[34px] bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] font-mono-tech text-[11px] shrink-0 overflow-hidden"
+      className="no-print print:hidden statusbar-root flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 sm:gap-3 px-4 lg:h-[34px] bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] font-mono-tech text-[11px] shrink-0 overflow-hidden"
       aria-label={t.ariaFooter}
     >
       <div className="flex items-center gap-2 min-w-0 truncate">

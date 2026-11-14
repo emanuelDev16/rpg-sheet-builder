@@ -69,7 +69,7 @@ const ClampedNumberInput: React.FC<ClampedNumberInputProps> = ({
           onCommit(clamped);
         }
       }}
-      className="cyber-input w-12 px-1 py-0.5 text-[11px] font-bold text-center tabular-nums"
+      className="cyber-input mobile-touch-input w-14 sm:w-12 px-1 py-0.5 text-[11px] font-bold text-center tabular-nums"
     />
   );
 };
@@ -130,7 +130,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             aria-label={`Editar rótulo de ${field.label}`}
             value={field.label}
             onChange={(e) => onUpdateSchema(field.id, { label: e.target.value })}
-            className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+            className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
           />
         </div>
         <div className="flex items-center gap-1.5">
@@ -142,7 +142,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             aria-label={`Editar variável de ${field.label}`}
             value={field.key}
             onChange={(e) => onUpdateSchema(field.id, { key: e.target.value })}
-            className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+            className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
           />
         </div>
         {field.kind === 'calculated' && (
@@ -155,7 +155,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               aria-label={`Editar fórmula de ${field.label}`}
               value={field.formula ?? ''}
               onChange={(e) => onUpdateSchema(field.id, { formula: e.target.value })}
-              className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+              className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
             />
           </div>
         )}
@@ -170,7 +170,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 aria-label={`Editar texto do botão de ${field.label}`}
                 value={field.rollLabel ?? ''}
                 onChange={(e) => onUpdateSchema(field.id, { rollLabel: e.target.value })}
-                className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+                className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
               />
             </div>
             <div className="flex items-center gap-1.5">
@@ -182,7 +182,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 aria-label={`Editar expressão de dados de ${field.label}`}
                 value={field.rollExpr ?? ''}
                 onChange={(e) => onUpdateSchema(field.id, { rollExpr: e.target.value })}
-                className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+                className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
               />
             </div>
           </>
@@ -195,14 +195,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <input
               type="number"
               min={1}
-              max={30}
+              max={999}
               aria-label={`Editar máximo de ${field.label}`}
               value={field.max ?? 12}
               onChange={(e) => {
-                const nextMax = Math.max(1, Math.min(30, Number(e.target.value) || 1));
+                const nextMax = Math.max(1, Math.min(999, Number(e.target.value) || 1));
                 onUpdateSchema(field.id, { max: nextMax });
               }}
-              className="cyber-input px-1.5 py-0.5 text-[11px] w-20"
+              className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-20"
             />
           </div>
         )}
@@ -221,7 +221,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     columns: [e.target.value, field.columns?.[1] ?? 'VALOR'],
                   })
                 }
-                className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+                className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
               />
             </div>
             <div className="flex items-center gap-1.5">
@@ -237,7 +237,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     columns: [field.columns?.[0] ?? 'ITEM', e.target.value],
                   })
                 }
-                className="cyber-input px-1.5 py-0.5 text-[11px] w-full"
+                className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
               />
             </div>
           </>
@@ -246,7 +246,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <button
             type="button"
             onClick={() => onRemoveField(field.id)}
-            className="font-mono-tech text-[10px] font-bold text-[var(--accent-danger)] hover:underline cursor-pointer"
+            className="font-mono-tech text-[10px] font-bold text-[var(--accent-danger)] hover:underline cursor-pointer py-1"
           >
             × REMOVER CAMPO
           </button>
@@ -259,10 +259,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   if (field.kind === 'number') {
     return (
       <div className="py-1">
-        <div className="flex items-center justify-between gap-3">
+        <div className="flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <label
             htmlFor={inputId}
-            className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase"
+            className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words"
           >
             {field.label}
           </label>
@@ -271,7 +271,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             type="number"
             value={typeof field.value === 'number' ? field.value : 0}
             onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
-            className="cyber-input w-24 px-2.5 py-1.5 text-sm font-bold text-right"
+            className="cyber-input mobile-touch-input w-24 px-2.5 py-1.5 text-sm font-bold text-right shrink-0"
           />
         </div>
         {renderEditStrip()}
@@ -283,7 +283,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     const isLong = field.key === 'notas_campanha' || String(field.value ?? '').length > 48;
     return (
       <div className="py-1">
-        <div className={isLong ? 'flex flex-col gap-1.5' : 'flex items-center justify-between gap-3'}>
+        <div
+          className={
+            isLong
+              ? 'flex flex-col gap-1.5'
+              : 'flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3'
+          }
+        >
           <label
             htmlFor={inputId}
             className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase shrink-0"
@@ -297,7 +303,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 rows={4}
                 value={String(field.value ?? '')}
                 onChange={(e) => onChangeValue(field.id, e.target.value)}
-                className="no-print print:hidden cyber-input w-full px-3 py-2 text-xs leading-relaxed resize-y"
+                className="no-print print:hidden cyber-input mobile-touch-input w-full px-3 py-2 text-xs leading-relaxed resize-y"
               />
               <p className="hidden print:block cyber-input w-full px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words">
                 {String(field.value ?? '')}
@@ -309,7 +315,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="text"
               value={String(field.value ?? '')}
               onChange={(e) => onChangeValue(field.id, e.target.value)}
-              className="cyber-input flex-1 max-w-[260px] px-2.5 py-1.5 text-xs font-semibold"
+              className="cyber-input mobile-touch-input w-full sm:w-auto sm:flex-1 sm:max-w-[260px] px-2.5 py-1.5 text-xs font-semibold"
             />
           )}
         </div>
@@ -399,7 +405,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
         {/* Segmented WoD Health Boxes: [X Aggravated] [/ Superficial] [ ] Healthy */}
         <div
-          className="flex items-center gap-[3px]"
+          className="seg-meter-track flex items-center gap-[3px]"
           role="meter"
           aria-label={field.label}
           aria-valuemin={0}
@@ -425,9 +431,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
         {/* Aggravated + Superficial Steppers */}
         <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-          <div className="flex items-center justify-between gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0">
-              <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase truncate">
+              <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words">
                 {t.aggravatedDmg}
               </span>
               <span className="font-mono-tech text-[9px] font-semibold text-[var(--ink-muted)] tabular-nums shrink-0">
@@ -440,7 +446,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 data-testid="health-aggravated-dec"
                 aria-label={`${t.aggravatedDmg} -`}
                 onClick={() => onAdjustHealthDamage?.(field.id, 'aggravated', -1)}
-                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 -
               </button>
@@ -455,15 +461,15 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 data-testid="health-aggravated-inc"
                 aria-label={`${t.aggravatedDmg} +`}
                 onClick={() => onAdjustHealthDamage?.(field.id, 'aggravated', 1)}
-                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 +
               </button>
             </div>
           </div>
 
-          <div className="flex items-center justify-between gap-2">
-            <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase truncate">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
               {t.superficialDmg}
             </span>
             <div className="flex items-center gap-1 shrink-0">
@@ -472,7 +478,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 data-testid="health-superficial-dec"
                 aria-label={`${t.superficialDmg} -`}
                 onClick={() => onAdjustHealthDamage?.(field.id, 'superficial', -1)}
-                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 -
               </button>
@@ -487,7 +493,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 data-testid="health-superficial-inc"
                 aria-label={`${t.superficialDmg} +`}
                 onClick={() => onAdjustHealthDamage?.(field.id, 'superficial', 1)}
-                className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
                 +
               </button>
@@ -499,16 +505,21 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     );
   }
 
-  // 3B. Recurso Padrão (Barra Segmentada estilo CPU_USAGE / MEMORY)
+  // 3B. Recurso Padrão (Barra Segmentada estilo CPU_USAGE / MEMORY; contínua quando max > 20)
   if (field.kind === 'resource') {
     const max = Math.max(1, field.max ?? 12);
     const current = Math.max(0, Math.min(max, typeof field.value === 'number' ? field.value : 0));
-    const segments = Array.from({ length: max }, (_, idx) => idx);
+    const useContinuousBar = max > 20;
+    const fillPct = Math.max(0, Math.min(100, (current / max) * 100));
+    const segments = useContinuousBar ? [] : Array.from({ length: max }, (_, idx) => idx);
 
     return (
-      <div className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-control)]">
-        <div className="flex items-center justify-between gap-2 mb-2">
-          <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+      <div
+        data-testid={`resource-field-${field.id}`}
+        className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-control)] min-w-0 max-w-full overflow-hidden"
+      >
+        <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
+          <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words min-w-0">
             {field.label}
           </span>
           <div className="flex items-center gap-1.5 shrink-0">
@@ -516,12 +527,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="button"
               aria-label={`Diminuir ${field.label}`}
               onClick={() => onAdjustResource(field.id, -1)}
-              className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
             >
               -
             </button>
             <span
-              className="font-mono-tech text-xs font-bold px-2 min-w-[56px] text-center"
+              className="font-mono-tech text-xs font-bold px-2 min-w-[56px] text-center tabular-nums"
               aria-live="polite"
             >
               {current} / {max}
@@ -530,34 +541,58 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="button"
               aria-label={`Aumentar ${field.label}`}
               onClick={() => onAdjustResource(field.id, 1)}
-              className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
             >
               +
             </button>
           </div>
         </div>
 
-        <div
-          className="flex items-center gap-[3px]"
-          role="meter"
-          aria-label={field.label}
-          aria-valuemin={0}
-          aria-valuemax={max}
-          aria-valuenow={current}
-        >
-          {segments.map((idx) => {
-            const filled = idx < current;
-            return (
-              <button
-                key={idx}
-                type="button"
-                aria-label={`Definir ${field.label} para ${idx + 1}`}
-                onClick={() => onChangeValue(field.id, idx + 1 === current ? idx : idx + 1)}
-                className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
-              />
-            );
-          })}
-        </div>
+        {useContinuousBar ? (
+          <div
+            data-testid={`resource-continuous-bar-${field.id}`}
+            className="seg-meter-track relative h-[14px] rounded-[2px] bg-[var(--accent-wine-soft)] border border-[rgba(91,15,24,0.35)] cursor-pointer"
+            role="meter"
+            aria-label={field.label}
+            aria-valuemin={0}
+            aria-valuemax={max}
+            aria-valuenow={current}
+            onClick={(e) => {
+              const rect = e.currentTarget.getBoundingClientRect();
+              if (rect.width <= 0) return;
+              const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+              onChangeValue(field.id, Math.round(ratio * max));
+            }}
+          >
+            <div
+              className="h-full bg-[var(--accent-wine)] transition-[width] duration-150"
+              style={{ width: `${fillPct}%` }}
+            />
+          </div>
+        ) : (
+          <div
+            data-testid={`resource-segmented-bar-${field.id}`}
+            className="seg-meter-track flex items-center gap-[3px]"
+            role="meter"
+            aria-label={field.label}
+            aria-valuemin={0}
+            aria-valuemax={max}
+            aria-valuenow={current}
+          >
+            {segments.map((idx) => {
+              const filled = idx < current;
+              return (
+                <button
+                  key={idx}
+                  type="button"
+                  aria-label={`Definir ${field.label} para ${idx + 1}`}
+                  onClick={() => onChangeValue(field.id, idx + 1 === current ? idx : idx + 1)}
+                  className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
+                />
+              );
+            })}
+          </div>
+        )}
         {renderEditStrip()}
       </div>
     );
@@ -587,7 +622,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 onChangeValue(field.id, !checked);
               }
             }}
-            className={`w-full flex items-center justify-between gap-2.5 px-2.5 py-2 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] transition-colors text-left ${
+            className={`w-full flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 px-2.5 py-2 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] transition-colors text-left ${
               isEmpty
                 ? 'bg-[var(--bg-header-strip)] opacity-65 cursor-not-allowed'
                 : effectiveChecked
@@ -595,7 +630,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   : 'bg-[var(--bg-card-alt)] hover:bg-[var(--bg-hover)] cursor-pointer'
             }`}
           >
-            <div className="flex items-center gap-2.5 min-w-0">
+            <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <span
                 className={`w-5 h-5 rounded-[4px] border-2 border-[var(--border-ink)] flex items-center justify-center shrink-0 transition-colors ${
                   effectiveChecked
@@ -607,7 +642,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               >
                 <Check className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
               </span>
-              <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase truncate">
+              <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words leading-snug">
                 {field.label}
               </span>
             </div>
@@ -636,9 +671,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           role="checkbox"
           aria-checked={checked}
           onClick={() => onChangeValue(field.id, !checked)}
-          className="w-full flex items-center justify-between gap-3 px-2.5 py-2 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer text-left"
+          className="w-full flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5 px-2.5 py-2 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--bg-hover)] transition-colors cursor-pointer text-left"
         >
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="flex items-center gap-2.5 min-w-0 flex-1">
             <span
               className={`w-5 h-5 rounded-[4px] border-2 border-[var(--border-ink)] flex items-center justify-center shrink-0 transition-colors ${
                 checked
@@ -648,12 +683,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             >
               <Check className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
             </span>
-            <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase truncate">
+            <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words leading-snug">
               {field.label}
             </span>
           </div>
           {field.hint && (
-            <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] hidden sm:inline shrink-0">
+            <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] shrink-0">
               {checked ? t.active : t.inactive}
             </span>
           )}
@@ -697,7 +732,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             onClick={() => onRoll(field)}
             className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
           >
-            <span className="truncate">{displayLabel}</span>
+            <span className="text-left break-words whitespace-normal leading-snug min-w-0">
+              {displayLabel}
+            </span>
             <div className="flex items-center gap-1.5 shrink-0">
               {wpArmed && (
                 <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--ink-inverse)]/40 rounded-[3px]">
@@ -737,13 +774,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </label>
             </div>
 
-            <label className="inline-flex items-center gap-1.5 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
+            <label className="inline-flex items-center gap-1.5 min-h-[36px] md:min-h-0 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
               <input
                 type="checkbox"
                 data-testid={`roll-spec-${field.id}`}
                 checked={specialty}
                 onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
-                className="w-3.5 h-3.5 accent-[#5B0F18] cursor-pointer"
+                className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[#5B0F18] cursor-pointer"
               />
               <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>SPECIALTY</span>
             </label>
@@ -764,7 +801,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           onClick={() => onRoll(field)}
           className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
         >
-          <span className="truncate">{displayLabel}</span>
+          <span className="text-left break-words whitespace-normal leading-snug min-w-0">
+            {displayLabel}
+          </span>
           <span className="text-sm leading-none shrink-0" aria-hidden="true">
             ↗
           </span>
@@ -793,8 +832,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           )}
         </div>
 
-        <div className="border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] overflow-hidden bg-[var(--bg-card-alt)]">
-          <table className="w-full border-collapse font-mono-tech text-xs">
+        <div className="border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] overflow-x-auto max-w-full bg-[var(--bg-card-alt)]">
+          <table className="w-full min-w-[280px] border-collapse font-mono-tech text-xs">
             <thead>
               <tr className="bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] text-[10px] text-[var(--ink-muted)] uppercase">
                 <th className="text-left py-2 px-2.5 font-bold">{col1Title}</th>
@@ -821,7 +860,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         aria-label={`${col1Title} da linha ${row.col1}`}
                         value={row.col1}
                         onChange={(e) => onUpdateRow(field.id, row.id, 'col1', e.target.value)}
-                        className="w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
+                        className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
                       />
                     </td>
                     <td className="p-1.5">
@@ -838,7 +877,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                             field.col2Type === 'number' ? Number(e.target.value) : e.target.value,
                           )
                         }
-                        className="w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
+                        className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
                       />
                     </td>
                     <td className="p-1.5 text-center no-print print:hidden">
@@ -846,7 +885,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         type="button"
                         aria-label={`Remover linha ${row.col1}`}
                         onClick={() => onRemoveRow(field.id, row.id)}
-                        className="w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
+                        className="mobile-touch-stepper w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
                       >
                         <X className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>

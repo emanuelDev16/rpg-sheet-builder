@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import { Dices } from 'lucide-react';
 import {
   addCardToSheet,
   addFieldToCard,
@@ -224,6 +225,7 @@ export default function App() {
   const [language, setLanguage] = useState<AppLanguage>(readStoredLanguage);
   const [searchQuery, setSearchQuery] = useState('');
   const [modalMode, setModalMode] = useState<'open' | 'save' | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
     phase: 'synced',
@@ -830,7 +832,7 @@ export default function App() {
       />
 
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-        <main className="print-main cyber-grid-canvas flex-1 p-4 sm:p-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
+        <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 pb-20 lg:pb-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
           <div className="max-w-[1140px] mx-auto">
             <PrintSheetHeader
               sheet={sheet}
@@ -967,10 +969,27 @@ export default function App() {
           systemId={activeSystemId}
           systemName={sheet.systemName}
           t={t.sidebar}
+          isMobileOpen={mobileSidebarOpen}
+          onCloseMobile={() => setMobileSidebarOpen(false)}
           onQuickRoll={(expr) => appendRollLog(`ROLAGEM · ${expr.toUpperCase()}`, expr)}
           onClearLogs={() => setSheet((prev) => ({ ...prev, rollLogs: [] }))}
         />
       </div>
+
+      <button
+        type="button"
+        data-testid="mobile-drawer-fab"
+        aria-label={`${t.sidebar.rollLogsTab} / ${t.sidebar.rulesTab}`}
+        aria-expanded={mobileSidebarOpen}
+        onClick={() => setMobileSidebarOpen((prev) => !prev)}
+        className="no-print print:hidden lg:hidden fixed z-30 mobile-drawer-fab cyber-roll-btn px-3 py-2 text-[11px] font-bold tracking-wider uppercase flex items-center gap-1.5 shadow-[3px_3px_0_#5B0F18] cursor-pointer"
+      >
+        <Dices className="w-4 h-4 shrink-0" aria-hidden="true" />
+        <span>LOGS</span>
+        <span className="px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums leading-none">
+          {sheet.rollLogs.length}
+        </span>
+      </button>
 
       <StatusBar
         mode={mode}

@@ -88,14 +88,14 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 aria-label={`Editar código de ${card.title}`}
                 value={card.code}
                 onChange={(e) => onUpdateCard(card.id, { code: e.target.value })}
-                className="cyber-input px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-wine)] w-28"
+                className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-wine)] w-28"
               />
               <input
                 type="text"
                 aria-label={`Editar título de ${card.title}`}
                 value={card.title}
                 onChange={(e) => onUpdateCard(card.id, { title: e.target.value })}
-                className="cyber-input px-2 py-0.5 text-xs font-extrabold uppercase flex-1 min-w-[140px]"
+                className="cyber-input mobile-touch-input px-2 py-0.5 text-xs font-extrabold uppercase flex-1 min-w-[140px]"
               />
             </div>
             <div className="hidden print:flex items-center gap-2.5 min-w-0">
@@ -108,17 +108,17 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             </div>
           </>
         ) : (
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               {card.code}
             </span>
-            <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
+            <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
               {card.title}
             </h2>
           </div>
         )}
 
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center pt-0.5 sm:pt-0">
           {filteredInfo && (
             <span className="no-print print:hidden font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] tabular-nums whitespace-nowrap">
               {t.filteredPill(filteredInfo.shown, filteredInfo.total)}
@@ -140,7 +140,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   type="button"
                   aria-label={`Remover bloco ${card.title}`}
                   onClick={() => onRemoveCard(card.id)}
-                  className="w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
+                  className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[4px] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
@@ -160,7 +160,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       </header>
 
       <div
-        className={`p-4 flex-1 ${
+        className={`bento-card-body p-4 flex-1 ${
           useTwoColBody
             ? 'grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 items-center'
             : 'flex flex-col gap-3'
@@ -205,7 +205,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 value={newFieldLabel}
                 onChange={(e) => setNewFieldLabel(e.target.value)}
                 placeholder={t.newFieldPlaceholder}
-                className="cyber-input px-2 py-1 text-[11px] flex-1 min-w-[140px]"
+                className="cyber-input mobile-touch-input px-2 py-1 text-[11px] flex-1 min-w-[140px]"
               />
             </div>
             <div className="flex flex-wrap items-center gap-1.5">

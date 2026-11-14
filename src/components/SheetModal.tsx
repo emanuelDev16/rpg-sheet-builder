@@ -80,7 +80,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
   return (
     <div
-      className="no-print print:hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45"
+      className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -90,14 +90,14 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label={mode === 'open' ? t.openTitle : t.saveTitle}
-        className="bento-card w-full max-w-lg bg-[var(--bg-card)] shadow-[6px_6px_0_#0B0B0B]"
+        className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto bg-[var(--bg-card)] shadow-[6px_6px_0_#0B0B0B]"
       >
-        <header className="bento-card-header">
-          <div className="flex items-center gap-2">
-            <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)]">
+        <header className="bento-card-header sticky top-0 z-10">
+          <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
+            <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] shrink-0">
               {mode === 'open' ? '//OPEN_SYSTEM' : '//EXPORT_SAVE'}
             </span>
-            <h2 className="font-display text-xl font-extrabold uppercase">
+            <h2 className="font-display text-lg sm:text-xl font-extrabold uppercase leading-tight">
               {mode === 'open' ? t.openTitle : t.saveTitle}
             </h2>
           </div>
@@ -105,7 +105,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label={t.closeAria}
-            className="cyber-btn-outline w-7 h-7 flex items-center justify-center cursor-pointer"
+            className="cyber-btn-outline mobile-touch-stepper w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center shrink-0 cursor-pointer"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>

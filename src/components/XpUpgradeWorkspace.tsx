@@ -108,21 +108,21 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
       {/* LEFT CARD: XP MONITOR */}
       <section className="bento-card" aria-label={t.monitorTitle}>
         <header className="bento-card-header">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               //XP_MONITOR
             </span>
-            <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
+            <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
               {t.monitorTitle}
             </h2>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0" aria-hidden="true">
+          <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center pt-0.5 sm:pt-0" aria-hidden="true">
             <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-card)]" />
             <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-wine)]" />
           </div>
         </header>
 
-        <div className="p-4 flex flex-col gap-4">
+        <div className="bento-card-body p-4 flex flex-col gap-4">
           {/* 3-metric telemetry strip separated by hairline borders */}
           <div className="grid grid-cols-3 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] divide-x divide-[var(--border-ink)]">
             <div className="p-3 flex flex-col gap-0.5">
@@ -169,7 +169,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               </span>
             </div>
             <div
-              className="flex items-center gap-1"
+              className="seg-meter-track flex items-center gap-1"
               role="meter"
               aria-label={t.allocation}
               aria-valuemin={0}
@@ -219,7 +219,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 aria-label={t.availableXp}
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                className="cyber-input w-20 px-2.5 py-1.5 text-xs font-bold text-center shrink-0"
+                className="cyber-input mobile-touch-input w-20 px-2.5 py-1.5 text-xs font-bold text-center shrink-0"
               />
               <input
                 type="text"
@@ -227,11 +227,11 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 value={reasonInput}
                 onChange={(e) => setReasonInput(e.target.value)}
                 placeholder={t.notePlaceholder}
-                className="cyber-input flex-1 min-w-0 px-2.5 py-1.5 text-xs"
+                className="cyber-input mobile-touch-input flex-1 min-w-0 px-2.5 py-1.5 text-xs"
               />
               <button
                 type="submit"
-                className="cyber-roll-btn px-3 py-1.5 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                className="cyber-roll-btn mobile-touch-input px-3 py-1.5 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {t.addXpBtn}
               </button>
@@ -302,20 +302,20 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
       {/* RIGHT CARD: POSSIBLE TRAIT UPGRADES */}
       <section className="bento-card" aria-label={t.possibleTitle}>
         <header className="bento-card-header">
-          <div className="flex items-center gap-2.5 min-w-0">
+          <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               //TRAIT_UPGRADES
             </span>
-            <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
+            <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
               {t.possibleTitle}
             </h2>
           </div>
-          <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] whitespace-nowrap shrink-0">
+          <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] whitespace-nowrap shrink-0 self-start sm:self-center">
             {t.availableCount(allPossible.length)}
           </span>
         </header>
 
-        <div className="p-4 flex flex-col gap-3">
+        <div className="bento-card-body p-4 flex flex-col gap-3">
           {/* Transparent cost rules line (unboxed metadata) */}
           <div className="font-mono-tech text-[10px] font-semibold text-[var(--ink-muted)] flex flex-wrap items-center gap-1.5">
             <span>{t.costRulesLabel}</span>

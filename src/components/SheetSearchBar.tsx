@@ -25,7 +25,7 @@ export const SheetSearchBar: React.FC<SheetSearchBarProps> = ({
       aria-label={t.ariaInput}
       className="no-print print:hidden mb-4 flex flex-wrap sm:flex-nowrap items-center gap-2 p-2.5 bg-[var(--bg-card)] border-2 border-[var(--border-ink)] rounded-[var(--radius-card)] shadow-[2px_2px_0_#0B0B0B]"
     >
-      <div className="flex items-center gap-2 flex-1 min-w-[200px]">
+      <div className="flex items-center gap-2 flex-1 min-w-0">
         <Search className="w-4 h-4 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
         <input
           type="search"
@@ -40,7 +40,7 @@ export const SheetSearchBar: React.FC<SheetSearchBarProps> = ({
             }
           }}
           placeholder={t.placeholder}
-          className="w-full bg-transparent font-mono-tech text-xs font-semibold text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
+          className="mobile-touch-input w-full bg-transparent font-mono-tech text-xs font-semibold text-[var(--ink-primary)] placeholder:text-[var(--ink-muted)] focus:outline-none [&::-webkit-search-cancel-button]:hidden [&::-webkit-search-decoration]:hidden"
         />
       </div>
 

@@ -36,10 +36,10 @@ export const TopBar: React.FC<TopBarProps> = ({
 }) => {
   return (
     <header
-      className="no-print print:hidden flex flex-wrap items-center justify-between gap-3 px-5 py-3 bg-[var(--bg-card)] border-b-2 border-[var(--border-ink)] shrink-0"
+      className="no-print print:hidden topbar-root flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 bg-[var(--bg-card)] border-b-2 border-[var(--border-ink)] shrink-0 max-w-full overflow-x-hidden"
       aria-label={t.ariaHeader}
     >
-      <div className="flex items-center gap-3 min-w-0">
+      <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 max-w-full">
         <span
           className="font-mono-tech text-xs font-bold px-2 py-1 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[4px] select-none shrink-0"
           aria-hidden="true"
@@ -52,7 +52,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             aria-label="Identificador do sistema"
             value={systemCode}
             onChange={(e) => onChangeSystemCode(e.target.value)}
-            className="cyber-input px-2.5 py-1 text-xs font-bold uppercase tracking-wider w-[260px] max-w-full"
+            className="cyber-input mobile-touch-input px-2.5 py-1 text-xs font-bold uppercase tracking-wider w-[260px] max-w-full min-w-0"
           />
         ) : (
           <h1 className="font-mono-tech text-xs sm:text-sm font-bold tracking-wider text-[var(--ink-primary)] uppercase truncate">
@@ -61,8 +61,8 @@ export const TopBar: React.FC<TopBarProps> = ({
         )}
       </div>
 
-      <div className="flex flex-wrap items-center gap-2.5 w-full xl:w-auto max-w-full">
-        <div className="flex items-center gap-1.5">
+      <div className="topbar-actions-scroll flex flex-wrap items-center gap-2 sm:gap-2.5 w-full xl:w-auto max-w-full">
+        <div className="flex items-center gap-1.5 shrink-0 max-w-full">
           <label
             htmlFor="system-switcher-select"
             className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)] hidden xl:inline whitespace-nowrap"
@@ -74,7 +74,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             aria-label={t.systemAria}
             value={activeSystemId}
             onChange={(e) => onSwitchSystem(e.target.value as SystemId)}
-            className="cyber-input px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer max-w-[235px]"
+            className="cyber-input mobile-touch-input px-2.5 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer max-w-[215px] sm:max-w-[235px]"
           >
             {SYSTEM_OPTIONS.map((opt) => (
               <option key={opt.id} value={opt.id}>
@@ -84,7 +84,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </select>
         </div>
 
-        <div className="flex items-center gap-1">
+        <div className="flex items-center gap-1 shrink-0">
           <Globe className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
           <label htmlFor="language-switcher-select" className="sr-only">
             {t.languageLabel}
@@ -95,7 +95,7 @@ export const TopBar: React.FC<TopBarProps> = ({
             aria-label={t.languageAria}
             value={language}
             onChange={(e) => onChangeLanguage(e.target.value as AppLanguage)}
-            className="cyber-input px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer"
+            className="cyber-input mobile-touch-input px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider cursor-pointer"
           >
             {LANGUAGE_OPTIONS.map((opt) => (
               <option key={opt.id} value={opt.id}>
@@ -105,7 +105,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           </select>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex flex-wrap lg:flex-nowrap items-center gap-2 shrink-0">
           <button
             type="button"
             onClick={onNewSheet}

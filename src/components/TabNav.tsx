@@ -27,14 +27,18 @@ export const TabNav: React.FC<TabNavProps> = ({
   const { tab1, tab2, tab3 } = getTabLabelsForSystem(systemId, language);
 
   return (
-    <div className="no-print print:hidden flex flex-wrap items-center justify-between gap-4 mb-5">
-      <nav aria-label={t.ariaLabel} role="tablist" className="flex flex-wrap items-center gap-2.5">
+    <div className="no-print print:hidden tabnav-root flex flex-wrap items-center justify-between gap-3 sm:gap-4 mb-5 max-w-full">
+      <nav
+        aria-label={t.ariaLabel}
+        role="tablist"
+        className="flex flex-nowrap md:flex-wrap items-center gap-2 sm:gap-2.5 max-w-full overflow-x-auto pb-1 md:pb-0 [-webkit-overflow-scrolling:touch]"
+      >
         <button
           type="button"
           role="tab"
           aria-selected={activeTab === 'geral'}
           onClick={() => onSelectTab('geral')}
-          className={`cyber-tab-btn font-mono-tech px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`cyber-tab-btn font-mono-tech px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTab === 'geral'
               ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#5B0F18]'
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -48,7 +52,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           role="tab"
           aria-selected={activeTab === 'magias'}
           onClick={() => onSelectTab('magias')}
-          className={`cyber-tab-btn font-mono-tech px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`cyber-tab-btn font-mono-tech px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTab === 'magias'
               ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#5B0F18]'
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -62,7 +66,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           role="tab"
           aria-selected={activeTab === 'xp'}
           onClick={() => onSelectTab('xp')}
-          className={`cyber-tab-btn font-mono-tech px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`cyber-tab-btn font-mono-tech px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTab === 'xp'
               ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#0B0B0B]'
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -72,22 +76,22 @@ export const TabNav: React.FC<TabNavProps> = ({
         </button>
       </nav>
 
-      <div className="flex items-center gap-2.5">
+      <div className="flex flex-wrap items-center gap-2.5 max-w-full min-w-0">
         {mode === 'edicao' ? (
           <input
             type="text"
             aria-label={t.characterAria}
             value={characterName}
             onChange={(e) => onChangeCharacterName(e.target.value)}
-            className="cyber-input px-2.5 py-1 text-xs font-bold uppercase tracking-wider w-[230px] sm:w-[260px]"
+            className="cyber-input mobile-touch-input px-2.5 py-1 text-xs font-bold uppercase tracking-wider w-[230px] sm:w-[260px] max-w-full"
           />
         ) : (
-          <span className="font-mono-tech text-xs font-semibold text-[var(--ink-secondary)] uppercase tracking-wider">
+          <span className="font-mono-tech text-xs font-semibold text-[var(--ink-secondary)] uppercase tracking-wider break-words">
             {characterName}
           </span>
         )}
         {mode === 'edicao' && (
-          <span className="font-mono-tech text-[11px] font-bold px-2.5 py-1 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[1.5px] border-[var(--border-ink)] rounded-[4px] uppercase">
+          <span className="font-mono-tech text-[11px] font-bold px-2.5 py-1 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[1.5px] border-[var(--border-ink)] rounded-[4px] uppercase shrink-0">
             {t.editableSchema}
           </span>
         )}

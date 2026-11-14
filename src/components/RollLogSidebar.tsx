@@ -1,5 +1,5 @@
 import React, { useEffect, useMemo, useState } from 'react';
-import { Trash2 } from 'lucide-react';
+import { Trash2, X } from 'lucide-react';
 import { RollLogEntry, SystemId } from '../core/sheetModel';
 import { AppTranslations } from '../core/i18n';
 import { RulesSearchPanel } from './RulesSearchPanel';
@@ -13,6 +13,8 @@ interface RollLogSidebarProps {
   t: AppTranslations['sidebar'];
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
+  isMobileOpen?: boolean;
+  onCloseMobile?: () => void;
 }
 
 function getQuickDicePresets(systemId: SystemId): string[] {
@@ -35,6 +37,8 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   t,
   onQuickRoll,
   onClearLogs,
+  isMobileOpen = false,
+  onCloseMobile,
 }) => {
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('logs');
   const quickDice = useMemo(() => getQuickDicePresets(systemId), [systemId]);
@@ -44,17 +48,25 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
     setCustomExpr(systemId === 'wod' ? '5d10@6' : getQuickDicePresets(systemId)[0]);
   }, [systemId]);
 
+  useEffect(() => {
+    if (!isMobileOpen || !onCloseMobile) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        onCloseMobile();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isMobileOpen, onCloseMobile]);
+
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!customExpr.trim()) return;
     onQuickRoll(customExpr.trim());
   };
 
-  return (
-    <aside
-      aria-label={t.ariaAside}
-      className="no-print print:hidden w-full lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--border-ink)] flex flex-col min-h-0"
-    >
+  const renderPanelContent = (showMobileClose: boolean) => (
+    <>
       {/* Seletor superior do painel lateral */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] shrink-0">
         <div role="tablist" aria-label={t.ariaAside} className="flex items-center gap-1.5 flex-1 min-w-0">
@@ -63,7 +75,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
             role="tab"
             aria-selected={sidebarTab === 'logs'}
             onClick={() => setSidebarTab('logs')}
-            className={`font-mono-tech px-2 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap cursor-pointer transition-colors ${
+            className={`font-mono-tech mobile-touch-input px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap cursor-pointer transition-colors ${
               sidebarTab === 'logs'
                 ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
                 : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -76,7 +88,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
             role="tab"
             aria-selected={sidebarTab === 'rules'}
             onClick={() => setSidebarTab('rules')}
-            className={`font-mono-tech px-2 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap cursor-pointer transition-colors ${
+            className={`font-mono-tech mobile-touch-input px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap cursor-pointer transition-colors ${
               sidebarTab === 'rules'
                 ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
                 : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -86,17 +98,31 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
           </button>
         </div>
 
-        {sidebarTab === 'logs' && logs.length > 0 && (
-          <button
-            type="button"
-            onClick={onClearLogs}
-            aria-label={t.clearLogsAria}
-            title={t.clearLogsAria}
-            className="p-1 rounded-[4px] text-[var(--ink-muted)] hover:text-[var(--accent-danger)] hover:bg-[var(--accent-danger-soft)] transition-colors cursor-pointer shrink-0"
-          >
-            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
-          </button>
-        )}
+        <div className="flex items-center gap-1 shrink-0">
+          {sidebarTab === 'logs' && logs.length > 0 && (
+            <button
+              type="button"
+              onClick={onClearLogs}
+              aria-label={t.clearLogsAria}
+              title={t.clearLogsAria}
+              className="mobile-touch-stepper p-1.5 rounded-[4px] text-[var(--ink-muted)] hover:text-[var(--accent-danger)] hover:bg-[var(--accent-danger-soft)] transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+            >
+              <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+            </button>
+          )}
+
+          {showMobileClose && onCloseMobile && (
+            <button
+              type="button"
+              data-testid="mobile-drawer-close"
+              aria-label="Fechar painel"
+              onClick={onCloseMobile}
+              className="cyber-btn-outline mobile-touch-stepper w-8 h-8 flex items-center justify-center cursor-pointer"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
 
       {sidebarTab === 'rules' ? (
@@ -117,22 +143,22 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 placeholder={
                   systemId === 'wod' ? 'ex: 5d10@6 ou pool(wits+occult,6)' : 'ex: 1d20 + mod_str + prof'
                 }
-                className="cyber-input flex-1 min-w-0 px-2 py-1 text-xs font-semibold"
+                className="cyber-input mobile-touch-input flex-1 min-w-0 px-2 py-1 text-xs font-semibold"
               />
               <button
                 type="submit"
-                className="cyber-roll-btn px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
+                className="cyber-roll-btn mobile-touch-input px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
               >
                 {t.rollBtn}
               </button>
             </div>
-            <div className="flex items-center gap-1">
+            <div className="flex flex-wrap items-center gap-1">
               {quickDice.map((die) => (
                 <button
                   key={die}
                   type="button"
                   onClick={() => onQuickRoll(die)}
-                  className="cyber-btn-outline flex-1 py-0.5 text-[10px] font-bold uppercase cursor-pointer"
+                  className="cyber-btn-outline flex-1 min-w-[54px] py-1 text-[10px] font-bold uppercase cursor-pointer"
                 >
                   {die}
                 </button>
@@ -286,6 +312,41 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
           </div>
         </>
       )}
-    </aside>
+    </>
+  );
+
+  return (
+    <>
+      {/* Desktop fixed right-hand sidebar (lg: 1024px+) */}
+      <aside
+        aria-label={t.ariaAside}
+        className="no-print print:hidden hidden lg:flex lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-l-2 border-[var(--border-ink)] flex-col min-h-0"
+      >
+        {renderPanelContent(false)}
+      </aside>
+
+      {/* Mobile slide-over drawer (< 1024px) */}
+      {isMobileOpen && (
+        <div
+          className="no-print print:hidden fixed inset-0 z-40 lg:hidden flex justify-end bg-[#0B0B0B]/55"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) {
+              onCloseMobile?.();
+            }
+          }}
+        >
+          <aside
+            role="dialog"
+            aria-modal="true"
+            aria-label={t.ariaAside}
+            data-testid="mobile-sidebar-drawer"
+            className="mobile-drawer-panel w-[min(92vw,360px)] bg-[var(--bg-card)] border-l-2 border-[var(--border-ink)] shadow-[-6px_0_0_#0B0B0B] flex flex-col min-h-0"
+          >
+            {renderPanelContent(true)}
+          </aside>
+        </div>
+      )}
+    </>
   );
 };

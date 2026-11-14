@@ -112,12 +112,12 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             value={query}
             onChange={(e) => setQuery(e.target.value)}
             placeholder={t.rulesPlaceholder}
-            className="cyber-input flex-1 min-w-0 px-2 py-1.5 text-xs font-semibold"
+            className="cyber-input mobile-touch-input flex-1 min-w-0 px-2 py-1.5 text-xs font-semibold"
           />
           <button
             type="submit"
             disabled={loading}
-            className="cyber-roll-btn px-2.5 py-1.5 text-[11px] font-bold uppercase shrink-0 cursor-pointer disabled:opacity-60"
+            className="cyber-roll-btn mobile-touch-input px-2.5 py-1.5 text-[11px] font-bold uppercase shrink-0 cursor-pointer disabled:opacity-60"
           >
             {loading ? '...' : t.rulesSearchBtn}
           </button>
@@ -130,7 +130,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               type="button"
               disabled={loading}
               onClick={() => void executeSearch(item)}
-              className="cyber-btn-outline px-2 py-0.5 text-[10px] font-bold cursor-pointer disabled:opacity-60"
+              className="cyber-btn-outline px-2 py-1 text-[10px] font-bold cursor-pointer disabled:opacity-60"
             >
               {item}
             </button>
@@ -139,7 +139,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
       </form>
 
       {/* Área de resultados */}
-      <div className="p-3 flex-1 overflow-y-auto flex flex-col gap-3">
+      <div className="p-3 flex-1 overflow-y-auto overflow-x-hidden flex flex-col gap-3">
         {loading && (
           <div
             role="status"

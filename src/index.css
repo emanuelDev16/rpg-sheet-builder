@@ -58,6 +58,8 @@ body,
 #root {
   height: 100%;
   margin: 0;
+  max-width: 100%;
+  overflow-x: hidden;
 }
 
 body {
@@ -187,9 +189,15 @@ body {
 }
 
 /* Barra segmentada estilo CPU_USAGE / MEMORY */
+.seg-meter-track {
+  width: 100%;
+  max-width: 100%;
+  overflow: hidden;
+}
+
 .seg-block {
-  flex: 1;
-  min-width: 6px;
+  flex: 1 1 0;
+  min-width: 1px;
   height: 14px;
   border-radius: 2px;
   background-color: var(--accent-wine-soft);
@@ -300,4 +308,173 @@ body {
     page-break-inside: avoid !important;
   }
 }
+
+/* ============================================================================
+   MOBILE & SAFE-AREA RESPONSIVE LAYOUT (PORTRAIT + LANDSCAPE)
+   Desktop (min-width: 1024px) remains untouched
+   ============================================================================ */
+@media (max-width: 1023px) {
+  .print-shell {
+    min-height: 100dvh;
+    overflow-x: hidden;
+  }
+
+  .topbar-root {
+    padding-top: max(10px, env(safe-area-inset-top, 0px));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+  }
+
+  .print-main {
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .statusbar-root {
+    height: auto;
+    min-height: 36px;
+    padding-top: 6px;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: calc(136px + env(safe-area-inset-right, 0px));
+    padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-drawer-fab {
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    right: calc(16px + env(safe-area-inset-right, 0px));
+  }
+
+  .mobile-drawer-panel {
+    max-height: 100dvh;
+    height: 100dvh;
+    overflow-y: auto;
+    padding-top: env(safe-area-inset-top, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-modal-overlay {
+    padding-top: max(12px, env(safe-area-inset-top, 0px));
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-modal-dialog {
+    max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+}
+
+/* Anti-zoom on focus (16px minimum) & virtual keyboard scroll clearance on touch/mobile viewports */
+@media (max-width: 932px) {
+  .print-shell input,
+  .print-shell select,
+  .print-shell textarea {
+    font-size: 16px !important;
+    scroll-margin-bottom: 120px;
+  }
+
+  .mobile-touch-stepper {
+    min-height: 36px;
+    min-width: 36px;
+  }
+
+  .mobile-touch-input {
+    min-height: 36px;
+  }
+}
+
+/* Narrow viewports: stack //TAG above main card title */
+@media (max-width: 480px) {
+  .bento-card-header-title {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 2px;
+  }
+}
+
+/* Mobile Portrait (<= 768px): collapse multi-column BentoCard grids & internal 2-col bodies to 1 column */
+@media (max-width: 768px) {
+  .bento-print-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .bento-span-2 {
+    grid-column: span 1 / span 1;
+  }
+
+  .bento-card-two-col {
+    grid-template-columns: 1fr;
+  }
+
+  .bento-card-header {
+    padding: 10px 12px;
+    align-items: flex-start;
+  }
+
+  .bento-card-body {
+    padding: 12px;
+  }
+}
+
+/* Mobile Landscape: maximize vertical sheet height, horizontal action scroll, safe-area left/right, 2-col Bento cards >= 560px */
+@media (max-width: 932px) and (orientation: landscape), (max-height: 500px) and (orientation: landscape) {
+  .topbar-root {
+    padding-top: max(6px, env(safe-area-inset-top, 0px));
+    padding-bottom: 6px;
+    padding-left: max(12px, env(safe-area-inset-left, 0px));
+    padding-right: max(12px, env(safe-area-inset-right, 0px));
+    gap: 6px;
+  }
+
+  .topbar-actions-scroll {
+    flex-wrap: nowrap !important;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 2px;
+  }
+
+  .tabnav-root {
+    margin-bottom: 10px;
+    gap: 8px;
+  }
+
+  .tabnav-root .cyber-tab-btn {
+    padding-top: 5px;
+    padding-bottom: 5px;
+  }
+
+  .print-main {
+    padding-top: 10px;
+    padding-left: max(14px, env(safe-area-inset-left, 0px));
+    padding-right: max(14px, env(safe-area-inset-right, 0px));
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-drawer-panel {
+    max-height: 100dvh;
+    overflow-y: auto;
+    padding-left: env(safe-area-inset-left, 0px);
+    padding-right: env(safe-area-inset-right, 0px);
+    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+  }
+
+  .mobile-modal-dialog {
+    max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow-y: auto;
+  }
+}
+
+@media (max-width: 932px) and (min-width: 560px) and (orientation: landscape) {
+  .bento-print-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .bento-span-2 {
+    grid-column: span 2 / span 2;
+  }
+}
+
 

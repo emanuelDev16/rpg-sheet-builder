@@ -51,20 +51,20 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
       className="no-print print:hidden bento-card lg:col-span-2 border-dashed"
     >
       <header className="bento-card-header">
-        <div className="flex items-center gap-2.5">
-          <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider">
+        <div className="bento-card-header-title flex items-center gap-2.5 min-w-0 flex-1">
+          <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
             //CONSTRUTOR_CUSTOM
           </span>
-          <h2 className="font-display text-xl font-extrabold tracking-wide uppercase text-[var(--ink-primary)]">
+          <h2 className="font-display text-lg sm:text-xl font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words min-w-0">
             {isEmptySheet ? t.createFromZero : t.addNewBlock}
           </h2>
         </div>
-        <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] uppercase">
+        <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] uppercase shrink-0">
           {activeTab === 'geral' ? '01' : '02'}
         </span>
       </header>
 
-      <form onSubmit={handleCreate} className="p-4 flex flex-col gap-3">
+      <form onSubmit={handleCreate} className="bento-card-body p-4 flex flex-col gap-3">
         {isEmptySheet && (
           <p className="font-mono-tech text-xs text-[var(--ink-secondary)] leading-relaxed">
             {t.emptyHint}
@@ -85,7 +85,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder={t.blockTitlePlaceholder}
-              className="cyber-input px-2.5 py-1.5 text-xs font-bold uppercase"
+              className="cyber-input mobile-touch-input px-2.5 py-1.5 text-xs font-bold uppercase w-full"
             />
           </div>
 
@@ -102,7 +102,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               value={code}
               onChange={(e) => setCode(e.target.value)}
               placeholder="Ex: //ATRIBUTOS"
-              className="cyber-input px-2.5 py-1.5 text-xs font-mono-tech"
+              className="cyber-input mobile-touch-input px-2.5 py-1.5 text-xs font-mono-tech w-full"
             />
           </div>
 
@@ -114,7 +114,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setColSpan(1)}
-                className={`flex-1 font-mono-tech text-[10px] font-bold py-1.5 cursor-pointer ${
+                className={`mobile-touch-input flex-1 font-mono-tech text-[10px] font-bold py-1.5 cursor-pointer ${
                   colSpan === 1
                     ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
                     : 'bg-[var(--bg-card)] text-[var(--ink-primary)]'
@@ -125,7 +125,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setColSpan(2)}
-                className={`flex-1 font-mono-tech text-[10px] font-bold py-1.5 border-l border-[var(--border-ink)] cursor-pointer ${
+                className={`mobile-touch-input flex-1 font-mono-tech text-[10px] font-bold py-1.5 border-l border-[var(--border-ink)] cursor-pointer ${
                   colSpan === 2
                     ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
                     : 'bg-[var(--bg-card)] text-[var(--ink-primary)]'
@@ -139,7 +139,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
           <div className="md:col-span-2">
             <button
               type="submit"
-              className="cyber-roll-btn w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase cursor-pointer"
+              className="cyber-roll-btn mobile-touch-input w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" aria-hidden="true" />
               <span>{t.createBtn}</span>
