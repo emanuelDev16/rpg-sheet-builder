@@ -45,7 +45,9 @@ export const SYNC_TOKEN: string =
     ? ENV_SYNC_TOKEN
     : (() => {
         const generated = crypto.randomBytes(16).toString('hex');
-        console.log(`[SYNC AUTH] SYNC_TOKEN ausente no ambiente. Token efêmero gerado: ${generated}`);
+        console.log(
+          `[SYNC AUTH] SYNC_TOKEN ausente no ambiente. Token efêmero inicializado (${generated.slice(0, 4)}...).`,
+        );
         return generated;
       })();
 
