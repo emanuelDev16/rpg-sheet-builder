@@ -1,4 +1,5 @@
 import React from 'react';
+import { Printer } from 'lucide-react';
 import { AppMode, SYSTEM_OPTIONS, SystemId } from '../core/sheetModel';
 
 interface TopBarProps {
@@ -11,6 +12,7 @@ interface TopBarProps {
   onNewSheet: () => void;
   onOpenModal: () => void;
   onSaveModal: () => void;
+  onPrintPdf: () => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -23,10 +25,11 @@ export const TopBar: React.FC<TopBarProps> = ({
   onNewSheet,
   onOpenModal,
   onSaveModal,
+  onPrintPdf,
 }) => {
   return (
     <header
-      className="flex flex-wrap items-center justify-between gap-4 px-5 py-3 bg-[var(--bg-card)] border-b-2 border-[var(--border-ink)] shrink-0"
+      className="no-print print:hidden flex flex-wrap items-center justify-between gap-4 px-5 py-3 bg-[var(--bg-card)] border-b-2 border-[var(--border-ink)] shrink-0"
       aria-label="Barra superior técnica"
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -95,6 +98,15 @@ export const TopBar: React.FC<TopBarProps> = ({
             className="cyber-btn-outline px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 cursor-pointer"
           >
             SALVAR
+          </button>
+          <button
+            type="button"
+            onClick={onPrintPdf}
+            aria-label="Imprimir ficha ativa em PDF"
+            className="cyber-btn-outline px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
+          >
+            <Printer className="w-3.5 h-3.5 text-[var(--accent-wine)]" aria-hidden="true" />
+            <span>PDF</span>
           </button>
         </div>
 

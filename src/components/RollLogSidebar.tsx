@@ -50,7 +50,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   return (
     <aside
       aria-label="Painel lateral de rolagens e consulta de regras"
-      className="w-full lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--border-ink)] flex flex-col min-h-0"
+      className="no-print print:hidden w-full lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-t-2 lg:border-t-0 lg:border-l-2 border-[var(--border-ink)] flex flex-col min-h-0"
     >
       {/* Seletor superior do painel lateral */}
       <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] shrink-0">

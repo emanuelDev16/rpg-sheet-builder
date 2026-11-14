@@ -98,6 +98,10 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         viewModelScope.launch {
             val reconciled = repo.hydrateAndSyncFromRoom()
             _workspace.value = reconciled
+            val remoteSynced = repo.syncWithRemoteMirror()
+            if (remoteSynced != null) {
+                _workspace.value = remoteSynced
+            }
         }
     }
 
@@ -107,6 +111,7 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         repo.saveWorkspace(nextWs, now)
         viewModelScope.launch {
             repo.saveToRoom(nextWs, now)
+            repo.pushRemoteMirror(nextWs, now)
         }
     }
 

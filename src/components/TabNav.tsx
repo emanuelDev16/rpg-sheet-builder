@@ -1,5 +1,6 @@
 import React from 'react';
 import { AppMode, SystemId, TabId } from '../core/sheetModel';
+import { getTabLabelsForSystem } from '../core/printSheet';
 
 interface TabNavProps {
   activeTab: TabId;
@@ -10,37 +11,6 @@ interface TabNavProps {
   onChangeCharacterName: (name: string) => void;
 }
 
-function getTabLabels(systemId: SystemId): { tab1: string; tab2: string } {
-  if (systemId === 'wod') {
-    return {
-      tab1: '/01 ATTRIBUTES & COMBAT',
-      tab2: '/02 DISCIPLINES & NOTES',
-    };
-  }
-  if (systemId === 'dnd5e') {
-    return {
-      tab1: '/01 ABILITIES & COMBAT',
-      tab2: '/02 SPELLS & NOTES',
-    };
-  }
-  if (systemId === 'cyberpunk') {
-    return {
-      tab1: '/01 STATS & COMBAT',
-      tab2: '/02 NETRUNNING & NOTES',
-    };
-  }
-  if (systemId === 'blank') {
-    return {
-      tab1: '/01 FICHA PRINCIPAL',
-      tab2: '/02 EXTRAS & NOTAS',
-    };
-  }
-  return {
-    tab1: '/01 GERAL & COMBATE',
-    tab2: '/02 MAGIAS & NOTAS',
-  };
-}
-
 export const TabNav: React.FC<TabNavProps> = ({
   activeTab,
   systemId,
@@ -49,10 +19,10 @@ export const TabNav: React.FC<TabNavProps> = ({
   mode,
   onChangeCharacterName,
 }) => {
-  const { tab1, tab2 } = getTabLabels(systemId);
+  const { tab1, tab2 } = getTabLabelsForSystem(systemId);
 
   return (
-    <div className="flex flex-wrap items-center justify-between gap-4 mb-5">
+    <div className="no-print print:hidden flex flex-wrap items-center justify-between gap-4 mb-5">
       <nav aria-label="Navegação de seções da ficha" role="tablist" className="flex flex-wrap items-center gap-2.5">
         <button
           type="button"

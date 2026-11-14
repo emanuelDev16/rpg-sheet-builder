@@ -10,11 +10,46 @@ import {
   formatRulesSearchError,
   validateRulesQuery,
 } from './src/core/rulesSearch.ts';
+import {
+  createWorkspaceMirrorPayload,
+  validateWorkspaceMirrorInput,
+  WorkspaceMirrorPayload,
+} from './src/core/roomSync.ts';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
 const PORT = Number(process.env.PORT || 3000);
+const ROOM_MIRROR_DIR = path.resolve(__dirname, '.data');
+const ROOM_MIRROR_FILE = path.join(ROOM_MIRROR_DIR, 'room-sync-mirror.json');
+
+function loadPersistedMirror(): WorkspaceMirrorPayload | null {
+  try {
+    if (!fs.existsSync(ROOM_MIRROR_FILE)) return null;
+    const raw = fs.readFileSync(ROOM_MIRROR_FILE, 'utf8');
+    const parsed = JSON.parse(raw) as unknown;
+    const validated = validateWorkspaceMirrorInput(parsed);
+    if (!validated.ok) return null;
+    return createWorkspaceMirrorPayload(
+      validated.workspace,
+      validated.updatedAtMillis,
+      validated.source,
+    );
+  } catch {
+    return null;
+  }
+}
+
+function savePersistedMirror(mirror: WorkspaceMirrorPayload): void {
+  try {
+    fs.mkdirSync(ROOM_MIRROR_DIR, { recursive: true });
+    const tmpFile = `${ROOM_MIRROR_FILE}.tmp`;
+    fs.writeFileSync(tmpFile, JSON.stringify(mirror), 'utf8');
+    fs.renameSync(tmpFile, ROOM_MIRROR_FILE);
+  } catch {
+    // Non-fatal fallback to in-memory mirror
+  }
+}
 
 function createGeminiClient() {
   const apiKey = process.env.GEMINI_API_KEY;
@@ -33,7 +68,53 @@ function createGeminiClient() {
 
 async function startServer() {
   const app = express();
-  app.use(express.json({ limit: '64kb' }));
+  app.use(express.json({ limit: '2mb' }));
+
+  let currentRoomMirror: WorkspaceMirrorPayload | null = loadPersistedMirror();
+
+  app.get('/api/workspace-sync', (_req, res) => {
+    res.json({
+      ok: true,
+      mirror: currentRoomMirror,
+    });
+  });
+
+  const handleUpsertWorkspaceMirror = (req: express.Request, res: express.Response) => {
+    const validated = validateWorkspaceMirrorInput(req.body);
+    if (!validated.ok) {
+      res.status(400).json({ ok: false, error: validated.error });
+      return;
+    }
+
+    if (
+      currentRoomMirror &&
+      validated.updatedAtMillis < currentRoomMirror.updatedAtMillis
+    ) {
+      res.json({
+        ok: true,
+        staleIgnored: true,
+        mirror: currentRoomMirror,
+      });
+      return;
+    }
+
+    const nextMirror = createWorkspaceMirrorPayload(
+      validated.workspace,
+      validated.updatedAtMillis,
+      validated.source,
+    );
+    currentRoomMirror = nextMirror;
+    savePersistedMirror(nextMirror);
+
+    res.json({
+      ok: true,
+      staleIgnored: false,
+      mirror: nextMirror,
+    });
+  };
+
+  app.put('/api/workspace-sync', handleUpsertWorkspaceMirror);
+  app.post('/api/workspace-sync', handleUpsertWorkspaceMirror);
 
   app.post('/api/rules-search', async (req, res) => {
     const validation = validateRulesQuery(req.body?.query);

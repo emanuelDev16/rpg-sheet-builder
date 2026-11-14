@@ -208,3 +208,78 @@ body {
   color: var(--ink-inverse);
   clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
 }
+
+/* ============================================================================
+   MODO IMPRESSÃO / EXPORTAÇÃO PDF (LIGHT CYBER-BRUTALISM · BENTO GRID)
+   ============================================================================ */
+@page {
+  size: A4 portrait;
+  margin: 10mm;
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    background-color: var(--bg-canvas) !important;
+  }
+
+  .print-shell {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    display: block !important;
+  }
+
+  .print-main {
+    overflow: visible !important;
+    height: auto !important;
+    padding: 0 !important;
+    background-color: var(--bg-canvas) !important;
+  }
+
+  .bento-print-grid {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    align-items: start !important;
+  }
+
+  .bento-span-2 {
+    grid-column: span 2 / span 2 !important;
+  }
+
+  .bento-card-two-col {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    column-gap: 24px !important;
+    row-gap: 8px !important;
+    align-items: center !important;
+  }
+
+  .bento-card {
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    box-shadow: none !important;
+    background-color: var(--bg-card) !important;
+  }
+
+  .no-print {
+    display: none !important;
+  }
+
+  .print-only-header {
+    display: flex !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+}
+

@@ -99,7 +99,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   };
 
   return (
-    <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+    <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
       {/* LEFT CARD: XP MONITOR */}
       <section className="bento-card" aria-label="Monitor de Experiência (XP)">
         <header className="bento-card-header">
@@ -107,7 +107,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               //XP_MONITOR
             </span>
-            <h2 className="font-display text-xl font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate">
+            <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
               EXPERIENCE MONITOR
             </h2>
           </div>
@@ -181,7 +181,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           </div>
 
           {/* Quick XP grant & custom adjustment */}
-          <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2.5">
+          <div className="no-print print:hidden pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2.5">
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
                 AJUSTE RÁPIDO DE XP
@@ -252,7 +252,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 <button
                   type="button"
                   onClick={onUndoLastUpgrade}
-                  className="cyber-btn-outline px-2.5 py-1 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="no-print print:hidden cyber-btn-outline px-2.5 py-1 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" aria-hidden="true" />
                   <span>DESFAZER ÚLTIMO UPGRADE</span>
@@ -265,7 +265,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 Nenhum registro de XP ainda. Adicione XP ganho acima para começar.
               </div>
             ) : (
-              <ul className="max-h-[240px] overflow-y-auto border border-[var(--border-subtle)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]">
+              <ul className="max-h-[240px] overflow-y-auto print:max-h-none print:overflow-visible border border-[var(--border-subtle)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]">
                 {xpState.ledger.map((entry) => (
                   <li
                     key={entry.id}
@@ -301,7 +301,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
               //TRAIT_UPGRADES
             </span>
-            <h2 className="font-display text-xl font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate">
+            <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
               POSSIBLE UPGRADES
             </h2>
           </div>
@@ -398,7 +398,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           ) : (
             <ul
               data-testid="possible-upgrades-list"
-              className="max-h-[468px] overflow-y-auto border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
+              className="max-h-[468px] overflow-y-auto print:max-h-none print:overflow-visible border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
             >
               {filteredPossible.map((trait) => (
                 <li
@@ -415,7 +415,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                     </div>
 
                     <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] truncate">
+                      <span className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible">
                         {trait.label}
                       </span>
 

@@ -91,4 +91,62 @@ class WorkspaceSyncTest {
         assertEquals(SystemId.DND5E.name, result.entitiesToUpsertIntoRoom.first().systemId)
         assertTrue(result.shouldUpdatePrefs)
     }
+
+    @Test
+    fun mirrorsNewerWebWorkspaceIntoRoomEntities() {
+        val localWod = Presets.createWorldOfDarknessSheet()
+        val localEntity = WorkspaceSyncEngine.toEntity(SystemId.WOD, localWod, 4000L, json)
+        val localMeta = WorkspaceMetadataEntity(id = 1, activeSystemId = SystemId.WOD.name, updatedAtMillis = 4000L)
+
+        val remoteDnd = Presets.createDnd5ePreset().copy(characterName = "MIRRORED FROM APP.TSX")
+        val remoteWs = WorkspaceState(
+            activeSystemId = SystemId.DND5E,
+            sheetsBySystem = mapOf(
+                SystemId.WOD to localWod,
+                SystemId.DND5E to remoteDnd
+            )
+        )
+
+        val result = WorkspaceSyncEngine.reconcileWithRemoteMirror(
+            roomSheets = listOf(localEntity),
+            roomMeta = localMeta,
+            remoteWorkspace = remoteWs,
+            remoteUpdatedAt = 9500L,
+            nowMillis = 10000L,
+            json = json
+        )
+
+        assertTrue(result.adoptedRemoteMirror)
+        assertFalse(result.shouldPushLocalToRemote)
+        assertEquals(SystemId.DND5E, result.workspace.activeSystemId)
+        assertEquals(2, result.entitiesToMirrorIntoRoom.size)
+        assertTrue(result.entitiesToMirrorIntoRoom.all { it.syncState == "MIRRORED" })
+        assertEquals("DND5E", result.metadataToMirrorIntoRoom.activeSystemId)
+    }
+
+    @Test
+    fun preservesNewerOfflineRoomEditsOverOlderWebMirror() {
+        val offlineRoomWod = Presets.createWorldOfDarknessSheet().copy(characterName = "OFFLINE ROOM EDIT")
+        val localEntity = WorkspaceSyncEngine.toEntity(SystemId.WOD, offlineRoomWod, 12000L, json)
+        val localMeta = WorkspaceMetadataEntity(id = 1, activeSystemId = SystemId.WOD.name, updatedAtMillis = 12000L)
+
+        val olderWebWod = Presets.createWorldOfDarknessSheet().copy(characterName = "STALE WEB")
+        val remoteWs = WorkspaceState(
+            activeSystemId = SystemId.WOD,
+            sheetsBySystem = mapOf(SystemId.WOD to olderWebWod)
+        )
+
+        val result = WorkspaceSyncEngine.reconcileWithRemoteMirror(
+            roomSheets = listOf(localEntity),
+            roomMeta = localMeta,
+            remoteWorkspace = remoteWs,
+            remoteUpdatedAt = 8000L,
+            nowMillis = 13000L,
+            json = json
+        )
+
+        assertFalse(result.adoptedRemoteMirror)
+        assertTrue(result.shouldPushLocalToRemote)
+        assertEquals("OFFLINE ROOM EDIT", result.workspace.sheetsBySystem[SystemId.WOD]?.characterName)
+    }
 }

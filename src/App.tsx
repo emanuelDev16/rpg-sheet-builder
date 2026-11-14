@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   addCardToSheet,
   addFieldToCard,
@@ -25,7 +25,20 @@ import {
   updateFieldSchema,
   updateFieldValue,
   updateRepeatableRow,
+  WorkspaceState,
 } from './core/sheetModel';
+import {
+  computeWorkspaceDigest,
+  fetchRoomMirrorSnapshot,
+  mirrorWorkspaceToRoom,
+  reconcileWorkspaceWithMirror,
+  ROOM_EDIT_DEBOUNCE_MS,
+  ROOM_PERIODIC_SYNC_INTERVAL_MS,
+  ROOM_RETRY_INTERVAL_MS,
+  ROOM_SYNC_META_KEY,
+  RoomSyncIndicatorState,
+  RoomSyncLocalMeta,
+} from './core/roomSync';
 import { rollDiceExpression } from './core/formula';
 import { playDiceClatter } from './core/diceAudio';
 import { TopBar } from './components/TopBar';
@@ -36,6 +49,8 @@ import { RollLogSidebar } from './components/RollLogSidebar';
 import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
 import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
+import { PrintSheetHeader } from './components/PrintSheetHeader';
+import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
   getAvailableXp,
@@ -47,9 +62,11 @@ import {
 const LEGACY_STORAGE_KEY = 'grid_sheet_wod_v1';
 const WORKSPACE_STORAGE_KEY = 'grid_sheet_workspace_v2';
 
-interface WorkspaceState {
-  activeSystemId: SystemId;
-  sheetsBySystem: Partial<Record<SystemId, CharacterSheetState>>;
+interface InitialWorkspaceBootstrap {
+  workspace: WorkspaceState;
+  hadLocalWorkspace: boolean;
+  updatedAtMillis: number;
+  lastMirroredDigest: string;
 }
 
 function withSafeXpState(parsed: CharacterSheetState): CharacterSheetState {
@@ -76,7 +93,35 @@ function withSafeXpState(parsed: CharacterSheetState): CharacterSheetState {
   };
 }
 
-function loadInitialWorkspace(): WorkspaceState {
+function readRoomSyncLocalMeta(): RoomSyncLocalMeta | null {
+  try {
+    const raw = localStorage.getItem(ROOM_SYNC_META_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as Partial<RoomSyncLocalMeta>;
+    if (typeof parsed.updatedAtMillis === 'number' && Number.isFinite(parsed.updatedAtMillis)) {
+      return {
+        updatedAtMillis: parsed.updatedAtMillis,
+        lastMirroredDigest: typeof parsed.lastMirroredDigest === 'string' ? parsed.lastMirroredDigest : '',
+      };
+    }
+  } catch {
+    // Ignore storage errors
+  }
+  return null;
+}
+
+function writeRoomSyncLocalMeta(meta: RoomSyncLocalMeta): void {
+  try {
+    localStorage.setItem(ROOM_SYNC_META_KEY, JSON.stringify(meta));
+  } catch {
+    // Ignore storage errors
+  }
+}
+
+function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
+  const existingMeta = readRoomSyncLocalMeta();
+  const now = Date.now();
+
   try {
     const rawWorkspace = localStorage.getItem(WORKSPACE_STORAGE_KEY);
     if (rawWorkspace) {
@@ -85,11 +130,16 @@ function loadInitialWorkspace(): WorkspaceState {
         const activeSheet = parsed.sheetsBySystem[parsed.activeSystemId];
         if (activeSheet && Array.isArray(activeSheet.cards)) {
           return {
-            activeSystemId: parsed.activeSystemId,
-            sheetsBySystem: {
-              ...parsed.sheetsBySystem,
-              [parsed.activeSystemId]: withSafeXpState(activeSheet),
+            workspace: {
+              activeSystemId: parsed.activeSystemId,
+              sheetsBySystem: {
+                ...parsed.sheetsBySystem,
+                [parsed.activeSystemId]: withSafeXpState(activeSheet),
+              },
             },
+            hadLocalWorkspace: true,
+            updatedAtMillis: existingMeta?.updatedAtMillis ?? now,
+            lastMirroredDigest: existingMeta?.lastMirroredDigest ?? '',
           };
         }
       }
@@ -102,8 +152,27 @@ function loadInitialWorkspace(): WorkspaceState {
         const normalized = withSafeXpState(parsed);
         const sysId = detectSystemId(normalized);
         return {
-          activeSystemId: sysId,
-          sheetsBySystem: { [sysId]: normalized },
+          workspace: {
+            activeSystemId: sysId,
+            sheetsBySystem: { [sysId]: normalized },
+          },
+          hadLocalWorkspace: true,
+          updatedAtMillis: existingMeta?.updatedAtMillis ?? now,
+          lastMirroredDigest: '',
+        };
+      }
+    }
+
+    const bridgeRaw =
+      typeof window !== 'undefined' ? window.AndroidRoomBridge?.loadWorkspace?.() : null;
+    if (bridgeRaw) {
+      const parsed = JSON.parse(bridgeRaw) as WorkspaceState;
+      if (parsed && parsed.activeSystemId && parsed.sheetsBySystem) {
+        return {
+          workspace: parsed,
+          hadLocalWorkspace: false,
+          updatedAtMillis: now,
+          lastMirroredDigest: computeWorkspaceDigest(parsed),
         };
       }
     }
@@ -113,8 +182,13 @@ function loadInitialWorkspace(): WorkspaceState {
 
   const defaultSheet = createDefaultSheet();
   return {
-    activeSystemId: 'wod',
-    sheetsBySystem: { wod: defaultSheet },
+    workspace: {
+      activeSystemId: 'wod',
+      sheetsBySystem: { wod: defaultSheet },
+    },
+    hadLocalWorkspace: false,
+    updatedAtMillis: now,
+    lastMirroredDigest: '',
   };
 }
 
@@ -126,11 +200,25 @@ function nowTimeString(): string {
 }
 
 export default function App() {
-  const [workspace, setWorkspace] = useState<WorkspaceState>(loadInitialWorkspace);
+  const [bootstrap] = useState<InitialWorkspaceBootstrap>(loadInitialWorkspaceBootstrap);
+  const [workspace, setWorkspace] = useState<WorkspaceState>(bootstrap.workspace);
   const [activeTab, setActiveTab] = useState<TabId>('geral');
   const [mode, setMode] = useState<AppMode>('jogo');
   const [modalMode, setModalMode] = useState<'open' | 'save' | null>(null);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
+    phase: 'synced',
+    nextSyncAtMillis: Date.now() + ROOM_PERIODIC_SYNC_INTERVAL_MS,
+    lastSyncedAtMillis: bootstrap.lastMirroredDigest ? bootstrap.updatedAtMillis : null,
+  }));
+
+  const workspaceRef = useRef(workspace);
+  workspaceRef.current = workspace;
+  const updatedAtRef = useRef(bootstrap.updatedAtMillis);
+  const lastMirroredDigestRef = useRef(bootstrap.lastMirroredDigest);
+  const hydratedRemoteRef = useRef(false);
+  const editDebounceTimerRef = useRef<number | null>(null);
+  const syncRunIdRef = useRef(0);
 
   const activeSystemId = workspace.activeSystemId;
   const sheet = useMemo(
@@ -165,6 +253,233 @@ export default function App() {
       // Ignore storage quota errors
     }
   }, [workspace]);
+
+  const executeRoomSync = async (
+    targetWorkspace: WorkspaceState,
+    timestamp: number,
+    options: { flashOnSuccess?: boolean } = {},
+  ) => {
+    const runId = ++syncRunIdRef.current;
+    setRoomSyncState((prev) => ({
+      phase: 'syncing',
+      nextSyncAtMillis: null,
+      lastSyncedAtMillis: prev.lastSyncedAtMillis,
+    }));
+
+    const outcome = await mirrorWorkspaceToRoom(targetWorkspace, { updatedAtMillis: timestamp });
+    if (runId !== syncRunIdRef.current) {
+      return;
+    }
+
+    const latestDigest = computeWorkspaceDigest(workspaceRef.current);
+    if (outcome.ok) {
+      lastMirroredDigestRef.current = outcome.digest;
+      writeRoomSyncLocalMeta({
+        updatedAtMillis: outcome.updatedAtMillis,
+        lastMirroredDigest: outcome.digest,
+      });
+      if (latestDigest === outcome.digest) {
+        const completedAt = Date.now();
+        setRoomSyncState({
+          phase: 'synced',
+          nextSyncAtMillis: completedAt + ROOM_PERIODIC_SYNC_INTERVAL_MS,
+          lastSyncedAtMillis: completedAt,
+        });
+      }
+      if (options.flashOnSuccess) {
+        triggerFlash('// ROOM DB: SINCRONIZADO AGORA');
+      }
+    } else if (latestDigest === outcome.digest) {
+      setRoomSyncState((prev) => ({
+        phase: 'error',
+        nextSyncAtMillis: Date.now() + ROOM_RETRY_INTERVAL_MS,
+        lastSyncedAtMillis: prev.lastSyncedAtMillis,
+        lastError: outcome.error ?? 'Falha na sincronização Room.',
+      }));
+    }
+  };
+
+  // Hydrate from Android Room mirror on mount if Android has newer offline edits
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      const remoteMirror = await fetchRoomMirrorSnapshot();
+      if (cancelled) return;
+      hydratedRemoteRef.current = true;
+      const reconciled = reconcileWorkspaceWithMirror(
+        workspaceRef.current,
+        updatedAtRef.current,
+        remoteMirror,
+        { hadLocalWorkspace: bootstrap.hadLocalWorkspace },
+      );
+      if (reconciled.adoptedRemote) {
+        const adoptedDigest = computeWorkspaceDigest(reconciled.workspace);
+        updatedAtRef.current = reconciled.updatedAtMillis;
+        lastMirroredDigestRef.current = adoptedDigest;
+        writeRoomSyncLocalMeta({
+          updatedAtMillis: reconciled.updatedAtMillis,
+          lastMirroredDigest: adoptedDigest,
+        });
+        setWorkspace(reconciled.workspace);
+        const syncedAt = Date.now();
+        setRoomSyncState({
+          phase: 'synced',
+          nextSyncAtMillis: syncedAt + ROOM_PERIODIC_SYNC_INTERVAL_MS,
+          lastSyncedAtMillis: syncedAt,
+        });
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+  }, [bootstrap.hadLocalWorkspace]);
+
+  // Automatically mirror every workspace change into Android Room database (WebView bridge + /api/workspace-sync)
+  useEffect(() => {
+    const digest = computeWorkspaceDigest(workspace);
+    if (digest === lastMirroredDigestRef.current) {
+      return;
+    }
+
+    const nextTimestamp = Math.max(Date.now(), updatedAtRef.current + 1);
+    updatedAtRef.current = nextTimestamp;
+
+    if (editDebounceTimerRef.current !== null) {
+      window.clearTimeout(editDebounceTimerRef.current);
+      editDebounceTimerRef.current = null;
+    }
+
+    setRoomSyncState((prev) => ({
+      phase: 'scheduled',
+      nextSyncAtMillis: Date.now() + ROOM_EDIT_DEBOUNCE_MS,
+      lastSyncedAtMillis: prev.lastSyncedAtMillis,
+    }));
+
+    const timerId = window.setTimeout(() => {
+      editDebounceTimerRef.current = null;
+      void executeRoomSync(workspace, nextTimestamp);
+    }, ROOM_EDIT_DEBOUNCE_MS);
+    editDebounceTimerRef.current = timerId;
+
+    return () => {
+      window.clearTimeout(timerId);
+      if (editDebounceTimerRef.current === timerId) {
+        editDebounceTimerRef.current = null;
+      }
+    };
+  }, [workspace]);
+
+  // Periodic Room Database checkpoint & automatic retry scheduler
+  useEffect(() => {
+    if (
+      (roomSyncState.phase !== 'synced' && roomSyncState.phase !== 'error') ||
+      roomSyncState.nextSyncAtMillis === null
+    ) {
+      return;
+    }
+
+    const delayMs = Math.max(100, roomSyncState.nextSyncAtMillis - Date.now());
+    const timerId = window.setTimeout(() => {
+      const currentDigest = computeWorkspaceDigest(workspaceRef.current);
+      if (currentDigest !== lastMirroredDigestRef.current || roomSyncState.phase === 'error') {
+        const nextTs = Math.max(Date.now(), updatedAtRef.current + 1);
+        updatedAtRef.current = nextTs;
+        void executeRoomSync(workspaceRef.current, nextTs);
+        return;
+      }
+
+      void (async () => {
+        const runId = ++syncRunIdRef.current;
+        setRoomSyncState((prev) => ({
+          phase: 'syncing',
+          nextSyncAtMillis: null,
+          lastSyncedAtMillis: prev.lastSyncedAtMillis,
+        }));
+
+        const remoteMirror = await fetchRoomMirrorSnapshot();
+        if (runId !== syncRunIdRef.current) return;
+
+        const reconciled = reconcileWorkspaceWithMirror(
+          workspaceRef.current,
+          updatedAtRef.current,
+          remoteMirror,
+          { hadLocalWorkspace: true },
+        );
+        if (reconciled.adoptedRemote) {
+          const adoptedDigest = computeWorkspaceDigest(reconciled.workspace);
+          updatedAtRef.current = reconciled.updatedAtMillis;
+          lastMirroredDigestRef.current = adoptedDigest;
+          writeRoomSyncLocalMeta({
+            updatedAtMillis: reconciled.updatedAtMillis,
+            lastMirroredDigest: adoptedDigest,
+          });
+          setWorkspace(reconciled.workspace);
+          const syncedAt = Date.now();
+          setRoomSyncState({
+            phase: 'synced',
+            nextSyncAtMillis: syncedAt + ROOM_PERIODIC_SYNC_INTERVAL_MS,
+            lastSyncedAtMillis: syncedAt,
+          });
+          return;
+        }
+
+        const outcome = await mirrorWorkspaceToRoom(workspaceRef.current, {
+          updatedAtMillis: updatedAtRef.current,
+        });
+        if (runId !== syncRunIdRef.current) return;
+
+        if (outcome.ok) {
+          const syncedAt = Date.now();
+          setRoomSyncState({
+            phase: 'synced',
+            nextSyncAtMillis: syncedAt + ROOM_PERIODIC_SYNC_INTERVAL_MS,
+            lastSyncedAtMillis: syncedAt,
+          });
+        } else {
+          setRoomSyncState((prev) => ({
+            phase: 'error',
+            nextSyncAtMillis: Date.now() + ROOM_RETRY_INTERVAL_MS,
+            lastSyncedAtMillis: prev.lastSyncedAtMillis,
+            lastError: outcome.error ?? 'Falha na verificação periódica Room.',
+          }));
+        }
+      })();
+    }, delayMs);
+
+    return () => window.clearTimeout(timerId);
+  }, [roomSyncState.phase, roomSyncState.nextSyncAtMillis]);
+
+  // Flush pending workspace mirror cleanly when page hides or closes
+  useEffect(() => {
+    const flushPendingMirror = () => {
+      const currentDigest = computeWorkspaceDigest(workspaceRef.current);
+      if (currentDigest === lastMirroredDigestRef.current) return;
+      const flushTimestamp = Math.max(Date.now(), updatedAtRef.current + 1);
+      updatedAtRef.current = flushTimestamp;
+      lastMirroredDigestRef.current = currentDigest;
+      writeRoomSyncLocalMeta({
+        updatedAtMillis: flushTimestamp,
+        lastMirroredDigest: currentDigest,
+      });
+      void mirrorWorkspaceToRoom(workspaceRef.current, {
+        updatedAtMillis: flushTimestamp,
+        keepalive: true,
+      });
+    };
+
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        flushPendingMirror();
+      }
+    };
+
+    window.addEventListener('pagehide', flushPendingMirror);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+    return () => {
+      window.removeEventListener('pagehide', flushPendingMirror);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+    };
+  }, [lastMirroredDigestRef, updatedAtRef, workspaceRef]);
 
   const triggerFlash = (msg: string) => {
     setFlashMessage(msg);
@@ -381,8 +696,17 @@ export default function App() {
 
   const availableXp = useMemo(() => getAvailableXp(sheet.xp), [sheet.xp]);
 
+  const handlePrintPdf = () => {
+    const res = printActiveSheetView(sheet, activeTab);
+    if (!res.ok && res.error) {
+      triggerFlash(`// PDF ERRO: ${res.error}`);
+    } else {
+      triggerFlash(`// PDF PRONTO: ${res.documentTitle}`);
+    }
+  };
+
   return (
-    <div className="min-h-screen lg:h-screen flex flex-col bg-[var(--bg-canvas)] text-[var(--ink-primary)] overflow-x-hidden lg:overflow-hidden">
+    <div className="print-shell min-h-screen lg:h-screen print:h-auto flex flex-col bg-[var(--bg-canvas)] text-[var(--ink-primary)] overflow-x-hidden lg:overflow-hidden print:overflow-visible">
       <TopBar
         systemCode={sheet.systemCode}
         activeSystemId={activeSystemId}
@@ -393,11 +717,20 @@ export default function App() {
         onNewSheet={handleNewSheet}
         onOpenModal={() => setModalMode('open')}
         onSaveModal={() => setModalMode('save')}
+        onPrintPdf={handlePrintPdf}
       />
 
       <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-        <main className="cyber-grid-canvas flex-1 p-4 sm:p-6 overflow-y-auto min-h-0">
+        <main className="print-main cyber-grid-canvas flex-1 p-4 sm:p-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
           <div className="max-w-[1140px] mx-auto">
+            <PrintSheetHeader
+              sheet={sheet}
+              systemId={activeSystemId}
+              activeTab={activeTab}
+              availableXp={availableXp}
+              totalCargoWeight={evaluation.totalCargoWeight}
+            />
+
             <TabNav
               activeTab={activeTab}
               systemId={activeSystemId}
@@ -417,7 +750,7 @@ export default function App() {
                 onUndoLastUpgrade={handleUndoLastUpgrade}
               />
             ) : (
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
                 {visibleCards.map((card) => (
                   <BentoCard
                     key={card.id}
@@ -489,6 +822,16 @@ export default function App() {
         availableXp={availableXp}
         rollCount={sheet.rollLogs.length}
         flashMessage={flashMessage}
+        roomSyncState={roomSyncState}
+        onForceRoomSync={() => {
+          if (editDebounceTimerRef.current !== null) {
+            window.clearTimeout(editDebounceTimerRef.current);
+            editDebounceTimerRef.current = null;
+          }
+          const nextTs = Math.max(Date.now(), updatedAtRef.current + 1);
+          updatedAtRef.current = nextTs;
+          void executeRoomSync(workspaceRef.current, nextTs, { flashOnSuccess: true });
+        }}
       />
 
       <SheetModal
@@ -497,6 +840,7 @@ export default function App() {
         activeSystemId={activeSystemId}
         onClose={() => setModalMode(null)}
         onLoadPreset={handleLoadPreset}
+        onPrintPdf={handlePrintPdf}
         onImportJson={(next) => {
           const normalized = withSafeXpState(next);
           const nextId = detectSystemId(normalized);

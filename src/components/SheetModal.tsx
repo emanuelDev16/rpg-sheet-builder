@@ -1,5 +1,5 @@
 import React, { useRef, useState } from 'react';
-import { X, Download, Copy, Check, Upload } from 'lucide-react';
+import { X, Download, Copy, Check, Upload, Printer } from 'lucide-react';
 import { CharacterSheetState, SYSTEM_OPTIONS, SystemId } from '../core/sheetModel';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 
@@ -11,6 +11,7 @@ interface SheetModalProps {
   onLoadPreset: (presetId: SystemId) => void;
   onImportJson: (nextSheet: CharacterSheetState) => void;
   onSaveLocal: () => void;
+  onPrintPdf: () => void;
 }
 
 export const SheetModal: React.FC<SheetModalProps> = ({
@@ -21,6 +22,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   onLoadPreset,
   onImportJson,
   onSaveLocal,
+  onPrintPdf,
 }) => {
   const [importError, setImportError] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
@@ -73,7 +75,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45"
+      className="no-print print:hidden fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -189,6 +191,25 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     </div>
                   </div>
                   <span className="text-xs font-bold whitespace-nowrap shrink-0">SALVAR ↗</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => {
+                    onClose();
+                    window.requestAnimationFrame(() => onPrintPdf());
+                  }}
+                  className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 bg-[var(--accent-cream-badge)] cursor-pointer"
+                >
+                  <div>
+                    <div className="text-xs font-bold uppercase text-[var(--accent-wine)]">
+                      IMPRIMIR / SALVAR PDF (FICHA ATIVA)
+                    </div>
+                    <div className="text-[11px] text-[var(--ink-secondary)]">
+                      Gera PDF estilizado em Light Cyber-Brutalism mantendo o Bento Grid atual
+                    </div>
+                  </div>
+                  <Printer className="w-4 h-4 shrink-0 text-[var(--accent-wine)]" aria-hidden="true" />
                 </button>
 
                 <button

@@ -44,7 +44,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const renderEditStrip = () => {
     if (mode !== 'edicao') return null;
     return (
-      <div className="mt-2 pt-2 border-t border-dashed border-[var(--border-ink)]/40 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[var(--bg-header-strip)] p-2 rounded-[4px]">
+      <div className="no-print print:hidden mt-2 pt-2 border-t border-dashed border-[var(--border-ink)]/40 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[var(--bg-header-strip)] p-2 rounded-[4px]">
         <div className="flex items-center gap-1.5">
           <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
             RÓTULO:
@@ -215,13 +215,18 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             {field.label}
           </label>
           {isLong ? (
-            <textarea
-              id={inputId}
-              rows={4}
-              value={String(field.value ?? '')}
-              onChange={(e) => onChangeValue(field.id, e.target.value)}
-              className="cyber-input w-full px-3 py-2 text-xs leading-relaxed resize-y"
-            />
+            <>
+              <textarea
+                id={inputId}
+                rows={4}
+                value={String(field.value ?? '')}
+                onChange={(e) => onChangeValue(field.id, e.target.value)}
+                className="no-print print:hidden cyber-input w-full px-3 py-2 text-xs leading-relaxed resize-y"
+              />
+              <p className="hidden print:block cyber-input w-full px-3 py-2 text-xs leading-relaxed whitespace-pre-wrap break-words">
+                {String(field.value ?? '')}
+              </p>
+            </>
           ) : (
             <input
               id={inputId}
@@ -289,7 +294,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="button"
               aria-label={`Diminuir ${field.label}`}
               onClick={() => onAdjustResource(field.id, -1)}
-              className="cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
             >
               -
             </button>
@@ -303,7 +308,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="button"
               aria-label={`Aumentar ${field.label}`}
               onClick={() => onAdjustResource(field.id, 1)}
-              className="cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+              className="no-print print:hidden cyber-btn-outline w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
             >
               +
             </button>
@@ -419,7 +424,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               <tr className="bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] text-[10px] text-[var(--ink-muted)] uppercase">
                 <th className="text-left py-2 px-2.5 font-bold">{col1Title}</th>
                 <th className="text-right py-2 px-2.5 font-bold w-28">{col2Title}</th>
-                <th className="w-9" aria-label="Ações" />
+                <th className="w-9 no-print print:hidden" aria-label="Ações" />
               </tr>
             </thead>
             <tbody>
@@ -461,7 +466,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         className="w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
                       />
                     </td>
-                    <td className="p-1.5 text-center">
+                    <td className="p-1.5 text-center no-print print:hidden">
                       <button
                         type="button"
                         aria-label={`Remover linha ${row.col1}`}
@@ -481,7 +486,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         <button
           type="button"
           onClick={() => onAddRow(field.id)}
-          className="font-mono-tech self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase border-[1.5px] border-dashed border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] transition-colors cursor-pointer"
+          className="no-print print:hidden font-mono-tech self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase border-[1.5px] border-dashed border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" aria-hidden="true" />
           <span>ADICIONAR LINHA</span>

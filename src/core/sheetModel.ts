@@ -127,6 +127,11 @@ export interface CharacterSheetState {
   xp?: XpState;
 }
 
+export interface WorkspaceState {
+  activeSystemId: SystemId;
+  sheetsBySystem: Partial<Record<SystemId, CharacterSheetState>>;
+}
+
 export interface ComputedFieldInfo {
   value: number;
   formatted: string;

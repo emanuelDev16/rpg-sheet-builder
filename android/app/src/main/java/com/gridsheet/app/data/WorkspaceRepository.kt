@@ -44,7 +44,7 @@ private data class RulesSearchRequest(
 
 class WorkspaceRepository(context: Context) {
     private val prefs = context.getSharedPreferences("grid_sheet_prefs", Context.MODE_PRIVATE)
-    private val sheetDao = GridSheetDatabase.getInstance(context).sheetDao()
+    val roomRepository = RoomWorkspaceRepository(context)
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -52,8 +52,7 @@ class WorkspaceRepository(context: Context) {
         prettyPrint = true
     }
 
-    fun observeOfflineSheetCount(): Flow<Int> =
-        sheetDao.observeAllSheets().map { it.size }
+    fun observeOfflineSheetCount(): Flow<Int> = roomRepository.observeOfflineSheetCount()
 
     private fun readPrefsWorkspaceRaw(): Pair<WorkspaceState?, Long> {
         val raw = prefs.getString(WORKSPACE_KEY, null)
@@ -91,32 +90,29 @@ class WorkspaceRepository(context: Context) {
     }
 
     suspend fun saveToRoom(workspace: WorkspaceState, timestampMillis: Long = System.currentTimeMillis()) {
-        withContext(Dispatchers.IO) {
-            val entities = workspace.sheetsBySystem.map { (sysId, sheet) ->
-                WorkspaceSyncEngine.toEntity(
-                    systemId = sysId,
-                    sheet = sheet.copy(systemId = sysId),
-                    updatedAtMillis = timestampMillis,
-                    json = json,
-                    syncState = "SYNCED"
-                )
-            }
-            if (entities.isNotEmpty()) {
-                sheetDao.upsertSheets(entities)
-            }
-            sheetDao.upsertMetadata(
-                WorkspaceMetadataEntity(
-                    id = 1,
-                    activeSystemId = workspace.activeSystemId.name,
-                    updatedAtMillis = timestampMillis
-                )
-            )
+        roomRepository.mirrorWorkspaceIntoRoom(
+            workspace = workspace,
+            updatedAtMillis = timestampMillis,
+            syncState = "SYNCED"
+        )
+    }
+
+    suspend fun pushRemoteMirror(
+        workspace: WorkspaceState,
+        timestampMillis: Long = System.currentTimeMillis()
+    ): Boolean = roomRepository.pushRemoteMirror(workspace, timestampMillis)
+
+    suspend fun syncWithRemoteMirror(): WorkspaceState? = withContext(Dispatchers.IO) {
+        val outcome = roomRepository.syncWithRemoteMirror() ?: return@withContext null
+        if (outcome.updatedFromRemote) {
+            saveWorkspace(outcome.workspace, outcome.updatedAtMillis)
         }
+        outcome.workspace
     }
 
     suspend fun hydrateAndSyncFromRoom(): WorkspaceState = withContext(Dispatchers.IO) {
-        val roomSheets = sheetDao.getAllSheets()
-        val roomMeta = sheetDao.getMetadata()
+        val roomSheets = roomRepository.getAllSheetEntities()
+        val roomMeta = roomRepository.getMetadata()
         val (prefsWs, prefsUpdatedAt) = readPrefsWorkspaceRaw()
         val nowMillis = System.currentTimeMillis()
 
@@ -129,10 +125,10 @@ class WorkspaceRepository(context: Context) {
             json = json
         )
 
-        if (reconciled.entitiesToUpsertIntoRoom.isNotEmpty()) {
-            sheetDao.upsertSheets(reconciled.entitiesToUpsertIntoRoom)
-        }
-        sheetDao.upsertMetadata(reconciled.metadataToUpsertIntoRoom)
+        roomRepository.upsertReconciledEntities(
+            entities = reconciled.entitiesToUpsertIntoRoom,
+            metadata = reconciled.metadataToUpsertIntoRoom
+        )
 
         if (reconciled.shouldUpdatePrefs) {
             saveWorkspace(reconciled.workspace, reconciled.resolvedTimestamp)

@@ -43,7 +43,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   return (
     <section
       aria-label="Criador de blocos da ficha"
-      className="bento-card lg:col-span-2 border-dashed"
+      className="no-print print:hidden bento-card lg:col-span-2 border-dashed"
     >
       <header className="bento-card-header">
         <div className="flex items-center gap-2.5">
