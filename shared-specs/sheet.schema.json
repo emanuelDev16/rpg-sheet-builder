@@ -1,0 +1,146 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://gridsheet.local/schemas/sheet.schema.json",
+  "title": "GridSheet Canonical Character Sheet",
+  "type": "object",
+  "additionalProperties": false,
+  "required": ["id", "name", "systemId", "revision", "updatedAt", "tabs"],
+  "properties": {
+    "id": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64,
+      "pattern": "^[a-zA-Z0-9_-]+$"
+    },
+    "name": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 120
+    },
+    "systemId": {
+      "type": "string",
+      "minLength": 1,
+      "maxLength": 64
+    },
+    "revision": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Versão incremental para controle otimista de concorrência (If-Match / 409 Conflict)."
+    },
+    "updatedAt": {
+      "type": "string",
+      "format": "date-time"
+    },
+    "tabs": {
+      "type": "array",
+      "minItems": 1,
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/Tab" }
+    }
+  },
+  "$defs": {
+    "Tab": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "cards"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "cards": {
+          "type": "array",
+          "maxItems": 50,
+          "items": { "$ref": "#/$defs/BentoCard" }
+        }
+      }
+    },
+    "BentoCard": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "title", "columns", "fields"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "tag": { "type": "string", "maxLength": 40 },
+        "title": { "type": "string", "minLength": 1, "maxLength": 80 },
+        "columns": { "type": "integer", "minimum": 1, "maximum": 4, "default": 1 },
+        "fields": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/Field" }
+        }
+      }
+    },
+    "Field": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "label", "type"],
+      "properties": {
+        "id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 64,
+          "pattern": "^[a-zA-Z_][a-zA-Z0-9_]*$"
+        },
+        "label": { "type": "string", "minLength": 1, "maxLength": 100 },
+        "type": {
+          "type": "string",
+          "enum": [
+            "number",
+            "text",
+            "resource",
+            "calculated",
+            "boolean",
+            "dots",
+            "roll_button",
+            "repeatable_list"
+          ]
+        },
+        "value": {
+          "type": ["number", "string", "boolean", "null"]
+        },
+        "maxValue": {
+          "type": ["number", "null"]
+        },
+        "maxDots": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 20
+        },
+        "formula": {
+          "type": "string",
+          "maxLength": 256
+        },
+        "rollConfig": { "$ref": "#/$defs/RollConfig" },
+        "subFields": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/Field" }
+        },
+        "rows": {
+          "type": "array",
+          "maxItems": 200,
+          "items": {
+            "type": "object",
+            "additionalProperties": {
+              "type": ["number", "string", "boolean", "null"]
+            }
+          }
+        }
+      }
+    },
+    "RollConfig": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "expression"],
+      "properties": {
+        "mode": {
+          "type": "string",
+          "enum": ["standard", "storyteller_skill", "storyteller_soak"]
+        },
+        "expression": { "type": "string", "maxLength": 256 },
+        "difficulty": { "type": "integer", "minimum": 2, "maximum": 10, "default": 6 },
+        "specialty": { "type": "boolean", "default": false },
+        "useWillpower": { "type": "boolean", "default": false }
+      }
+    }
+  }
+}

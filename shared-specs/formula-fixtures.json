@@ -1,0 +1,167 @@
+{
+  "version": "2.0.0",
+  "guardrails": {
+    "maxFormulaLength": 256,
+    "maxRecursionDepth": 15,
+    "maxDiceCount": 100,
+    "maxDiceSides": 1000
+  },
+  "arithmeticCases": [
+    {
+      "id": "dnd_modifier_positive",
+      "expression": "floor((@strength - 10) / 2)",
+      "context": { "strength": 16 },
+      "expected": 3
+    },
+    {
+      "id": "dnd_modifier_negative",
+      "expression": "floor((@dexterity - 10) / 2)",
+      "context": { "dexterity": 8 },
+      "expected": -1
+    },
+    {
+      "id": "chained_reference",
+      "expression": "@base_ac + @dex_mod + @shield",
+      "context": {
+        "base_ac": 10,
+        "dex_mod": "@dex_calc",
+        "dex_calc": 2,
+        "shield": 2
+      },
+      "expected": 14
+    },
+    {
+      "id": "repeatable_list_sum",
+      "expression": "sum(@inventory.weight)",
+      "context": {
+        "inventory": [
+          { "item": "Espada", "weight": 3 },
+          { "item": "Escudo", "weight": 6 },
+          { "item": "Mochila", "weight": 5 }
+        ]
+      },
+      "expected": 14
+    }
+  ],
+  "storytellerCases": [
+    {
+      "id": "st_standard_success",
+      "input": {
+        "mode": "storyteller_skill",
+        "pool": 4,
+        "difficulty": 6,
+        "specialty": false,
+        "useWillpower": false,
+        "mockedDice": [3, 5, 6, 8]
+      },
+      "expected": {
+        "successes": 2,
+        "status": "success"
+      }
+    },
+    {
+      "id": "st_specialty_tens_double",
+      "input": {
+        "mode": "storyteller_skill",
+        "pool": 3,
+        "difficulty": 6,
+        "specialty": true,
+        "useWillpower": false,
+        "mockedDice": [4, 7, 10]
+      },
+      "expected": {
+        "successes": 3,
+        "status": "success"
+      }
+    },
+    {
+      "id": "st_ones_cancel_to_simple_failure_not_botch",
+      "input": {
+        "mode": "storyteller_skill",
+        "pool": 3,
+        "difficulty": 6,
+        "specialty": false,
+        "useWillpower": false,
+        "mockedDice": [8, 1, 4]
+      },
+      "expected": {
+        "successes": 0,
+        "status": "failure"
+      }
+    },
+    {
+      "id": "st_botch_when_no_successes_and_ones_present",
+      "input": {
+        "mode": "storyteller_skill",
+        "pool": 4,
+        "difficulty": 6,
+        "specialty": false,
+        "useWillpower": false,
+        "mockedDice": [1, 1, 4, 5]
+      },
+      "expected": {
+        "successes": 0,
+        "status": "botch"
+      }
+    },
+    {
+      "id": "st_soak_immune_to_botch",
+      "input": {
+        "mode": "storyteller_soak",
+        "pool": 4,
+        "difficulty": 6,
+        "specialty": false,
+        "useWillpower": false,
+        "mockedDice": [1, 1, 2, 4]
+      },
+      "expected": {
+        "successes": 0,
+        "status": "failure"
+      }
+    },
+    {
+      "id": "st_willpower_auto_success_immune_to_ones",
+      "input": {
+        "mode": "storyteller_skill",
+        "pool": 3,
+        "difficulty": 6,
+        "specialty": false,
+        "useWillpower": true,
+        "mockedDice": [1, 1, 3]
+      },
+      "expected": {
+        "successes": 1,
+        "status": "success"
+      }
+    }
+  ],
+  "securityErrorCases": [
+    {
+      "id": "err_direct_circular_reference",
+      "expression": "@field_a",
+      "context": {
+        "field_a": "@field_b + 1",
+        "field_b": "@field_a + 1"
+      },
+      "expectedError": "CIRCULAR_REFERENCE"
+    },
+    {
+      "id": "err_dice_count_overflow",
+      "expression": "101d20",
+      "context": {},
+      "expectedError": "DICE_LIMIT_EXCEEDED"
+    },
+    {
+      "id": "err_dice_sides_overflow",
+      "expression": "1d1001",
+      "context": {},
+      "expectedError": "DICE_LIMIT_EXCEEDED"
+    },
+    {
+      "id": "err_formula_too_long",
+      "expression": "1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1+1",
+      "context": {},
+      "expectedError": "FORMULA_TOO_LONG"
+    }
+  ]
+}
