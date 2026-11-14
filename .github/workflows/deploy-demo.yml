@@ -27,7 +27,7 @@ jobs:
           node-version: '20'
 
       - name: Instalar dependências
-        run: npm install
+        run: npm install --legacy-peer-deps
 
       - name: Gerar build estático (Vite)
         run: npx vite build --base=/rpg-sheet-builder/
