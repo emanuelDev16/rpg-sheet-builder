@@ -1366,13 +1366,17 @@ export function createGenericD20Preset(): CharacterSheetState {
   };
 }
 
-export function createBlankSheet(): CharacterSheetState {
+export function createBlankSheet(localeOptions?: {
+  newCharacterName?: string;
+  customSystemName?: string;
+  customSystemCode?: string;
+}): CharacterSheetState {
   return {
     id: 'sheet_blank',
     systemId: 'blank',
-    systemName: 'SISTEMA CUSTOMIZADO',
-    systemCode: '/SYS: SISTEMA CUSTOMIZADO',
-    characterName: 'NOVO PERSONAGEM',
+    systemName: localeOptions?.customSystemName ?? 'SISTEMA CUSTOMIZADO',
+    systemCode: localeOptions?.customSystemCode ?? '/SYS: SISTEMA CUSTOMIZADO',
+    characterName: localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM',
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
@@ -2141,6 +2145,11 @@ const DND_ABILITY_KEYS = new Set([
 export interface NewSheetIdentityInput {
   characterName?: string;
   secondaryTrait?: string;
+  localeOptions?: {
+    newCharacterName?: string;
+    customSystemName?: string;
+    customSystemCode?: string;
+  };
 }
 
 export function createNewSheetForSystem(
@@ -2151,9 +2160,10 @@ export function createNewSheetForSystem(
   const resolvedId: SystemId = validIds.includes(systemId) ? systemId : 'blank';
   const customCharName = identity?.characterName?.trim() ?? '';
   const customSecondaryTrait = identity?.secondaryTrait?.trim() ?? '';
+  const defaultNewName = identity?.localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM';
 
   if (resolvedId === 'blank') {
-    const blank = createBlankSheet();
+    const blank = createBlankSheet(identity?.localeOptions);
     return customCharName
       ? { ...blank, characterName: customCharName.toUpperCase() }
       : blank;
@@ -2163,7 +2173,7 @@ export function createNewSheetForSystem(
   return {
     ...preset,
     systemId: resolvedId,
-    characterName: customCharName ? customCharName.toUpperCase() : 'NOVO PERSONAGEM',
+    characterName: customCharName ? customCharName.toUpperCase() : defaultNewName,
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),

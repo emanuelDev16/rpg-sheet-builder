@@ -1,7 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ArrowUpRight, RotateCcw } from 'lucide-react';
 import { CharacterSheetState, XpUpgradeCategory } from '../core/sheetModel';
-import { AppTranslations, getTranslations } from '../core/i18n';
+import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
 import {
   extractAllTraits,
   getAvailableXp,
@@ -14,6 +14,7 @@ import {
 
 interface XpUpgradeWorkspaceProps {
   sheet: CharacterSheetState;
+  language?: AppLanguage;
   t?: AppTranslations['xp'];
   onAwardXp: (delta: number, reason: string) => { ok: boolean; error?: string };
   onUpgradeTrait: (fieldId: string) => void;
@@ -22,16 +23,11 @@ interface XpUpgradeWorkspaceProps {
 
 type CategoryFilter = 'all' | XpUpgradeCategory;
 
-const CATEGORY_LABELS: Record<XpUpgradeCategory, string> = {
-  attribute: 'ATTRIBUTE',
-  skill: 'SKILL',
-  discipline: 'DISCIPLINE',
-};
-
 const DEFAULT_XP_T = getTranslations('pt-BR').xp;
 
 export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   sheet,
+  language = 'pt-BR',
   t = DEFAULT_XP_T,
   onAwardXp,
   onUpgradeTrait,
@@ -45,8 +41,8 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const xpState = useMemo(() => normalizeXpState(sheet.xp), [sheet.xp]);
   const availableXp = useMemo(() => getAvailableXp(xpState), [xpState]);
 
-  const allTraits = useMemo(() => extractAllTraits(sheet), [sheet]);
-  const allPossible = useMemo(() => getPossibleUpgrades(sheet, 'all'), [sheet]);
+  const allTraits = useMemo(() => extractAllTraits(sheet, language), [sheet, language]);
+  const allPossible = useMemo(() => getPossibleUpgrades(sheet, 'all', language), [sheet, language]);
   const filteredPossible = useMemo(
     () =>
       categoryFilter === 'all'
@@ -63,8 +59,14 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     return counts;
   }, [allPossible]);
 
-  const cheapestBlocked = useMemo(() => getCheapestBlockedUpgrade(sheet), [sheet]);
-  const costRulesSummary = useMemo(() => getCostRulesSummary(sheet), [sheet]);
+  const cheapestBlocked = useMemo(
+    () => getCheapestBlockedUpgrade(sheet, language),
+    [sheet, language],
+  );
+  const costRulesSummary = useMemo(
+    () => getCostRulesSummary(sheet, language),
+    [sheet, language],
+  );
   const isWod = useMemo(() => isWodSystem(sheet), [sheet]);
   const hasUndoableUpgrade = useMemo(
     () => xpState.ledger.some((entry) => entry.kind === 'upgrade'),
@@ -81,7 +83,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const handleQuickAdjust = (delta: number, label: string) => {
     const res = onAwardXp(delta, label);
     if (!res.ok) {
-      setXpError(res.error ?? 'Erro ao ajustar XP.');
+      setXpError(res.error ?? t.t('xp.errAdjustXp'));
     } else {
       setXpError(null);
     }
@@ -91,17 +93,32 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     e.preventDefault();
     const parsed = Number(amountInput);
     if (!Number.isFinite(parsed) || Math.round(parsed) === 0) {
-      setXpError('Informe um valor inteiro diferente de zero.');
+      setXpError(t.t('xp.errZeroXp'));
       return;
     }
     const res = onAwardXp(Math.round(parsed), reasonInput);
     if (!res.ok) {
-      setXpError(res.error ?? 'Erro ao ajustar XP.');
+      setXpError(res.error ?? t.t('xp.errAdjustXp'));
       return;
     }
     setXpError(null);
     setReasonInput('');
   };
+
+  const filterTabs = [
+    { id: 'all' as const, label: t.filterAll },
+    {
+      id: 'attribute' as const,
+      label: isWod ? t.t('xp.filterAttributes') : t.t('xp.filterAbilities'),
+    },
+    { id: 'skill' as const, label: t.t('xp.filterSkills') },
+    {
+      id: 'discipline' as const,
+      label: isWod ? t.t('xp.filterDisciplines') : t.t('xp.filterPowers'),
+    },
+  ];
+  const activeFilterLabel =
+    filterTabs.find((tab) => tab.id === categoryFilter)?.label ?? t.filterAll;
 
   return (
     <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
@@ -110,7 +127,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
         <header className="bento-card-header">
           <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-              //XP_MONITOR
+              {t.monitorTag}
             </span>
             <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
               {t.monitorTitle}
@@ -191,13 +208,13 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
                 {t.quickAdjust}
               </span>
-              <div className="flex items-center gap-1.5">
+              <div className="flex flex-wrap items-center gap-1.5">
                 {[1, 3, 5].map((amt) => (
                   <button
                     key={amt}
                     type="button"
-                    onClick={() => handleQuickAdjust(amt, `SESSION AWARD (+${amt} XP)`)}
-                    className="cyber-btn-outline px-2.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
+                    onClick={() => handleQuickAdjust(amt, t.t('xp.quickAwardLabel', { amount: amt }))}
+                    className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     +{amt} XP
                   </button>
@@ -205,8 +222,8 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 <button
                   type="button"
                   disabled={availableXp <= 0}
-                  onClick={() => handleQuickAdjust(-1, 'MANUAL XP ADJUSTMENT')}
-                  className="cyber-btn-outline px-2.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                  onClick={() => handleQuickAdjust(-1, t.t('xp.quickAdjustLabel'))}
+                  className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
                 >
                   -1 XP
                 </button>
@@ -219,7 +236,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 aria-label={t.availableXp}
                 value={amountInput}
                 onChange={(e) => setAmountInput(e.target.value)}
-                className="cyber-input mobile-touch-input w-20 px-2.5 py-1.5 text-xs font-bold text-center shrink-0"
+                className="cyber-input mobile-touch-input min-h-[36px] w-20 px-2.5 py-1.5 text-xs font-bold text-center shrink-0"
               />
               <input
                 type="text"
@@ -227,11 +244,11 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 value={reasonInput}
                 onChange={(e) => setReasonInput(e.target.value)}
                 placeholder={t.notePlaceholder}
-                className="cyber-input mobile-touch-input flex-1 min-w-0 px-2.5 py-1.5 text-xs"
+                className="cyber-input mobile-touch-input min-h-[36px] flex-1 min-w-0 px-2.5 py-1.5 text-xs"
               />
               <button
                 type="submit"
-                className="cyber-roll-btn mobile-touch-input px-3 py-1.5 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                className="cyber-roll-btn mobile-touch-input min-h-[36px] px-3 py-1.5 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
               >
                 {t.addXpBtn}
               </button>
@@ -249,7 +266,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
 
           {/* XP Ledger */}
           <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2">
-            <div className="flex items-center justify-between gap-2">
+            <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
                 {t.ledgerTitle} ({xpState.ledger.length})
               </span>
@@ -257,7 +274,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 <button
                   type="button"
                   onClick={onUndoLastUpgrade}
-                  className="no-print print:hidden cyber-btn-outline px-2.5 py-1 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" aria-hidden="true" />
                   <span>{t.undoLastUpgrade}</span>
@@ -304,7 +321,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
         <header className="bento-card-header">
           <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-              //TRAIT_UPGRADES
+              {t.upgradesTag}
             </span>
             <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
               {t.possibleTitle}
@@ -334,14 +351,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             aria-label={t.possibleTitle}
             className="flex flex-wrap items-center gap-1.5"
           >
-            {(
-              [
-                { id: 'all', label: t.filterAll },
-                { id: 'attribute', label: isWod ? 'ATTRIBUTES' : 'ABILITIES' },
-                { id: 'skill', label: 'SKILLS' },
-                { id: 'discipline', label: isWod ? 'DISCIPLINES' : 'POWERS' },
-              ] as const
-            ).map((tab) => {
+            {filterTabs.map((tab) => {
               const isSelected = categoryFilter === tab.id;
               return (
                 <button
@@ -350,7 +360,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   role="tab"
                   aria-selected={isSelected}
                   onClick={() => setCategoryFilter(tab.id)}
-                  className={`font-mono-tech px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                     isSelected
                       ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
                       : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -368,34 +378,41 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               {allPossible.length > 0 && categoryFilter !== 'all' ? (
                 <>
                   <p className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] uppercase">
-                    NENHUM UPGRADE POSSÍVEL EM {categoryFilter.toUpperCase()} COM {availableXp} XP
+                    {t.t('xp.noUpgradeInCategory', {
+                      category: activeFilterLabel,
+                      xp: availableXp,
+                    })}
                   </p>
                   <button
                     type="button"
                     onClick={() => setCategoryFilter('all')}
-                    className="cyber-btn-outline self-center px-3 py-1 text-[11px] font-bold uppercase cursor-pointer"
+                    className="cyber-btn-outline min-h-[36px] self-center px-3 py-1 text-[11px] font-bold uppercase cursor-pointer"
                   >
                     {t.filterAll} ({allPossible.length})
                   </button>
                 </>
               ) : allTraits.length === 0 ? (
                 <p className="font-mono-tech text-xs text-[var(--ink-muted)]">
-                  {t.emptyLedger}
+                  {t.t('xp.emptyTraits')}
                 </p>
               ) : cheapestBlocked ? (
                 <>
                   <p className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] uppercase">
-                    XP INSUFICIENTE PARA UPGRADES
+                    {t.t('xp.insufficientXpTitle')}
                   </p>
                   <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
-                    {availableXp} XP · <strong className="font-mono-tech">{cheapestBlocked.label}</strong>{' '}
-                    ({cheapestBlocked.currentValue} → {cheapestBlocked.nextValue}) ={' '}
-                    <strong className="font-mono-tech">{cheapestBlocked.cost} XP</strong>.
+                    {t.t('xp.insufficientXpDetail', {
+                      available: availableXp,
+                      label: cheapestBlocked.label,
+                      from: cheapestBlocked.currentValue,
+                      to: cheapestBlocked.nextValue,
+                      cost: cheapestBlocked.cost,
+                    })}
                   </p>
                 </>
               ) : (
                 <p className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] uppercase">
-                  MAX REACHED
+                  {t.t('xp.maxReached')}
                 </p>
               )}
             </div>
@@ -412,7 +429,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   <div className="flex flex-col gap-1 min-w-0">
                     <div className="flex items-center gap-2 font-mono-tech text-[10px] text-[var(--ink-muted)]">
                       <span className="font-bold text-[var(--accent-wine)]">
-                        {CATEGORY_LABELS[trait.category]}
+                        {t.t(`xp.cat.${trait.category}`)}
                       </span>
                       <span aria-hidden="true">·</span>
                       <span>{trait.formulaLabel}</span>
@@ -453,8 +470,13 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   <button
                     type="button"
                     onClick={() => onUpgradeTrait(trait.fieldId)}
-                    aria-label={`Upgrade ${trait.label} de ${trait.currentValue} para ${trait.nextValue} por ${trait.cost} XP`}
-                    className="cyber-roll-btn px-3 py-1.5 text-[11px] font-bold uppercase inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"
+                    aria-label={t.t('xp.upgradeAria', {
+                      label: trait.label,
+                      from: trait.currentValue,
+                      to: trait.nextValue,
+                      cost: trait.cost,
+                    })}
+                    className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[11px] font-bold uppercase inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"
                   >
                     <span>{t.upgradeBtn(trait.cost)}</span>
                     <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />

@@ -1,7 +1,7 @@
 import React from 'react';
 import { CharacterSheetState, SystemId, TabId } from '../core/sheetModel';
 import { getActiveTabSectionLabel } from '../core/printSheet';
-import { AppLanguage } from '../core/i18n';
+import { AppLanguage, createTranslator } from '../core/i18n';
 
 interface PrintSheetHeaderProps {
   sheet: CharacterSheetState;
@@ -20,11 +20,12 @@ export const PrintSheetHeader: React.FC<PrintSheetHeaderProps> = ({
   availableXp,
   totalCargoWeight,
 }) => {
+  const t = createTranslator(language);
   const sectionLabel = getActiveTabSectionLabel(systemId, activeTab, language);
 
   return (
     <header
-      aria-label="Cabeçalho de impressão PDF da ficha"
+      aria-label={t('printHeader.ariaLabel')}
       className="print-only-header hidden print:flex items-center justify-between gap-4 mb-4 p-3.5 bg-[var(--bg-card)] border-2 border-[var(--border-ink)] rounded-[var(--radius-card)]"
     >
       <div className="flex items-center gap-3 min-w-0">
@@ -51,7 +52,7 @@ export const PrintSheetHeader: React.FC<PrintSheetHeaderProps> = ({
         <div className="font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase flex items-center gap-2">
           <span>XP: {availableXp}</span>
           <span aria-hidden="true">·</span>
-          <span>CARGA: {totalCargoWeight} KG</span>
+          <span>{t('printHeader.cargoLabel', { weight: totalCargoWeight })}</span>
         </div>
       </div>
     </header>

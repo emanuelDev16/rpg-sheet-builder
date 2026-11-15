@@ -154,6 +154,7 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
   const synced = formatRoomSyncIndicator(
     { phase: 'synced', nextSyncAtMillis: 40_000, lastSyncedAtMillis: 10_000 },
     12_100,
+    'en',
   );
   assert.equal(synced.label, 'ROOM SYNC: 28s');
   assert.equal(synced.remainingSeconds, 28);
@@ -164,6 +165,7 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
   const scheduled = formatRoomSyncIndicator(
     { phase: 'scheduled', nextSyncAtMillis: 11_200, lastSyncedAtMillis: 10_000 },
     10_100,
+    'en',
   );
   assert.equal(scheduled.label, 'ROOM SYNC: 2s');
   assert.equal(scheduled.isPending, true);
@@ -171,6 +173,7 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
   const syncing = formatRoomSyncIndicator(
     { phase: 'syncing', nextSyncAtMillis: null, lastSyncedAtMillis: 10_000 },
     11_300,
+    'en',
   );
   assert.equal(syncing.label, 'ROOM SYNC: ...');
   assert.equal(syncing.isSyncing, true);
@@ -178,6 +181,7 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
   const errored = formatRoomSyncIndicator(
     { phase: 'error', nextSyncAtMillis: 15_000, lastSyncedAtMillis: 10_000, lastError: 'HTTP 503' },
     11_500,
+    'en',
   );
   assert.equal(errored.label, 'ROOM RETRY: 4s');
   assert.equal(errored.isError, true);
@@ -186,9 +190,16 @@ test('computeRemainingSyncSeconds and formatRoomSyncIndicator format all Room sy
   const conflict = formatRoomSyncIndicator(
     { phase: 'conflict', nextSyncAtMillis: null, lastSyncedAtMillis: 10_000 },
     12_000,
+    'en',
   );
   assert.equal(conflict.label, 'SYNC CONFLICT (R?≠R?)');
   assert.equal(conflict.isError, true);
+
+  const conflictPt = formatRoomSyncIndicator(
+    { phase: 'conflict', nextSyncAtMillis: null, lastSyncedAtMillis: 10_000 },
+    12_000,
+  );
+  assert.equal(conflictPt.label, 'CONFLITO SYNC (R?≠R?)');
 });
 
 test('Optimistic sync server contract: 201 creation, 200 update (revision + 1), 400 schema failure, 412 missing If-Match, and 409 REVISION_CONFLICT', () => {

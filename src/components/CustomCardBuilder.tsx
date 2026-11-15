@@ -24,10 +24,10 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanTitle = title.trim().toUpperCase() || 'NOVO BLOCO';
+    const cleanTitle = title.trim().toUpperCase() || t.defaultBlockTitle;
     const derivedCode =
       code.trim().toUpperCase() ||
-      `//${cleanTitle.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 16) || 'BLOCO'}`;
+      `//${cleanTitle.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 16) || t.defaultBlockCode}`;
 
     const normalizedCode = derivedCode.startsWith('//') ? derivedCode : `//${derivedCode}`;
     const uid = `card_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
@@ -47,13 +47,13 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
 
   return (
     <section
-      aria-label="Criador de blocos da ficha"
+      aria-label={t.ariaSection}
       className="no-print print:hidden bento-card lg:col-span-2 border-dashed"
     >
       <header className="bento-card-header">
         <div className="bento-card-header-title flex items-center gap-2.5 min-w-0 flex-1">
           <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-            //CONSTRUTOR_CUSTOM
+            {t.techHeaderTag}
           </span>
           <h2 className="font-display text-lg sm:text-xl font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words min-w-0">
             {isEmptySheet ? t.createFromZero : t.addNewBlock}
@@ -101,8 +101,8 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder="Ex: //ATRIBUTOS"
-              className="cyber-input mobile-touch-input px-2.5 py-1.5 text-xs font-mono-tech w-full"
+              placeholder={t.techTagPlaceholder}
+              className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-xs font-mono-tech w-full"
             />
           </div>
 
@@ -114,7 +114,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setColSpan(1)}
-                className={`mobile-touch-input flex-1 font-mono-tech text-[10px] font-bold py-1.5 cursor-pointer ${
+                className={`mobile-touch-input min-h-[36px] flex-1 font-mono-tech text-[10px] font-bold py-1.5 cursor-pointer ${
                   colSpan === 1
                     ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
                     : 'bg-[var(--bg-card)] text-[var(--ink-primary)]'
@@ -125,7 +125,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setColSpan(2)}
-                className={`mobile-touch-input flex-1 font-mono-tech text-[10px] font-bold py-1.5 border-l border-[var(--border-ink)] cursor-pointer ${
+                className={`mobile-touch-input min-h-[36px] flex-1 font-mono-tech text-[10px] font-bold py-1.5 border-l border-[var(--border-ink)] cursor-pointer ${
                   colSpan === 2
                     ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
                     : 'bg-[var(--bg-card)] text-[var(--ink-primary)]'
@@ -139,7 +139,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
           <div className="md:col-span-2">
             <button
               type="submit"
-              className="cyber-roll-btn mobile-touch-input w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase cursor-pointer"
+              className="cyber-roll-btn mobile-touch-input min-h-[36px] w-full flex items-center justify-center gap-1.5 px-3 py-2 text-[11px] font-bold uppercase cursor-pointer"
             >
               <Plus className="w-3.5 h-3.5" aria-hidden="true" />
               <span>{t.createBtn}</span>

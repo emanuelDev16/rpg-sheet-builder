@@ -1,4 +1,5 @@
-import { type CharacterSheetState, evaluateSheet, resolveRollPreview } from './sheetModel.ts';
+import { type CharacterSheetState, detectSystemId, evaluateSheet, resolveRollPreview } from './sheetModel.ts';
+import { type AppLanguage, getLocalizedTabLabels, getTranslations, LANGUAGE_OPTIONS } from './i18n.ts';
 
 export const QSS_VARIABLES_GUIDE = `/* ==========================================================================
    TOKENS DE ESTILO — BURGUNDY WINE + SOFT CREAM + DEEP BLACK (PYSIDE6 / QSS)
@@ -67,7 +68,14 @@ function escapeHtml(text: string): string {
     .replace(/"/g, '&quot;');
 }
 
-export function generateSingleFilePureHtml(sheet: CharacterSheetState): string {
+export function generateSingleFilePureHtml(
+  sheet: CharacterSheetState,
+  lang: AppLanguage = 'pt-BR',
+): string {
+  const i18n = getTranslations(lang);
+  const t = i18n.t;
+  const htmlLang = LANGUAGE_OPTIONS.find((opt) => opt.id === lang)?.htmlLang ?? 'pt-BR';
+  const tabLabels = getLocalizedTabLabels(detectSystemId(sheet), lang);
   const evaluation = evaluateSheet(sheet);
   const cardsHtml = sheet.cards
     .map((card) => {
@@ -143,19 +151,19 @@ export function generateSingleFilePureHtml(sheet: CharacterSheetState): string {
           <div class="repeat-block">
             <div class="repeat-head">
               <span class="field-label">${escapeHtml(field.label)}</span>
-              <span class="mono-meta">//CARGA: ${evaluation.totalCargoWeight} KG</span>
+              <span class="mono-meta">${escapeHtml(t('cards.cargoBadge'))} ${evaluation.totalCargoWeight} KG</span>
             </div>
             <table class="cyber-table">
               <thead>
                 <tr>
-                  <th>${escapeHtml(field.columns?.[0] ?? 'ITEM')}</th>
-                  <th>${escapeHtml(field.columns?.[1] ?? 'VALOR')}</th>
+                  <th>${escapeHtml(field.columns?.[0] ?? t('cards.defaultItemCol'))}</th>
+                  <th>${escapeHtml(field.columns?.[1] ?? t('cards.defaultValueCol'))}</th>
                   <th></th>
                 </tr>
               </thead>
               <tbody>${rowsHtml}</tbody>
             </table>
-            <button class="add-row-btn" type="button">+ ADICIONAR LINHA</button>
+            <button class="add-row-btn" type="button">${escapeHtml(t('print.pureHtmlAddRow'))}</button>
           </div>`;
           }
           return '';
@@ -190,11 +198,11 @@ export function generateSingleFilePureHtml(sheet: CharacterSheetState): string {
     .join('\n');
 
   return `<!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="${escapeHtml(htmlLang)}">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escapeHtml(sheet.systemName)} — Protótipo HTML + CSS Puro</title>
+  <title>${escapeHtml(sheet.systemName)} — ${escapeHtml(t('print.pureHtmlTitleSuffix'))}</title>
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@500;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
@@ -396,34 +404,34 @@ ${QSS_VARIABLES_GUIDE}
   <header class="topbar">
     <div class="sys-id">${escapeHtml(sheet.systemCode)}</div>
     <div class="toolbar-actions">
-      <button class="btn-outline" type="button">NOVA FICHA</button>
-      <button class="btn-outline" type="button">ABRIR</button>
-      <button class="btn-outline" type="button">SALVAR</button>
+      <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.newSheet)}</button>
+      <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.open)}</button>
+      <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.save)}</button>
       <div class="mode-switch">
-        <button class="mode-btn play" type="button">MODO JOGO</button>
-        <button class="mode-btn edit" type="button">MODO EDIÇÃO</button>
+        <button class="mode-btn play" type="button">${escapeHtml(i18n.topBar.playMode)}</button>
+        <button class="mode-btn edit" type="button">${escapeHtml(i18n.topBar.editMode)}</button>
       </div>
     </div>
   </header>
   <div class="workspace">
     <main class="main-area">
       <div class="tab-bar">
-        <button class="tab-btn active" type="button">/01 ATTRIBUTES &amp; COMBAT</button>
-        <button class="tab-btn" type="button">/02 DISCIPLINES &amp; NOTES</button>
+        <button class="tab-btn active" type="button">${escapeHtml(tabLabels.tab1)}</button>
+        <button class="tab-btn" type="button">${escapeHtml(tabLabels.tab2)}</button>
       </div>
       <div class="bento-grid">
         ${cardsHtml}
       </div>
     </main>
     <aside class="sidebar">
-      <div class="sidebar-title">// LOG_ROLAGENS</div>
+      <div class="sidebar-title">${escapeHtml(i18n.sidebar.rollLogsTab)}</div>
       ${logsHtml}
     </aside>
   </div>
   <footer class="statusbar">
-    <span>// STATUS: PRONTO · SEM ERROS DE FÓRMULA</span>
-    <span class="status-access">&gt; ACCESS GRANTED_</span>
-    <span>CARGA: ${evaluation.totalCargoWeight} KG</span>
+    <span>${escapeHtml(i18n.statusBar.ready)}</span>
+    <span class="status-access">${escapeHtml(i18n.statusBar.accessGranted)}</span>
+    <span>${escapeHtml(i18n.statusBar.cargo)} ${evaluation.totalCargoWeight} KG</span>
   </footer>
 </body>
 </html>`;

@@ -18,7 +18,6 @@ import {
   NewSheetIdentityInput,
   parseAndValidateImportPayload,
   Sheet,
-  SYSTEM_OPTIONS,
   SystemId,
 } from '../core/sheetModel';
 import {
@@ -30,7 +29,12 @@ import {
   WorkspaceSnapshotMetadata,
   WorkspaceSnapshotReason,
 } from '../core/sheetsStore';
-import { AppTranslations, getTranslations } from '../core/i18n';
+import {
+  type AppLanguage,
+  type AppTranslations,
+  getLocalizedSystemOptions,
+  getTranslations,
+} from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 
 interface SheetModalProps {
@@ -39,6 +43,7 @@ interface SheetModalProps {
   activeSystemId: SystemId;
   workspaceSheets?: CharacterSheetState[];
   customTemplates?: CustomSheetTemplate[];
+  language?: AppLanguage;
   t?: AppTranslations['modal'];
   onClose: () => void;
   onCreateNewSheet: (systemId: SystemId, identity?: NewSheetIdentityInput) => void;
@@ -67,6 +72,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   activeSystemId,
   workspaceSheets,
   customTemplates = [],
+  language = 'pt-BR',
   t = DEFAULT_MODAL_T,
   onClose,
   onCreateNewSheet,
@@ -83,6 +89,8 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   onLoadCustomTemplate,
   onDeleteCustomTemplate,
 }) => {
+  const localizedSystems = getLocalizedSystemOptions(language);
+  const dateLocale = language === 'en' ? 'en-US' : language === 'es' ? 'es-ES' : 'pt-BR';
   const [importError, setImportError] = useState<string | null>(null);
   const [importSuccess, setImportSuccess] = useState<{
     count: number;
@@ -185,7 +193,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         const result = parseAndValidateImportPayload(rawText);
         if (!result.valid) {
           const preview = result.errors.slice(0, 3).join(' | ');
-          setImportError(`Arquivo JSON rejeitado pelo schema v2.0: ${preview}`);
+          setImportError(t.t('modal.errImportSchema', { preview }));
           return;
         }
         importedSheets.push(...result.sheets);
@@ -223,7 +231,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         onClose();
       }
     } catch {
-      setImportError('Não foi possível ler o arquivo JSON selecionado.');
+      setImportError(t.t('modal.errImportRead'));
     } finally {
       setIsImporting(false);
     }
@@ -239,7 +247,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       await refreshSnapshots();
       onClose();
     } catch {
-      setImportError('Não foi possível restaurar o snapshot selecionado.');
+      setImportError(t.t('modal.errRestoreSnapshot'));
     } finally {
       setRestoringSnapshotId(null);
     }
@@ -273,7 +281,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
           <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
             {mode !== 'new' && (
               <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] shrink-0">
-                {mode === 'open' ? '//OPEN_SYSTEM' : '//EXPORT_SAVE'}
+                {mode === 'open' ? t.t('modal.openTag') : t.t('modal.saveTag')}
               </span>
             )}
             <h2 className="font-display text-lg sm:text-xl font-extrabold uppercase leading-tight">
@@ -318,9 +326,9 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   className="grid grid-cols-1 gap-2"
                 >
                   {[
-                    ...SYSTEM_OPTIONS.filter((opt) => opt.id !== 'blank' && opt.id === activeSystemId),
-                    ...SYSTEM_OPTIONS.filter((opt) => opt.id !== 'blank' && opt.id !== activeSystemId),
-                    ...SYSTEM_OPTIONS.filter((opt) => opt.id === 'blank'),
+                    ...localizedSystems.filter((opt) => opt.id !== 'blank' && opt.id === activeSystemId),
+                    ...localizedSystems.filter((opt) => opt.id !== 'blank' && opt.id !== activeSystemId),
+                    ...localizedSystems.filter((opt) => opt.id === 'blank'),
                   ].map((opt) => {
                     const isSelected = opt.id === selectedSystem;
                     const isCurrent = opt.id === activeSystemId;
@@ -436,7 +444,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                             ? 'Fighter · Half-Elf'
                             : selectedSystem === 'cyberpunk'
                               ? 'Netrunner'
-                              : 'Vanguarda Tática'
+                              : t.t('modal.defaultTraitPlaceholder')
                       }
                       className="cyber-input mobile-touch-input px-2.5 py-2 text-xs font-semibold w-full"
                     />
@@ -459,7 +467,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
               </p>
 
               <div className="grid grid-cols-1 gap-2">
-                {SYSTEM_OPTIONS.map((opt) => {
+                {localizedSystems.map((opt) => {
                   const isActive = opt.id === activeSystemId;
                   return (
                     <button
@@ -469,7 +477,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         onLoadPreset(opt.id);
                         onClose();
                       }}
-                      className={`cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 cursor-pointer ${
+                      className={`cyber-btn-outline min-h-[36px] p-3 text-left flex items-center justify-between gap-4 cursor-pointer ${
                         isActive ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)]' : ''
                       }`}
                     >
@@ -488,7 +496,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           isActive ? 'text-[var(--accent-wine)]' : ''
                         }`}
                       >
-                        {isActive ? 'RESET ↗' : 'LOAD ↗'}
+                        {isActive ? t.t('modal.presetResetBtn') : t.t('modal.presetLoadBtn')}
                       </span>
                     </button>
                   );
@@ -498,7 +506,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
               {customTemplates.length > 0 && onLoadCustomTemplate && (
                 <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-2">
                   <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
-                    TEMPLATES CUSTOMIZADOS (INDEXEDDB)
+                    {t.t('modal.customTemplatesTitle')}
                   </span>
                   <div className="grid grid-cols-1 gap-1.5">
                     {customTemplates.map((tpl) => (
@@ -512,24 +520,27 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                             onLoadCustomTemplate(tpl);
                             onClose();
                           }}
-                          className="cyber-btn-outline flex-1 p-2.5 text-left flex items-center justify-between gap-3 cursor-pointer"
+                          className="cyber-btn-outline min-h-[36px] flex-1 p-2.5 text-left flex items-center justify-between gap-3 cursor-pointer"
                         >
                           <div className="min-w-0">
                             <div className="text-xs font-bold uppercase truncate">{tpl.name}</div>
                             <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
-                              {tpl.systemId} · {tpl.sheet.cards.length} BLOCOS
+                              {tpl.systemId} ·{' '}
+                              {t.t('modal.templateBlocksCount', {
+                                count: tpl.sheet.cards.length,
+                              })}
                             </div>
                           </div>
                           <span className="text-[11px] font-bold text-[var(--accent-wine)] shrink-0">
-                            USAR ↗
+                            {t.t('modal.templateUseBtn')}
                           </span>
                         </button>
                         {onDeleteCustomTemplate && (
                           <button
                             type="button"
                             onClick={() => void onDeleteCustomTemplate(tpl.id)}
-                            aria-label={`Remover template ${tpl.name}`}
-                            className="cyber-btn-outline p-2.5 text-[var(--accent-danger)] cursor-pointer shrink-0"
+                            aria-label={t.t('modal.removeTemplateAria', { name: tpl.name })}
+                            className="cyber-btn-outline min-h-[36px] p-2.5 text-[var(--accent-danger)] cursor-pointer shrink-0"
                           >
                             <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                           </button>
@@ -542,7 +553,11 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
               <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-2">
                 <div className="flex flex-wrap items-center justify-between gap-2">
-                  <div className="inline-flex items-center gap-1" role="group" aria-label="Modo de importação">
+                  <div
+                    className="inline-flex flex-wrap items-center gap-1"
+                    role="group"
+                    aria-label={t.t('modal.importModeAria')}
+                  >
                     <button
                       type="button"
                       onClick={() => setImportMode('overwrite')}
@@ -552,7 +567,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           : 'text-[var(--ink-secondary)]'
                       }`}
                     >
-                      Substituir / Sobrescrever
+                      {t.t('modal.importModeOverwrite')}
                     </button>
                     <button
                       type="button"
@@ -563,7 +578,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           : 'text-[var(--ink-secondary)]'
                       }`}
                     >
-                      Manter existentes
+                      {t.t('modal.importModeKeep')}
                     </button>
                   </div>
 
@@ -598,7 +613,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         aria-hidden="true"
                       />
                       <span className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)]">
-                        Snapshot de segurança salvo antes da sobrescrita
+                        {t.t('modal.snapshotSavedBanner')}
                       </span>
                     </div>
                     <button
@@ -609,7 +624,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       className="cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)] border-[var(--accent-wine)] inline-flex items-center gap-1.5 cursor-pointer shrink-0"
                     >
                       <RotateCcw className="w-3 h-3" aria-hidden="true" />
-                      <span>DESFAZER IMPORTAÇÃO</span>
+                      <span>{t.t('modal.undoImportBtn')}</span>
                     </button>
                   </div>
                 )}
@@ -633,7 +648,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   className="cyber-btn-outline min-h-[36px] px-2.5 py-1.5 w-full flex items-center justify-between gap-2 text-left cursor-pointer"
                 >
                   <span className="font-mono-tech text-[11px] font-bold uppercase tracking-wider text-[var(--ink-primary)]">
-                    // SNAPSHOTS_DE_SEGURANÇA ({snapshots.length})
+                    {t.t('modal.snapshotsToggle', { count: snapshots.length })}
                   </span>
                   {snapshotsExpanded ? (
                     <ChevronDown className="w-3.5 h-3.5 text-[var(--ink-muted)] shrink-0" aria-hidden="true" />
@@ -646,7 +661,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   <div className="flex flex-col gap-1.5">
                     {snapshots.length === 0 ? (
                       <div className="font-mono-tech text-[11px] text-[var(--ink-muted)] px-1 py-1">
-                        Nenhum snapshot de segurança salvo.
+                        {t.t('modal.snapshotsEmpty')}
                       </div>
                     ) : (
                       snapshots.map((snap) => (
@@ -657,11 +672,17 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         >
                           <div className="min-w-0">
                             <div className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] truncate">
-                              {new Date(snap.createdAt).toLocaleString('pt-BR')}
+                              {new Date(snap.createdAt).toLocaleString(dateLocale)}
                             </div>
                             <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
-                              {snap.sheetCount} {snap.sheetCount === 1 ? 'ficha' : 'fichas'} ·{' '}
-                              {snap.reason === 'pre-import-overwrite' ? 'PRE-IMPORT' : 'MANUAL'}
+                              {snap.sheetCount}{' '}
+                              {snap.sheetCount === 1
+                                ? t.t('modal.snapshotSheetSingular')
+                                : t.t('modal.snapshotSheetPlural')}{' '}
+                              ·{' '}
+                              {snap.reason === 'pre-import-overwrite'
+                                ? t.t('modal.snapshotReasonPreImport')
+                                : t.t('modal.snapshotReasonManual')}
                             </div>
                           </div>
                           <button
@@ -671,7 +692,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                             className="cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)] inline-flex items-center gap-1 cursor-pointer shrink-0"
                           >
                             <RotateCcw className="w-3 h-3" aria-hidden="true" />
-                            <span>RESTAURAR</span>
+                            <span>{t.t('modal.restoreBtn')}</span>
                           </button>
                         </div>
                       ))
@@ -708,7 +729,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]">
-                        SALVAR TEMPLATE CUSTOMIZADO (INDEXEDDB)
+                        {t.t('modal.saveTemplateTitle')}
                       </span>
                       <BookmarkPlus className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
                     </div>
@@ -717,14 +738,14 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         type="text"
                         value={templateName}
                         onChange={(e) => setTemplateName(e.target.value)}
-                        placeholder="Nome do template..."
-                        className="cyber-input px-2 py-1 text-xs font-semibold flex-1 min-w-0"
+                        placeholder={t.t('modal.saveTemplatePlaceholder')}
+                        className="cyber-input min-h-[36px] px-2 py-1 text-xs font-semibold flex-1 min-w-0"
                       />
                       <button
                         type="submit"
-                        className="cyber-btn-outline px-2.5 py-1 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                        className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
                       >
-                        SALVAR
+                        {t.t('modal.saveTemplateBtn')}
                       </button>
                     </div>
                   </form>
@@ -755,7 +776,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   onClick={() => {
                     void Promise.resolve(onFlushSave?.()).finally(() => {
                       handleDownload(
-                        'ficha-agnóstica.json',
+                        t.t('modal.downloadJsonFilename'),
                         JSON.stringify(sheet, null, 2),
                         'application/json',
                       );
@@ -775,8 +796,8 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   onClick={() => {
                     void Promise.resolve(onFlushSave?.()).finally(() => {
                       handleDownload(
-                        'prototipo-ficha-rpg.html',
-                        generateSingleFilePureHtml(sheet),
+                        t.t('modal.downloadHtmlFilename'),
+                        generateSingleFilePureHtml(sheet, language),
                         'text/html',
                       );
                     });
@@ -795,14 +816,14 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 </button>
               </div>
 
-              <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-3">
+              <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-wrap items-center justify-between gap-3">
                 <span className="font-mono-tech text-[11px] text-[var(--ink-muted)]">
-                  Tokens :root (PySide6 QSS)
+                  {t.t('modal.qssTokensTitle')}
                 </span>
                 <button
                   type="button"
                   onClick={handleCopyQss}
-                  className="cyber-btn-outline px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
+                  className="cyber-btn-outline min-h-[36px] px-3 py-1.5 text-[11px] font-bold inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   {copiedQss ? (
                     <>

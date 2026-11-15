@@ -8,7 +8,7 @@ import {
   SheetField,
   SystemId,
 } from '../core/sheetModel';
-import { AppTranslations, getTranslations } from '../core/i18n';
+import { AppTranslations, getTranslations, type TranslationKey } from '../core/i18n';
 import { FieldPrimitive } from './FieldPrimitives';
 
 interface BentoCardProps {
@@ -37,14 +37,14 @@ interface BentoCardProps {
   onRemoveCard: (cardId: string) => void;
 }
 
-const ALL_FIELD_KINDS: Array<{ kind: FieldKind; label: string }> = [
-  { kind: 'number', label: 'NÚMERO' },
-  { kind: 'text', label: 'TEXTO' },
-  { kind: 'calculated', label: 'FÓRMULA' },
-  { kind: 'resource', label: 'RECURSO' },
-  { kind: 'boolean', label: 'BOOLEANO' },
-  { kind: 'roll', label: 'ROLAGEM' },
-  { kind: 'repeatable', label: 'LISTA' },
+const ALL_FIELD_KINDS: Array<{ kind: FieldKind; labelKey: TranslationKey }> = [
+  { kind: 'number', labelKey: 'cards.kind.number' },
+  { kind: 'text', labelKey: 'cards.kind.text' },
+  { kind: 'calculated', labelKey: 'cards.kind.calculated' },
+  { kind: 'resource', labelKey: 'cards.kind.resource' },
+  { kind: 'boolean', labelKey: 'cards.kind.boolean' },
+  { kind: 'roll', labelKey: 'cards.kind.roll' },
+  { kind: 'repeatable', labelKey: 'cards.kind.repeatable' },
 ];
 
 const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
@@ -88,14 +88,14 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             <div className="no-print print:hidden flex flex-wrap items-center gap-2 flex-1 min-w-0">
               <input
                 type="text"
-                aria-label={`Editar código de ${card.title}`}
+                aria-label={t.t('cards.editCodeAria', { title: card.title })}
                 value={card.code}
                 onChange={(e) => onUpdateCard(card.id, { code: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-wine)] w-28"
               />
               <input
                 type="text"
-                aria-label={`Editar título de ${card.title}`}
+                aria-label={t.t('cards.editTitleAria', { title: card.title })}
                 value={card.title}
                 onChange={(e) => onUpdateCard(card.id, { title: e.target.value })}
                 className="cyber-input mobile-touch-input px-2 py-0.5 text-xs font-extrabold uppercase flex-1 min-w-[140px]"
@@ -134,14 +134,14 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 <button
                   type="button"
                   onClick={() => onUpdateCard(card.id, { colSpan: card.colSpan === 2 ? 1 : 2 })}
-                  title="Alternar largura entre 1 e 2 colunas"
+                  title={t.t('cards.toggleWidthTitle')}
                   className="font-mono-tech text-[10px] font-bold px-2 py-0.5 border border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] cursor-pointer"
                 >
-                  {card.colSpan === 2 ? '2 COL' : '1 COL'}
+                  {card.colSpan === 2 ? t.t('cards.col2Label') : t.t('cards.col1Label')}
                 </button>
                 <button
                   type="button"
-                  aria-label={`Remover bloco ${card.title}`}
+                  aria-label={t.t('cards.removeCardAria', { title: card.title })}
                   onClick={() => onRemoveCard(card.id)}
                   className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[4px] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
                 >
@@ -210,7 +210,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={`Nome do novo campo em ${card.title}`}
+                aria-label={t.t('cards.newFieldNameAria', { title: card.title })}
                 value={newFieldLabel}
                 onChange={(e) => setNewFieldLabel(e.target.value)}
                 placeholder={t.newFieldPlaceholder}
@@ -218,7 +218,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               />
             </div>
             <div className="flex flex-wrap items-center gap-1.5">
-              {ALL_FIELD_KINDS.map(({ kind, label }) => (
+              {ALL_FIELD_KINDS.map(({ kind, labelKey }) => (
                 <button
                   key={kind}
                   type="button"
@@ -228,7 +228,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   }}
                   className="font-mono-tech text-[10px] font-bold px-2 py-1 border border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card-alt)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] cursor-pointer uppercase transition-colors"
                 >
-                  + {label}
+                  + {t.t(labelKey)}
                 </button>
               ))}
             </div>

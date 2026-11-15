@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { RollLogEntry, SystemId } from '../core/sheetModel';
-import { AppTranslations } from '../core/i18n';
+import { AppLanguage, AppTranslations } from '../core/i18n';
 import { RulesSearchPanel } from './RulesSearchPanel';
 
 export type SidebarTab = 'logs' | 'rules';
@@ -10,6 +10,7 @@ interface RollLogSidebarProps {
   logs: RollLogEntry[];
   systemId: SystemId;
   systemName: string;
+  language?: AppLanguage;
   t: AppTranslations['sidebar'];
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
@@ -34,6 +35,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   logs,
   systemId,
   systemName,
+  language = 'pt-BR',
   t,
   onQuickRoll,
   onClearLogs,
@@ -133,9 +135,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
               ref={mobileCloseBtnRef}
               type="button"
               data-testid="mobile-drawer-close"
-              aria-label="Fechar painel"
+              aria-label={t.t('sidebar.closePanelAria')}
               onClick={onCloseMobile}
-              className="cyber-btn-outline mobile-touch-stepper w-8 h-8 flex items-center justify-center cursor-pointer"
+              className="cyber-btn-outline mobile-touch-stepper min-h-[36px] min-w-[36px] w-8 h-8 flex items-center justify-center cursor-pointer"
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -144,7 +146,12 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
       </div>
 
       {sidebarTab === 'rules' ? (
-        <RulesSearchPanel systemId={systemId} systemName={systemName} t={t} />
+        <RulesSearchPanel
+          systemId={systemId}
+          systemName={systemName}
+          language={language}
+          t={t}
+        />
       ) : (
         <>
           {/* Rolagem rápida manual */}
@@ -159,13 +166,15 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 value={customExpr}
                 onChange={(e) => setCustomExpr(e.target.value)}
                 placeholder={
-                  systemId === 'wod' ? 'ex: 5d10@6 ou pool(wits+occult,6)' : 'ex: 1d20 + mod_str + prof'
+                  systemId === 'wod'
+                    ? t.t('sidebar.quickExprPlaceholderWod')
+                    : t.t('sidebar.quickExprPlaceholderDefault')
                 }
-                className="cyber-input mobile-touch-input flex-1 min-w-0 px-2 py-1 text-xs font-semibold"
+                className="cyber-input mobile-touch-input min-h-[36px] flex-1 min-w-0 px-2 py-1 text-xs font-semibold"
               />
               <button
                 type="submit"
-                className="cyber-roll-btn mobile-touch-input px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
+                className="cyber-roll-btn mobile-touch-input min-h-[36px] px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
               >
                 {t.rollBtn}
               </button>
@@ -176,7 +185,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                   key={die}
                   type="button"
                   onClick={() => onQuickRoll(die)}
-                  className="cyber-btn-outline flex-1 min-w-[54px] py-1 text-[10px] font-bold uppercase cursor-pointer"
+                  className="cyber-btn-outline min-h-[36px] flex-1 min-w-[54px] py-1 text-[10px] font-bold uppercase cursor-pointer"
                 >
                   {die}
                 </button>
@@ -227,7 +236,11 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         </span>
                         {entry.isPoolRoll && poolOutcome !== 'botch' && (
                           <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                            {entry.isSoak ? 'SOAKED' : entry.total === 1 ? 'SUC' : 'SUCS'}
+                            {entry.isSoak
+                              ? t.t('sidebar.roll.soaked')
+                              : entry.total === 1
+                                ? t.t('sidebar.roll.sucSingular')
+                                : t.t('sidebar.roll.sucPlural')}
                           </span>
                         )}
                       </div>
@@ -235,31 +248,31 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       {entry.isPoolRoll ? (
                         poolOutcome === 'botch' ? (
                           <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px] uppercase">
-                            BOTCH!
+                            {t.t('sidebar.roll.botch')}
                           </span>
                         ) : poolOutcome === 'failure' ? (
                           <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--ink-secondary)] border border-[var(--border-ink)] rounded-[3px] uppercase">
-                            FAILURE
+                            {t.t('sidebar.roll.failure')}
                           </span>
                         ) : entry.isCritical ? (
                           <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase">
-                            EXCEPTIONAL
+                            {t.t('sidebar.roll.exceptional')}
                           </span>
                         ) : (
                           <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase">
-                            SUCCESS
+                            {t.t('sidebar.roll.success')}
                           </span>
                         )
                       ) : (
                         <>
                           {entry.isCritical && (
                             <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px]">
-                              CRÍTICO 20
+                              {t.t('sidebar.roll.crit20')}
                             </span>
                           )}
                           {entry.isFumble && (
                             <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px]">
-                              FALHA 1
+                              {t.t('sidebar.roll.fumble1')}
                             </span>
                           )}
                         </>
@@ -267,7 +280,10 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                     </div>
 
                     {entry.isPoolRoll && entry.rolls && entry.rolls.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 my-1.5" aria-label="Dice results">
+                      <div
+                        className="flex flex-wrap items-center gap-1 my-1.5"
+                        aria-label={t.t('sidebar.diceResultsAria')}
+                      >
                         {entry.rolls.map((dieVal, dIdx) => {
                           const isDoubledTen = Boolean(entry.specialty) && dieVal === 10;
                           const isSuccessDie = dieVal >= diffThreshold;
@@ -301,28 +317,92 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                             data-testid="roll-log-wp-chip"
                             className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[3px] uppercase"
                           >
-                            +1 WILLPOWER
+                            {t.t('sidebar.roll.wpChip')}
                           </span>
                         )}
                         {(entry.doubledTensCount ?? 0) > 0 && (
                           <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--accent-wine)] border border-[var(--border-ink)]/60 rounded-[3px] uppercase">
-                            SPEC 10s×2 ({entry.doubledTensCount})
+                            {t.t('sidebar.roll.specChip', { count: entry.doubledTensCount ?? 0 })}
                           </span>
                         )}
                         {(entry.canceledOnes ?? 0) > 0 && (
                           <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)]/60 rounded-[3px] uppercase">
-                            -{entry.canceledOnes} CANCELED BY 1s
+                            {t.t('sidebar.roll.canceledOnesChip', { count: entry.canceledOnes ?? 0 })}
                           </span>
                         )}
                       </div>
                     )}
 
-                    <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
-                      {entry.breakdown}
-                    </div>
-                    <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
-                      {entry.formula}
-                    </div>
+                    {(() => {
+                      if (!entry.isPoolRoll || !entry.rolls || entry.rolls.length === 0) {
+                        return (
+                          <>
+                            <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
+                              {entry.breakdown}
+                            </div>
+                            <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
+                              {entry.formula}
+                            </div>
+                          </>
+                        );
+                      }
+
+                      const detailParts: string[] = [];
+                      if ((entry.doubledTensCount ?? 0) > 0) {
+                        detailParts.push(
+                          t.t('sidebar.roll.specChip', { count: entry.doubledTensCount ?? 0 }),
+                        );
+                      }
+                      if ((entry.canceledOnes ?? 0) > 0) {
+                        detailParts.push(
+                          t.t('sidebar.roll.canceledOnesChip', { count: entry.canceledOnes ?? 0 }),
+                        );
+                      }
+                      if (entry.willpowerUsed) {
+                        detailParts.push(t.t('sidebar.roll.wpChip'));
+                      }
+                      const detailSuffix =
+                        detailParts.length > 0 ? ` (${detailParts.join(' · ')})` : '';
+
+                      const statusText =
+                        poolOutcome === 'botch'
+                          ? t.t('sidebar.roll.botch')
+                          : poolOutcome === 'failure'
+                            ? `${
+                                entry.isSoak
+                                  ? `0 ${t.t('sidebar.roll.soaked')}`
+                                  : `0 ${t.t('sidebar.roll.sucPlural')}`
+                              } · ${t.t('sidebar.roll.failure')}`
+                            : entry.isSoak
+                              ? `${entry.total} ${t.t('sidebar.roll.soaked')}`
+                              : `${entry.total} ${
+                                  entry.total === 1
+                                    ? t.t('sidebar.roll.sucSingular')
+                                    : t.t('sidebar.roll.sucPlural')
+                                }`;
+
+                      const localizedBreakdown = `${entry.rolls.length}d10[${entry.rolls.join(', ')}] ≥${diffThreshold}${detailSuffix} → ${statusText}`;
+                      const extraFormulaTags = [
+                        entry.specialty ? t.t('cards.pool.specShort') : null,
+                        entry.willpowerUsed ? t.t('cards.pool.wpBadge') : null,
+                        entry.isSoak ? t.t('sidebar.roll.soaked') : null,
+                      ].filter(Boolean);
+                      const localizedFormula =
+                        extraFormulaTags.length > 0
+                          ? `${entry.rolls.length}d10 (${t.t('cards.pool.diff')} ${diffThreshold} · ${extraFormulaTags.join(' · ')})`
+                          : `${entry.rolls.length}d10 (${t.t('cards.pool.diff')} ${diffThreshold})`;
+
+                      return (
+                        <>
+                          <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
+                            {localizedBreakdown}
+                          </div>
+                          <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
+                            {localizedFormula}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </article>
                 );
               })

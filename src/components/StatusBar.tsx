@@ -3,7 +3,7 @@ import { Check, HardDrive, RefreshCw, AlertTriangle } from 'lucide-react';
 import { AppMode } from '../core/sheetModel';
 import { formatRoomSyncIndicator, RoomSyncIndicatorState } from '../core/roomSync';
 import { PersistenceSnapshot } from '../core/sheetsStore';
-import { AppTranslations } from '../core/i18n';
+import { AppLanguage, AppTranslations } from '../core/i18n';
 
 interface StatusBarProps {
   mode: AppMode;
@@ -15,6 +15,7 @@ interface StatusBarProps {
   flashMessage?: string | null;
   roomSyncState: RoomSyncIndicatorState;
   persistenceState?: PersistenceSnapshot;
+  language?: AppLanguage;
   t: AppTranslations['statusBar'];
   onForceRoomSync: () => void;
   onFlushSave?: () => void;
@@ -37,6 +38,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   flashMessage,
   roomSyncState,
   persistenceState = DEFAULT_PERSISTENCE_STATE,
+  language = 'pt-BR',
   t,
   onForceRoomSync,
   onFlushSave,
@@ -52,7 +54,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
     return () => window.clearInterval(intervalId);
   }, [roomSyncState.nextSyncAtMillis, roomSyncState.phase]);
 
-  const syncDisplay = formatRoomSyncIndicator(roomSyncState, nowMillis);
+  const syncDisplay = formatRoomSyncIndicator(roomSyncState, nowMillis, language);
 
   const persistenceLabel =
     persistenceState.status === 'saving'
@@ -72,7 +74,7 @@ export const StatusBar: React.FC<StatusBarProps> = ({
 
   return (
     <footer
-      className="no-print print:hidden statusbar-root flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 sm:gap-3 px-4 lg:h-[34px] bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] font-mono-tech text-[11px] shrink-0 overflow-hidden"
+      className="no-print print:hidden statusbar-root flex flex-wrap lg:flex-nowrap items-center justify-between gap-2 sm:gap-3 px-4 py-1.5 lg:py-0 lg:h-[34px] bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] font-mono-tech text-[11px] shrink-0 overflow-hidden"
       aria-label={t.ariaFooter}
     >
       <div className="flex items-center gap-2 min-w-0 truncate">

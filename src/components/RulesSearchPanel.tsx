@@ -10,8 +10,13 @@ import {
   X,
 } from 'lucide-react';
 import { validateRulesQuery } from '../core/rulesSearch';
-import { AppTranslations, getTranslations } from '../core/i18n';
-import { SYSTEM_OPTIONS, type SystemId } from '../core/sheetModel';
+import {
+  type AppLanguage,
+  type AppTranslations,
+  getLocalizedSystemOptions,
+  getTranslations,
+} from '../core/i18n';
+import type { SystemId } from '../core/sheetModel';
 import {
   type BookMetadata,
   ensurePdfRulesStoreReady,
@@ -33,6 +38,7 @@ import type {
 interface RulesSearchPanelProps {
   systemId?: SystemId | string;
   systemName: string;
+  language?: AppLanguage;
   t?: AppTranslations['sidebar'];
 }
 
@@ -76,8 +82,10 @@ function inferSystemIdFromName(systemName: string): SystemId {
 export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
   systemId,
   systemName,
+  language = 'pt-BR',
   t = DEFAULT_SIDEBAR_T,
 }) => {
+  const localizedSystems = useMemo(() => getLocalizedSystemOptions(language), [language]);
   const effectiveSystemId = useMemo(
     () =>
       systemId && String(systemId).trim()
@@ -189,10 +197,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
         overrideBookId?: string;
       },
     ) => {
-      const check = validateRulesQuery(rawQuery);
+      const check = validateRulesQuery(rawQuery, language);
       if (!check.ok) {
         if (options?.explicitSubmit) {
-          setQueryValidationError(check.error ?? 'Consulta inválida.');
+          setQueryValidationError(check.error ?? t.t('sidebar.errQueryInvalid'));
         } else {
           setQueryValidationError(null);
         }
@@ -226,7 +234,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
         count: filteredHits.length,
       });
     },
-    [effectiveSystemId, scopeMode, selectedBookId],
+    [effectiveSystemId, scopeMode, selectedBookId, language, t],
   );
 
   // Live debounced (~150ms) local search while typing or changing scope/book filters
@@ -372,8 +380,8 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             } else {
               setPdfError(
                 persistErr instanceof Error
-                  ? `Falha ao persistir índice local: ${persistErr.message}`
-                  : 'Falha ao salvar índice local no IndexedDB.',
+                  ? t.t('sidebar.errPersistLocal', { message: persistErr.message })
+                  : t.t('sidebar.errPersistIdb'),
               );
             }
           } finally {
@@ -386,14 +394,14 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
       };
 
       worker.onerror = (errEvent) => {
-        setPdfError(errEvent.message || 'Erro inesperado no Web Worker de indexação PDF.');
+        setPdfError(errEvent.message || t.t('sidebar.errWorkerUnexpected'));
         setIndexingProgress(null);
         if (activeWorkerRef.current === worker) {
           terminateActiveWorker();
         }
       };
     },
-    [executeLocalSearch, refreshBooks, terminateActiveWorker],
+    [executeLocalSearch, refreshBooks, terminateActiveWorker, t],
   );
 
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -404,7 +412,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
     const isPdf =
       file.type === 'application/pdf' || file.name.toLowerCase().endsWith('.pdf');
     if (!isPdf) {
-      setPdfError('Selecione um arquivo PDF válido (.pdf).');
+      setPdfError(t.t('sidebar.errInvalidPdf'));
       return;
     }
 
@@ -412,7 +420,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
     setScannedPdfAlert(null);
     retainedScannedFileRef.current = file;
 
-    const bookTitle = file.name.replace(/\.pdf$/i, '').trim() || 'Livro de Regras';
+    const bookTitle = file.name.replace(/\.pdf$/i, '').trim() || t.t('sidebar.defaultBookTitle');
     const bookId = `pdf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
     const jobId = `job_${Date.now().toString(36)}`;
     const targetSystemId = uploadSystemId || effectiveSystemId;
@@ -455,8 +463,8 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
     } catch (err) {
       setPdfError(
         err instanceof Error
-          ? `Não foi possível ler o PDF: ${err.message}`
-          : 'Erro ao ler o arquivo PDF selecionado.',
+          ? t.t('sidebar.errReadPdf', { message: err.message })
+          : t.t('sidebar.errReadPdfGeneric'),
       );
       setIndexingProgress(null);
     }
@@ -465,7 +473,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
   const handleStartOcrFallback = async () => {
     const file = retainedScannedFileRef.current;
     if (!file || !scannedPdfAlert) {
-      setPdfError('Arquivo PDF não está mais retido em memória. Selecione o PDF novamente.');
+      setPdfError(t.t('sidebar.errPdfNotInMemory'));
       return;
     }
 
@@ -481,7 +489,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
         : undefined;
 
     if (startPage !== undefined && endPage !== undefined && startPage > endPage) {
-      setPdfError('A página inicial do OCR não pode ser maior que a página final.');
+      setPdfError(t.t('sidebar.errOcrPageOrder'));
       return;
     }
 
@@ -538,8 +546,8 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
     } catch (err) {
       setPdfError(
         err instanceof Error
-          ? `Não foi possível iniciar OCR local: ${err.message}`
-          : 'Erro ao iniciar o pipeline de OCR local.',
+          ? t.t('sidebar.errOcrStart', { message: err.message })
+          : t.t('sidebar.errOcrStartGeneric'),
       );
       setIndexingProgress(null);
     }
@@ -577,7 +585,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
       }
     } catch (err) {
       setPdfError(
-        err instanceof Error ? err.message : 'Não foi possível remover o livro indexado.',
+        err instanceof Error ? err.message : t.t('sidebar.errRemoveBook'),
       );
     }
   };
@@ -601,7 +609,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
         ref={fileInputRef}
         type="file"
         accept="application/pdf"
-        aria-label="Selecionar arquivo PDF de regras"
+        aria-label={t.t('sidebar.selectPdfAria')}
         data-testid="pdf-file-input"
         onChange={handleFileSelected}
         className="sr-only"
@@ -621,7 +629,9 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             className="cyber-roll-btn min-h-[36px] flex-1 px-2.5 py-1.5 text-[10px] font-bold uppercase inline-flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-60"
           >
             <FileUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-            <span>{indexingProgress ? 'INDEXANDO...' : '+ INDEXAR PDF'}</span>
+            <span>
+              {indexingProgress ? t.t('sidebar.indexingBtn') : t.t('sidebar.indexPdfBtn')}
+            </span>
           </button>
 
           <button
@@ -636,7 +646,9 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             }`}
           >
             <BookOpen className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
-            <span className="tabular-nums">LIVROS ({indexedBooks.length})</span>
+            <span className="tabular-nums">
+              {t.t('sidebar.booksToggleBtn', { count: indexedBooks.length })}
+            </span>
             {booksOpen ? (
               <ChevronUp className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
             ) : (
@@ -649,21 +661,21 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
       {/* Lista colapsável // LIVROS_INDEXADOS */}
       {booksOpen && (
         <section
-          aria-label="Livros de regras indexados localmente"
+          aria-label={t.t('sidebar.booksManagerAria')}
           data-testid="pdf-manager-panel"
           className="p-3 border-b-[1.5px] border-[var(--border-ink)] bg-[var(--bg-card-alt)] flex flex-col gap-2 shrink-0 pl-[max(12px,env(safe-area-inset-left,0px))] pr-[max(12px,env(safe-area-inset-right,0px))]"
         >
           <div className="flex items-center justify-between gap-2">
-            <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]">
-              // LIVROS_INDEXADOS ({indexedBooks.length})
+            <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)] truncate">
+              {t.t('sidebar.booksManagerHeading', { count: indexedBooks.length })}
             </span>
             <select
-              aria-label="Sistema vinculado ao próximo PDF"
+              aria-label={t.t('sidebar.uploadSystemAria')}
               value={uploadSystemId}
               onChange={(e) => setUploadSystemId(e.target.value)}
               className="cyber-input min-h-[36px] px-2 py-1 text-[16px] lg:text-[10px] font-bold uppercase max-w-[140px]"
             >
-              {SYSTEM_OPTIONS.map((opt) => (
+              {localizedSystems.map((opt) => (
                 <option key={opt.id} value={opt.id}>
                   {opt.shortLabel}
                 </option>
@@ -673,7 +685,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
 
           {indexedBooks.length === 0 ? (
             <p className="font-mono-tech text-[10px] text-[var(--ink-muted)] leading-relaxed">
-              Nenhum livro indexado ainda. Clique em + INDEXAR PDF para processar um manual no navegador (o arquivo binário é descartado após extração).
+              {t.t('sidebar.noBooksHint')}
             </p>
           ) : (
             <div className="flex flex-col gap-1.5 max-h-44 overflow-y-auto">
@@ -699,7 +711,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                             {book.systemId}
                           </span>
                           <span className="tabular-nums font-semibold">
-                            {book.pageCount} {book.pageCount === 1 ? 'PÁG' : 'PÁGS'}
+                            {book.pageCount}{' '}
+                            {book.pageCount === 1
+                              ? t.t('sidebar.pageSingular')
+                              : t.t('sidebar.pagePlural')}
                           </span>
                         </div>
                       </div>
@@ -708,20 +723,20 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                         <button
                           type="button"
                           onClick={() => setPendingDeleteBookId(book.bookId)}
-                          aria-label={`Remover livro ${book.bookTitle}`}
+                          aria-label={t.t('sidebar.removeBookAria', { title: book.bookTitle })}
                           data-testid={`remove-book-${book.bookId}`}
                           className="cyber-btn-outline min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase text-[var(--accent-danger)] inline-flex items-center gap-1 shrink-0 cursor-pointer"
                         >
                           <Trash2 className="w-3 h-3" aria-hidden="true" />
-                          <span>REMOVER</span>
+                          <span>{t.t('sidebar.removeBookBtn')}</span>
                         </button>
                       )}
                     </div>
 
                     {isConfirming && (
-                      <div className="flex items-center justify-between gap-1.5 pt-1.5 border-t border-[var(--border-subtle)]">
+                      <div className="flex flex-wrap items-center justify-between gap-1.5 pt-1.5 border-t border-[var(--border-subtle)]">
                         <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-danger)] uppercase">
-                          REMOVER ÍNDICE?
+                          {t.t('sidebar.confirmRemoveBook')}
                         </span>
                         <div className="flex items-center gap-1 shrink-0">
                           <button
@@ -730,14 +745,14 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                             data-testid={`confirm-remove-book-${book.bookId}`}
                             className="min-h-[36px] px-2.5 py-1 rounded-[4px] border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-danger)] text-[var(--ink-inverse)] font-mono-tech text-[10px] font-bold uppercase cursor-pointer"
                           >
-                            CONFIRMAR
+                            {t.t('sidebar.confirmBtn')}
                           </button>
                           <button
                             type="button"
                             onClick={() => setPendingDeleteBookId(null)}
                             className="cyber-btn-outline min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase cursor-pointer"
                           >
-                            CANCELAR
+                            {t.t('sidebar.cancelBtn')}
                           </button>
                         </div>
                       </div>
@@ -757,7 +772,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             <div
               role="progressbar"
               data-testid="pdf-indexing-progress"
-              aria-label={`Indexando ${indexingProgress.bookTitle}`}
+              aria-label={t.t('sidebar.indexingAria', { title: indexingProgress.bookTitle })}
               aria-valuemin={0}
               aria-valuemax={Math.max(1, indexingProgress.totalPages)}
               aria-valuenow={indexingProgress.page}
@@ -770,11 +785,17 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 <span className="shrink-0 tabular-nums text-[var(--ink-primary)] uppercase">
                   {indexingProgress.mode === 'ocr'
                     ? indexingProgress.totalPages > 0
-                      ? `OCR PÁG. ${indexingProgress.page} / ${indexingProgress.totalPages}`
-                      : 'OCR PÁG. 0 / ...'
+                      ? t.t('sidebar.ocrProgressPage', {
+                          page: indexingProgress.page,
+                          total: indexingProgress.totalPages,
+                        })
+                      : t.t('sidebar.ocrProgressWait')
                     : indexingProgress.totalPages > 0
-                      ? `INDEXANDO PÁG. ${indexingProgress.page} / ${indexingProgress.totalPages}`
-                      : 'INDEXANDO PÁG. 0 / ...'}
+                      ? t.t('sidebar.indexingProgressPage', {
+                          page: indexingProgress.page,
+                          total: indexingProgress.totalPages,
+                        })
+                      : t.t('sidebar.indexingProgressWait')}
                 </span>
               </div>
               <div className="w-full h-2.5 bg-[var(--bg-header-strip)] border-[1.5px] border-[var(--border-ink)] rounded-[2px] overflow-hidden">
@@ -787,8 +808,8 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 <div className="flex items-center justify-between gap-2 pt-1">
                   <span className="font-mono-tech text-[10px] text-[var(--ink-secondary)] leading-tight">
                     {indexingProgress.stage === 'loading-engine'
-                      ? 'Carregando motor OCR offline (pode levar alguns segundos)...'
-                      : 'Processamento local (~2–5s/pág.). Tempo estimado varia por página.'}
+                      ? t.t('sidebar.ocrLoadingEngine')
+                      : t.t('sidebar.ocrProcessingHint')}
                   </span>
                   <button
                     type="button"
@@ -796,7 +817,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                     onClick={handleAbortOcr}
                     className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase text-[var(--accent-danger)] border-[var(--border-ink)] shrink-0 cursor-pointer"
                   >
-                    CANCELAR OCR
+                    {t.t('sidebar.cancelOcrBtn')}
                   </button>
                 </div>
               )}
@@ -812,11 +833,11 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-[var(--accent-danger)] font-mono-tech text-xs font-black uppercase tracking-tight">
                   <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
-                  <span>PDF ESCANEADO (SEM OCR)</span>
+                  <span>{t.t('sidebar.scannedPdfTitle')}</span>
                 </div>
                 <button
                   type="button"
-                  aria-label="Fechar alerta de PDF sem OCR"
+                  aria-label={t.t('sidebar.closeScannedAlertAria')}
                   onClick={() => {
                     retainedScannedFileRef.current = null;
                     setScannedPdfAlert(null);
@@ -826,13 +847,12 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                   <X className="w-4 h-4" aria-hidden="true" />
                 </button>
               </div>
-              <p className="text-xs leading-snug font-semibold text-[var(--ink-primary)]">
-                O arquivo{' '}
-                <span className="font-mono-tech font-bold text-[var(--accent-wine)]">
-                  {scannedPdfAlert.bookTitle}
-                </span>{' '}
-                contém apenas imagens sem camada de texto nas primeiras{' '}
-                {scannedPdfAlert.sampledPages} páginas (de {scannedPdfAlert.totalPages}).
+              <p className="text-xs leading-snug font-semibold text-[var(--ink-primary)] break-words">
+                {t.t('sidebar.scannedPdfDesc', {
+                  title: scannedPdfAlert.bookTitle,
+                  sampled: scannedPdfAlert.sampledPages,
+                  total: scannedPdfAlert.totalPages,
+                })}
               </p>
 
               <div className="p-2 border-[1.5px] border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] flex flex-col gap-2">
@@ -841,7 +861,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                     htmlFor="ocr-lang-select"
                     className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
                   >
-                    Idioma do livro (OCR)
+                    {t.t('sidebar.ocrLangLabel')}
                   </label>
                   <select
                     id="ocr-lang-select"
@@ -850,9 +870,9 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                     onChange={(e) => setOcrLang(e.target.value as OcrLanguage)}
                     className="cyber-input min-h-[36px] px-2 py-1 text-[16px] lg:text-[11px] font-bold"
                   >
-                    <option value="por">Português (por)</option>
-                    <option value="eng">Inglês (eng)</option>
-                    <option value="por+eng">Ambos (por+eng)</option>
+                    <option value="por">{t.t('sidebar.ocrLangPor')}</option>
+                    <option value="eng">{t.t('sidebar.ocrLangEng')}</option>
+                    <option value="por+eng">{t.t('sidebar.ocrLangBoth')}</option>
                   </select>
                 </div>
 
@@ -862,7 +882,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                       htmlFor="ocr-start-page"
                       className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
                     >
-                      Pág. inicial
+                      {t.t('sidebar.ocrStartPageLabel')}
                     </label>
                     <input
                       id="ocr-start-page"
@@ -881,7 +901,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                       htmlFor="ocr-end-page"
                       className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
                     >
-                      Pág. final
+                      {t.t('sidebar.ocrEndPageLabel')}
                     </label>
                     <input
                       id="ocr-end-page"
@@ -903,7 +923,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                   onClick={() => void handleStartOcrFallback()}
                   className="cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center justify-center gap-1.5 cursor-pointer"
                 >
-                  CONVERTER COM OCR (OFFLINE / LENTO)
+                  {t.t('sidebar.startOcrBtn')}
                 </button>
               </div>
             </div>
@@ -920,7 +940,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               </span>
               <button
                 type="button"
-                aria-label="Fechar erro de PDF"
+                aria-label={t.t('sidebar.closePdfErrorAria')}
                 onClick={() => setPdfError(null)}
                 className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center shrink-0 cursor-pointer"
               >
@@ -944,13 +964,13 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               data-testid="rules-local-search-input"
               value={query}
               onChange={(e) => setQuery(e.target.value)}
-              placeholder="Buscar termo nos PDFs locais..."
+              placeholder={t.t('sidebar.rulesSearchPlaceholder')}
               className="cyber-input min-h-[36px] w-full min-w-0 px-2.5 py-1.5 pr-8 text-[16px] lg:text-xs font-semibold"
             />
             {query.length > 0 && (
               <button
                 type="button"
-                aria-label="Limpar busca de regras"
+                aria-label={t.t('sidebar.clearRulesSearchAria')}
                 onClick={() => setQuery('')}
                 className="absolute right-0.5 top-1/2 -translate-y-1/2 min-h-[36px] min-w-[32px] flex items-center justify-center text-[var(--ink-muted)] hover:text-[var(--ink-primary)] cursor-pointer"
               >
@@ -991,18 +1011,18 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                     : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
-                TODOS ({indexedBooks.length})
+                {t.t('sidebar.scopeAllBtn', { count: indexedBooks.length })}
               </button>
 
               {booksInScope.length > 1 && (
                 <select
-                  aria-label="Filtrar resultados por livro"
+                  aria-label={t.t('sidebar.filterByBookAria')}
                   data-testid="rules-book-filter"
                   value={selectedBookId}
                   onChange={(e) => setSelectedBookId(e.target.value)}
                   className="cyber-input min-h-[36px] flex-1 min-w-[110px] px-2 py-1 text-[16px] lg:text-[10px] font-bold"
                 >
-                  <option value="all">TODOS OS LIVROS</option>
+                  <option value="all">{t.t('sidebar.allBooksOption')}</option>
                   {booksInScope.map((book) => (
                     <option key={book.bookId} value={book.bookId}>
                       {book.bookTitle}
@@ -1049,10 +1069,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
           >
             <BookOpen className="w-6 h-6 text-[var(--accent-wine)]" aria-hidden="true" />
             <p className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] uppercase">
-              NENHUM PDF DE REGRAS INDEXADO
+              {t.t('sidebar.emptyPdfTitle')}
             </p>
             <p className="text-xs text-[var(--ink-muted)] leading-relaxed">
-              Importe seus manuais em PDF para consultar regras instantaneamente offline no navegador (indexação local via IndexedDB).
+              {t.t('sidebar.emptyPdfDesc')}
             </p>
             <button
               type="button"
@@ -1062,7 +1082,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               className="cyber-roll-btn min-h-[36px] mt-1 px-3 py-2 text-[11px] font-bold uppercase inline-flex items-center gap-1.5 cursor-pointer disabled:opacity-60"
             >
               <FileUp className="w-3.5 h-3.5" aria-hidden="true" />
-              <span>+ IMPORTAR PDF DE REGRAS</span>
+              <span>{t.t('sidebar.emptyPdfCta')}</span>
             </button>
           </div>
         ) : !localMeta ? (
@@ -1072,20 +1092,30 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
           >
             <Search className="w-5 h-5 text-[var(--accent-wine)]" aria-hidden="true" />
             <p className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] uppercase">
-              ÍNDICE OFFLINE PRONTO
+              {t.t('sidebar.readyPdfTitle')}
             </p>
             <p className="text-xs text-[var(--ink-muted)] leading-relaxed tabular-nums">
-              {booksInScope.length}{' '}
-              {booksInScope.length === 1 ? 'livro indexado' : 'livros indexados'} (
-              {totalIndexedPages} páginas) no escopo atual. Digite ao menos 2 caracteres para filtrar instantaneamente.
+              {t.t('sidebar.readyPdfDesc', {
+                count: booksInScope.length,
+                bookWord:
+                  booksInScope.length === 1
+                    ? t.t('sidebar.readyPdfBookSingular')
+                    : t.t('sidebar.readyPdfBookPlural'),
+                pages: totalIndexedPages,
+              })}
             </p>
           </div>
         ) : (
-          <section aria-label="Trechos locais encontrados" className="flex flex-col gap-2">
+          <section aria-label={t.t('sidebar.resultsAria')} className="flex flex-col gap-2">
             <div className="flex items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)] truncate">
-                // RESULTADOS · {localMeta.count}{' '}
-                {localMeta.count === 1 ? 'TRECHO' : 'TRECHOS'}
+                {t.t('sidebar.resultsHeader', {
+                  count: localMeta.count,
+                  word:
+                    localMeta.count === 1
+                      ? t.t('sidebar.resultsExcerptSingular')
+                      : t.t('sidebar.resultsExcerptPlural'),
+                })}
               </span>
               <span className="font-mono-tech text-[9px] font-semibold text-[var(--ink-muted)] tabular-nums shrink-0">
                 {localMeta.elapsedMs.toFixed(1)} MS
@@ -1095,7 +1125,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             {localHits.length === 0 ? (
               <div className="p-3 border-[1.5px] border-dashed border-[var(--border-ink)]/50 rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] flex flex-col gap-2">
                 <p className="font-mono-tech text-[11px] text-[var(--ink-secondary)] leading-relaxed">
-                  Nenhum trecho encontrado para &ldquo;{localMeta.query}&rdquo; nos livros filtrados.
+                  {t.t('sidebar.noHitsMessage', { query: localMeta.query })}
                 </p>
                 {(scopeMode === 'system' && indexedBooks.length > booksForActiveSystem.length) ||
                 selectedBookId !== 'all' ? (
@@ -1111,7 +1141,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                     }}
                     className="cyber-btn-outline min-h-[36px] self-start px-2.5 py-1.5 text-[10px] font-bold uppercase cursor-pointer"
                   >
-                    BUSCAR EM TODOS OS LIVROS ({indexedBooks.length})
+                    {t.t('sidebar.searchAllBooksBtn', { count: indexedBooks.length })}
                   </button>
                 ) : null}
               </div>
@@ -1128,7 +1158,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                         {hit.bookTitle}
                       </span>
                       <span className="font-mono-tech text-[10px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums shrink-0">
-                        PÁG. {hit.page}
+                        {t.t('sidebar.pageBadge', { page: hit.page })}
                       </span>
                     </header>
                     <p className="text-xs text-[var(--ink-primary)] leading-relaxed break-words">

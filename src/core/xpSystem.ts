@@ -6,6 +6,7 @@ import type {
   XpState,
   XpUpgradeCategory,
 } from './sheetModel.ts';
+import { type AppLanguage, createTranslator } from './i18n.ts';
 
 export interface UpgradableTrait {
   fieldId: string;
@@ -161,39 +162,42 @@ export function calculateUpgradeCost(
   category: XpUpgradeCategory,
   currentValue: number,
   useD20Scale = false,
+  lang: AppLanguage = 'pt-BR',
 ): { cost: number; formulaLabel: string } {
+  const t = createTranslator(lang);
   const rating = Math.max(0, Math.round(currentValue));
   if (useD20Scale) {
     if (category === 'attribute') {
-      if (rating === 0) return { cost: 100, formulaLabel: 'NEW (100 XP)' };
+      if (rating === 0) return { cost: 100, formulaLabel: t('xp.newCostFormula', { cost: 100 }) };
       return { cost: rating * 100, formulaLabel: `${rating} × 100` };
     }
     if (category === 'skill') {
-      if (rating === 0) return { cost: 50, formulaLabel: 'NEW (50 XP)' };
+      if (rating === 0) return { cost: 50, formulaLabel: t('xp.newCostFormula', { cost: 50 }) };
       return { cost: rating * 50, formulaLabel: `${rating} × 50` };
     }
-    if (rating === 0) return { cost: 150, formulaLabel: 'NEW (150 XP)' };
+    if (rating === 0) return { cost: 150, formulaLabel: t('xp.newCostFormula', { cost: 150 }) };
     return { cost: rating * 150, formulaLabel: `${rating} × 150` };
   }
 
   if (category === 'attribute') {
-    if (rating === 0) return { cost: 4, formulaLabel: 'NEW (4 XP)' };
+    if (rating === 0) return { cost: 4, formulaLabel: t('xp.newCostFormula', { cost: 4 }) };
     return { cost: rating * 4, formulaLabel: `${rating} × 4` };
   }
   if (category === 'skill') {
-    if (rating === 0) return { cost: 3, formulaLabel: 'NEW (3 XP)' };
+    if (rating === 0) return { cost: 3, formulaLabel: t('xp.newCostFormula', { cost: 3 }) };
     return { cost: rating * 2, formulaLabel: `${rating} × 2` };
   }
   // discipline
-  if (rating === 0) return { cost: 10, formulaLabel: 'NEW (10 XP)' };
+  if (rating === 0) return { cost: 10, formulaLabel: t('xp.newCostFormula', { cost: 10 }) };
   return { cost: rating * 5, formulaLabel: `${rating} × 5` };
 }
 
-export function getCostRulesSummary(sheet: CharacterSheetState): string[] {
+export function getCostRulesSummary(sheet: CharacterSheetState, lang: AppLanguage = 'pt-BR'): string[] {
+  const t = createTranslator(lang);
   if (isWodSystem(sheet)) {
-    return ['ATTR CUR×4', 'SKILL CUR×2 (3 EM 0)', 'DISC CUR×5 (10 EM 0)', 'CAP 5'];
+    return [t('xp.ruleWodAttr'), t('xp.ruleWodSkill'), t('xp.ruleWodDisc'), t('xp.ruleWodCap')];
   }
-  return ['ABILITY CUR×100', 'SKILL CUR×50 (50 EM 0)', 'CAP 20/10'];
+  return [t('xp.ruleD20Attr'), t('xp.ruleD20Skill'), t('xp.ruleD20Cap')];
 }
 
 export function getTraitMaxCap(
@@ -206,7 +210,10 @@ export function getTraitMaxCap(
   return currentValue >= 5 ? 20 : 10;
 }
 
-export function extractAllTraits(sheet: CharacterSheetState): UpgradableTrait[] {
+export function extractAllTraits(
+  sheet: CharacterSheetState,
+  lang: AppLanguage = 'pt-BR',
+): UpgradableTrait[] {
   const availableXp = getAvailableXp(sheet.xp);
   const useD20Scale = !isWodSystem(sheet);
   const traits: UpgradableTrait[] = [];
@@ -220,7 +227,7 @@ export function extractAllTraits(sheet: CharacterSheetState): UpgradableTrait[] 
       const currentValue = Number.isFinite(rawVal) ? Math.max(0, Math.round(rawVal)) : 0;
       const maxCap = getTraitMaxCap(sheet, currentValue, category);
       const isMaxed = currentValue >= maxCap;
-      const { cost, formulaLabel } = calculateUpgradeCost(category, currentValue, useD20Scale);
+      const { cost, formulaLabel } = calculateUpgradeCost(category, currentValue, useD20Scale, lang);
       const isAffordable = cost <= availableXp;
 
       traits.push({
@@ -252,14 +259,18 @@ export function extractAllTraits(sheet: CharacterSheetState): UpgradableTrait[] 
 export function getPossibleUpgrades(
   sheet: CharacterSheetState,
   categoryFilter: XpUpgradeCategory | 'all' = 'all',
+  lang: AppLanguage = 'pt-BR',
 ): UpgradableTrait[] {
-  return extractAllTraits(sheet).filter(
+  return extractAllTraits(sheet, lang).filter(
     (trait) => trait.isPossible && (categoryFilter === 'all' || trait.category === categoryFilter),
   );
 }
 
-export function getCheapestBlockedUpgrade(sheet: CharacterSheetState): UpgradableTrait | null {
-  const candidates = extractAllTraits(sheet).filter((t) => !t.isMaxed);
+export function getCheapestBlockedUpgrade(
+  sheet: CharacterSheetState,
+  lang: AppLanguage = 'pt-BR',
+): UpgradableTrait | null {
+  const candidates = extractAllTraits(sheet, lang).filter((t) => !t.isMaxed);
   if (candidates.length === 0) return null;
   return candidates.reduce((best, curr) => (curr.cost < best.cost ? curr : best));
 }
@@ -270,12 +281,14 @@ export function awardXp(
   reason: string,
   timestamp: string,
   entryId: string,
+  lang: AppLanguage = 'pt-BR',
 ): { ok: boolean; sheet: CharacterSheetState; error?: string } {
+  const t = createTranslator(lang);
   if (!Number.isFinite(delta) || Math.round(delta) === 0) {
     return {
       ok: false,
       sheet,
-      error: 'Informe uma quantidade inteira de XP diferente de zero.',
+      error: t('xp.errZeroXp'),
     };
   }
 
@@ -287,7 +300,12 @@ export function awardXp(
     return {
       ok: false,
       sheet,
-      error: 'O total de XP ganho não pode ser negativo.',
+      error:
+        lang === 'en'
+          ? 'Total earned XP cannot be negative.'
+          : lang === 'es'
+            ? 'La XP total ganada no puede ser negativa.'
+            : 'O total de XP ganho não pode ser negativo.',
     };
   }
 
@@ -295,11 +313,17 @@ export function awardXp(
     return {
       ok: false,
       sheet,
-      error: `XP total (${nextEarned}) não pode ficar menor que o XP já gasto (${currentXp.spent}).`,
+      error:
+        lang === 'en'
+          ? `Total XP (${nextEarned}) cannot be lower than already spent XP (${currentXp.spent}).`
+          : lang === 'es'
+            ? `La XP total (${nextEarned}) no puede ser menor que la XP ya gastada (${currentXp.spent}).`
+            : `XP total (${nextEarned}) não pode ficar menor que o XP já gasto (${currentXp.spent}).`,
     };
   }
 
-  const cleanLabel = reason.trim() || (intDelta > 0 ? 'SESSION XP AWARD' : 'XP ADJUSTMENT');
+  const defaultReason = intDelta > 0 ? t('xp.quickAwardLabel', { amount: intDelta }) : t('xp.quickAdjustLabel');
+  const cleanLabel = reason.trim() || defaultReason;
   const entry: XpLedgerEntry = {
     id: entryId,
     timestamp,
@@ -326,25 +350,49 @@ export function upgradeTraitWithXp(
   fieldId: string,
   timestamp: string,
   entryId: string,
+  lang: AppLanguage = 'pt-BR',
 ): {
   ok: boolean;
   sheet: CharacterSheetState;
   trait?: UpgradableTrait;
   error?: string;
 } {
-  const trait = extractAllTraits(sheet).find((t) => t.fieldId === fieldId);
+  const trait = extractAllTraits(sheet, lang).find((t) => t.fieldId === fieldId);
   if (!trait) {
-    return { ok: false, sheet, error: 'Atributo, perícia ou disciplina não encontrado na ficha.' };
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? 'Attribute, skill, or discipline not found on sheet.'
+          : lang === 'es'
+            ? 'Atributo, habilidad o disciplina no encontrado en la hoja.'
+            : 'Atributo, perícia ou disciplina não encontrado na ficha.',
+    };
   }
   if (trait.isMaxed) {
-    return { ok: false, sheet, error: `${trait.label} já está no limite máximo (${trait.maxCap}).` };
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? `${trait.label} is already at maximum cap (${trait.maxCap}).`
+          : lang === 'es'
+            ? `${trait.label} ya alcanzó el límite máximo (${trait.maxCap}).`
+            : `${trait.label} já está no limite máximo (${trait.maxCap}).`,
+    };
   }
   const available = getAvailableXp(sheet.xp);
   if (trait.cost > available) {
     return {
       ok: false,
       sheet,
-      error: `XP insuficiente para ${trait.label} (necessário: ${trait.cost} XP, disponível: ${available} XP).`,
+      error:
+        lang === 'en'
+          ? `Insufficient XP for ${trait.label} (needed: ${trait.cost} XP, available: ${available} XP).`
+          : lang === 'es'
+            ? `XP insuficiente para ${trait.label} (necesaria: ${trait.cost} XP, disponible: ${available} XP).`
+            : `XP insuficiente para ${trait.label} (necessário: ${trait.cost} XP, disponível: ${available} XP).`,
     };
   }
 
@@ -383,7 +431,10 @@ export function upgradeTraitWithXp(
   };
 }
 
-export function undoLastUpgrade(sheet: CharacterSheetState): {
+export function undoLastUpgrade(
+  sheet: CharacterSheetState,
+  lang: AppLanguage = 'pt-BR',
+): {
   ok: boolean;
   sheet: CharacterSheetState;
   revertedLabel?: string;
@@ -392,12 +443,30 @@ export function undoLastUpgrade(sheet: CharacterSheetState): {
   const currentXp = normalizeXpState(sheet.xp);
   const targetIdx = currentXp.ledger.findIndex((entry) => entry.kind === 'upgrade');
   if (targetIdx === -1) {
-    return { ok: false, sheet, error: 'Nenhum upgrade recente para desfazer.' };
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? 'No recent upgrade to undo.'
+          : lang === 'es'
+            ? 'No hay ninguna mejora reciente para deshacer.'
+            : 'Nenhum upgrade recente para desfazer.',
+    };
   }
 
   const entry = currentXp.ledger[targetIdx];
   if (!entry.fieldId || typeof entry.fromValue !== 'number') {
-    return { ok: false, sheet, error: 'Registro de upgrade incompatível para reversão.' };
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? 'Upgrade entry cannot be reverted.'
+          : lang === 'es'
+            ? 'Registro de mejora incompatible para revertir.'
+            : 'Registro de upgrade incompatível para reversão.',
+    };
   }
 
   const refund = Math.abs(entry.delta);

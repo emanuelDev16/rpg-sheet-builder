@@ -1,3 +1,5 @@
+import { type AppLanguage, createTranslator } from './i18n.ts';
+
 export interface GroundedSource {
   title: string;
   uri: string;
@@ -19,27 +21,31 @@ export interface RawGroundingChunk {
   };
 }
 
-export function validateRulesQuery(rawQuery: unknown): {
+export function validateRulesQuery(
+  rawQuery: unknown,
+  lang: AppLanguage = 'pt-BR',
+): {
   ok: boolean;
   query: string;
   error?: string;
 } {
+  const t = createTranslator(lang);
   if (typeof rawQuery !== 'string') {
-    return { ok: false, query: '', error: 'Consulta inválida.' };
+    return { ok: false, query: '', error: t('sidebar.errQueryInvalid') };
   }
   const trimmed = rawQuery.trim();
   if (trimmed.length < 2) {
     return {
       ok: false,
       query: trimmed,
-      error: 'Digite pelo menos 2 caracteres para pesquisar uma regra.',
+      error: t('sidebar.errQueryTooShort'),
     };
   }
   if (trimmed.length > 300) {
     return {
       ok: false,
       query: trimmed,
-      error: 'A consulta deve ter no máximo 300 caracteres.',
+      error: t('sidebar.errQueryTooLong'),
     };
   }
   return { ok: true, query: trimmed };

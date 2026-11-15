@@ -19,13 +19,13 @@ import {
   migrateLegacyWodSheet,
   migrateWorkspaceSheets,
   NewSheetIdentityInput,
+  nowIsoUtc,
   removeCardFromSheet,
   removeFieldFromCard,
   removeRepeatableRow,
   RollLogEntry,
   SheetCard,
   SheetField,
-  SYSTEM_OPTIONS,
   SystemId,
   TabId,
   touchSheetMetadata,
@@ -55,6 +55,7 @@ import {
 import { isDiceAudioMuted, playDiceClatter, setDiceAudioMuted } from './core/diceAudio';
 import {
   AppLanguage,
+  getLocalizedSystemOptions,
   getTranslations,
   LANGUAGE_OPTIONS,
   LANGUAGE_STORAGE_KEY,
@@ -82,6 +83,8 @@ import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
 import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
 import { PrintSheetHeader } from './components/PrintSheetHeader';
+import { HomeSheetItem, HomeSystemItem, HomeView } from './components/HomeView';
+import { RulesSearchPanel } from './components/RulesSearchPanel';
 import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
@@ -195,6 +198,9 @@ function nowTimeString(): string {
 export default function App() {
   const [bootstrap] = useState<InitialWorkspaceBootstrap>(loadInitialWorkspaceBootstrap);
   const [workspace, setWorkspace] = useState<WorkspaceState>(bootstrap.workspace);
+  const [activeView, setActiveView] = useState<'home' | 'sheet'>('home');
+  const [homeRulesOpen, setHomeRulesOpen] = useState(false);
+  const [persistedSheets, setPersistedSheets] = useState<CharacterSheetState[]>([]);
   const [activeTab, setActiveTab] = useState<TabId>('geral');
   const [mode, setMode] = useState<AppMode>('jogo');
   const [language, setLanguage] = useState<AppLanguage>(readStoredLanguage);
@@ -234,6 +240,8 @@ export default function App() {
 
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
+  const persistedSheetsRef = useRef<CharacterSheetState[]>(persistedSheets);
+  persistedSheetsRef.current = persistedSheets;
   const updatedAtRef = useRef(bootstrap.updatedAtMillis);
   const lastMirroredDigestRef = useRef(bootstrap.lastMirroredDigest);
   const baseRevisionsRef = useRef<Partial<Record<SystemId, number>>>(
@@ -258,6 +266,15 @@ export default function App() {
       workspace.sheetsBySystem[activeSystemId] ?? createPresetBySystemId(activeSystemId),
     [workspace, activeSystemId],
   );
+
+  const refreshPersistedSheets = async () => {
+    try {
+      const items = await sheetsStoreRef.current.listSheets();
+      setPersistedSheets(items);
+    } catch {
+      // Ignore IndexedDB listing errors
+    }
+  };
 
   const flushLocalPersistence = async () => {
     const saver = debouncedSaverRef.current;
@@ -381,7 +398,10 @@ export default function App() {
         conflict: outcome.conflict,
       }));
       triggerFlash(
-        `// CONFLITO DE REVISÃO (409): LOCAL R${outcome.conflict.baseRevision} vs SERVIDOR R${outcome.conflict.serverSheet.revision}`,
+        t.t('app.roomConflictFlash', {
+          local: outcome.conflict.baseRevision,
+          server: outcome.conflict.serverSheet.revision,
+        }),
       );
       return;
     }
@@ -415,7 +435,7 @@ export default function App() {
         phase: 'error',
         nextSyncAtMillis: Date.now() + ROOM_RETRY_INTERVAL_MS,
         lastSyncedAtMillis: prev.lastSyncedAtMillis,
-        lastError: outcome.error ?? 'Falha na sincronização Room.',
+        lastError: outcome.error ?? t.t('app.roomSyncFailed'),
         conflict: null,
       }));
     }
@@ -462,9 +482,13 @@ export default function App() {
             activeSystemId: currentSys,
           });
         }
+        const storedList = await sheetsStoreRef.current.listSheets();
+        if (!cancelled) {
+          setPersistedSheets(storedList);
+        }
       } catch (err) {
         const message =
-          err instanceof Error ? err.message : 'Falha ao inicializar IndexedDB.';
+          err instanceof Error ? err.message : t.t('app.idbInitFailed');
         setPersistenceState((prev) => ({
           ...prev,
           status: 'error',
@@ -627,7 +651,7 @@ export default function App() {
             phase: 'error',
             nextSyncAtMillis: Date.now() + ROOM_RETRY_INTERVAL_MS,
             lastSyncedAtMillis: prev.lastSyncedAtMillis,
-            lastError: outcome.error ?? 'Falha na verificação periódica Room.',
+            lastError: outcome.error ?? t.t('app.roomPeriodicFailed'),
           }));
         }
       })();
@@ -676,6 +700,18 @@ export default function App() {
     };
   }, []);
 
+  useEffect(() => {
+    if (!homeRulesOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        e.preventDefault();
+        setHomeRulesOpen(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [homeRulesOpen]);
+
   const dismissMobileRollToast = () => {
     if (mobileRollToastTimerRef.current !== null) {
       window.clearTimeout(mobileRollToastTimerRef.current);
@@ -716,6 +752,53 @@ export default function App() {
     [filteredCards],
   );
 
+  const allAvailableSheets = useMemo(() => {
+    const byId = new Map<string, CharacterSheetState>();
+    for (const item of persistedSheets) {
+      byId.set(resolveSheetRecordId(item), item);
+    }
+    for (const wsItem of Object.values(workspace.sheetsBySystem)) {
+      if (!wsItem) continue;
+      byId.set(resolveSheetRecordId(wsItem), wsItem);
+    }
+    return Array.from(byId.values()).sort((a, b) =>
+      String(b.updatedAt ?? '').localeCompare(String(a.updatedAt ?? '')),
+    );
+  }, [persistedSheets, workspace.sheetsBySystem]);
+
+  const homeSheets = useMemo<HomeSheetItem[]>(
+    () =>
+      allAvailableSheets.map((item) => ({
+        id: resolveSheetRecordId(item),
+        name: item.characterName?.trim() || t.t('home.unnamedCharacter'),
+        systemId: detectSystemId(item),
+        updatedAt: item.updatedAt,
+      })),
+    [allAvailableSheets, t],
+  );
+
+  const activeHomeSheet = useMemo<HomeSheetItem | undefined>(() => {
+    if (!sheet) return undefined;
+    return {
+      id: resolveSheetRecordId(sheet),
+      name: sheet.characterName?.trim() || t.t('home.unnamedCharacter'),
+      systemId: detectSystemId(sheet),
+      updatedAt: sheet.updatedAt,
+    };
+  }, [sheet, t]);
+
+  const homeSystems = useMemo<HomeSystemItem[]>(
+    () =>
+      getLocalizedSystemOptions(language)
+        .filter((opt) => opt.id !== 'blank')
+        .map((opt) => ({
+          id: opt.id,
+          name: opt.shortLabel,
+          description: opt.description,
+        })),
+    [language],
+  );
+
   const appendRollLog = (
     label: string,
     expression: string,
@@ -738,7 +821,7 @@ export default function App() {
       isPool ? { ...poolOptions, willpowerAutoSuccess: wpAutoSuccess } : undefined,
     );
     if (!result.ok) {
-      triggerFlash(`ERRO NA ROLAGEM: ${result.error}`);
+      triggerFlash(t.t('app.rollError', { error: result.error ?? '' }));
       return;
     }
 
@@ -818,21 +901,21 @@ export default function App() {
       number: {
         id: `f_${uid}`,
         key: derivedKey || `attr_${shortUid}`,
-        label: cleanLabel || 'NOVO ATRIBUTO',
+        label: cleanLabel || t.t('app.fieldDefault.number'),
         kind: 'number',
         value: 0,
       },
       text: {
         id: `f_${uid}`,
         key: derivedKey || `txt_${shortUid}`,
-        label: cleanLabel || 'CAMPO TEXTO',
+        label: cleanLabel || t.t('app.fieldDefault.text'),
         kind: 'text',
         value: '',
       },
       calculated: {
         id: `f_${uid}`,
         key: derivedKey || `calc_${shortUid}`,
-        label: cleanLabel || 'CALC_CUSTOM',
+        label: cleanLabel || t.t('app.fieldDefault.calculated'),
         kind: 'calculated',
         formula: '0',
         showPlus: true,
@@ -840,7 +923,7 @@ export default function App() {
       resource: {
         id: `f_${uid}`,
         key: derivedKey || `res_${shortUid}`,
-        label: cleanLabel || 'NOVO RECURSO',
+        label: cleanLabel || t.t('app.fieldDefault.resource'),
         kind: 'resource',
         value: 4,
         max: 6,
@@ -848,24 +931,24 @@ export default function App() {
       boolean: {
         id: `f_${uid}`,
         key: derivedKey || `flag_${shortUid}`,
-        label: cleanLabel || 'MARCADOR',
+        label: cleanLabel || t.t('app.fieldDefault.boolean'),
         kind: 'boolean',
         value: false,
       },
       roll: {
         id: `f_${uid}`,
         key: derivedKey || `roll_${shortUid}`,
-        label: cleanLabel || 'ROLAGEM CUSTOM',
+        label: cleanLabel || t.t('app.fieldDefault.roll'),
         kind: 'roll',
-        rollLabel: cleanLabel || 'ROLAR TESTE',
+        rollLabel: cleanLabel || t.t('app.fieldDefault.rollLabel'),
         rollExpr: '2d6',
       },
       repeatable: {
         id: `f_${uid}`,
         key: derivedKey || `list_${shortUid}`,
-        label: cleanLabel || 'LISTA',
+        label: cleanLabel || t.t('app.fieldDefault.repeatable'),
         kind: 'repeatable',
-        columns: ['ITEM', 'VALOR'],
+        columns: [t.t('cards.defaultItemCol'), t.t('cards.defaultValueCol')],
         col2Type: 'text',
         rows: [],
       },
@@ -875,13 +958,16 @@ export default function App() {
 
   const handleCreateCard = (newCard: SheetCard) => {
     setSheet((prev) => addCardToSheet(prev, newCard));
-    triggerFlash(`// BLOCO CRIADO: ${newCard.title}`);
+    triggerFlash(t.t('app.cardCreated', { title: newCard.title }));
   };
 
   const handleNewSheet = () => {
     setMobileSidebarOpen(false);
     setModalMode('new');
   };
+
+  const buildUniqueSheetId = (sysId: SystemId): string =>
+    `sheet_${sysId}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
 
   const handleCreateNewSheet = (
     targetSystemId: SystemId,
@@ -894,9 +980,24 @@ export default function App() {
     dirtySystemsRef.current[targetSystemId] = true;
 
     const customName = identity?.characterName?.trim() ?? '';
+    const baseFresh = createNewSheetForSystem(targetSystemId, {
+      ...identity,
+      localeOptions: {
+        newCharacterName: t.modal.newCharacterName,
+        customSystemName: t.t('system.blank.systemName'),
+        customSystemCode: t.t('system.blank.systemCode'),
+      },
+    });
+    const defaultId = resolveSheetRecordId(baseFresh);
+    const hasCollision =
+      persistedSheetsRef.current.some((s) => resolveSheetRecordId(s) === defaultId) ||
+      Boolean(existingTarget);
+    const nextRecordId = hasCollision ? buildUniqueSheetId(targetSystemId) : defaultId;
+
     if (targetSystemId === 'blank') {
       const blank: CharacterSheetState = {
-        ...createNewSheetForSystem('blank', identity),
+        ...baseFresh,
+        id: nextRecordId,
         characterName: customName ? customName.toUpperCase() : t.modal.newCharacterName,
         revision: baseRev,
       };
@@ -907,18 +1008,25 @@ export default function App() {
           blank,
         },
       }));
+      setPersistedSheets((prev) => [
+        blank,
+        ...prev.filter((item) => resolveSheetRecordId(item) !== nextRecordId),
+      ]);
+      void sheetsStoreRef.current.saveSheet(blank).then(() => refreshPersistedSheets());
       setActiveTab('geral');
       setMode('edicao');
       setSearchQuery('');
       setMobileSidebarOpen(false);
+      setHomeRulesOpen(false);
+      setActiveView('sheet');
       dismissMobileRollToast();
-      triggerFlash('// STATUS: FICHA EM BRANCO · CRIE SEUS BLOCOS');
+      triggerFlash(t.t('app.blankSheetCreated'));
       return;
     }
 
-    const baseFresh = createNewSheetForSystem(targetSystemId, identity);
     const fresh: CharacterSheetState = {
       ...baseFresh,
+      id: nextRecordId,
       characterName: customName ? customName.toUpperCase() : t.modal.newCharacterName,
       revision: baseRev,
     };
@@ -929,13 +1037,132 @@ export default function App() {
         [targetSystemId]: fresh,
       },
     }));
+    setPersistedSheets((prev) => [
+      fresh,
+      ...prev.filter((item) => resolveSheetRecordId(item) !== nextRecordId),
+    ]);
+    void sheetsStoreRef.current.saveSheet(fresh).then(() => refreshPersistedSheets());
     setActiveTab('geral');
     setMode('jogo');
     setSearchQuery('');
     setMobileSidebarOpen(false);
+    setHomeRulesOpen(false);
+    setActiveView('sheet');
     dismissMobileRollToast();
-    const sysLabel = SYSTEM_OPTIONS.find((s) => s.id === targetSystemId)?.shortLabel ?? targetSystemId;
-    triggerFlash(`// NOVA FICHA: ${sysLabel}`);
+    const sysLabel =
+      getLocalizedSystemOptions(language).find((s) => s.id === targetSystemId)?.shortLabel ??
+      targetSystemId;
+    triggerFlash(t.t('app.newSheetCreated', { system: sysLabel }));
+  };
+
+  const handleSelectHomeSheet = async (sheetId: string) => {
+    await flushLocalPersistence();
+    const localMatch = allAvailableSheets.find(
+      (item) => resolveSheetRecordId(item) === sheetId,
+    );
+    const rawTarget = localMatch ?? (await sheetsStoreRef.current.getSheet(sheetId));
+    if (!rawTarget) {
+      triggerFlash(t.t('app.sheetNotFound'));
+      return;
+    }
+    const normalized = withSafeXpState({ ...rawTarget, id: sheetId });
+    const sysId = detectSystemId(normalized);
+    setWorkspace((prevWs) => ({
+      activeSystemId: sysId,
+      sheetsBySystem: {
+        ...prevWs.sheetsBySystem,
+        [sysId]: normalized,
+      },
+    }));
+    await Promise.all([
+      sheetsStoreRef.current.setActiveSheetId(sheetId),
+      sheetsStoreRef.current.setActiveSystemId(sysId),
+    ]);
+    setActiveTab('geral');
+    setSearchQuery('');
+    setMobileSidebarOpen(false);
+    setHomeRulesOpen(false);
+    setActiveView('sheet');
+    if (sysId === 'blank' && normalized.cards.length === 0) {
+      setMode('edicao');
+    } else {
+      setMode('jogo');
+    }
+    triggerFlash(t.t('app.sheetOpened', { name: normalized.characterName }));
+  };
+
+  const handleDuplicateHomeSheet = async (sheetId: string) => {
+    await flushLocalPersistence();
+    const localMatch = allAvailableSheets.find(
+      (item) => resolveSheetRecordId(item) === sheetId,
+    );
+    const source = localMatch ?? (await sheetsStoreRef.current.getSheet(sheetId));
+    if (!source) {
+      triggerFlash(t.t('app.sheetNotFound'));
+      return;
+    }
+    const sysId = detectSystemId(source);
+    const clonedBase = structuredClone(source);
+    const nextId = buildUniqueSheetId(sysId);
+    const baseName = source.characterName?.trim() || t.t('app.unnamedPerson');
+    const duplicated: CharacterSheetState = {
+      ...clonedBase,
+      id: nextId,
+      systemId: sysId,
+      characterName: `${baseName} (${t.t('app.copySuffix')})`,
+      revision: 1,
+      updatedAt: nowIsoUtc(),
+    };
+    const saved = await sheetsStoreRef.current.saveSheet(duplicated);
+    await refreshPersistedSheets();
+    triggerFlash(t.t('app.sheetDuplicated', { name: saved.characterName }));
+  };
+
+  const handleDeleteHomeSheet = async (sheetId: string) => {
+    debouncedSaverRef.current?.cancelPending(sheetId);
+    await sheetsStoreRef.current.deleteSheet(sheetId);
+    const remaining = (await sheetsStoreRef.current.listSheets()).filter(
+      (item) => resolveSheetRecordId(item) !== sheetId,
+    );
+    setPersistedSheets(remaining);
+
+    setWorkspace((prevWs) => {
+      const nextMap: Partial<Record<SystemId, CharacterSheetState>> = {
+        ...prevWs.sheetsBySystem,
+      };
+      let changed = false;
+      for (const [key, value] of Object.entries(nextMap) as Array<
+        [SystemId, CharacterSheetState | undefined]
+      >) {
+        if (!value || resolveSheetRecordId(value) !== sheetId) continue;
+        changed = true;
+        const replacement = remaining.find((item) => detectSystemId(item) === key);
+        if (replacement) {
+          nextMap[key] = withSafeXpState(replacement);
+        } else {
+          delete nextMap[key];
+        }
+      }
+      if (!changed) return prevWs;
+
+      skipNextIdbScheduleRef.current = true;
+      let nextActiveSys = prevWs.activeSystemId;
+      if (!nextMap[nextActiveSys]) {
+        if (remaining[0]) {
+          const fallbackSys = detectSystemId(remaining[0]);
+          nextMap[fallbackSys] = withSafeXpState(remaining[0]);
+          nextActiveSys = fallbackSys;
+        } else {
+          nextMap.wod = createDefaultSheet();
+          nextActiveSys = 'wod';
+        }
+      }
+      return {
+        activeSystemId: nextActiveSys,
+        sheetsBySystem: nextMap,
+      };
+    });
+    triggerFlash(t.t('app.sheetDeleted'));
   };
 
   const handleSwitchSystem = (nextSystemId: SystemId) => {
@@ -956,8 +1183,10 @@ export default function App() {
     } else if (activeSystemId === 'blank' && nextSystemId !== 'blank') {
       setMode('jogo');
     }
-    const sysLabel = SYSTEM_OPTIONS.find((s) => s.id === nextSystemId)?.shortLabel ?? nextSystemId;
-    triggerFlash(`// SISTEMA ATIVO: ${sysLabel}`);
+    const sysLabel =
+      getLocalizedSystemOptions(language).find((s) => s.id === nextSystemId)?.shortLabel ??
+      nextSystemId;
+    triggerFlash(t.t('app.systemSwitched', { system: sysLabel }));
   };
 
   const handleLoadPreset = (presetId: SystemId) => {
@@ -981,25 +1210,29 @@ export default function App() {
     setActiveTab('geral');
     setSearchQuery('');
     setMobileSidebarOpen(false);
+    setHomeRulesOpen(false);
+    setActiveView('sheet');
     dismissMobileRollToast();
     if (presetId === 'blank' && fresh.cards.length === 0) {
       setMode('edicao');
     } else {
       setMode('jogo');
     }
-    triggerFlash('// STATUS: MODELO CARREGADO');
+    triggerFlash(t.t('app.presetLoaded'));
   };
 
   const handleAwardXp = (delta: number, reason: string): { ok: boolean; error?: string } => {
     const entryId = `xp_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     let outcome: { ok: boolean; error?: string } = { ok: true };
     setSheet((prev) => {
-      const res = awardXp(prev, delta, reason, nowTimeString(), entryId);
+      const res = awardXp(prev, delta, reason, nowTimeString(), entryId, language);
       outcome = { ok: res.ok, error: res.error };
       return res.ok ? res.sheet : prev;
     });
     if (outcome.ok) {
-      triggerFlash(`// XP: ${delta > 0 ? `+${delta}` : delta} XP REGISTRADO`);
+      triggerFlash(
+        t.t('app.xpAwarded', { delta: delta > 0 ? `+${delta}` : String(delta) }),
+      );
     }
     return outcome;
   };
@@ -1008,9 +1241,11 @@ export default function App() {
     const entryId = `xp_upg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
     let flashText: string | null = null;
     setSheet((prev) => {
-      const res = upgradeTraitWithXp(prev, fieldId, nowTimeString(), entryId);
+      const res = upgradeTraitWithXp(prev, fieldId, nowTimeString(), entryId, language);
       if (!res.ok || !res.trait) {
-        flashText = `// XP ERRO: ${res.error ?? 'FALHA NO UPGRADE'}`;
+        flashText = t.t('app.xpError', {
+          error: res.error ?? t.t('app.xpUpgradeFailed'),
+        });
         return prev;
       }
       flashText = `// XP: ${res.trait.label} ${res.trait.currentValue} → ${res.trait.nextValue} (-${res.trait.cost} XP)`;
@@ -1022,12 +1257,12 @@ export default function App() {
   const handleUndoLastUpgrade = () => {
     let flashText: string | null = null;
     setSheet((prev) => {
-      const res = undoLastUpgrade(prev);
+      const res = undoLastUpgrade(prev, language);
       if (!res.ok) {
-        flashText = `// XP: ${res.error ?? 'NADA PARA DESFAZER'}`;
+        flashText = `// XP: ${res.error ?? t.t('app.xpNothingToUndo')}`;
         return prev;
       }
-      flashText = `// XP: REVERTIDO ${res.revertedLabel}`;
+      flashText = t.t('app.xpReverted', { label: res.revertedLabel ?? '' });
       return res.sheet;
     });
     if (flashText) triggerFlash(flashText);
@@ -1037,11 +1272,11 @@ export default function App() {
 
   const handlePrintPdf = () => {
     void flushLocalPersistence();
-    const res = printActiveSheetView(sheet, activeTab);
+    const res = printActiveSheetView(sheet, activeTab, { lang: language });
     if (!res.ok && res.error) {
-      triggerFlash(`// PDF ERRO: ${res.error}`);
+      triggerFlash(t.t('app.pdfError', { error: res.error }));
     } else {
-      triggerFlash(`// PDF PRONTO: ${res.documentTitle}`);
+      triggerFlash(t.t('app.pdfReady', { title: res.documentTitle }));
     }
   };
 
@@ -1053,7 +1288,13 @@ export default function App() {
         mode={mode}
         language={language}
         isAudioMuted={isAudioMuted}
+        activeView={activeView}
         t={t.topBar}
+        onGoHome={() => {
+          setMobileSidebarOpen(false);
+          setHomeRulesOpen(false);
+          setActiveView('home');
+        }}
         onChangeSystemCode={(systemCode) => setSheet((prev) => ({ ...prev, systemCode }))}
         onSwitchSystem={handleSwitchSystem}
         onChangeLanguage={setLanguage}
@@ -1065,9 +1306,81 @@ export default function App() {
         onPrintPdf={handlePrintPdf}
       />
 
-      <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-        <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
-          <div className="max-w-[1140px] mx-auto">
+      {activeView === 'home' ? (
+        <>
+          <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 overflow-y-auto min-h-0">
+            <HomeView
+              sheets={homeSheets}
+              activeSheet={activeHomeSheet}
+              systems={homeSystems}
+              language={language}
+              onContinueSheet={() => {
+                setHomeRulesOpen(false);
+                setActiveView('sheet');
+              }}
+              onSelectSheet={(id) => void handleSelectHomeSheet(id)}
+              onCreateSheet={(systemId, customName) => {
+                const validIds: SystemId[] = ['wod', 'dnd5e', 'cyberpunk', 'default', 'blank'];
+                const resolvedSys = (
+                  validIds.includes(systemId as SystemId) ? systemId : 'blank'
+                ) as SystemId;
+                handleCreateNewSheet(
+                  resolvedSys,
+                  customName ? { characterName: customName } : undefined,
+                );
+              }}
+              onDuplicateSheet={(id) => void handleDuplicateHomeSheet(id)}
+              onDeleteSheet={(id) => void handleDeleteHomeSheet(id)}
+              onOpenImportExport={() => setModalMode('open')}
+              onOpenRules={() => setHomeRulesOpen(true)}
+            />
+          </main>
+
+          {homeRulesOpen && (
+            <div
+              className="no-print print:hidden fixed inset-0 z-40 flex justify-end bg-[#0B0B0B]/55"
+              role="presentation"
+              onClick={(e) => {
+                if (e.target === e.currentTarget) {
+                  setHomeRulesOpen(false);
+                }
+              }}
+            >
+              <aside
+                role="dialog"
+                aria-modal="true"
+                aria-label={t.sidebar.rulesTab}
+                data-testid="home-rules-drawer"
+                className="mobile-drawer-panel w-[min(94vw,400px)] bg-[var(--bg-card)] border-l-2 border-[var(--border-ink)] shadow-[-6px_0_0_#0B0B0B] flex flex-col min-h-0"
+              >
+                <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] shrink-0">
+                  <span className="font-mono-tech text-[11px] font-bold tracking-wider uppercase text-[var(--accent-wine)]">
+                    {t.t('sidebar.rulesDrawerTitle')}
+                  </span>
+                  <button
+                    type="button"
+                    aria-label={t.t('sidebar.closeRulesAria')}
+                    onClick={() => setHomeRulesOpen(false)}
+                    className="cyber-btn-outline mobile-touch-stepper w-8 h-8 flex items-center justify-center cursor-pointer"
+                  >
+                    <X className="w-4 h-4" aria-hidden="true" />
+                  </button>
+                </div>
+                <RulesSearchPanel
+                  systemId={activeSystemId}
+                  systemName={sheet.systemName}
+                  language={language}
+                  t={t.sidebar}
+                />
+              </aside>
+            </div>
+          )}
+        </>
+      ) : (
+        <>
+          <div className="flex-1 flex flex-col lg:flex-row min-h-0">
+            <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
+              <div className="max-w-[1140px] mx-auto">
             <PrintSheetHeader
               sheet={sheet}
               systemId={activeSystemId}
@@ -1108,6 +1421,7 @@ export default function App() {
               {activeTab === 'xp' ? (
               <XpUpgradeWorkspace
                 sheet={sheet}
+                language={language}
                 t={t.xp}
                 onAwardXp={handleAwardXp}
                 onUpgradeTrait={handleUpgradeTrait}
@@ -1186,7 +1500,7 @@ export default function App() {
                       }
                       onRemoveCard={(cid) => {
                         setSheet((prev) => removeCardFromSheet(prev, cid));
-                        triggerFlash('// BLOCO REMOVIDO');
+                        triggerFlash(t.t('app.cardRemoved'));
                       }}
                     />
                   ))
@@ -1209,10 +1523,13 @@ export default function App() {
           logs={sheet.rollLogs}
           systemId={activeSystemId}
           systemName={sheet.systemName}
+          language={language}
           t={t.sidebar}
           isMobileOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
-          onQuickRoll={(expr) => appendRollLog(`ROLAGEM · ${expr.toUpperCase()}`, expr)}
+          onQuickRoll={(expr) =>
+            appendRollLog(t.t('app.quickRollLabel', { expr: expr.toUpperCase() }), expr)
+          }
           onClearLogs={() => setSheet((prev) => ({ ...prev, rollLogs: [] }))}
         />
       </div>
@@ -1252,7 +1569,7 @@ export default function App() {
                             data-testid="mobile-roll-toast-status"
                             className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[#991B1B] border border-[var(--accent-danger)] rounded-[3px] uppercase shrink-0"
                           >
-                            BOTCH!
+                            {t.t('sidebar.roll.botch')}
                           </span>
                         );
                       }
@@ -1262,7 +1579,7 @@ export default function App() {
                             data-testid="mobile-roll-toast-status"
                             className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--ink-secondary)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
                           >
-                            FAILURE
+                            {t.t('sidebar.roll.failure')}
                           </span>
                         );
                       }
@@ -1271,7 +1588,7 @@ export default function App() {
                           data-testid="mobile-roll-toast-status"
                           className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
                         >
-                          SUCCESS
+                          {t.t('sidebar.roll.success')}
                         </span>
                       );
                     }
@@ -1281,7 +1598,7 @@ export default function App() {
                           data-testid="mobile-roll-toast-status"
                           className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
                         >
-                          CRÍTICO
+                          {t.t('sidebar.roll.critShort')}
                         </span>
                       );
                     }
@@ -1291,7 +1608,7 @@ export default function App() {
                           data-testid="mobile-roll-toast-status"
                           className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[#991B1B] border border-[var(--accent-danger)] rounded-[3px] uppercase shrink-0"
                         >
-                          FALHA 1
+                          {t.t('sidebar.roll.fumble1')}
                         </span>
                       );
                     }
@@ -1301,8 +1618,16 @@ export default function App() {
                 <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
                   {mobileRollToast.isPoolRoll
                     ? `${mobileRollToast.total} ${
-                        mobileRollToast.isSoak ? 'SOAKED' : mobileRollToast.total === 1 ? 'SUC' : 'SUCS'
-                      } · ${mobileRollToast.formula}`
+                        mobileRollToast.isSoak
+                          ? t.t('sidebar.roll.soaked')
+                          : mobileRollToast.total === 1
+                            ? t.t('sidebar.roll.sucSingular')
+                            : t.t('sidebar.roll.sucPlural')
+                      } · ${
+                        mobileRollToast.rolls && mobileRollToast.rolls.length > 0
+                          ? `${mobileRollToast.rolls.length}d10 (${t.t('cards.pool.diff')} ${mobileRollToast.difficulty ?? 6})`
+                          : mobileRollToast.formula
+                      }`
                     : mobileRollToast.breakdown}
                 </div>
               </div>
@@ -1318,12 +1643,12 @@ export default function App() {
                 }}
                 className="cyber-btn-outline px-2 py-1 text-[10px] font-bold uppercase cursor-pointer"
               >
-                LOG
+                {t.t('statusBar.mobileLogsBtn')}
               </button>
               <button
                 type="button"
                 data-testid="mobile-roll-toast-close"
-                aria-label="Fechar aviso de rolagem"
+                aria-label={t.t('sidebar.closeToastAria')}
                 onClick={dismissMobileRollToast}
                 className="cyber-btn-outline w-7 h-7 flex items-center justify-center cursor-pointer"
               >
@@ -1345,6 +1670,7 @@ export default function App() {
               flashMessage={flashMessage}
               roomSyncState={roomSyncState}
               persistenceState={persistenceState}
+              language={language}
               t={t.statusBar}
               onFlushSave={() => {
                 void (async () => {
@@ -1376,22 +1702,23 @@ export default function App() {
             className="lg:hidden mobile-drawer-fab cyber-roll-btn px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shrink-0 cursor-pointer"
           >
             <Dices className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-            <span>LOGS</span>
+            <span>{t.t('statusBar.mobileLogsBtn')}</span>
             <span className="px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums leading-none">
               {sheet.rollLogs.length}
             </span>
           </button>
         </div>
       </div>
+        </>
+      )}
 
       <SheetModal
         mode={modalMode}
         sheet={sheet}
         activeSystemId={activeSystemId}
-        workspaceSheets={Object.values(workspace.sheetsBySystem).filter(
-          (item): item is CharacterSheetState => Boolean(item),
-        )}
+        workspaceSheets={allAvailableSheets}
         customTemplates={customTemplates}
+        language={language}
         t={t.modal}
         onClose={() => setModalMode(null)}
         onCreateNewSheet={handleCreateNewSheet}
@@ -1433,8 +1760,11 @@ export default function App() {
             activeSystemId: lastSystemId,
             sheetsBySystem: nextMap,
           });
+          await refreshPersistedSheets();
           setSearchQuery('');
-          triggerFlash('// STATUS: JSON IMPORTADO COM SUCESSO');
+          setHomeRulesOpen(false);
+          setActiveView('sheet');
+          triggerFlash(t.t('app.jsonImported'));
         }}
         onRestoreSnapshot={async (snapshotId) => {
           debouncedSaverRef.current?.cancelPending();
@@ -1457,8 +1787,11 @@ export default function App() {
             activeSystemId: nextActiveSys,
             sheetsBySystem: restoredMap,
           });
+          await refreshPersistedSheets();
           setSearchQuery('');
-          triggerFlash('// STATUS: SNAPSHOT RESTAURADO COM SUCESSO');
+          setHomeRulesOpen(false);
+          setActiveView('sheet');
+          triggerFlash(t.t('app.snapshotRestored'));
           return restored;
         }}
         onImportJson={(next) => {
@@ -1472,8 +1805,11 @@ export default function App() {
               [nextId]: normalized,
             },
           }));
+          void sheetsStoreRef.current.saveSheet(normalized).then(() => refreshPersistedSheets());
           setSearchQuery('');
-          triggerFlash('// STATUS: JSON IMPORTADO COM SUCESSO');
+          setHomeRulesOpen(false);
+          setActiveView('sheet');
+          triggerFlash(t.t('app.jsonImported'));
         }}
         onSaveLocal={async () => {
           try {
@@ -1482,9 +1818,10 @@ export default function App() {
               activeSheetId: resolveSheetRecordId(sheet),
               activeSystemId,
             });
-            triggerFlash('// STATUS: FICHA SALVA NO INDEXEDDB');
+            await refreshPersistedSheets();
+            triggerFlash(t.t('app.savedLocal'));
           } catch {
-            triggerFlash('// STATUS: ERRO AO SALVAR NO NAVEGADOR');
+            triggerFlash(t.t('app.saveLocalError'));
           }
         }}
         onSaveCustomTemplate={async (templateName) => {
@@ -1498,9 +1835,9 @@ export default function App() {
               saved,
               ...prev.filter((item) => item.id !== saved.id),
             ]);
-            triggerFlash(`// TEMPLATE SALVO: ${saved.name}`);
+            triggerFlash(t.t('app.templateSaved', { name: saved.name }));
           } catch {
-            triggerFlash('// STATUS: ERRO AO SALVAR TEMPLATE');
+            triggerFlash(t.t('app.saveTemplateError'));
           }
         }}
         onLoadCustomTemplate={(template) => {
@@ -1516,7 +1853,9 @@ export default function App() {
           }));
           setActiveTab('geral');
           setSearchQuery('');
-          triggerFlash(`// TEMPLATE CARREGADO: ${template.name}`);
+          setHomeRulesOpen(false);
+          setActiveView('sheet');
+          triggerFlash(t.t('app.templateLoaded', { name: template.name }));
         }}
         onDeleteCustomTemplate={async (templateId) => {
           await deleteCustomTemplate(templateId);

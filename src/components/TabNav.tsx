@@ -74,7 +74,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           tabIndex={activeTab === 'geral' ? 0 : -1}
           onClick={() => onSelectTab('geral')}
           onKeyDown={(e) => handleTabKeyDown(e, 'geral')}
-          className={`cyber-tab-btn font-mono-tech px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`cyber-tab-btn font-mono-tech min-h-[36px] px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTab === 'geral'
               ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#5B0F18]'
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -95,7 +95,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           tabIndex={activeTab === 'magias' ? 0 : -1}
           onClick={() => onSelectTab('magias')}
           onKeyDown={(e) => handleTabKeyDown(e, 'magias')}
-          className={`cyber-tab-btn font-mono-tech px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`cyber-tab-btn font-mono-tech min-h-[36px] px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTab === 'magias'
               ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#5B0F18]'
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
@@ -116,7 +116,7 @@ export const TabNav: React.FC<TabNavProps> = ({
           tabIndex={activeTab === 'xp' ? 0 : -1}
           onClick={() => onSelectTab('xp')}
           onKeyDown={(e) => handleTabKeyDown(e, 'xp')}
-          className={`cyber-tab-btn font-mono-tech px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+          className={`cyber-tab-btn font-mono-tech min-h-[36px] px-3 sm:px-4 py-2 text-xs font-bold tracking-wider uppercase border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
             activeTab === 'xp'
               ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] shadow-[2px_2px_0_#0B0B0B]'
               : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'

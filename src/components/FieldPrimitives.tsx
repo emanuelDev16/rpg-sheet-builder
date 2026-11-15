@@ -79,6 +79,7 @@ interface WodPoolRollFieldProps {
   field: SheetField;
   variables: VariableMap;
   defaultDifficulty: number;
+  t: AppTranslations['cards'];
   onRoll: (field: SheetField) => void;
   onUpdateSchema: (fieldId: string, patch: Partial<SheetField>) => void;
   editStrip: React.ReactNode;
@@ -88,6 +89,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   field,
   variables,
   defaultDifficulty,
+  t,
   onRoll,
   onUpdateSchema,
   editStrip,
@@ -113,12 +115,12 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   const wpArmed = Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
   const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
 
-  const summaryParts = [`DIFF ${difficulty}`];
+  const summaryParts = [`${t.t('cards.pool.diff')} ${difficulty}`];
   if (modifier !== 0) {
-    summaryParts.push(`${modifier > 0 ? `+${modifier}` : modifier} MOD`);
+    summaryParts.push(`${modifier > 0 ? `+${modifier}` : modifier} ${t.t('cards.pool.mod')}`);
   }
   if (specialty) {
-    summaryParts.push('SPEC');
+    summaryParts.push(t.t('cards.pool.specShort'));
   }
   const isCustomized = difficulty !== clampedDefaultDiff || modifier !== 0 || specialty;
 
@@ -128,7 +130,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
         type="button"
         data-testid={`roll-btn-${field.id}`}
         onClick={() => onRoll(field)}
-        className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
+        className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
       >
         <span className="text-left break-words whitespace-normal leading-snug min-w-0">
           {displayLabel}
@@ -136,7 +138,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
         <div className="flex items-center gap-1.5 shrink-0">
           {wpArmed && (
             <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--ink-inverse)]/40 rounded-[3px]">
-              +1 WP
+              {t.t('cards.pool.wpBadge')}
             </span>
           )}
           <span className="text-sm leading-none" aria-hidden="true">
@@ -153,7 +155,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
             aria-expanded={optionsOpen}
             aria-controls={`roll-opts-panel-${field.id}`}
             onClick={() => setOptionsOpen((prev) => !prev)}
-            className={`font-mono-tech text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-[4px] border inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+            className={`font-mono-tech min-h-[36px] sm:min-h-[30px] text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-[4px] border inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
               optionsOpen || isCustomized
                 ? 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
                 : 'bg-[var(--bg-card-alt)] text-[var(--ink-secondary)] border-[var(--border-ink)]/55 hover:border-[var(--border-ink)] hover:bg-[var(--bg-hover)]'
@@ -178,11 +180,11 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
           >
             <div className="flex items-center gap-2.5 flex-wrap">
               <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
-                <span>DIFF</span>
+                <span>{t.t('cards.pool.diff')}</span>
                 <ClampedNumberInput
                   min={2}
                   max={10}
-                  ariaLabel={`Difficulty for ${field.rollLabel ?? field.label}`}
+                  ariaLabel={t.t('cards.pool.diffAria', { label: field.rollLabel ?? field.label })}
                   testId={`roll-diff-${field.id}`}
                   value={difficulty}
                   onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
@@ -190,11 +192,11 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               </label>
 
               <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
-                <span>MOD</span>
+                <span>{t.t('cards.pool.mod')}</span>
                 <ClampedNumberInput
                   min={-10}
                   max={20}
-                  ariaLabel={`Pool modifier for ${field.rollLabel ?? field.label}`}
+                  ariaLabel={t.t('cards.pool.modAria', { label: field.rollLabel ?? field.label })}
                   testId={`roll-mod-${field.id}`}
                   value={modifier}
                   onCommit={(next) => onUpdateSchema(field.id, { rollMod: next })}
@@ -210,7 +212,9 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
                 onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
                 className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[#5B0F18] cursor-pointer"
               />
-              <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>SPECIALTY</span>
+              <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>
+                {t.t('cards.pool.specialty')}
+              </span>
             </label>
           </div>
         )}
@@ -269,15 +273,17 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
   const renderEditStrip = () => {
     if (mode !== 'edicao') return null;
+    const defaultCol1 = t.t('cards.defaultItemCol');
+    const defaultCol2 = t.t('cards.defaultValueCol');
     return (
       <div className="no-print print:hidden mt-2 pt-2 border-t border-dashed border-[var(--border-ink)]/40 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[var(--bg-header-strip)] p-2 rounded-[4px]">
         <div className={`flex items-center gap-1.5 ${isCustomSystem ? '' : 'sm:col-span-2'}`}>
           <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
-            RÓTULO:
+            {t.t('cards.strip.label')}
           </span>
           <input
             type="text"
-            aria-label={`Editar rótulo de ${field.label}`}
+            aria-label={t.t('cards.strip.editLabelAria', { label: field.label })}
             value={field.label}
             onChange={(e) => onUpdateSchema(field.id, { label: e.target.value })}
             className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -286,11 +292,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         {isCustomSystem && (
           <div className="flex items-center gap-1.5">
             <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
-              VAR:
+              {t.t('cards.strip.var')}
             </span>
             <input
               type="text"
-              aria-label={`Editar variável de ${field.label}`}
+              aria-label={t.t('cards.strip.editVarAria', { label: field.label })}
               value={field.key}
               onChange={(e) => onUpdateSchema(field.id, { key: e.target.value })}
               className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -300,11 +306,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         {isCustomSystem && field.kind === 'calculated' && (
           <div className="sm:col-span-2 flex items-center gap-1.5">
             <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-              FÓRMULA:
+              {t.t('cards.strip.formula')}
             </span>
             <input
               type="text"
-              aria-label={`Editar fórmula de ${field.label}`}
+              aria-label={t.t('cards.strip.editFormulaAria', { label: field.label })}
               value={field.formula ?? ''}
               onChange={(e) => onUpdateSchema(field.id, { formula: e.target.value })}
               className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -315,11 +321,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <>
             <div className={`flex items-center gap-1.5 ${isCustomSystem ? '' : 'sm:col-span-2'}`}>
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-                BOTÃO:
+                {t.t('cards.strip.button')}
               </span>
               <input
                 type="text"
-                aria-label={`Editar texto do botão de ${field.label}`}
+                aria-label={t.t('cards.strip.editButtonAria', { label: field.label })}
                 value={field.rollLabel ?? ''}
                 onChange={(e) => onUpdateSchema(field.id, { rollLabel: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -328,11 +334,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             {isCustomSystem && (
               <div className="flex items-center gap-1.5">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-                  DADOS:
+                  {t.t('cards.strip.dice')}
                 </span>
                 <input
                   type="text"
-                  aria-label={`Editar expressão de dados de ${field.label}`}
+                  aria-label={t.t('cards.strip.editDiceAria', { label: field.label })}
                   value={field.rollExpr ?? ''}
                   onChange={(e) => onUpdateSchema(field.id, { rollExpr: e.target.value })}
                   className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -344,13 +350,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         {field.kind === 'resource' && (
           <div className="flex items-center gap-1.5">
             <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-              MÁXIMO:
+              {t.t('cards.strip.max')}
             </span>
             <input
               type="number"
               min={1}
               max={999}
-              aria-label={`Editar máximo de ${field.label}`}
+              aria-label={t.t('cards.strip.editMaxAria', { label: field.label })}
               value={field.max ?? 12}
               onChange={(e) => {
                 const nextMax = Math.max(1, Math.min(999, Number(e.target.value) || 1));
@@ -364,15 +370,15 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <>
             <div className="flex items-center gap-1.5">
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-                COL 1:
+                {t.t('cards.strip.col1')}
               </span>
               <input
                 type="text"
-                aria-label={`Editar coluna 1 de ${field.label}`}
-                value={field.columns?.[0] ?? 'ITEM'}
+                aria-label={t.t('cards.strip.editCol1Aria', { label: field.label })}
+                value={field.columns?.[0] ?? defaultCol1}
                 onChange={(e) =>
                   onUpdateSchema(field.id, {
-                    columns: [e.target.value, field.columns?.[1] ?? 'VALOR'],
+                    columns: [e.target.value, field.columns?.[1] ?? defaultCol2],
                   })
                 }
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -380,15 +386,15 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
             <div className="flex items-center gap-1.5">
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase shrink-0">
-                COL 2:
+                {t.t('cards.strip.col2')}
               </span>
               <input
                 type="text"
-                aria-label={`Editar coluna 2 de ${field.label}`}
-                value={field.columns?.[1] ?? 'VALOR'}
+                aria-label={t.t('cards.strip.editCol2Aria', { label: field.label })}
+                value={field.columns?.[1] ?? defaultCol2}
                 onChange={(e) =>
                   onUpdateSchema(field.id, {
-                    columns: [field.columns?.[0] ?? 'ITEM', e.target.value],
+                    columns: [field.columns?.[0] ?? defaultCol1, e.target.value],
                   })
                 }
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -400,9 +406,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <button
             type="button"
             onClick={() => onRemoveField(field.id)}
-            className="font-mono-tech text-[10px] font-bold text-[var(--accent-danger)] hover:underline cursor-pointer py-1"
+            className="font-mono-tech min-h-[36px] sm:min-h-0 text-[10px] font-bold text-[var(--accent-danger)] hover:underline cursor-pointer py-1"
           >
-            × REMOVER CAMPO
+            {t.t('cards.strip.removeField')}
           </button>
         </div>
       </div>
@@ -499,7 +505,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div
             role="status"
             aria-label={`${field.label}: ${computed?.formatted ?? '0'}`}
-            title={isErr ? computed?.error : isCustomSystem ? `Fórmula: ${field.formula}` : undefined}
+            title={
+              isErr
+                ? computed?.error
+                : isCustomSystem
+                  ? t.t('cards.formulaTooltip', { formula: field.formula ?? '' })
+                  : undefined
+            }
             className={`cyber-calc-box px-3 py-1.5 text-sm font-bold flex items-center gap-2 shrink-0 ${
               isErr ? 'is-error' : ''
             }`}
@@ -683,7 +695,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div className="flex items-center gap-1.5 shrink-0">
             <button
               type="button"
-              aria-label={`Diminuir ${field.label}`}
+              aria-label={t.t('cards.decreaseAria', { label: field.label })}
               onClick={() => onAdjustResource(field.id, -1)}
               className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
             >
@@ -697,7 +709,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </span>
             <button
               type="button"
-              aria-label={`Aumentar ${field.label}`}
+              aria-label={t.t('cards.increaseAria', { label: field.label })}
               onClick={() => onAdjustResource(field.id, 1)}
               className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
             >
@@ -743,7 +755,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <button
                   key={idx}
                   type="button"
-                  aria-label={`Definir ${field.label} para ${idx + 1}`}
+                  aria-label={t.t('cards.setResourceAria', { label: field.label, value: idx + 1 })}
                   onClick={() => onChangeValue(field.id, idx + 1 === current ? idx : idx + 1)}
                   className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
                 />
@@ -765,7 +777,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       const currentWillpower = typeof variables.willpower === 'number' ? variables.willpower : 0;
       const isEmpty = currentWillpower <= 0;
       const effectiveChecked = checked && !isEmpty;
-      const badgeLabel = isEmpty ? 'EMPTY' : effectiveChecked ? 'ACTIVE' : 'INACTIVE';
+      const badgeLabel = isEmpty ? t.empty : effectiveChecked ? t.active : t.inactive;
 
       return (
         <div className="py-1">
@@ -872,6 +884,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           field={field}
           variables={variables}
           defaultDifficulty={defaultDiff}
+          t={t}
           onRoll={onRoll}
           onUpdateSchema={onUpdateSchema}
           editStrip={renderEditStrip()}
@@ -887,7 +900,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           type="button"
           data-testid={`roll-btn-${field.id}`}
           onClick={() => onRoll(field)}
-          className="cyber-roll-btn w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
+          className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
         >
           <span className="text-left break-words whitespace-normal leading-snug min-w-0">
             {displayLabel}
@@ -904,8 +917,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   // 6. Lista Repetível
   if (field.kind === 'repeatable') {
     const rows = field.rows ?? [];
-    const col1Title = field.columns?.[0] ?? 'ITEM';
-    const col2Title = field.columns?.[1] ?? 'VALOR';
+    const col1Title = field.columns?.[0] ?? t.t('cards.defaultItemCol');
+    const col2Title = field.columns?.[1] ?? t.t('cards.defaultValueCol');
 
     return (
       <div className="flex flex-col gap-2">
@@ -926,7 +939,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               <tr className="bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] text-[10px] text-[var(--ink-muted)] uppercase">
                 <th className="text-left py-2 px-2.5 font-bold">{col1Title}</th>
                 <th className="text-right py-2 px-2.5 font-bold w-28">{col2Title}</th>
-                <th className="w-9 no-print print:hidden" aria-label="Ações" />
+                <th className="w-9 no-print print:hidden" aria-label={t.t('cards.actionsColAria')} />
               </tr>
             </thead>
             <tbody>
@@ -945,7 +958,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     <td className="p-1.5">
                       <input
                         type="text"
-                        aria-label={`${col1Title} da linha ${row.col1}`}
+                        aria-label={t.t('cards.rowColAria', { col: col1Title, row: row.col1 })}
                         value={row.col1}
                         onChange={(e) => onUpdateRow(field.id, row.id, 'col1', e.target.value)}
                         className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
@@ -955,7 +968,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                       <input
                         type={field.col2Type === 'number' ? 'number' : 'text'}
                         step={field.col2Type === 'number' ? '0.5' : undefined}
-                        aria-label={`${col2Title} de ${row.col1}`}
+                        aria-label={t.t('cards.rowColAria', { col: col2Title, row: row.col1 })}
                         value={row.col2}
                         onChange={(e) =>
                           onUpdateRow(
@@ -971,7 +984,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     <td className="p-1.5 text-center no-print print:hidden">
                       <button
                         type="button"
-                        aria-label={`Remover linha ${row.col1}`}
+                        aria-label={t.t('cards.removeRowAria', { row: row.col1 })}
                         onClick={() => onRemoveRow(field.id, row.id)}
                         className="mobile-touch-stepper w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
                       >
@@ -988,7 +1001,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         <button
           type="button"
           onClick={() => onAddRow(field.id)}
-          className="no-print print:hidden font-mono-tech self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase border-[1.5px] border-dashed border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] transition-colors cursor-pointer"
+          className="no-print print:hidden font-mono-tech min-h-[36px] self-start inline-flex items-center gap-1.5 px-3 py-1.5 text-[11px] font-bold uppercase border-[1.5px] border-dashed border-[var(--border-ink)] rounded-[var(--radius-control)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] transition-colors cursor-pointer"
         >
           <Plus className="w-3.5 h-3.5" aria-hidden="true" />
           <span>{t.addRow}</span>
