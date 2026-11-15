@@ -20,6 +20,7 @@ import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
