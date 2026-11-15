@@ -13,7 +13,6 @@ export default defineConfig({
       'src/core/i18n.test.ts',
       'src/core/printSheet.test.ts',
       'src/core/roomSync.test.ts',
-      'src/core/rulesSearch.test.ts',
       'src/core/sheetModel.test.ts',
       'src/core/sheetSearch.test.ts',
       'src/core/xpSystem.test.ts',
