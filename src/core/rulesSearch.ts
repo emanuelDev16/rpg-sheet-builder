@@ -45,12 +45,43 @@ export function validateRulesQuery(rawQuery: unknown): {
   return { ok: true, query: trimmed };
 }
 
+export interface LocalRuleContextExcerpt {
+  bookTitle: string;
+  page: number;
+  excerpt: string;
+}
+
 export function buildRulesSearchPrompt(query: string, systemName?: string): string {
   const sys = systemName?.trim();
   if (sys) {
     return `System context: ${sys}. Tabletop RPG rule query: "${query}". Provide a concise, accurate, practical rules summary (dice mechanics, difficulties, edge cases, and step-by-step resolution if applicable). Answer in the same language as the user's query (default Portuguese or English as queried).`;
   }
   return `Tabletop RPG rule query: "${query}". Provide a concise, accurate, practical rules summary with mechanics and resolution steps.`;
+}
+
+export function buildLocalRagPrompt(
+  query: string,
+  excerpts: LocalRuleContextExcerpt[],
+  systemName?: string,
+): string {
+  const topExcerpts = excerpts.slice(0, 5);
+  const contextBlocks = topExcerpts
+    .map(
+      (item, idx) =>
+        `[${idx + 1}] Book: "${item.bookTitle}" | Page: ${item.page}\nExcerpt: ${item.excerpt}`,
+    )
+    .join('\n\n');
+
+  const sysLine = systemName?.trim() ? `System: ${systemName.trim()}\n` : '';
+  return `${sysLine}Rule Query: "${query}"
+
+Retrieved Local PDF Excerpts (use ONLY these excerpts as factual context and cite [Book, p. X]):
+${contextBlocks}
+
+Instructions:
+- Answer concisely (~120 words max) in the same language as the query.
+- Ground every rule detail exclusively in the excerpts above and cite page numbers.
+- If the excerpts do not contain enough detail to answer fully, state clearly what is missing.`;
 }
 
 export function extractGroundedSources(chunks: RawGroundingChunk[] | undefined): GroundedSource[] {

@@ -8,9 +8,11 @@ import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
 import { GoogleGenAI } from '@google/genai';
 import {
+  buildLocalRagPrompt,
   buildRulesSearchPrompt,
   extractGroundedSources,
   formatRulesSearchError,
+  type LocalRuleContextExcerpt,
   validateRulesQuery,
 } from './src/core/rulesSearch.ts';
 import {
@@ -402,6 +404,110 @@ export function createSyncApp(initialSheets?: CanonicalSheet[]) {
   app.post('/api/sheets/:id', handleSheetSyncHttp);
   app.put('/api/sheets', handleSheetSyncHttp);
   app.put('/api/sheets/:id', handleSheetSyncHttp);
+
+  app.get('/api/rules-search/status', (_req, res) => {
+    res.json({
+      ok: true,
+      geminiConfigured: Boolean(createGeminiClient()),
+    });
+  });
+
+  app.post('/api/rules-synthesize', async (req, res) => {
+    const validation = validateRulesQuery(req.body?.query);
+    if (!validation.ok) {
+      res.status(400).json({
+        ok: false,
+        query: validation.query,
+        answer: '',
+        error: validation.error,
+      });
+      return;
+    }
+
+    const rawExcerpts: unknown[] = Array.isArray(req.body?.excerpts) ? req.body.excerpts : [];
+    const excerpts: LocalRuleContextExcerpt[] = rawExcerpts
+      .slice(0, 5)
+      .filter(
+        (item: unknown): item is Record<string, unknown> =>
+          Boolean(item && typeof item === 'object'),
+      )
+      .map((item: Record<string, unknown>): LocalRuleContextExcerpt => ({
+        bookTitle:
+          typeof item.bookTitle === 'string' && item.bookTitle.trim()
+            ? item.bookTitle.trim().slice(0, 120)
+            : 'PDF Local',
+        page:
+          typeof item.page === 'number' && Number.isFinite(item.page) && item.page >= 1
+            ? Math.floor(item.page)
+            : 1,
+        excerpt:
+          typeof item.excerpt === 'string' ? item.excerpt.trim().slice(0, 1200) : '',
+      }))
+      .filter((item: LocalRuleContextExcerpt) => item.excerpt.length > 0);
+
+    if (excerpts.length === 0) {
+      res.status(400).json({
+        ok: false,
+        query: validation.query,
+        answer: '',
+        error: 'Nenhum trecho local válido foi enviado para síntese.',
+      });
+      return;
+    }
+
+    const ai = createGeminiClient();
+    if (!ai) {
+      res.status(503).json({
+        ok: false,
+        query: validation.query,
+        answer: '',
+        error:
+          'Chave GEMINI_API_KEY não configurada no ambiente. Adicione a chave no painel Settings > Secrets.',
+      });
+      return;
+    }
+
+    const systemName = typeof req.body?.systemName === 'string' ? req.body.systemName : undefined;
+    const prompt = buildLocalRagPrompt(validation.query, excerpts, systemName);
+
+    try {
+      const response = await ai.models.generateContent({
+        model: 'gemini-4-hydrogen',
+        contents: prompt,
+        config: {
+          systemInstruction:
+            'You are a concise tabletop RPG rules synthesizer inside GridSheet. Answer strictly using the provided local PDF excerpts, cite book titles and page numbers, keep answers under ~130 words, and avoid filler greetings.',
+        },
+      });
+
+      const answer = (response.text ?? '').trim();
+      if (!answer) {
+        res.status(502).json({
+          ok: false,
+          query: validation.query,
+          answer: '',
+          error: 'O Gemini não retornou uma síntese para os trechos enviados.',
+        });
+        return;
+      }
+
+      res.json({
+        ok: true,
+        query: validation.query,
+        answer,
+        excerptsUsed: excerpts.length,
+      });
+    } catch (err) {
+      const rawMessage = err instanceof Error ? err.message : 'Erro desconhecido ao sintetizar regra.';
+      const formatted = formatRulesSearchError(rawMessage);
+      res.status(formatted.status).json({
+        ok: false,
+        query: validation.query,
+        answer: '',
+        error: formatted.message,
+      });
+    }
+  });
 
   app.post('/api/rules-search', async (req, res) => {
     const validation = validateRulesQuery(req.body?.query);

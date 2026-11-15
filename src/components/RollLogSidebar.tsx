@@ -144,7 +144,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
       </div>
 
       {sidebarTab === 'rules' ? (
-        <RulesSearchPanel systemName={systemName} t={t} />
+        <RulesSearchPanel systemId={systemId} systemName={systemName} t={t} />
       ) : (
         <>
           {/* Rolagem rápida manual */}
