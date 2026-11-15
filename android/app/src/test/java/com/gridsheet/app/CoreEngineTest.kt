@@ -7,14 +7,18 @@ import com.gridsheet.app.core.SheetCard
 import com.gridsheet.app.core.SheetEvaluator
 import com.gridsheet.app.core.SheetField
 import com.gridsheet.app.core.SheetMutators
+import com.gridsheet.app.core.SheetPayloadValidator
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Test
+import java.io.File
 
 class CoreEngineTest {
     @Test
@@ -146,5 +150,33 @@ class CoreEngineTest {
         assertEquals(6, afterHeal.superficialDamage)
         assertEquals(0, afterHeal.aggravatedDamage)
         assertEquals(7.0, afterHeal.numValue ?: 0.0, 0.01)
+    }
+
+    @Test
+    fun presetsV2BundlePassesValidatorAndMalformedPayloadsAreRejected() {
+        val candidates = listOf(
+            File("../shared/presets/presets.v2.json"),
+            File("shared/presets/presets.v2.json")
+        )
+        val bundleFile = candidates.firstOrNull { it.exists() }
+        assertTrue("presets.v2.json deve existir para validação", bundleFile != null)
+
+        val bundleObj = Json.parseToJsonElement(bundleFile!!.readText()).jsonObject
+        val presetsObj = bundleObj["presets"]!!.jsonObject
+        assertEquals(5, presetsObj.size)
+        for ((presetName, presetElem) in presetsObj) {
+            val res = SheetPayloadValidator.validateElement(presetElem)
+            assertTrue("Preset $presetName falhou na validação: ${res.errors}", res.valid)
+        }
+
+        val pollutedJson = """{"systemName":"WOD","systemCode":"/WOD","characterName":"X","cards":[],"__proto__":{"admin":true}}"""
+        val pollutedRes = SheetPayloadValidator.validateRawJson(pollutedJson)
+        assertFalse(pollutedRes.valid)
+        assertTrue(pollutedRes.errors.any { it.contains("__proto__") })
+
+        val badBoundsJson = """{"systemName":"WOD","systemCode":"/WOD","characterName":"X","revision":0,"cards":[{"id":"c1","tab":"geral","code":"//A","title":"C","colSpan":9,"fields":[{"id":"f1","key":"k1","label":"L","kind":"roll","rollDifficulty":99}]}]}"""
+        val badBoundsRes = SheetPayloadValidator.validateRawJson(badBoundsJson)
+        assertFalse(badBoundsRes.valid)
+        assertTrue(badBoundsRes.errors.size >= 3)
     }
 }

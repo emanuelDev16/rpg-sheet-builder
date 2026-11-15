@@ -4,6 +4,7 @@ import android.content.Context
 import com.gridsheet.app.BuildConfig
 import com.gridsheet.app.core.CharacterSheetState
 import com.gridsheet.app.core.Presets
+import com.gridsheet.app.core.SheetPayloadValidator
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.WorkspaceState
 import com.gridsheet.app.data.local.GridSheetDatabase
@@ -190,6 +191,10 @@ class WorkspaceRepository(context: Context) {
         json.encodeToString(CharacterSheetState.serializer(), sheet)
 
     fun importSheetJson(rawJson: String): Result<CharacterSheetState> = runCatching {
+        val validation = SheetPayloadValidator.validateRawJson(rawJson)
+        require(validation.valid) {
+            "Schema v2.0 inválido: ${validation.errors.take(3).joinToString(" | ")}"
+        }
         json.decodeFromString<CharacterSheetState>(rawJson)
     }
 

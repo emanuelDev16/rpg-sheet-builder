@@ -5,6 +5,7 @@ import {
   NewSheetIdentityInput,
   SYSTEM_OPTIONS,
   SystemId,
+  validateSheetPayload,
 } from '../core/sheetModel';
 import { AppTranslations, getTranslations } from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
@@ -100,13 +101,15 @@ export const SheetModal: React.FC<SheetModalProps> = ({
     const reader = new FileReader();
     reader.onload = () => {
       try {
-        const parsed = JSON.parse(String(reader.result)) as CharacterSheetState;
-        if (!parsed || !Array.isArray(parsed.cards)) {
-          setImportError('Arquivo JSON inválido: estrutura de cartões ausente.');
+        const parsed: unknown = JSON.parse(String(reader.result));
+        const validation = validateSheetPayload(parsed);
+        if (!validation.valid) {
+          const preview = validation.errors.slice(0, 3).join(' | ');
+          setImportError(`Arquivo JSON rejeitado pelo schema v2.0: ${preview}`);
           return;
         }
         setImportError(null);
-        onImportJson(parsed);
+        onImportJson(parsed as CharacterSheetState);
         onClose();
       } catch {
         setImportError('Não foi possível ler o arquivo JSON selecionado.');
@@ -382,9 +385,12 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   <span>{t.importBtn}</span>
                 </button>
                 {importError && (
-                  <span className="font-mono-tech text-[11px] text-[var(--accent-danger)]">
+                  <div
+                    role="alert"
+                    className="font-mono-tech text-[11px] font-bold text-[var(--accent-danger)] border-2 border-[var(--accent-danger)] bg-[var(--bg-card)] px-2.5 py-1.5"
+                  >
                     {importError}
-                  </span>
+                  </div>
                 )}
               </div>
             </>

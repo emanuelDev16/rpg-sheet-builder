@@ -2393,6 +2393,332 @@ export function toCanonicalSheet(sheet: CharacterSheetState): CanonicalSheet {
   };
 }
 
+export interface SheetPayloadValidationResult {
+  valid: boolean;
+  errors: string[];
+}
+
+const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+const ALLOWED_SYSTEM_IDS = new Set(['wod', 'dnd5e', 'cyberpunk', 'default', 'blank']);
+const ALLOWED_TAB_IDS = new Set(['geral', 'magias', 'xp']);
+const ALLOWED_FIELD_KINDS = new Set([
+  'number',
+  'text',
+  'calculated',
+  'resource',
+  'boolean',
+  'roll',
+  'repeatable',
+]);
+const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline']);
+
+const ROOT_SHEET_KEYS = new Set([
+  'id',
+  'systemId',
+  'systemName',
+  'systemCode',
+  'characterName',
+  'revision',
+  'updatedAt',
+  'deviceId',
+  'tabs',
+  'cards',
+  'rollLogs',
+  'xp',
+]);
+const CARD_KEYS = new Set(['id', 'tab', 'code', 'title', 'colSpan', 'fields']);
+const FIELD_KEYS = new Set([
+  'id',
+  'key',
+  'label',
+  'kind',
+  'value',
+  'numValue',
+  'textValue',
+  'boolValue',
+  'max',
+  'damageTrack',
+  'superficialDamage',
+  'aggravatedDamage',
+  'formula',
+  'showPlus',
+  'rollLabel',
+  'rollExpr',
+  'rollDifficulty',
+  'rollMod',
+  'rollSpecialty',
+  'useWillpower',
+  'isSoak',
+  'columns',
+  'col2Type',
+  'rows',
+  'hint',
+]);
+const ROW_KEYS = new Set(['id', 'col1', 'col2']);
+const ROLL_LOG_KEYS = new Set([
+  'id',
+  'timestamp',
+  'label',
+  'total',
+  'formula',
+  'breakdown',
+  'isCritical',
+  'isFumble',
+  'isPoolRoll',
+  'rolls',
+  'difficulty',
+  'onesCount',
+  'canceledOnes',
+  'outcome',
+]);
+const XP_STATE_KEYS = new Set(['totalEarned', 'spent', 'ledger']);
+const XP_LEDGER_KEYS = new Set([
+  'id',
+  'timestamp',
+  'kind',
+  'delta',
+  'label',
+  'fieldId',
+  'category',
+  'fromValue',
+  'toValue',
+]);
+
+function checkPlainObject(
+  value: unknown,
+  path: string,
+  allowedKeys: Set<string>,
+  errors: string[],
+): value is Record<string, unknown> {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    errors.push(`${path}: esperado objeto JSON.`);
+    return false;
+  }
+  const obj = value as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(obj)) {
+    if (DANGEROUS_OBJECT_KEYS.has(key)) {
+      errors.push(`${path}: chave proibida "${key}" (risco de Prototype Pollution).`);
+    } else if (!allowedKeys.has(key)) {
+      errors.push(`${path}: propriedade não permitida "${key}" (additionalProperties: false).`);
+    }
+  }
+  return true;
+}
+
+export function validateSheetPayload(data: unknown): SheetPayloadValidationResult {
+  const errors: string[] = [];
+  if (!checkPlainObject(data, '$', ROOT_SHEET_KEYS, errors)) {
+    return { valid: false, errors };
+  }
+
+  const reqStrings: Array<[string, number, number]> = [
+    ['systemName', 1, 120],
+    ['systemCode', 1, 80],
+    ['characterName', 1, 120],
+  ];
+  for (const [key, minLen, maxLen] of reqStrings) {
+    const v = data[key];
+    if (typeof v !== 'string' || v.length < minLen || v.length > maxLen) {
+      errors.push(`$.${key}: string obrigatória (${minLen}..${maxLen} caracteres).`);
+    }
+  }
+
+  if (data.id !== undefined) {
+    if (
+      typeof data.id !== 'string' ||
+      data.id.length < 1 ||
+      data.id.length > 64 ||
+      !/^[a-zA-Z0-9_-]+$/.test(data.id)
+    ) {
+      errors.push('$.id: identificador inválido.');
+    }
+  }
+  if (data.systemId !== undefined && !ALLOWED_SYSTEM_IDS.has(String(data.systemId))) {
+    errors.push(`$.systemId: sistema inválido "${String(data.systemId)}".`);
+  }
+  if (data.revision !== undefined) {
+    if (typeof data.revision !== 'number' || !Number.isInteger(data.revision) || data.revision < 1) {
+      errors.push('$.revision: deve ser inteiro >= 1.');
+    }
+  }
+  if (data.updatedAt !== undefined) {
+    if (!isValidIsoDateTime(data.updatedAt)) {
+      errors.push('$.updatedAt: deve ser timestamp ISO-8601 válido.');
+    }
+  }
+  if (data.deviceId !== undefined) {
+    if (typeof data.deviceId !== 'string' || data.deviceId.length < 1 || data.deviceId.length > 128) {
+      errors.push('$.deviceId: string inválida (1..128 caracteres).');
+    }
+  }
+
+  if (data.tabs !== undefined) {
+    if (!Array.isArray(data.tabs) || data.tabs.length > 20) {
+      errors.push('$.tabs: esperado array com até 20 itens.');
+    } else {
+      data.tabs.forEach((tab, idx) => {
+        if (checkPlainObject(tab, `$.tabs[${idx}]`, new Set(['id', 'label']), errors)) {
+          if (!ALLOWED_TAB_IDS.has(String(tab.id))) {
+            errors.push(`$.tabs[${idx}].id: valor inválido.`);
+          }
+          if (typeof tab.label !== 'string' || tab.label.length < 1 || tab.label.length > 80) {
+            errors.push(`$.tabs[${idx}].label: string obrigatória.`);
+          }
+        }
+      });
+    }
+  }
+
+  if (!Array.isArray(data.cards)) {
+    errors.push('$.cards: array obrigatório.');
+  } else {
+    if (data.cards.length > 50) {
+      errors.push('$.cards: máximo de 50 cartões excedido.');
+    }
+    data.cards.forEach((card, cIdx) => {
+      const cPath = `$.cards[${cIdx}]`;
+      if (!checkPlainObject(card, cPath, CARD_KEYS, errors)) return;
+      if (typeof card.id !== 'string' || card.id.length < 1 || card.id.length > 64) {
+        errors.push(`${cPath}.id: string obrigatória.`);
+      }
+      if (!ALLOWED_TAB_IDS.has(String(card.tab))) {
+        errors.push(`${cPath}.tab: aba inválida "${String(card.tab)}".`);
+      }
+      if (typeof card.code !== 'string' || card.code.length > 64) {
+        errors.push(`${cPath}.code: string obrigatória.`);
+      }
+      if (typeof card.title !== 'string' || card.title.length < 1 || card.title.length > 100) {
+        errors.push(`${cPath}.title: string obrigatória.`);
+      }
+      if (
+        typeof card.colSpan !== 'number' ||
+        !Number.isInteger(card.colSpan) ||
+        card.colSpan < 1 ||
+        card.colSpan > 4
+      ) {
+        errors.push(`${cPath}.colSpan: deve ser inteiro entre 1 e 4.`);
+      }
+      if (!Array.isArray(card.fields) || card.fields.length > 100) {
+        errors.push(`${cPath}.fields: array obrigatório (máx 100).`);
+        return;
+      }
+
+      card.fields.forEach((field, fIdx) => {
+        const fPath = `${cPath}.fields[${fIdx}]`;
+        if (!checkPlainObject(field, fPath, FIELD_KEYS, errors)) return;
+        if (
+          typeof field.id !== 'string' ||
+          field.id.length < 1 ||
+          field.id.length > 64 ||
+          !/^[a-zA-Z0-9_-]+$/.test(field.id)
+        ) {
+          errors.push(`${fPath}.id: identificador inválido.`);
+        }
+        if (typeof field.key !== 'string' || field.key.length < 1 || field.key.length > 64) {
+          errors.push(`${fPath}.key: string obrigatória.`);
+        }
+        if (typeof field.label !== 'string' || field.label.length < 1 || field.label.length > 100) {
+          errors.push(`${fPath}.label: string obrigatória.`);
+        }
+        if (!ALLOWED_FIELD_KINDS.has(String(field.kind))) {
+          errors.push(`${fPath}.kind: tipo de campo inválido "${String(field.kind)}".`);
+        }
+        if (
+          field.max !== undefined &&
+          (typeof field.max !== 'number' || !Number.isInteger(field.max) || field.max < 1 || field.max > 100000)
+        ) {
+          errors.push(`${fPath}.max: deve ser inteiro entre 1 e 100000.`);
+        }
+        if (
+          field.rollDifficulty !== undefined &&
+          (typeof field.rollDifficulty !== 'number' ||
+            !Number.isInteger(field.rollDifficulty) ||
+            field.rollDifficulty < 2 ||
+            field.rollDifficulty > 10)
+        ) {
+          errors.push(`${fPath}.rollDifficulty: deve ser inteiro entre 2 e 10.`);
+        }
+        if (field.rollSpecialty !== undefined && typeof field.rollSpecialty !== 'boolean') {
+          errors.push(`${fPath}.rollSpecialty: deve ser booleano.`);
+        }
+        if (field.useWillpower !== undefined && typeof field.useWillpower !== 'boolean') {
+          errors.push(`${fPath}.useWillpower: deve ser booleano.`);
+        }
+        if (field.rows !== undefined) {
+          if (!Array.isArray(field.rows) || field.rows.length > 200) {
+            errors.push(`${fPath}.rows: esperado array com até 200 linhas.`);
+          } else {
+            field.rows.forEach((row, rIdx) => {
+              const rPath = `${fPath}.rows[${rIdx}]`;
+              if (!checkPlainObject(row, rPath, ROW_KEYS, errors)) return;
+              if (typeof row.id !== 'string' || row.id.length < 1 || row.id.length > 64) {
+                errors.push(`${rPath}.id: string obrigatória.`);
+              }
+              if (typeof row.col1 !== 'string' || row.col1.length > 200) {
+                errors.push(`${rPath}.col1: string obrigatória.`);
+              }
+              if (typeof row.col2 !== 'string' && typeof row.col2 !== 'number') {
+                errors.push(`${rPath}.col2: deve ser string ou número.`);
+              }
+            });
+          }
+        }
+      });
+    });
+  }
+
+  if (data.rollLogs !== undefined) {
+    if (!Array.isArray(data.rollLogs) || data.rollLogs.length > 200) {
+      errors.push('$.rollLogs: esperado array com até 200 entradas.');
+    } else {
+      data.rollLogs.forEach((log, lIdx) => {
+        const lPath = `$.rollLogs[${lIdx}]`;
+        if (!checkPlainObject(log, lPath, ROLL_LOG_KEYS, errors)) return;
+        if (typeof log.id !== 'string' || typeof log.timestamp !== 'string' || typeof log.label !== 'string') {
+          errors.push(`${lPath}: campos de texto obrigatórios ausentes.`);
+        }
+        if (typeof log.total !== 'number' || !Number.isFinite(log.total)) {
+          errors.push(`${lPath}.total: número finito obrigatório.`);
+        }
+        if (typeof log.formula !== 'string' || typeof log.breakdown !== 'string') {
+          errors.push(`${lPath}: formula e breakdown obrigatórios.`);
+        }
+      });
+    }
+  }
+
+  if (data.xp !== undefined) {
+    if (checkPlainObject(data.xp, '$.xp', XP_STATE_KEYS, errors)) {
+      if (
+        typeof data.xp.totalEarned !== 'number' ||
+        !Number.isInteger(data.xp.totalEarned) ||
+        data.xp.totalEarned < 0
+      ) {
+        errors.push('$.xp.totalEarned: deve ser inteiro >= 0.');
+      }
+      if (typeof data.xp.spent !== 'number' || !Number.isInteger(data.xp.spent) || data.xp.spent < 0) {
+        errors.push('$.xp.spent: deve ser inteiro >= 0.');
+      }
+      if (!Array.isArray(data.xp.ledger)) {
+        errors.push('$.xp.ledger: array obrigatório.');
+      } else {
+        data.xp.ledger.forEach((entry, xIdx) => {
+          const xPath = `$.xp.ledger[${xIdx}]`;
+          if (!checkPlainObject(entry, xPath, XP_LEDGER_KEYS, errors)) return;
+          if (entry.kind !== 'award' && entry.kind !== 'upgrade') {
+            errors.push(`${xPath}.kind: deve ser "award" ou "upgrade".`);
+          }
+          if (entry.category !== undefined && !ALLOWED_XP_CATEGORIES.has(String(entry.category))) {
+            errors.push(`${xPath}.category: categoria inválida.`);
+          }
+        });
+      }
+    }
+  }
+
+  return { valid: errors.length === 0, errors };
+}
+
 export function fromCanonicalSheet(
   canonical: CanonicalSheet,
   baseSheet?: CharacterSheetState,

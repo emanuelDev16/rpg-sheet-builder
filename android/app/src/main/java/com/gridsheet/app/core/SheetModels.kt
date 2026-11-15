@@ -2,6 +2,12 @@ package com.gridsheet.app.core
 
 import kotlinx.serialization.SerialName
 import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.intOrNull
 import java.time.Instant
 import kotlin.math.max
 import kotlin.math.min
@@ -492,4 +498,158 @@ object SheetMutators {
             }
         )
     )
+}
+
+data class SheetValidationResult(
+    val valid: Boolean,
+    val errors: List<String>
+)
+
+/**
+ * Unified structural & security validator aligned with `shared/presets/schema.v2.json`.
+ * Rejects dangerous prototype keys, unknown properties (`additionalProperties: false`),
+ * invalid field/tab enums, and out-of-range numeric bounds before Room persistence.
+ */
+object SheetPayloadValidator {
+    private val dangerousKeys = setOf("__proto__", "constructor", "prototype")
+    private val allowedSystemIds = setOf("wod", "dnd5e", "cyberpunk", "default", "blank")
+    private val allowedTabIds = setOf("geral", "magias", "xp")
+    private val allowedFieldKinds = setOf(
+        "number", "text", "calculated", "resource", "boolean", "roll", "repeatable"
+    )
+    private val rootKeys = setOf(
+        "id", "systemId", "systemName", "systemCode", "characterName",
+        "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp"
+    )
+    private val cardKeys = setOf("id", "tab", "code", "title", "colSpan", "fields")
+    private val fieldKeys = setOf(
+        "id", "key", "label", "kind", "value", "numValue", "textValue", "boolValue",
+        "max", "damageTrack", "superficialDamage", "aggravatedDamage",
+        "formula", "showPlus", "rollLabel", "rollExpr", "rollDifficulty", "rollMod",
+        "rollSpecialty", "useWillpower", "isSoak", "columns", "col2Type", "rows", "hint"
+    )
+    private val rowKeys = setOf("id", "col1", "col2")
+
+    private val lenientJson = Json { ignoreUnknownKeys = false }
+
+    fun validateRawJson(rawJson: String): SheetValidationResult {
+        val parsed = runCatching { lenientJson.parseToJsonElement(rawJson) }.getOrElse {
+            return SheetValidationResult(false, listOf("JSON inválido: ${it.message ?: "erro de sintaxe"}"))
+        }
+        return validateElement(parsed)
+    }
+
+    fun validateElement(element: JsonElement): SheetValidationResult {
+        val errors = mutableListOf<String>()
+        val root = element as? JsonObject
+            ?: return SheetValidationResult(false, listOf("$: esperado objeto JSON."))
+
+        checkObjectKeys(root, "$", rootKeys, errors)
+
+        for (req in listOf("systemName", "systemCode", "characterName")) {
+            val prim = root[req] as? JsonPrimitive
+            if (prim == null || !prim.isString || prim.content.isEmpty()) {
+                errors.add("$.$req: string obrigatória.")
+            }
+        }
+
+        (root["systemId"] as? JsonPrimitive)?.let { prim ->
+            if (!prim.isString || prim.content !in allowedSystemIds) {
+                errors.add("$.systemId: sistema inválido '${prim.content}'.")
+            }
+        }
+
+        (root["revision"] as? JsonPrimitive)?.let { prim ->
+            val rev = prim.intOrNull
+            if (rev == null || rev < 1) {
+                errors.add("$.revision: deve ser inteiro >= 1.")
+            }
+        }
+
+        val cardsElem = root["cards"] as? JsonArray
+        if (cardsElem == null) {
+            errors.add("$.cards: array obrigatório.")
+        } else {
+            if (cardsElem.size > 50) {
+                errors.add("$.cards: máximo de 50 cartões excedido.")
+            }
+            cardsElem.forEachIndexed { cIdx, cardElem ->
+                val cPath = "$.cards[$cIdx]"
+                val cardObj = cardElem as? JsonObject
+                if (cardObj == null) {
+                    errors.add("$cPath: esperado objeto BentoCard.")
+                    return@forEachIndexed
+                }
+                checkObjectKeys(cardObj, cPath, cardKeys, errors)
+
+                val tabPrim = cardObj["tab"] as? JsonPrimitive
+                if (tabPrim == null || !tabPrim.isString || tabPrim.content !in allowedTabIds) {
+                    errors.add("$cPath.tab: aba inválida.")
+                }
+
+                val colSpan = (cardObj["colSpan"] as? JsonPrimitive)?.intOrNull
+                if (colSpan == null || colSpan !in 1..4) {
+                    errors.add("$cPath.colSpan: deve ser inteiro entre 1 e 4.")
+                }
+
+                val fieldsElem = cardObj["fields"] as? JsonArray
+                if (fieldsElem == null) {
+                    errors.add("$cPath.fields: array obrigatório.")
+                    return@forEachIndexed
+                }
+                fieldsElem.forEachIndexed { fIdx, fieldElem ->
+                    val fPath = "$cPath.fields[$fIdx]"
+                    val fieldObj = fieldElem as? JsonObject
+                    if (fieldObj == null) {
+                        errors.add("$fPath: esperado objeto SheetField.")
+                        return@forEachIndexed
+                    }
+                    checkObjectKeys(fieldObj, fPath, fieldKeys, errors)
+
+                    val kindPrim = fieldObj["kind"] as? JsonPrimitive
+                    if (kindPrim == null || !kindPrim.isString || kindPrim.content !in allowedFieldKinds) {
+                        errors.add("$fPath.kind: tipo de campo inválido.")
+                    }
+                    (fieldObj["max"] as? JsonPrimitive)?.let { maxPrim ->
+                        val maxVal = maxPrim.intOrNull
+                        if (maxVal == null || maxVal !in 1..100000) {
+                            errors.add("$fPath.max: deve ser inteiro entre 1 e 100000.")
+                        }
+                    }
+                    (fieldObj["rollDifficulty"] as? JsonPrimitive)?.let { diffPrim ->
+                        val diffVal = diffPrim.intOrNull
+                        if (diffVal == null || diffVal !in 2..10) {
+                            errors.add("$fPath.rollDifficulty: deve ser inteiro entre 2 e 10.")
+                        }
+                    }
+                    (fieldObj["rows"] as? JsonArray)?.forEachIndexed { rIdx, rowElem ->
+                        val rPath = "$fPath.rows[$rIdx]"
+                        val rowObj = rowElem as? JsonObject
+                        if (rowObj == null) {
+                            errors.add("$rPath: esperado objeto RepeatableRow.")
+                        } else {
+                            checkObjectKeys(rowObj, rPath, rowKeys, errors)
+                        }
+                    }
+                }
+            }
+        }
+
+        return SheetValidationResult(valid = errors.isEmpty(), errors = errors)
+    }
+
+    private fun checkObjectKeys(
+        obj: JsonObject,
+        path: String,
+        allowedKeys: Set<String>,
+        errors: MutableList<String>
+    ) {
+        for (key in obj.keys) {
+            if (key in dangerousKeys) {
+                errors.add("$path: chave proibida '$key'.")
+            } else if (key !in allowedKeys) {
+                errors.add("$path: propriedade não permitida '$key'.")
+            }
+        }
+    }
 }

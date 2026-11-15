@@ -1,0 +1,1692 @@
+{
+  "version": "2.0",
+  "presets": {
+    "wod": {
+      "id": "sheet_wod",
+      "systemId": "wod",
+      "systemName": "WORLD OF DARKNESS // STORYTELLER",
+      "systemCode": "/SYS: WORLD OF DARKNESS · d10 STORYTELLER",
+      "characterName": "JULIAN CROSS · NEONATE (VENTRUE)",
+      "revision": 1,
+      "updatedAt": "2026-11-14T23:57:19.810Z",
+      "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "cards": [
+        {
+          "id": "card_identidade",
+          "tab": "geral",
+          "code": "//CHRONICLE_ID",
+          "title": "IDENTITY & LINEAGE",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_nome",
+              "key": "character_name",
+              "label": "NAME",
+              "kind": "text",
+              "value": "Julian Cross"
+            },
+            {
+              "id": "f_clan",
+              "key": "clan",
+              "label": "CLAN / FACTION",
+              "kind": "text",
+              "value": "Ventrue"
+            },
+            {
+              "id": "f_generation",
+              "key": "generation",
+              "label": "GENERATION",
+              "kind": "number",
+              "value": 10
+            },
+            {
+              "id": "f_blood_potency",
+              "key": "blood_potency",
+              "label": "BLOOD_POTENCY",
+              "kind": "calculated",
+              "formula": "max(1, 13 - generation)",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_atributos",
+          "tab": "geral",
+          "code": "//ATTRIBUTES",
+          "title": "PHYSICAL · SOCIAL · MENTAL",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_strength",
+              "key": "strength",
+              "label": "STRENGTH",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_dexterity",
+              "key": "dexterity",
+              "label": "DEXTERITY",
+              "kind": "number",
+              "value": 4
+            },
+            {
+              "id": "f_stamina",
+              "key": "stamina",
+              "label": "STAMINA",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_charisma",
+              "key": "charisma",
+              "label": "CHARISMA",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_manipulation",
+              "key": "manipulation",
+              "label": "MANIPULATION",
+              "kind": "number",
+              "value": 4
+            },
+            {
+              "id": "f_wits",
+              "key": "wits",
+              "label": "WITS",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_initiative",
+              "key": "initiative",
+              "label": "INITIATIVE_MOD",
+              "kind": "calculated",
+              "formula": "dexterity + wits",
+              "showPlus": true
+            },
+            {
+              "id": "f_defense",
+              "key": "defense",
+              "label": "DEFENSE",
+              "kind": "calculated",
+              "formula": "min(dexterity, wits)",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_combate",
+          "tab": "geral",
+          "code": "//VITAL_STATUS",
+          "title": "HEALTH · WILLPOWER · HUNGER",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_health",
+              "key": "health",
+              "label": "HEALTH",
+              "kind": "resource",
+              "value": 7,
+              "max": 7,
+              "damageTrack": true,
+              "superficialDamage": 0,
+              "aggravatedDamage": 0
+            },
+            {
+              "id": "f_willpower",
+              "key": "willpower",
+              "label": "WILLPOWER",
+              "kind": "resource",
+              "value": 6,
+              "max": 8
+            },
+            {
+              "id": "f_hunger",
+              "key": "hunger",
+              "label": "HUNGER",
+              "kind": "resource",
+              "value": 1,
+              "max": 5
+            },
+            {
+              "id": "f_humanity",
+              "key": "humanity",
+              "label": "HUMANITY",
+              "kind": "resource",
+              "value": 7,
+              "max": 10
+            },
+            {
+              "id": "f_fortitude_armor",
+              "key": "fortitude_armor",
+              "label": "FORTITUDE / ARMOR",
+              "kind": "number",
+              "value": 0
+            },
+            {
+              "id": "f_wp_boost",
+              "key": "wp_boost",
+              "label": "WILLPOWER (+1 AUTO SUCCESS)",
+              "kind": "boolean",
+              "value": false,
+              "hint": "SPENT ON NEXT ROLL"
+            },
+            {
+              "id": "f_soak",
+              "key": "soak_roll",
+              "label": "SOAK DAMAGE",
+              "kind": "roll",
+              "rollLabel": "ROLL SOAK",
+              "rollExpr": "pool(stamina + fortitude_armor, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0,
+              "isSoak": true
+            }
+          ]
+        },
+        {
+          "id": "card_skills",
+          "tab": "geral",
+          "code": "//SKILLS_&_POOLS",
+          "title": "ABILITIES & DICE POOLS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_brawl",
+              "key": "brawl",
+              "label": "BRAWL",
+              "kind": "number",
+              "value": 2
+            },
+            {
+              "id": "f_firearms",
+              "key": "firearms",
+              "label": "FIREARMS",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_stealth",
+              "key": "stealth",
+              "label": "STEALTH",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_subterfuge",
+              "key": "subterfuge",
+              "label": "SUBTERFUGE",
+              "kind": "number",
+              "value": 4
+            },
+            {
+              "id": "f_roll_brawl",
+              "key": "roll_brawl",
+              "label": "MELEE / BRAWL",
+              "kind": "roll",
+              "rollLabel": "ROLL BRAWL",
+              "rollExpr": "pool(strength + brawl, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_firearms",
+              "key": "roll_firearms",
+              "label": "RANGED ATTACK",
+              "kind": "roll",
+              "rollLabel": "ROLL FIREARMS",
+              "rollExpr": "pool(dexterity + firearms, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_stealth",
+              "key": "roll_stealth",
+              "label": "STEALTH / SNEAK",
+              "kind": "roll",
+              "rollLabel": "ROLL STEALTH",
+              "rollExpr": "pool(dexterity + stealth, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_subterfuge",
+              "key": "roll_subterfuge",
+              "label": "SOCIAL MANIPULATION",
+              "kind": "roll",
+              "rollLabel": "ROLL SUBTERFUGE",
+              "rollExpr": "pool(manipulation + subterfuge, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0
+            }
+          ]
+        },
+        {
+          "id": "card_inventario",
+          "tab": "geral",
+          "code": "//INVENTORY",
+          "title": "GEAR & CONCEALMENT",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_mochila",
+              "key": "gear",
+              "label": "EQUIPMENT",
+              "kind": "repeatable",
+              "columns": [
+                "ITEM",
+                "WEIGHT (KG)"
+              ],
+              "col2Type": "number",
+              "rows": [
+                {
+                  "id": "r_1",
+                  "col1": "Heavy Pistol (9mm)",
+                  "col2": 1.2
+                },
+                {
+                  "id": "r_2",
+                  "col1": "Kevlar Trench Coat",
+                  "col2": 2.5
+                },
+                {
+                  "id": "r_3",
+                  "col1": "Silver Dagger",
+                  "col2": 0.5
+                },
+                {
+                  "id": "r_4",
+                  "col1": "Encrypted Burner Phone",
+                  "col2": 0.3
+                }
+              ]
+            },
+            {
+              "id": "f_carga_max",
+              "key": "carry_limit",
+              "label": "CARRY_CAPACITY",
+              "kind": "calculated",
+              "formula": "strength * 15",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_arcano",
+          "tab": "magias",
+          "code": "//DISCIPLINES",
+          "title": "DISCIPLINES & OCCULT",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_dominate",
+              "key": "dominate",
+              "label": "DOMINATE",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_presence",
+              "key": "presence",
+              "label": "PRESENCE",
+              "kind": "number",
+              "value": 2
+            },
+            {
+              "id": "f_occult",
+              "key": "occult",
+              "label": "OCCULT",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_dominate_pool",
+              "key": "dominate_pool",
+              "label": "DOMINATE_POOL",
+              "kind": "calculated",
+              "formula": "manipulation + dominate",
+              "showPlus": false
+            },
+            {
+              "id": "f_roll_dominate",
+              "key": "roll_dominate",
+              "label": "MESMERIZE / COMMAND",
+              "kind": "roll",
+              "rollLabel": "ROLL DOMINATE",
+              "rollExpr": "pool(manipulation + dominate, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_occult",
+              "key": "roll_occult",
+              "label": "ARCANE LORE CHECK",
+              "kind": "roll",
+              "rollLabel": "ROLL OCCULT",
+              "rollExpr": "pool(wits + occult, 7)",
+              "rollDifficulty": 7,
+              "rollSpecialty": false,
+              "rollMod": 0
+            }
+          ]
+        },
+        {
+          "id": "card_grimorio",
+          "tab": "magias",
+          "code": "//MERITS_&_POWERS",
+          "title": "DISCIPLINE POWERS & MERITS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_lista_magias",
+              "key": "powers",
+              "label": "ACTIVE POWERS & BACKGROUNDS",
+              "kind": "repeatable",
+              "columns": [
+                "POWER / MERIT",
+                "COST / DOTS"
+              ],
+              "col2Type": "text",
+              "rows": [
+                {
+                  "id": "m_1",
+                  "col1": "Command (Dominate 1)",
+                  "col2": "FREE"
+                },
+                {
+                  "id": "m_2",
+                  "col1": "Mesmerize (Dominate 3)",
+                  "col2": "1 WP"
+                },
+                {
+                  "id": "m_3",
+                  "col1": "Awe (Presence 1)",
+                  "col2": "1 BLOOD"
+                },
+                {
+                  "id": "m_4",
+                  "col1": "Haven: Old Observatory",
+                  "col2": "•••"
+                }
+              ]
+            },
+            {
+              "id": "f_frenzy_check",
+              "key": "frenzy_resisted",
+              "label": "FRENZY RESISTED",
+              "kind": "boolean",
+              "value": true,
+              "hint": "BEAST CALMED THIS SCENE"
+            }
+          ]
+        },
+        {
+          "id": "card_notas",
+          "tab": "magias",
+          "code": "//CHRONICLE_LOG",
+          "title": "COTERIE & SESSION NOTES",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_notas",
+              "key": "notas_campanha",
+              "label": "CHRONICLE RECORDS",
+              "kind": "text",
+              "value": "Elysium meeting confirmed at 02:00. Sheriff suspects Masquerade breach in the Harbor District; secure the obsidian ledger before sunrise."
+            }
+          ]
+        }
+      ],
+      "rollLogs": [
+        {
+          "id": "log_wod_1",
+          "timestamp": "23:14",
+          "label": "ROLL SUBTERFUGE",
+          "total": 4,
+          "formula": "8d10 (DIFF 6)",
+          "breakdown": "8d10[9, 6, 3, 10, 7, 2, 8, 5] ≥6 → 4 SUCESSOS",
+          "rolls": [
+            9,
+            6,
+            3,
+            10,
+            7,
+            2,
+            8,
+            5
+          ],
+          "difficulty": 6,
+          "outcome": "success",
+          "isPoolRoll": true
+        },
+        {
+          "id": "log_wod_2",
+          "timestamp": "22:58",
+          "label": "ROLL DOMINATE",
+          "total": 3,
+          "formula": "7d10 (DIFF 6)",
+          "breakdown": "7d10[8, 6, 4, 9, 2, 7, 1] ≥6 (-1 CANC BY 1s) → 3 SUCESSOS",
+          "rolls": [
+            8,
+            6,
+            4,
+            9,
+            2,
+            7,
+            1
+          ],
+          "difficulty": 6,
+          "onesCount": 1,
+          "canceledOnes": 1,
+          "outcome": "success",
+          "isPoolRoll": true
+        }
+      ],
+      "xp": {
+        "totalEarned": 14,
+        "spent": 0,
+        "ledger": [
+          {
+            "id": "xp_seed_1",
+            "timestamp": "22:00",
+            "kind": "award",
+            "delta": 14,
+            "label": "CHRONICLE SESSION AWARD"
+          }
+        ]
+      }
+    },
+    "dnd5e": {
+      "id": "sheet_dnd5e",
+      "systemId": "dnd5e",
+      "systemName": "D&D 5E // D20 SYSTEM",
+      "systemCode": "/SYS: D&D 5E · D20 HEROIC EDITION",
+      "characterName": "LYRA VANCE · ELDRITCH KNIGHT (LV 5)",
+      "revision": 1,
+      "updatedAt": "2026-11-14T23:57:19.818Z",
+      "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "cards": [
+        {
+          "id": "card_identidade",
+          "tab": "geral",
+          "code": "//CHARACTER_ID",
+          "title": "IDENTITY & CLASS",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_nome",
+              "key": "character_name",
+              "label": "CHARACTER NAME",
+              "kind": "text",
+              "value": "Lyra Vance"
+            },
+            {
+              "id": "f_classe",
+              "key": "class_race",
+              "label": "CLASS & ANCESTRY",
+              "kind": "text",
+              "value": "Fighter (Eldritch Knight) · Half-Elf"
+            },
+            {
+              "id": "f_nivel",
+              "key": "level",
+              "label": "LEVEL",
+              "kind": "number",
+              "value": 5
+            },
+            {
+              "id": "f_prof",
+              "key": "prof",
+              "label": "PROFICIENCY_BONUS",
+              "kind": "calculated",
+              "formula": "floor((level - 1) / 4) + 2",
+              "showPlus": true
+            }
+          ]
+        },
+        {
+          "id": "card_atributos",
+          "tab": "geral",
+          "code": "//ABILITY_SCORES",
+          "title": "ATTRIBUTES & MODIFIERS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_strength",
+              "key": "strength",
+              "label": "STRENGTH",
+              "kind": "number",
+              "value": 16
+            },
+            {
+              "id": "f_mod_str",
+              "key": "mod_str",
+              "label": "MOD_STR",
+              "kind": "calculated",
+              "formula": "floor((strength - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_dexterity",
+              "key": "dexterity",
+              "label": "DEXTERITY",
+              "kind": "number",
+              "value": 14
+            },
+            {
+              "id": "f_mod_dex",
+              "key": "mod_dex",
+              "label": "MOD_DEX",
+              "kind": "calculated",
+              "formula": "floor((dexterity - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_constitution",
+              "key": "constitution",
+              "label": "CONSTITUTION",
+              "kind": "number",
+              "value": 15
+            },
+            {
+              "id": "f_mod_con",
+              "key": "mod_con",
+              "label": "MOD_CON",
+              "kind": "calculated",
+              "formula": "floor((constitution - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_intelligence",
+              "key": "intelligence",
+              "label": "INTELLIGENCE",
+              "kind": "number",
+              "value": 14
+            },
+            {
+              "id": "f_mod_int",
+              "key": "mod_int",
+              "label": "MOD_INT",
+              "kind": "calculated",
+              "formula": "floor((intelligence - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_wisdom",
+              "key": "wisdom",
+              "label": "WISDOM",
+              "kind": "number",
+              "value": 12
+            },
+            {
+              "id": "f_mod_wis",
+              "key": "mod_wis",
+              "label": "MOD_WIS",
+              "kind": "calculated",
+              "formula": "floor((wisdom - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_charisma",
+              "key": "charisma",
+              "label": "CHARISMA",
+              "kind": "number",
+              "value": 10
+            },
+            {
+              "id": "f_mod_cha",
+              "key": "mod_cha",
+              "label": "MOD_CHA",
+              "kind": "calculated",
+              "formula": "floor((charisma - 10) / 2)",
+              "showPlus": true
+            }
+          ]
+        },
+        {
+          "id": "card_combate",
+          "tab": "geral",
+          "code": "//COMBAT_STATUS",
+          "title": "HP · DEFENSE · ACTIONS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_hp",
+              "key": "hp",
+              "label": "HIT POINTS",
+              "kind": "resource",
+              "value": 44,
+              "max": 44
+            },
+            {
+              "id": "f_hit_dice",
+              "key": "hit_dice",
+              "label": "HIT DICE (d10)",
+              "kind": "resource",
+              "value": 5,
+              "max": 5
+            },
+            {
+              "id": "f_action_surge",
+              "key": "action_surge",
+              "label": "ACTION SURGE",
+              "kind": "resource",
+              "value": 1,
+              "max": 1
+            },
+            {
+              "id": "f_ac",
+              "key": "armor_class",
+              "label": "ARMOR_CLASS",
+              "kind": "calculated",
+              "formula": "16 + min(2, mod_dex)",
+              "showPlus": false
+            },
+            {
+              "id": "f_initiative",
+              "key": "initiative",
+              "label": "INITIATIVE",
+              "kind": "calculated",
+              "formula": "mod_dex",
+              "showPlus": true
+            },
+            {
+              "id": "f_inspiration",
+              "key": "inspiration",
+              "label": "HEROIC INSPIRATION",
+              "kind": "boolean",
+              "value": true,
+              "hint": "REROLL / ADVANTAGE"
+            },
+            {
+              "id": "f_roll_sword",
+              "key": "roll_sword",
+              "label": "LONGSWORD ATTACK",
+              "kind": "roll",
+              "rollLabel": "ATTACK LONGSWORD",
+              "rollExpr": "1d20 + mod_str + prof"
+            },
+            {
+              "id": "f_roll_dmg",
+              "key": "roll_dmg",
+              "label": "LONGSWORD DAMAGE",
+              "kind": "roll",
+              "rollLabel": "ROLL DAMAGE",
+              "rollExpr": "1d8 + mod_str"
+            }
+          ]
+        },
+        {
+          "id": "card_skills",
+          "tab": "geral",
+          "code": "//SKILLS_&_SAVES",
+          "title": "PROFICIENCIES & CHECKS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_athletics",
+              "key": "athletics",
+              "label": "ATHLETICS",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_perception",
+              "key": "perception",
+              "label": "PERCEPTION",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_arcana",
+              "key": "arcana",
+              "label": "ARCANA",
+              "kind": "number",
+              "value": 2
+            },
+            {
+              "id": "f_stealth",
+              "key": "stealth",
+              "label": "STEALTH",
+              "kind": "number",
+              "value": 1
+            },
+            {
+              "id": "f_roll_athletics",
+              "key": "roll_athletics",
+              "label": "ATHLETICS CHECK",
+              "kind": "roll",
+              "rollLabel": "ROLL ATHLETICS",
+              "rollExpr": "1d20 + mod_str + athletics"
+            },
+            {
+              "id": "f_roll_perception",
+              "key": "roll_perception",
+              "label": "PERCEPTION CHECK",
+              "kind": "roll",
+              "rollLabel": "ROLL PERCEPTION",
+              "rollExpr": "1d20 + mod_wis + perception"
+            },
+            {
+              "id": "f_roll_con_save",
+              "key": "roll_con_save",
+              "label": "CON SAVING THROW",
+              "kind": "roll",
+              "rollLabel": "CON SAVE",
+              "rollExpr": "1d20 + mod_con + prof"
+            }
+          ]
+        },
+        {
+          "id": "card_inventario",
+          "tab": "geral",
+          "code": "//INVENTORY",
+          "title": "ADVENTURING GEAR",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_mochila",
+              "key": "gear",
+              "label": "BACKPACK",
+              "kind": "repeatable",
+              "columns": [
+                "ITEM",
+                "WEIGHT (LB)"
+              ],
+              "col2Type": "number",
+              "rows": [
+                {
+                  "id": "d_1",
+                  "col1": "Longsword +1",
+                  "col2": 3
+                },
+                {
+                  "id": "d_2",
+                  "col1": "Half Plate Armor",
+                  "col2": 40
+                },
+                {
+                  "id": "d_3",
+                  "col1": "Healer Kit & Potions (2x)",
+                  "col2": 4
+                },
+                {
+                  "id": "d_4",
+                  "col1": "Explorer Pack",
+                  "col2": 12
+                }
+              ]
+            },
+            {
+              "id": "f_carga_max",
+              "key": "carry_limit",
+              "label": "CARRY_CAPACITY",
+              "kind": "calculated",
+              "formula": "strength * 15",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_arcano",
+          "tab": "magias",
+          "code": "//SPELLCASTING",
+          "title": "ARCANE SLOTS & SAVE DC",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_spell_dc",
+              "key": "spell_dc",
+              "label": "SPELL_SAVE_DC",
+              "kind": "calculated",
+              "formula": "8 + prof + mod_int",
+              "showPlus": false
+            },
+            {
+              "id": "f_spell_atk",
+              "key": "spell_atk",
+              "label": "SPELL_ATTACK_MOD",
+              "kind": "calculated",
+              "formula": "prof + mod_int",
+              "showPlus": true
+            },
+            {
+              "id": "f_slots_1",
+              "key": "slots_1st",
+              "label": "1ST LEVEL SLOTS",
+              "kind": "resource",
+              "value": 3,
+              "max": 4
+            },
+            {
+              "id": "f_slots_2",
+              "key": "slots_2nd",
+              "label": "2ND LEVEL SLOTS",
+              "kind": "resource",
+              "value": 2,
+              "max": 2
+            },
+            {
+              "id": "f_roll_firebolt",
+              "key": "roll_firebolt",
+              "label": "CANTRIP ATTACK",
+              "kind": "roll",
+              "rollLabel": "CAST FIRE BOLT",
+              "rollExpr": "1d20 + mod_int + prof"
+            }
+          ]
+        },
+        {
+          "id": "card_grimorio",
+          "tab": "magias",
+          "code": "//GRIMOIRE_&_FEATS",
+          "title": "PREPARED SPELLS & FEATURES",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_lista_magias",
+              "key": "spells",
+              "label": "SPELLS & CLASS FEATURES",
+              "kind": "repeatable",
+              "columns": [
+                "SPELL / FEATURE",
+                "SLOT / COST"
+              ],
+              "col2Type": "text",
+              "rows": [
+                {
+                  "id": "s_1",
+                  "col1": "Shield (+5 AC)",
+                  "col2": "1ST · REACT"
+                },
+                {
+                  "id": "s_2",
+                  "col1": "Misty Step (30ft)",
+                  "col2": "2ND · BONUS"
+                },
+                {
+                  "id": "s_3",
+                  "col1": "Magic Missile (3 darts)",
+                  "col2": "1ST · ACTION"
+                },
+                {
+                  "id": "s_4",
+                  "col1": "Extra Attack (2x)",
+                  "col2": "PASSIVE"
+                }
+              ]
+            },
+            {
+              "id": "f_concentration",
+              "key": "concentration",
+              "label": "CONCENTRATION ACTIVE",
+              "kind": "boolean",
+              "value": false,
+              "hint": "CON SAVE ON DAMAGE"
+            }
+          ]
+        },
+        {
+          "id": "card_notas",
+          "tab": "magias",
+          "code": "//CAMPAIGN_LOG",
+          "title": "PARTY & QUEST NOTES",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_notas",
+              "key": "notas_campanha",
+              "label": "ADVENTURE RECORDS",
+              "kind": "text",
+              "value": "Cleared the Sunless Citadel lower gate. Recover the Obsidian Signet from the Red Wizard enclave before the next long rest."
+            }
+          ]
+        }
+      ],
+      "rollLogs": [
+        {
+          "id": "log_dnd_1",
+          "timestamp": "21:40",
+          "label": "ATTACK LONGSWORD",
+          "total": 19,
+          "formula": "1d20 + 3 + 3",
+          "breakdown": "1d20[13] → 13 + 3 + 3"
+        },
+        {
+          "id": "log_dnd_2",
+          "timestamp": "21:35",
+          "label": "ROLL PERCEPTION",
+          "total": 16,
+          "formula": "1d20 + 1 + 3",
+          "breakdown": "1d20[12] → 12 + 1 + 3"
+        }
+      ],
+      "xp": {
+        "totalEarned": 1800,
+        "spent": 0,
+        "ledger": [
+          {
+            "id": "xp_dnd_seed_1",
+            "timestamp": "21:00",
+            "kind": "award",
+            "delta": 1800,
+            "label": "MILESTONE TRAINING POOL"
+          }
+        ]
+      }
+    },
+    "cyberpunk": {
+      "id": "sheet_cyberpunk",
+      "systemId": "cyberpunk",
+      "systemName": "NET//RUNNER D10 PROTOCOL",
+      "systemCode": "/SYS: CYBERPUNK D10 PROTOCOL",
+      "characterName": "ZERO_K · NETRUNNER",
+      "revision": 1,
+      "updatedAt": "2026-11-14T23:57:19.819Z",
+      "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "cards": [
+        {
+          "id": "card_identidade",
+          "tab": "geral",
+          "code": "//IDENTIFICAÇÃO",
+          "title": "PERFIL DO PERSONAGEM",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_nome",
+              "key": "nome_personagem",
+              "label": "NOME_OPERATIVO",
+              "kind": "text",
+              "value": "Kaelen Vance"
+            },
+            {
+              "id": "f_arquetipo",
+              "key": "arquetipo",
+              "label": "ARQUÉTIPO / CLASSE",
+              "kind": "text",
+              "value": "Vanguarda Tática"
+            },
+            {
+              "id": "f_nivel",
+              "key": "nivel",
+              "label": "NÍVEL",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_bonus_prof",
+              "key": "prof",
+              "label": "BÔNUS_MAESTRIA",
+              "kind": "calculated",
+              "formula": "floor((nivel - 1) / 4) + 2",
+              "showPlus": true
+            }
+          ]
+        },
+        {
+          "id": "card_atributos",
+          "tab": "geral",
+          "code": "//ATRIBUTOS",
+          "title": "NÚCLEO DE ATRIBUTOS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_forca",
+              "key": "forca",
+              "label": "REFLEXOS",
+              "kind": "number",
+              "value": 8
+            },
+            {
+              "id": "f_mod_forca",
+              "key": "mod_forca",
+              "label": "INICIATIVA_NET",
+              "kind": "calculated",
+              "formula": "forca + 2",
+              "showPlus": true
+            },
+            {
+              "id": "f_roll_forca",
+              "key": "roll_forca",
+              "label": "TESTE REFLEXOS",
+              "kind": "roll",
+              "rollLabel": "ROLAR REFLEXOS",
+              "rollExpr": "1d10 + forca"
+            },
+            {
+              "id": "f_destreza",
+              "key": "destreza",
+              "label": "INTERFACE",
+              "kind": "number",
+              "value": 9
+            },
+            {
+              "id": "f_mod_destreza",
+              "key": "mod_destreza",
+              "label": "PODER_ICE",
+              "kind": "calculated",
+              "formula": "destreza * 2",
+              "showPlus": false
+            },
+            {
+              "id": "f_roll_destreza",
+              "key": "roll_destreza",
+              "label": "INVASÃO ICE",
+              "kind": "roll",
+              "rollLabel": "HACKEAR NÓ",
+              "rollExpr": "1d10 + destreza"
+            }
+          ]
+        },
+        {
+          "id": "card_combate",
+          "tab": "geral",
+          "code": "//STATUS_VITAL",
+          "title": "COMBATE & RECURSOS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_pv",
+              "key": "pv",
+              "label": "PONTOS DE VIDA",
+              "kind": "resource",
+              "value": 12,
+              "max": 12
+            },
+            {
+              "id": "f_estamina",
+              "key": "estamina",
+              "label": "ENERGIA / FOCO",
+              "kind": "resource",
+              "value": 6,
+              "max": 8
+            },
+            {
+              "id": "f_defesa",
+              "key": "defesa",
+              "label": "DEFESA_BASE",
+              "kind": "calculated",
+              "formula": "10 + mod_destreza",
+              "showPlus": false
+            },
+            {
+              "id": "f_inspiracao",
+              "key": "inspiracao",
+              "label": "INSPIRAÇÃO",
+              "kind": "boolean",
+              "value": true,
+              "hint": "MARCADOR TÁTICO / VANTAGEM"
+            },
+            {
+              "id": "f_ataque_espada",
+              "key": "ataque_principal",
+              "label": "GOLPE TÁTICO",
+              "kind": "roll",
+              "rollLabel": "ATACAR LÂMINA",
+              "rollExpr": "1d20 + mod_forca + prof"
+            },
+            {
+              "id": "f_dano_espada",
+              "key": "dano_principal",
+              "label": "DANO DA LÂMINA",
+              "kind": "roll",
+              "rollLabel": "ROLAR DANO",
+              "rollExpr": "1d8 + mod_forca"
+            }
+          ]
+        },
+        {
+          "id": "card_inventario",
+          "tab": "geral",
+          "code": "//INVENTÁRIO",
+          "title": "MOCHILA & CARGA",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_mochila",
+              "key": "mochila",
+              "label": "MOCHILA",
+              "kind": "repeatable",
+              "columns": [
+                "ITEM",
+                "PESO (KG)"
+              ],
+              "col2Type": "number",
+              "rows": [
+                {
+                  "id": "r_1",
+                  "col1": "Lâmina Monomolecular",
+                  "col2": 2.5
+                },
+                {
+                  "id": "r_2",
+                  "col1": "Kit de Primeiros Socorros",
+                  "col2": 1.5
+                },
+                {
+                  "id": "r_3",
+                  "col1": "Corda Sintética (15m)",
+                  "col2": 2
+                },
+                {
+                  "id": "r_4",
+                  "col1": "Ração Desidratada (3x)",
+                  "col2": 1
+                }
+              ]
+            },
+            {
+              "id": "f_carga_max",
+              "key": "carga_max",
+              "label": "CAPACIDADE_CARGA",
+              "kind": "calculated",
+              "formula": "forca * 5",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_arcano",
+          "tab": "magias",
+          "code": "//MÓDULO_ARCANO",
+          "title": "CONJURAÇÃO & RESERVA",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_intelecto",
+              "key": "intelecto",
+              "label": "INTELECTO",
+              "kind": "number",
+              "value": 15
+            },
+            {
+              "id": "f_mod_int",
+              "key": "mod_int",
+              "label": "MOD_INTELECTO",
+              "kind": "calculated",
+              "formula": "floor((intelecto - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_slots",
+              "key": "espacos_magia",
+              "label": "SLOTS DE CONJURAÇÃO",
+              "kind": "resource",
+              "value": 3,
+              "max": 4
+            },
+            {
+              "id": "f_cd_magia",
+              "key": "cd_magia",
+              "label": "CD_RESISTÊNCIA",
+              "kind": "calculated",
+              "formula": "8 + prof + mod_int",
+              "showPlus": false
+            },
+            {
+              "id": "f_ataque_magico",
+              "key": "ataque_magico",
+              "label": "CONJURAÇÃO OFENSIVA",
+              "kind": "roll",
+              "rollLabel": "ROLAR ATAQUE ARCANO",
+              "rollExpr": "1d20 + mod_int + prof"
+            }
+          ]
+        },
+        {
+          "id": "card_grimorio",
+          "tab": "magias",
+          "code": "//GRIMÓRIO",
+          "title": "MAGIAS & HABILIDADES",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_lista_magias",
+              "key": "grimorio",
+              "label": "LISTA DE CONJURAÇÕES",
+              "kind": "repeatable",
+              "columns": [
+                "MAGIA / PROTOCOLO",
+                "CUSTO"
+              ],
+              "col2Type": "text",
+              "rows": [
+                {
+                  "id": "m_1",
+                  "col1": "Disparo de Éter",
+                  "col2": "1 SLOT"
+                },
+                {
+                  "id": "m_2",
+                  "col1": "Barreira Cinética",
+                  "col2": "1 SLOT"
+                },
+                {
+                  "id": "m_3",
+                  "col1": "Passo Dimensional",
+                  "col2": "2 SLOTS"
+                }
+              ]
+            },
+            {
+              "id": "f_concentracao",
+              "key": "concentracao",
+              "label": "CONCENTRAÇÃO ATIVA",
+              "kind": "boolean",
+              "value": false,
+              "hint": "MANTER EFEITO CONTÍNUO"
+            }
+          ]
+        },
+        {
+          "id": "card_notas",
+          "tab": "magias",
+          "code": "//DIÁRIO_CAMPO",
+          "title": "ANOTAÇÕES DE CAMPANHA",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_notas",
+              "key": "notas_campanha",
+              "label": "REGISTROS DA SESSÃO",
+              "kind": "text",
+              "value": "Contato confirmado no Setor 04. Chave de acesso ao arquivo antigo recuperada; verificar selo rúnico antes da próxima descida."
+            }
+          ]
+        }
+      ],
+      "rollLogs": [
+        {
+          "id": "log_init_1",
+          "timestamp": "14:42",
+          "label": "ROLAR FORÇA",
+          "total": 17,
+          "formula": "1d20 + 2",
+          "breakdown": "1d20[15] → 15 + 2"
+        },
+        {
+          "id": "log_init_2",
+          "timestamp": "14:38",
+          "label": "ATACAR LÂMINA",
+          "total": 22,
+          "formula": "1d20 + 2 + 2",
+          "breakdown": "1d20[18] → 18 + 2 + 2"
+        }
+      ],
+      "xp": {
+        "totalEarned": 12,
+        "spent": 0,
+        "ledger": []
+      }
+    },
+    "default": {
+      "id": "sheet_default",
+      "systemId": "default",
+      "systemName": "SISTEMA GENÉRICO EXEMPLO",
+      "systemCode": "/SYS: SISTEMA GENÉRICO EXEMPLO",
+      "characterName": "KAELEN VANCE · OPERADOR",
+      "revision": 1,
+      "updatedAt": "2026-11-14T23:57:19.819Z",
+      "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "cards": [
+        {
+          "id": "card_identidade",
+          "tab": "geral",
+          "code": "//IDENTIFICAÇÃO",
+          "title": "PERFIL DO PERSONAGEM",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_nome",
+              "key": "nome_personagem",
+              "label": "NOME_OPERATIVO",
+              "kind": "text",
+              "value": "Kaelen Vance"
+            },
+            {
+              "id": "f_arquetipo",
+              "key": "arquetipo",
+              "label": "ARQUÉTIPO / CLASSE",
+              "kind": "text",
+              "value": "Vanguarda Tática"
+            },
+            {
+              "id": "f_nivel",
+              "key": "nivel",
+              "label": "NÍVEL",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_bonus_prof",
+              "key": "prof",
+              "label": "BÔNUS_MAESTRIA",
+              "kind": "calculated",
+              "formula": "floor((nivel - 1) / 4) + 2",
+              "showPlus": true
+            }
+          ]
+        },
+        {
+          "id": "card_atributos",
+          "tab": "geral",
+          "code": "//ATRIBUTOS",
+          "title": "NÚCLEO DE ATRIBUTOS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_forca",
+              "key": "forca",
+              "label": "FORÇA",
+              "kind": "number",
+              "value": 14
+            },
+            {
+              "id": "f_mod_forca",
+              "key": "mod_forca",
+              "label": "MOD_FORCA",
+              "kind": "calculated",
+              "formula": "floor((forca - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_roll_forca",
+              "key": "roll_forca",
+              "label": "TESTE DE FORÇA",
+              "kind": "roll",
+              "rollLabel": "ROLAR FORÇA",
+              "rollExpr": "1d20 + mod_forca"
+            },
+            {
+              "id": "f_destreza",
+              "key": "destreza",
+              "label": "DESTREZA",
+              "kind": "number",
+              "value": 16
+            },
+            {
+              "id": "f_mod_destreza",
+              "key": "mod_destreza",
+              "label": "MOD_DESTREZA",
+              "kind": "calculated",
+              "formula": "floor((destreza - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_roll_destreza",
+              "key": "roll_destreza",
+              "label": "TESTE DE DESTREZA",
+              "kind": "roll",
+              "rollLabel": "ROLAR DESTREZA",
+              "rollExpr": "1d20 + mod_destreza"
+            }
+          ]
+        },
+        {
+          "id": "card_combate",
+          "tab": "geral",
+          "code": "//STATUS_VITAL",
+          "title": "COMBATE & RECURSOS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_pv",
+              "key": "pv",
+              "label": "PONTOS DE VIDA",
+              "kind": "resource",
+              "value": 12,
+              "max": 12
+            },
+            {
+              "id": "f_estamina",
+              "key": "estamina",
+              "label": "ENERGIA / FOCO",
+              "kind": "resource",
+              "value": 6,
+              "max": 8
+            },
+            {
+              "id": "f_defesa",
+              "key": "defesa",
+              "label": "DEFESA_BASE",
+              "kind": "calculated",
+              "formula": "10 + mod_destreza",
+              "showPlus": false
+            },
+            {
+              "id": "f_inspiracao",
+              "key": "inspiracao",
+              "label": "INSPIRAÇÃO",
+              "kind": "boolean",
+              "value": true,
+              "hint": "MARCADOR TÁTICO / VANTAGEM"
+            },
+            {
+              "id": "f_ataque_espada",
+              "key": "ataque_principal",
+              "label": "GOLPE TÁTICO",
+              "kind": "roll",
+              "rollLabel": "ATACAR LÂMINA",
+              "rollExpr": "1d20 + mod_forca + prof"
+            },
+            {
+              "id": "f_dano_espada",
+              "key": "dano_principal",
+              "label": "DANO DA LÂMINA",
+              "kind": "roll",
+              "rollLabel": "ROLAR DANO",
+              "rollExpr": "1d8 + mod_forca"
+            }
+          ]
+        },
+        {
+          "id": "card_inventario",
+          "tab": "geral",
+          "code": "//INVENTÁRIO",
+          "title": "MOCHILA & CARGA",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_mochila",
+              "key": "mochila",
+              "label": "MOCHILA",
+              "kind": "repeatable",
+              "columns": [
+                "ITEM",
+                "PESO (KG)"
+              ],
+              "col2Type": "number",
+              "rows": [
+                {
+                  "id": "r_1",
+                  "col1": "Lâmina Monomolecular",
+                  "col2": 2.5
+                },
+                {
+                  "id": "r_2",
+                  "col1": "Kit de Primeiros Socorros",
+                  "col2": 1.5
+                },
+                {
+                  "id": "r_3",
+                  "col1": "Corda Sintética (15m)",
+                  "col2": 2
+                },
+                {
+                  "id": "r_4",
+                  "col1": "Ração Desidratada (3x)",
+                  "col2": 1
+                }
+              ]
+            },
+            {
+              "id": "f_carga_max",
+              "key": "carga_max",
+              "label": "CAPACIDADE_CARGA",
+              "kind": "calculated",
+              "formula": "forca * 5",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_arcano",
+          "tab": "magias",
+          "code": "//MÓDULO_ARCANO",
+          "title": "CONJURAÇÃO & RESERVA",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_intelecto",
+              "key": "intelecto",
+              "label": "INTELECTO",
+              "kind": "number",
+              "value": 15
+            },
+            {
+              "id": "f_mod_int",
+              "key": "mod_int",
+              "label": "MOD_INTELECTO",
+              "kind": "calculated",
+              "formula": "floor((intelecto - 10) / 2)",
+              "showPlus": true
+            },
+            {
+              "id": "f_slots",
+              "key": "espacos_magia",
+              "label": "SLOTS DE CONJURAÇÃO",
+              "kind": "resource",
+              "value": 3,
+              "max": 4
+            },
+            {
+              "id": "f_cd_magia",
+              "key": "cd_magia",
+              "label": "CD_RESISTÊNCIA",
+              "kind": "calculated",
+              "formula": "8 + prof + mod_int",
+              "showPlus": false
+            },
+            {
+              "id": "f_ataque_magico",
+              "key": "ataque_magico",
+              "label": "CONJURAÇÃO OFENSIVA",
+              "kind": "roll",
+              "rollLabel": "ROLAR ATAQUE ARCANO",
+              "rollExpr": "1d20 + mod_int + prof"
+            }
+          ]
+        },
+        {
+          "id": "card_grimorio",
+          "tab": "magias",
+          "code": "//GRIMÓRIO",
+          "title": "MAGIAS & HABILIDADES",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_lista_magias",
+              "key": "grimorio",
+              "label": "LISTA DE CONJURAÇÕES",
+              "kind": "repeatable",
+              "columns": [
+                "MAGIA / PROTOCOLO",
+                "CUSTO"
+              ],
+              "col2Type": "text",
+              "rows": [
+                {
+                  "id": "m_1",
+                  "col1": "Disparo de Éter",
+                  "col2": "1 SLOT"
+                },
+                {
+                  "id": "m_2",
+                  "col1": "Barreira Cinética",
+                  "col2": "1 SLOT"
+                },
+                {
+                  "id": "m_3",
+                  "col1": "Passo Dimensional",
+                  "col2": "2 SLOTS"
+                }
+              ]
+            },
+            {
+              "id": "f_concentracao",
+              "key": "concentracao",
+              "label": "CONCENTRAÇÃO ATIVA",
+              "kind": "boolean",
+              "value": false,
+              "hint": "MANTER EFEITO CONTÍNUO"
+            }
+          ]
+        },
+        {
+          "id": "card_notas",
+          "tab": "magias",
+          "code": "//DIÁRIO_CAMPO",
+          "title": "ANOTAÇÕES DE CAMPANHA",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_notas",
+              "key": "notas_campanha",
+              "label": "REGISTROS DA SESSÃO",
+              "kind": "text",
+              "value": "Contato confirmado no Setor 04. Chave de acesso ao arquivo antigo recuperada; verificar selo rúnico antes da próxima descida."
+            }
+          ]
+        }
+      ],
+      "rollLogs": [
+        {
+          "id": "log_init_1",
+          "timestamp": "14:42",
+          "label": "ROLAR FORÇA",
+          "total": 17,
+          "formula": "1d20 + 2",
+          "breakdown": "1d20[15] → 15 + 2"
+        },
+        {
+          "id": "log_init_2",
+          "timestamp": "14:38",
+          "label": "ATACAR LÂMINA",
+          "total": 22,
+          "formula": "1d20 + 2 + 2",
+          "breakdown": "1d20[18] → 18 + 2 + 2"
+        }
+      ],
+      "xp": {
+        "totalEarned": 12,
+        "spent": 0,
+        "ledger": []
+      }
+    },
+    "blank": {
+      "id": "sheet_blank",
+      "systemId": "blank",
+      "systemName": "SISTEMA CUSTOMIZADO",
+      "systemCode": "/SYS: SISTEMA CUSTOMIZADO",
+      "characterName": "NOVO PERSONAGEM",
+      "revision": 1,
+      "updatedAt": "2026-11-14T23:57:19.819Z",
+      "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "cards": [],
+      "rollLogs": [],
+      "xp": {
+        "totalEarned": 0,
+        "spent": 0,
+        "ledger": []
+      }
+    }
+  }
+}

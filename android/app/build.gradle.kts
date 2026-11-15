@@ -48,6 +48,17 @@ android {
     }
 }
 
+val copyPresetAssets by tasks.registering(Copy::class) {
+    from("../../shared/presets") {
+        include("presets.v2.json", "schema.v2.json")
+    }
+    into("src/main/assets/presets")
+}
+
+tasks.named("preBuild") {
+    dependsOn(copyPresetAssets)
+}
+
 dependencies {
     val composeBom = platform("androidx.compose:compose-bom:2025.02.00")
     implementation(composeBom)

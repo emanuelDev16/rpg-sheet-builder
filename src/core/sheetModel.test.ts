@@ -1,5 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
+import Ajv2020 from 'ajv/dist/2020.js';
+import addFormats from 'ajv-formats';
 import {
   addCardToSheet,
   addFieldToCard,
@@ -28,6 +32,7 @@ import {
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
+  validateSheetPayload,
 } from './sheetModel';
 
 test('World of Darkness default sheet computes derived traits, Skill/Soak pools, and Willpower (+1 Auto Success)', () => {
@@ -277,6 +282,75 @@ test('Sheet metadata contract initializes revision=1, ISO-8601 updatedAt, and pe
   assert.equal(fallbackMeta.revision, 1);
   assert.equal(fallbackMeta.deviceId, devId1);
   assert.equal(isValidIsoDateTime(fallbackMeta.updatedAt), true);
+});
+
+test('shared/presets/presets.v2.json presets pass shared/presets/schema.v2.json and validateSheetPayload rejects malformed/prototype-polluting payloads', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const bundleRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/presets.v2.json'), 'utf8'),
+  ) as { version: string; presets: Record<string, unknown> };
+
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  assert.equal(bundleRaw.version, '2.0');
+  const presetEntries = Object.entries(bundleRaw.presets);
+  assert.equal(presetEntries.length, 5);
+
+  for (const [presetKey, presetPayload] of presetEntries) {
+    const ajvOk = validateAjv(presetPayload);
+    assert.equal(
+      ajvOk,
+      true,
+      `Ajv failed for preset ${presetKey}: ${JSON.stringify(validateAjv.errors)}`,
+    );
+    const localRes = validateSheetPayload(presetPayload);
+    assert.equal(
+      localRes.valid,
+      true,
+      `validateSheetPayload failed for preset ${presetKey}: ${localRes.errors.join('; ')}`,
+    );
+  }
+
+  // Rejects Prototype Pollution and unknown properties (additionalProperties: false)
+  const polluted = JSON.parse('{"systemName":"WOD","systemCode":"/WOD","characterName":"X","cards":[],"__proto__":{"polluted":true}}') as unknown;
+  const pollutedRes = validateSheetPayload(polluted);
+  assert.equal(pollutedRes.valid, false);
+  assert.ok(pollutedRes.errors.some((e) => e.includes('__proto__') || e.includes('não permitida')));
+
+  // Rejects invalid bounds (revision: 0, rollDifficulty: 99, colSpan: 8)
+  const invalidBounds = {
+    systemName: 'WOD',
+    systemCode: '/WOD',
+    characterName: 'X',
+    revision: 0,
+    cards: [
+      {
+        id: 'c1',
+        tab: 'geral',
+        code: '//A',
+        title: 'CARD',
+        colSpan: 8,
+        fields: [
+          {
+            id: 'f1',
+            key: 'k1',
+            label: 'ROLL',
+            kind: 'roll',
+            rollDifficulty: 99,
+          },
+        ],
+      },
+    ],
+  };
+  const boundsRes = validateSheetPayload(invalidBounds);
+  assert.equal(boundsRes.valid, false);
+  assert.ok(boundsRes.errors.length >= 3);
 });
 
 test('createNewSheetForSystem creates clean fillable character sheet in existing system, or empty custom sheet for blank', () => {
