@@ -1,5 +1,6 @@
 package com.gridsheet.app.core
 
+import java.text.Normalizer
 import kotlin.math.abs
 import kotlin.math.max
 import kotlin.math.roundToInt
@@ -29,11 +30,24 @@ data class XpMutationResult(
     val ok: Boolean,
     val sheet: CharacterSheetState,
     val trait: UpgradableTrait? = null,
+    val createdFieldId: String? = null,
     val revertedLabel: String? = null,
     val error: String? = null
 )
 
 object XpSystem {
+    const val SPECIALTY_XP_COST = 3
+    const val DEFAULT_BACKGROUND_XP_COST = 3
+
+    val BACKGROUND_PRESETS: List<Pair<String, String>> = listOf(
+        "recursos" to "Recursos",
+        "contatos" to "Contatos",
+        "refugio" to "Refúgio",
+        "aliados" to "Aliados",
+        "geracao_bg" to "Geração",
+        "rebanho" to "Rebanho",
+        "meritos" to "Méritos"
+    )
     private val IGNORED_NUMERIC_KEYS = setOf("generation", "nivel", "level")
 
     private val ATTRIBUTE_KEYS = setOf(
@@ -96,9 +110,15 @@ object XpSystem {
 
         val cardCode = card.code.uppercase()
         val cardTitle = card.title.uppercase()
-        val isVirtueCard = cardCode.contains("VIRTUE") || cardCode.contains("VIRTUDE") ||
+        val isVirtueCard = card.id == "card_backgrounds" ||
+            cardCode.contains("VIRTUE") || cardCode.contains("VIRTUDE") ||
             cardCode.contains("HUMANITY") || cardCode.contains("HUMANIDADE") ||
-            cardTitle.contains("VIRTUE") || cardTitle.contains("VIRTUDE")
+            cardCode.contains("ANTECEDENT") || cardCode.contains("BACKGROUND") ||
+            cardCode.contains("VANTAG") || cardCode.contains("MERIT") ||
+            cardTitle.contains("VIRTUE") || cardTitle.contains("VIRTUDE") ||
+            cardTitle.contains("ANTECEDENT") || cardTitle.contains("BACKGROUND") ||
+            cardTitle.contains("VANTAG") || cardTitle.contains("MERIT") ||
+            cardTitle.contains("MÉRITO")
 
         if (field.kind == FieldKind.RESOURCE) {
             return if (key in VIRTUE_KEYS || isVirtueCard) XpUpgradeCategory.VIRTUE else null
@@ -472,6 +492,178 @@ object XpSystem {
         return XpMutationResult(ok = true, sheet = updatedSheet, trait = trait)
     }
 
+    private fun slugifyBackgroundKey(label: String): String {
+        val decomposed = Normalizer.normalize(label, Normalizer.Form.NFD)
+            .replace(Regex("\\p{InCombiningDiacriticalMarks}+"), "")
+            .lowercase()
+            .replace(Regex("[^a-z0-9]+"), "_")
+            .trim('_')
+        if (decomposed.isEmpty() || decomposed == "generation") return "geracao_bg"
+        return decomposed
+    }
+
+    fun buySpecialtyWithXp(
+        sheet: CharacterSheetState,
+        skillFieldId: String,
+        specialtyFocus: String,
+        timestamp: String,
+        entryId: String
+    ): XpMutationResult {
+        val focus = specialtyFocus.trim()
+        if (focus.isEmpty()) {
+            return XpMutationResult(false, sheet, error = "Informe o foco da especialização.")
+        }
+        val targetSkill = sheet.cards.flatMap { it.fields }.find { it.id == skillFieldId }
+            ?: return XpMutationResult(false, sheet, error = "Habilidade alvo não encontrada na ficha.")
+
+        val available = getAvailableXp(sheet.xp)
+        if (available < SPECIALTY_XP_COST) {
+            return XpMutationResult(
+                false,
+                sheet,
+                error = "XP insuficiente para Especialização (necessário: $SPECIALTY_XP_COST XP, disponível: $available XP)."
+            )
+        }
+
+        val currentXp = normalizeXpState(sheet.xp)
+        val prevSpec = targetSkill.hint?.trim().orEmpty()
+        val nextSpec = if (prevSpec.isNotEmpty()) "$prevSpec, $focus" else focus
+        val skillKeyRegex = targetSkill.key.trim().takeIf { it.isNotEmpty() }?.let {
+            Regex("\\b${Regex.escape(it)}\\b", RegexOption.IGNORE_CASE)
+        }
+
+        val entry = XpLedgerEntry(
+            id = entryId,
+            timestamp = timestamp,
+            kind = "upgrade",
+            delta = -SPECIALTY_XP_COST,
+            label = "SPEC: ${targetSkill.label} ($focus)",
+            fieldId = targetSkill.id,
+            category = XpUpgradeCategory.SKILL,
+            prevSpecialtyLabel = targetSkill.hint ?: "",
+            prevRollSpecialty = targetSkill.rollSpecialty ?: false
+        )
+
+        val nextCards = sheet.cards.map { card ->
+            card.copy(
+                fields = card.fields.map { f ->
+                    when {
+                        f.id == targetSkill.id -> f.copy(
+                            rollSpecialty = true,
+                            hint = nextSpec
+                        )
+                        f.kind == FieldKind.ROLL && skillKeyRegex != null && !f.rollExpr.isNullOrBlank() && skillKeyRegex.containsMatchIn(f.rollExpr) -> f.copy(
+                            rollSpecialty = true,
+                            hint = nextSpec
+                        )
+                        else -> f
+                    }
+                }
+            )
+        }
+
+        val updatedSheet = SheetMutators.touchMetadata(
+            sheet.copy(
+                cards = nextCards,
+                xp = currentXp.copy(
+                    spent = currentXp.spent + SPECIALTY_XP_COST,
+                    ledger = (listOf(entry) + currentXp.ledger).take(40)
+                )
+            )
+        )
+        return XpMutationResult(ok = true, sheet = updatedSheet)
+    }
+
+    fun buyBackgroundWithXp(
+        sheet: CharacterSheetState,
+        label: String,
+        timestamp: String,
+        entryId: String,
+        customCost: Int? = null
+    ): XpMutationResult {
+        val cleanLabel = label.trim()
+        if (cleanLabel.isEmpty()) {
+            return XpMutationResult(false, sheet, error = "Informe o nome do Antecedente ou Vantagem.")
+        }
+        val cost = (customCost ?: DEFAULT_BACKGROUND_XP_COST).coerceAtLeast(0)
+        val available = getAvailableXp(sheet.xp)
+        if (available < cost) {
+            return XpMutationResult(
+                false,
+                sheet,
+                error = "XP insuficiente para $cleanLabel (necessário: $cost XP, disponível: $available XP)."
+            )
+        }
+
+        val baseKey = slugifyBackgroundKey(cleanLabel)
+        val existingKeys = sheet.cards.flatMap { it.fields }.map { it.key }.toSet()
+        var uniqueKey = baseKey
+        var suffix = 2
+        while (uniqueKey in existingKeys) {
+            uniqueKey = "${baseKey}_${suffix++}"
+        }
+        val newFieldId = "f_bg_${uniqueKey}_${entryId.takeLast(4)}"
+        val newField = SheetField(
+            id = newFieldId,
+            key = uniqueKey,
+            label = cleanLabel.uppercase(),
+            kind = FieldKind.NUMBER,
+            numValue = 1.0,
+            max = 5
+        )
+
+        val bgCardIdx = sheet.cards.indexOfFirst { card ->
+            val sig = "${card.code} ${card.title}".uppercase()
+            card.id == "card_backgrounds" ||
+                sig.contains("ANTECEDENT") || sig.contains("BACKGROUND") ||
+                sig.contains("VANTAG") || sig.contains("ADVANTAGE") ||
+                sig.contains("MERIT") || sig.contains("MÉRITO")
+        }
+
+        var createdCardId: String? = null
+        val nextCards = if (bgCardIdx >= 0) {
+            sheet.cards.mapIndexed { idx, card ->
+                if (idx == bgCardIdx) card.copy(fields = card.fields + newField) else card
+            }
+        } else {
+            createdCardId = "card_backgrounds"
+            sheet.cards + SheetCard(
+                id = createdCardId,
+                tab = TabId.GERAL,
+                code = "//ANTECEDENTES",
+                title = "ANTECEDENTES & VANTAGENS",
+                colSpan = 1,
+                fields = listOf(newField)
+            )
+        }
+
+        val currentXp = normalizeXpState(sheet.xp)
+        val entry = XpLedgerEntry(
+            id = entryId,
+            timestamp = timestamp,
+            kind = "upgrade",
+            delta = -cost,
+            label = "${cleanLabel.uppercase()} 0 → 1",
+            fieldId = newFieldId,
+            category = XpUpgradeCategory.VIRTUE,
+            fromValue = 0,
+            toValue = 1,
+            createdField = true,
+            createdCardId = createdCardId
+        )
+
+        val updatedSheet = SheetMutators.touchMetadata(
+            sheet.copy(
+                cards = nextCards,
+                xp = currentXp.copy(
+                    spent = currentXp.spent + cost,
+                    ledger = (listOf(entry) + currentXp.ledger).take(40)
+                )
+            )
+        )
+        return XpMutationResult(ok = true, sheet = updatedSheet, createdFieldId = newFieldId)
+    }
+
     fun undoLastUpgrade(sheet: CharacterSheetState): XpMutationResult {
         val currentXp = normalizeXpState(sheet.xp)
         val targetIdx = currentXp.ledger.indexOfFirst { it.kind == "upgrade" }
@@ -481,19 +673,60 @@ object XpSystem {
 
         val entry = currentXp.ledger[targetIdx]
         val fieldId = entry.fieldId
+        val isSpecialtyUndo = entry.prevSpecialtyLabel != null || entry.prevRollSpecialty != null
+        val isCreatedFieldUndo = entry.createdField == true
         val fromVal = entry.fromValue
-        if (fieldId == null || fromVal == null) {
+
+        if (fieldId == null || (!isSpecialtyUndo && !isCreatedFieldUndo && fromVal == null)) {
             return XpMutationResult(false, sheet, error = "Registro de upgrade incompatível para reversão.")
         }
 
         val refund = abs(entry.delta)
         val nextLedger = currentXp.ledger.filterIndexed { idx, _ -> idx != targetIdx }
-        val updatedSheet = SheetMutators.updateNumberField(sheet, fieldId, fromVal.toDouble()).copy(
-            xp = currentXp.copy(
-                spent = max(0, currentXp.spent - refund),
-                ledger = nextLedger
-            )
+        val nextXp = currentXp.copy(
+            spent = max(0, currentXp.spent - refund),
+            ledger = nextLedger
         )
+
+        val updatedSheet = when {
+            isCreatedFieldUndo -> {
+                val nextCards = sheet.cards
+                    .map { card -> card.copy(fields = card.fields.filterNot { it.id == fieldId }) }
+                    .filterNot { card ->
+                        entry.createdCardId != null && card.id == entry.createdCardId && card.fields.isEmpty()
+                    }
+                SheetMutators.touchMetadata(sheet.copy(cards = nextCards, xp = nextXp))
+            }
+            isSpecialtyUndo -> {
+                val targetField = sheet.cards.flatMap { it.fields }.find { it.id == fieldId }
+                val skillKeyRegex = targetField?.key?.trim()?.takeIf { it.isNotEmpty() }?.let {
+                    Regex("\\b${Regex.escape(it)}\\b", RegexOption.IGNORE_CASE)
+                }
+                val restoredSpec = entry.prevSpecialtyLabel?.takeIf { it.isNotEmpty() }
+                val restoredBool = entry.prevRollSpecialty ?: false
+                val nextCards = sheet.cards.map { card ->
+                    card.copy(
+                        fields = card.fields.map { f ->
+                            when {
+                                f.id == fieldId -> f.copy(
+                                    hint = restoredSpec,
+                                    rollSpecialty = restoredBool
+                                )
+                                f.kind == FieldKind.ROLL && skillKeyRegex != null && !f.rollExpr.isNullOrBlank() && skillKeyRegex.containsMatchIn(f.rollExpr) -> f.copy(
+                                    hint = restoredSpec,
+                                    rollSpecialty = restoredBool
+                                )
+                                else -> f
+                            }
+                        }
+                    )
+                }
+                SheetMutators.touchMetadata(sheet.copy(cards = nextCards, xp = nextXp))
+            }
+            else -> {
+                SheetMutators.updateNumberField(sheet, fieldId, fromVal!!.toDouble()).copy(xp = nextXp)
+            }
+        }
 
         return XpMutationResult(ok = true, sheet = updatedSheet, revertedLabel = entry.label)
     }

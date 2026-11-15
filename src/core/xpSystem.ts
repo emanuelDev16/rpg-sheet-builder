@@ -368,7 +368,11 @@ export function classifyTraitField(card: SheetCard, field: SheetField): XpUpgrad
   if (!key || IGNORED_NUMERIC_KEYS.has(key)) return null;
 
   const cardSig = `${card.code} ${card.title}`.toUpperCase();
-  const isVirtueCard = /VIRTUE|VIRTUDE|MORAL|TRILHA|PATH|CONVIC/.test(cardSig);
+  const isVirtueCard =
+    card.id === 'card_backgrounds' ||
+    /VIRTUE|VIRTUDE|MORAL|TRILHA|PATH|CONVIC|ANTECEDENT|BACKGROUND|VANTAG|ADVANTAGE|MERIT|MÉRITO/.test(
+      cardSig,
+    );
 
   if (field.kind === 'resource') {
     if (getVirtueSubtype(field) !== undefined || isVirtueCard) {
@@ -997,6 +1001,267 @@ export function upgradeTraitWithXp(
   };
 }
 
+export const SPECIALTY_XP_COST = 3;
+export const DEFAULT_BACKGROUND_XP_COST = 3;
+
+export interface BackgroundPresetOption {
+  key: string;
+  label: string;
+}
+
+export const BACKGROUND_PRESETS: BackgroundPresetOption[] = [
+  { key: 'recursos', label: 'Recursos' },
+  { key: 'contatos', label: 'Contatos' },
+  { key: 'refugio', label: 'Refúgio' },
+  { key: 'aliados', label: 'Aliados' },
+  { key: 'geracao_bg', label: 'Geração' },
+  { key: 'rebanho', label: 'Rebanho' },
+  { key: 'meritos', label: 'Méritos' },
+];
+
+function slugifyBackgroundKey(label: string): string {
+  const normalized = label
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+  if (!normalized || normalized === 'generation') return 'geracao_bg';
+  return normalized;
+}
+
+export function buySpecialtyWithXp(
+  sheet: CharacterSheetState,
+  skillFieldId: string,
+  specialtyFocus: string,
+  timestamp: string,
+  entryId: string,
+  lang: AppLanguage = 'pt-BR',
+): {
+  ok: boolean;
+  sheet: CharacterSheetState;
+  error?: string;
+} {
+  const focus = specialtyFocus.trim();
+  if (!focus) {
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? 'Enter a specialty focus.'
+          : lang === 'es'
+            ? 'Ingresa el enfoque de la especialidad.'
+            : 'Informe o foco da especialização.',
+    };
+  }
+
+  let targetSkill: SheetField | undefined;
+  for (const card of sheet.cards) {
+    const found = card.fields.find((f) => f.id === skillFieldId);
+    if (found) {
+      targetSkill = found;
+      break;
+    }
+  }
+  if (!targetSkill) {
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? 'Target skill not found on sheet.'
+          : lang === 'es'
+            ? 'Habilidad objetivo no encontrada en la hoja.'
+            : 'Habilidade alvo não encontrada na ficha.',
+    };
+  }
+
+  const available = getAvailableXp(sheet.xp);
+  if (available < SPECIALTY_XP_COST) {
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? `Insufficient XP for Specialty (needed: ${SPECIALTY_XP_COST} XP, available: ${available} XP).`
+          : lang === 'es'
+            ? `XP insuficiente para Especialidad (necesaria: ${SPECIALTY_XP_COST} XP, disponible: ${available} XP).`
+            : `XP insuficiente para Especialização (necessário: ${SPECIALTY_XP_COST} XP, disponível: ${available} XP).`,
+    };
+  }
+
+  const currentXp = normalizeXpState(sheet.xp);
+  const prevSpec = targetSkill.hint?.trim();
+  const nextSpec = prevSpec ? `${prevSpec}, ${focus}` : focus;
+  const skillKeyRegex = targetSkill.key.trim()
+    ? new RegExp(`\\b${targetSkill.key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+    : null;
+
+  const entry: XpLedgerEntry = {
+    id: entryId,
+    timestamp,
+    kind: 'upgrade',
+    delta: -SPECIALTY_XP_COST,
+    label: `SPEC: ${targetSkill.label} (${focus})`,
+    fieldId: targetSkill.id,
+    category: 'skill',
+    prevSpecialtyLabel: targetSkill.hint ?? '',
+    prevRollSpecialty: Boolean(targetSkill.rollSpecialty),
+  };
+
+  const nextCards = sheet.cards.map((card) => ({
+    ...card,
+    fields: card.fields.map((f) => {
+      if (f.id === targetSkill!.id) {
+        return {
+          ...f,
+          rollSpecialty: true,
+          hint: nextSpec,
+        };
+      }
+      if (f.kind === 'roll' && skillKeyRegex && f.rollExpr && skillKeyRegex.test(f.rollExpr)) {
+        return {
+          ...f,
+          rollSpecialty: true,
+          hint: nextSpec,
+        };
+      }
+      return f;
+    }),
+  }));
+
+  return {
+    ok: true,
+    sheet: {
+      ...sheet,
+      cards: nextCards,
+      xp: {
+        totalEarned: currentXp.totalEarned,
+        spent: currentXp.spent + SPECIALTY_XP_COST,
+        ledger: [entry, ...currentXp.ledger].slice(0, 40),
+      },
+    },
+  };
+}
+
+export function buyBackgroundWithXp(
+  sheet: CharacterSheetState,
+  label: string,
+  timestamp: string,
+  entryId: string,
+  customCost?: number,
+  lang: AppLanguage = 'pt-BR',
+): {
+  ok: boolean;
+  sheet: CharacterSheetState;
+  fieldId?: string;
+  error?: string;
+} {
+  const cleanLabel = label.trim();
+  if (!cleanLabel) {
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? 'Enter a background or advantage name.'
+          : lang === 'es'
+            ? 'Ingresa el nombre del trasfondo o ventaja.'
+            : 'Informe o nome do Antecedente ou Vantagem.',
+    };
+  }
+
+  const cost =
+    typeof customCost === 'number' && Number.isFinite(customCost) && customCost >= 0
+      ? Math.round(customCost)
+      : DEFAULT_BACKGROUND_XP_COST;
+  const available = getAvailableXp(sheet.xp);
+  if (available < cost) {
+    return {
+      ok: false,
+      sheet,
+      error:
+        lang === 'en'
+          ? `Insufficient XP for ${cleanLabel} (needed: ${cost} XP, available: ${available} XP).`
+          : lang === 'es'
+            ? `XP insuficiente para ${cleanLabel} (necesaria: ${cost} XP, disponible: ${available} XP).`
+            : `XP insuficiente para ${cleanLabel} (necessário: ${cost} XP, disponível: ${available} XP).`,
+    };
+  }
+
+  const baseKey = slugifyBackgroundKey(cleanLabel);
+  const existingKeys = new Set(sheet.cards.flatMap((c) => c.fields.map((f) => f.key)));
+  let uniqueKey = baseKey;
+  let suffix = 2;
+  while (existingKeys.has(uniqueKey)) {
+    uniqueKey = `${baseKey}_${suffix++}`;
+  }
+  const newFieldId = `f_bg_${uniqueKey}_${Date.now().toString(36).slice(-4)}`;
+  const newField: SheetField = {
+    id: newFieldId,
+    key: uniqueKey,
+    label: cleanLabel.toUpperCase(),
+    kind: 'number',
+    value: 1,
+    max: 5,
+  };
+
+  const bgCardIdx = sheet.cards.findIndex(
+    (c) =>
+      c.id === 'card_backgrounds' ||
+      /ANTECEDENT|BACKGROUND|VANTAG|ADVANTAGE|MERIT|MÉRITO/i.test(`${c.code} ${c.title}`),
+  );
+
+  let createdCardId: string | undefined;
+  let nextCards: SheetCard[];
+  if (bgCardIdx >= 0) {
+    nextCards = sheet.cards.map((c, idx) =>
+      idx === bgCardIdx ? { ...c, fields: [...c.fields, newField] } : c,
+    );
+  } else {
+    createdCardId = 'card_backgrounds';
+    const newCard: SheetCard = {
+      id: createdCardId,
+      tab: 'geral',
+      code: '//ANTECEDENTES',
+      title: 'ANTECEDENTES & VANTAGENS',
+      colSpan: 1,
+      fields: [newField],
+    };
+    nextCards = [...sheet.cards, newCard];
+  }
+
+  const currentXp = normalizeXpState(sheet.xp);
+  const entry: XpLedgerEntry = {
+    id: entryId,
+    timestamp,
+    kind: 'upgrade',
+    delta: -cost,
+    label: `${cleanLabel.toUpperCase()} 0 → 1`,
+    fieldId: newFieldId,
+    category: 'virtue',
+    fromValue: 0,
+    toValue: 1,
+    createdField: true,
+    createdCardId,
+  };
+
+  return {
+    ok: true,
+    fieldId: newFieldId,
+    sheet: {
+      ...sheet,
+      cards: nextCards,
+      xp: {
+        totalEarned: currentXp.totalEarned,
+        spent: currentXp.spent + cost,
+        ledger: [entry, ...currentXp.ledger].slice(0, 40),
+      },
+    },
+  };
+}
+
 export function undoLastUpgrade(
   sheet: CharacterSheetState,
   lang: AppLanguage = 'pt-BR',
@@ -1022,7 +1287,14 @@ export function undoLastUpgrade(
   }
 
   const entry = currentXp.ledger[targetIdx];
-  if (!entry.fieldId || typeof entry.fromValue !== 'number') {
+  const isSpecialtyUndo =
+    entry.prevSpecialtyLabel !== undefined || entry.prevRollSpecialty !== undefined;
+  const isCreatedFieldUndo = entry.createdField === true;
+
+  if (
+    !entry.fieldId ||
+    (!isSpecialtyUndo && !isCreatedFieldUndo && typeof entry.fromValue !== 'number')
+  ) {
     return {
       ok: false,
       sheet,
@@ -1039,22 +1311,60 @@ export function undoLastUpgrade(
     typeof entry.xpSpent === 'number' && Number.isFinite(entry.xpSpent) && entry.xpSpent >= 0
       ? Math.round(entry.xpSpent)
       : Math.abs(entry.delta);
-  const fromValue = entry.fromValue;
-  const nextCards = sheet.cards.map((card) => ({
-    ...card,
-    fields: card.fields.map((f) => {
-      if (f.id !== entry.fieldId) return f;
-      if (f.kind === 'resource' && getVirtueSubtype(f) === 'willpower') {
-        const prevVal = typeof f.value === 'number' ? f.value : fromValue;
-        return {
-          ...f,
-          max: Math.max(1, fromValue),
-          value: Math.min(fromValue, Math.max(0, prevVal - 1)),
-        };
-      }
-      return { ...f, value: fromValue };
-    }),
-  }));
+  let nextCards: SheetCard[];
+
+  if (isCreatedFieldUndo) {
+    nextCards = sheet.cards
+      .map((card) => ({
+        ...card,
+        fields: card.fields.filter((f) => f.id !== entry.fieldId),
+      }))
+      .filter((card) => !(entry.createdCardId && card.id === entry.createdCardId && card.fields.length === 0));
+  } else if (isSpecialtyUndo) {
+    const targetField = sheet.cards.flatMap((c) => c.fields).find((f) => f.id === entry.fieldId);
+    const skillKeyRegex = targetField?.key.trim()
+      ? new RegExp(`\\b${targetField.key.trim().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\b`, 'i')
+      : null;
+    const restoredSpec = entry.prevSpecialtyLabel ? entry.prevSpecialtyLabel : undefined;
+    const restoredBool = Boolean(entry.prevRollSpecialty);
+    nextCards = sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id === entry.fieldId) {
+          return {
+            ...f,
+            hint: restoredSpec,
+            rollSpecialty: restoredBool,
+          };
+        }
+        if (f.kind === 'roll' && skillKeyRegex && f.rollExpr && skillKeyRegex.test(f.rollExpr)) {
+          return {
+            ...f,
+            hint: restoredSpec,
+            rollSpecialty: restoredBool,
+          };
+        }
+        return f;
+      }),
+    }));
+  } else {
+    const fromValue = entry.fromValue!;
+    nextCards = sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id !== entry.fieldId) return f;
+        if (f.kind === 'resource' && getVirtueSubtype(f) === 'willpower') {
+          const prevVal = typeof f.value === 'number' ? f.value : fromValue;
+          return {
+            ...f,
+            max: Math.max(1, fromValue),
+            value: Math.min(fromValue, Math.max(0, prevVal - 1)),
+          };
+        }
+        return { ...f, value: fromValue };
+      }),
+    }));
+  }
 
   const nextLedger = currentXp.ledger.filter((_, idx) => idx !== targetIdx);
 

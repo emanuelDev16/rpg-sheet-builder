@@ -323,6 +323,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onSetCustomMultiplier = vm::setTraitCustomMultiplier,
                             onSelectRulePreset = vm::setXpRulePreset,
                             onToggleCustomBase = vm::setCustomUseNewLevelBase,
+                            onBuySpecialty = vm::buySpecialty,
+                            onBuyBackground = vm::buyBackground,
                             onUndoLastUpgrade = vm::undoLastUpgrade
                         )
                     }

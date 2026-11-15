@@ -852,6 +852,39 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         controller.updateActiveSheet { XpSystem.setCustomUseNewLevelBase(it, useNewLevelBase) }
     }
 
+    fun buySpecialty(skillFieldId: String, focus: String) {
+        val res = XpSystem.buySpecialtyWithXp(
+            sheet = activeSheet.value,
+            skillFieldId = skillFieldId,
+            specialtyFocus = focus,
+            timestamp = currentTimeStamp(),
+            entryId = "xp_${UUID.randomUUID().toString().take(8)}"
+        )
+        if (!res.ok) {
+            controller.setStatusMessage(res.error)
+            return
+        }
+        controller.updateActiveSheet { res.sheet }
+        controller.setStatusMessage("ESPECIALIZAÇÃO ADQUIRIDA (-${XpSystem.SPECIALTY_XP_COST} XP)")
+    }
+
+    fun buyBackground(label: String, customCost: Int? = null) {
+        val res = XpSystem.buyBackgroundWithXp(
+            sheet = activeSheet.value,
+            label = label,
+            timestamp = currentTimeStamp(),
+            entryId = "xp_${UUID.randomUUID().toString().take(8)}",
+            customCost = customCost
+        )
+        if (!res.ok) {
+            controller.setStatusMessage(res.error)
+            return
+        }
+        controller.updateActiveSheet { res.sheet }
+        val spent = customCost ?: XpSystem.DEFAULT_BACKGROUND_XP_COST
+        controller.setStatusMessage("ANTECEDENTE: ${label.trim().uppercase()} (-$spent XP)")
+    }
+
     fun undoLastUpgrade() {
         val res = XpSystem.undoLastUpgrade(activeSheet.value)
         if (!res.ok) {

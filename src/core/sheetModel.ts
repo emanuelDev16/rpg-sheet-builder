@@ -193,6 +193,10 @@ export interface XpLedgerEntry {
   category?: XpUpgradeCategory;
   fromValue?: number;
   toValue?: number;
+  createdField?: boolean;
+  createdCardId?: string;
+  prevSpecialtyLabel?: string;
+  prevRollSpecialty?: boolean;
 }
 
 export interface XpState {

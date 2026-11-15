@@ -1261,4 +1261,75 @@ class CoreEngineTest {
         assertFalse(blockedWp.ok)
         assertTrue(blockedWp.error?.contains("V5") == true)
     }
+
+    @Test
+    fun buySpecialtyAndBackgroundAutoCreateCardAndUndoCleanly() {
+        val wod = Presets.createWorldOfDarknessSheet() // 14 XP available
+
+        // 1. Buy Specialty (3 XP) on Firearms
+        val specRes = XpSystem.buySpecialtyWithXp(
+            sheet = wod,
+            skillFieldId = "f_firearms",
+            specialtyFocus = "Armas de Fogo: Precisão",
+            timestamp = "20:00",
+            entryId = "xp_spec_1"
+        )
+        assertTrue(specRes.ok)
+        assertEquals(11, XpSystem.getAvailableXp(specRes.sheet.xp))
+
+        val firearms = specRes.sheet.cards.flatMap { it.fields }.first { it.id == "f_firearms" }
+        assertEquals(true, firearms.rollSpecialty)
+        assertEquals("Armas de Fogo: Precisão", firearms.hint)
+
+        val rollFirearms = specRes.sheet.cards.flatMap { it.fields }.first { it.id == "f_roll_firearms" }
+        assertEquals(true, rollFirearms.rollSpecialty)
+
+        val undoSpec = XpSystem.undoLastUpgrade(specRes.sheet)
+        assertTrue(undoSpec.ok)
+        assertEquals(14, XpSystem.getAvailableXp(undoSpec.sheet.xp))
+        val restoredFirearms = undoSpec.sheet.cards.flatMap { it.fields }.first { it.id == "f_firearms" }
+        assertEquals(false, restoredFirearms.rollSpecialty)
+        assertEquals(null, restoredFirearms.hint)
+
+        // 2. Buy Background (3 XP) when no background card exists
+        val wodWithoutBg = wod.copy(
+            cards = wod.cards.filterNot { card ->
+                val sig = "${card.code} ${card.title}".uppercase()
+                card.id == "card_backgrounds" ||
+                    sig.contains("ANTECEDENT") || sig.contains("BACKGROUND") ||
+                    sig.contains("VANTAG") || sig.contains("ADVANTAGE") ||
+                    sig.contains("MERIT") || sig.contains("MÉRITO")
+            }
+        )
+        assertFalse(wodWithoutBg.cards.any { it.id == "card_backgrounds" })
+        val bgRes = XpSystem.buyBackgroundWithXp(
+            sheet = wodWithoutBg,
+            label = "Recursos",
+            timestamp = "20:05",
+            entryId = "xp_bg_1"
+        )
+        assertTrue(bgRes.ok)
+        assertEquals(11, XpSystem.getAvailableXp(bgRes.sheet.xp))
+        assertTrue(bgRes.sheet.cards.any { it.id == "card_backgrounds" })
+
+        val bgFieldId = bgRes.createdFieldId!!
+        val bgTrait = XpSystem.extractAllTraits(bgRes.sheet).first { it.fieldId == bgFieldId }
+        assertEquals(1, bgTrait.currentValue)
+
+        // Subsequent upgrade 1 -> 2 costs 2 XP
+        val upgBg = XpSystem.upgradeTraitWithXp(bgRes.sheet, bgFieldId, "20:06", "xp_bg_2")
+        assertTrue(upgBg.ok)
+        assertEquals(9, XpSystem.getAvailableXp(upgBg.sheet.xp))
+
+        // Undo 1 -> 2 keeps field at 1
+        val undoBg2 = XpSystem.undoLastUpgrade(upgBg.sheet)
+        assertTrue(undoBg2.ok)
+        assertEquals(11, XpSystem.getAvailableXp(undoBg2.sheet.xp))
+
+        // Undo 0 -> 1 removes field and empty card_backgrounds
+        val undoBg1 = XpSystem.undoLastUpgrade(undoBg2.sheet)
+        assertTrue(undoBg1.ok)
+        assertEquals(14, XpSystem.getAvailableXp(undoBg1.sheet.xp))
+        assertFalse(undoBg1.sheet.cards.any { it.id == "card_backgrounds" })
+    }
 }

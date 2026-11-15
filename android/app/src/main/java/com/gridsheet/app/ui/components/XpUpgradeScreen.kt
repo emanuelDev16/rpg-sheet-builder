@@ -22,6 +22,8 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
@@ -60,6 +62,8 @@ fun XpUpgradeWorkspace(
     onSetCustomMultiplier: (String, Int?) -> Unit,
     onSelectRulePreset: (XpRulePreset) -> Unit,
     onToggleCustomBase: (Boolean) -> Unit,
+    onBuySpecialty: (String, String) -> Unit,
+    onBuyBackground: (String, Int?) -> Unit,
     onUndoLastUpgrade: () -> Unit
 ) {
     val xp = XpSystem.normalizeXpState(sheet.xp)
@@ -76,6 +80,14 @@ fun XpUpgradeWorkspace(
     var customAmount by remember { mutableStateOf("3") }
     var customReason by remember { mutableStateOf("") }
     var multiplierTarget by remember { mutableStateOf<UpgradableTrait?>(null) }
+    var specOpen by remember { mutableStateOf(false) }
+    var specSkillId by remember { mutableStateOf("") }
+    var specFocus by remember { mutableStateOf("") }
+    var specDropdownOpen by remember { mutableStateOf(false) }
+    var bgOpen by remember { mutableStateOf(false) }
+    var bgName by remember { mutableStateOf("") }
+    var bgCost by remember { mutableStateOf(XpSystem.DEFAULT_BACKGROUND_XP_COST.toString()) }
+    val skillTraits = remember(allTraits) { allTraits.filter { it.category == XpUpgradeCategory.SKILL } }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // Card 1: XP Monitor
@@ -567,6 +579,257 @@ fun XpUpgradeWorkspace(
                                         }
                                     }
                                 }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Card 3: Specialties & Backgrounds / Advantages
+        Surface(
+            modifier = Modifier.fillMaxWidth(),
+            shape = RoundedCornerShape(CyberDimens.CardRadius),
+            color = CyberColors.BgCard,
+            border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+        ) {
+            Column {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(CyberColors.BgHeaderStrip)
+                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                ) {
+                    Text(
+                        text = "// ANTECEDENTES_&_VANTAGENS",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CyberColors.AccentWine
+                    )
+                    Text(
+                        text = "ESPECIALIZAÇÕES & VANTAGENS",
+                        fontWeight = FontWeight.Black,
+                        fontSize = 15.sp,
+                        color = CyberColors.InkPrimary
+                    )
+                }
+                Box(Modifier.fillMaxWidth().height(CyberDimens.BorderWidth).background(CyberColors.BorderInk))
+
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                ) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                specOpen = !specOpen
+                                if (specOpen) bgOpen = false
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                        ) {
+                            Text(
+                                text = "+ COMPRAR ESPECIALIZAÇÃO (${XpSystem.SPECIALTY_XP_COST} XP)",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberColors.InkPrimary
+                            )
+                        }
+                        Button(
+                            onClick = {
+                                bgOpen = !bgOpen
+                                if (bgOpen) specOpen = false
+                            },
+                            modifier = Modifier
+                                .weight(1f)
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                        ) {
+                            Text(
+                                text = "+ ADICIONAR ANTECEDENTE / VANTAGEM",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                    }
+
+                    if (specOpen) {
+                        val selectedSkill = skillTraits.find { it.fieldId == specSkillId } ?: skillTraits.firstOrNull()
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "ESPECIALIZAÇÃO DE PERÍCIA · ${XpSystem.SPECIALTY_XP_COST} XP FIXO",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberColors.InkSecondary
+                            )
+                            Box {
+                                OutlinedButton(
+                                    onClick = { specDropdownOpen = true },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                                ) {
+                                    val prefix = when {
+                                        selectedSkill == null -> ""
+                                        xp.xpRulePreset == XpRulePreset.STORYTELLER_V20 && selectedSkill.currentValue >= 4 -> "★ "
+                                        xp.xpRulePreset == XpRulePreset.VAMPIRE_V5 && selectedSkill.currentValue >= 1 -> "• "
+                                        else -> ""
+                                    }
+                                    Text(
+                                        text = selectedSkill?.let { "$prefix${it.label} (${it.currentValue})" } ?: "Nenhuma perícia",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 12.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = CyberColors.InkPrimary
+                                    )
+                                }
+                                DropdownMenu(
+                                    expanded = specDropdownOpen,
+                                    onDismissRequest = { specDropdownOpen = false }
+                                ) {
+                                    skillTraits.forEach { sk ->
+                                        val hint = when {
+                                            xp.xpRulePreset == XpRulePreset.STORYTELLER_V20 && sk.currentValue >= 4 -> " ★ V20"
+                                            xp.xpRulePreset == XpRulePreset.VAMPIRE_V5 && sk.currentValue >= 1 -> " • V5"
+                                            else -> ""
+                                        }
+                                        DropdownMenuItem(
+                                            text = {
+                                                Text(
+                                                    text = "${sk.label} (${sk.currentValue})$hint",
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 12.sp
+                                                )
+                                            },
+                                            onClick = {
+                                                specSkillId = sk.fieldId
+                                                specDropdownOpen = false
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                            OutlinedTextField(
+                                value = specFocus,
+                                onValueChange = { specFocus = it },
+                                label = { Text("Foco (ex: Armas de Fogo: Precisão)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                                singleLine = true,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                            Button(
+                                onClick = {
+                                    val targetId = selectedSkill?.fieldId ?: return@Button
+                                    onBuySpecialty(targetId, specFocus)
+                                    specFocus = ""
+                                    specOpen = false
+                                },
+                                enabled = selectedSkill != null && specFocus.isNotBlank() && availableXp >= XpSystem.SPECIALTY_XP_COST,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                            ) {
+                                Text(
+                                    text = "CONFIRMAR (${XpSystem.SPECIALTY_XP_COST} XP)",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
+                            }
+                        }
+                    }
+
+                    if (bgOpen) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "NOVO ANTECEDENTE / VANTAGEM (0 → 1)",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = CyberColors.InkSecondary
+                            )
+                            Row(
+                                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                XpSystem.BACKGROUND_PRESETS.forEach { (_, presetLabel) ->
+                                    FilterPill(
+                                        label = presetLabel.uppercase(),
+                                        selected = bgName.trim().equals(presetLabel, ignoreCase = true)
+                                    ) {
+                                        bgName = presetLabel
+                                    }
+                                }
+                            }
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedTextField(
+                                    value = bgName,
+                                    onValueChange = { bgName = it },
+                                    label = { Text("Nome (ex: Recursos)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                                    singleLine = true,
+                                    modifier = Modifier.weight(2f)
+                                )
+                                OutlinedTextField(
+                                    value = bgCost,
+                                    onValueChange = { bgCost = it.filter { ch -> ch.isDigit() } },
+                                    label = { Text("XP", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    modifier = Modifier.weight(1f)
+                                )
+                            }
+                            val parsedBgCost = bgCost.toIntOrNull() ?: XpSystem.DEFAULT_BACKGROUND_XP_COST
+                            Button(
+                                onClick = {
+                                    onBuyBackground(bgName, parsedBgCost)
+                                    bgName = ""
+                                    bgCost = XpSystem.DEFAULT_BACKGROUND_XP_COST.toString()
+                                    bgOpen = false
+                                },
+                                enabled = bgName.isNotBlank() && availableXp >= parsedBgCost,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                            ) {
+                                Text(
+                                    text = "ADICIONAR ($parsedBgCost XP)",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold
+                                )
                             }
                         }
                     }

@@ -209,7 +209,11 @@ data class XpLedgerEntry(
     val fieldId: String? = null,
     val category: XpUpgradeCategory? = null,
     val fromValue: Int? = null,
-    val toValue: Int? = null
+    val toValue: Int? = null,
+    val createdField: Boolean? = null,
+    val createdCardId: String? = null,
+    val prevSpecialtyLabel: String? = null,
+    val prevRollSpecialty: Boolean? = null
 )
 
 @Serializable

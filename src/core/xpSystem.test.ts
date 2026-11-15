@@ -9,6 +9,8 @@ import {
 } from './sheetModel';
 import {
   awardXp,
+  buyBackgroundWithXp,
+  buySpecialtyWithXp,
   calculateUpgradeCost,
   extractAllTraits,
   getAvailableXp,
@@ -220,3 +222,72 @@ test('awardXp prevents lowering totalEarned below already spent XP and handles D
   assert.equal(remaining.every((t) => t.category === 'skill'), true);
 });
 
+test('buySpecialtyWithXp injects specialty onto skill and linked roll field, and undo reverts it', () => {
+  const sheet = createDefaultSheet(); // 14 XP available
+  const res = buySpecialtyWithXp(
+    sheet,
+    'f_firearms',
+    'Armas de Fogo: Precisão',
+    '20:00',
+    'xp_spec_1',
+  );
+  assert.equal(res.ok, true);
+  assert.equal(getAvailableXp(res.sheet.xp), 11);
+
+  const firearms = res.sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_firearms');
+  assert.equal(firearms?.rollSpecialty, true);
+  assert.equal(firearms?.hint, 'Armas de Fogo: Precisão');
+
+  const rollFirearms = res.sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_roll_firearms');
+  assert.equal(rollFirearms?.rollSpecialty, true);
+
+  const undone = undoLastUpgrade(res.sheet);
+  assert.equal(undone.ok, true);
+  assert.equal(getAvailableXp(undone.sheet.xp), 14);
+  const restored = undone.sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_firearms');
+  assert.equal(restored?.rollSpecialty, false);
+  assert.equal(restored?.hint, undefined);
+});
+
+test('buyBackgroundWithXp auto-creates card, allows subsequent upgrade, and undo removes empty card & field', () => {
+  const base = createDefaultSheet(); // 14 XP available
+  const sheet = {
+    ...base,
+    cards: base.cards.filter(
+      (c) => !/ANTECEDENT|BACKGROUND|VANTAG|ADVANTAGE|MERIT|MÉRITO/i.test(`${c.code} ${c.title}`),
+    ),
+  };
+  assert.equal(sheet.cards.some((c) => c.id === 'card_backgrounds'), false);
+
+  const created = buyBackgroundWithXp(sheet, 'Recursos', '20:05', 'xp_bg_1');
+  assert.equal(created.ok, true);
+  assert.equal(getAvailableXp(created.sheet.xp), 11);
+  assert.equal(created.sheet.cards.some((c) => c.id === 'card_backgrounds'), true);
+
+  const bgFieldId = created.fieldId!;
+  const bgTraits = extractAllTraits(created.sheet);
+  const bgTrait = bgTraits.find((t) => t.fieldId === bgFieldId);
+  assert.equal(bgTrait?.currentValue, 1);
+
+  // Subsequent upgrade 1 -> 2 costs 2 XP
+  const upgraded = upgradeTraitWithXp(created.sheet, bgFieldId, '20:06', 'xp_bg_2');
+  assert.equal(upgraded.ok, true);
+  assert.equal(getAvailableXp(upgraded.sheet.xp), 9);
+
+  // Undo 1 -> 2 restores 11 XP and keeps field at 1
+  const undo2 = undoLastUpgrade(upgraded.sheet);
+  assert.equal(undo2.ok, true);
+  assert.equal(getAvailableXp(undo2.sheet.xp), 11);
+  assert.equal(
+    undo2.sheet.cards.flatMap((c) => c.fields).find((f) => f.id === bgFieldId)?.value,
+    1,
+  );
+
+  // Undo initial 0 -> 1 removes field and empty card_backgrounds, restoring 14 XP
+  const undo1 = undoLastUpgrade(undo2.sheet);
+  assert.equal(undo1.ok, true);
+  assert.equal(getAvailableXp(undo1.sheet.xp), 14);
+  assert.equal(undo1.sheet.cards.some((c) => c.id === 'card_backgrounds'), false);
+});

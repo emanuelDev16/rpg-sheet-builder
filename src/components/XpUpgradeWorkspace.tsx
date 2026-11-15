@@ -5,6 +5,8 @@ import { CharacterSheetState, XpRulePreset, XpUpgradeCategory } from '../core/sh
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
 import { AnimatedCounter } from './AnimatedCounter';
 import {
+  BACKGROUND_PRESETS,
+  DEFAULT_BACKGROUND_XP_COST,
   extractAllTraits,
   getAvailableXp,
   getCostRulesSummary,
@@ -19,6 +21,7 @@ import {
   setTraitCustomCostOverride,
   setTraitOutOfClan,
   setXpRulePresetConfig,
+  SPECIALTY_XP_COST,
   UpgradableTrait,
 } from '../core/xpSystem';
 
@@ -28,6 +31,8 @@ interface XpUpgradeWorkspaceProps {
   t?: AppTranslations['xp'];
   onAwardXp: (delta: number, reason: string) => { ok: boolean; error?: string };
   onUpgradeTrait: (fieldId: string) => void;
+  onBuySpecialty?: (skillFieldId: string, focus: string) => { ok: boolean; error?: string };
+  onBuyBackground?: (label: string, customCost?: number) => { ok: boolean; error?: string };
   onUndoLastUpgrade: () => void;
   onSelectRulePreset?: (preset: XpRulePreset) => void;
 }
@@ -130,6 +135,8 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   t = DEFAULT_XP_T,
   onAwardXp,
   onUpgradeTrait,
+  onBuySpecialty,
+  onBuyBackground,
   onUndoLastUpgrade,
   onSelectRulePreset,
 }) => {
@@ -146,6 +153,12 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const isEinkTheme =
     typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
   const shouldReduceMotion = Boolean(prefersReducedMotion || isEinkTheme);
+  const [specOpen, setSpecOpen] = useState(false);
+  const [specSkillId, setSpecSkillId] = useState('');
+  const [specFocus, setSpecFocus] = useState('');
+  const [bgOpen, setBgOpen] = useState(false);
+  const [bgName, setBgName] = useState('');
+  const [bgCost, setBgCost] = useState(String(DEFAULT_BACKGROUND_XP_COST));
 
   const ext = LOCALIZED_XP_EXTRAS[language] ?? LOCALIZED_XP_EXTRAS['pt-BR'];
 
@@ -1061,6 +1074,185 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           </div>
         </section>
       </div>
+
+      {/* Specialty & Background/Advantage Direct Purchase */}
+      <section className="bento-card overflow-hidden">
+        <div className="bento-card-header px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
+          <div>
+            <div className="font-mono-tech text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--accent-wine)]">
+              // ANTECEDENTES_&amp;_VANTAGENS
+            </div>
+            <h3 className="text-sm font-black uppercase tracking-tight text-[var(--ink-primary)]">
+              ESPECIALIZAÇÕES &amp; VANTAGENS
+            </h3>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <button
+              type="button"
+              data-testid="xp-open-specialty-btn"
+              onClick={() => {
+                setSpecOpen((v) => !v);
+                setBgOpen(false);
+                setXpError(null);
+              }}
+              className="cyber-btn-outline min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
+            >
+              + COMPRAR ESPECIALIZAÇÃO ({SPECIALTY_XP_COST} XP)
+            </button>
+            <button
+              type="button"
+              data-testid="xp-open-background-btn"
+              onClick={() => {
+                setBgOpen((v) => !v);
+                setSpecOpen(false);
+                setXpError(null);
+              }}
+              className="cyber-roll-btn min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
+            >
+              + ADICIONAR ANTECEDENTE / VANTAGEM
+            </button>
+          </div>
+        </div>
+
+        {specOpen && (
+          <div className="p-4 border-t border-[var(--border-ink)] bg-[var(--bg-card-alt)] space-y-3">
+            <div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+              ESPECIALIZAÇÃO DE PERÍCIA · {SPECIALTY_XP_COST} XP FIXO
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+              <select
+                data-testid="xp-specialty-skill-select"
+                value={specSkillId || allTraits.find((tr) => tr.category === 'skill')?.fieldId || ''}
+                onChange={(e) => setSpecSkillId(e.target.value)}
+                className="cyber-input min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs font-bold"
+              >
+                {allTraits
+                  .filter((tr) => tr.category === 'skill')
+                  .map((sk) => {
+                    const suggested = sk.currentValue >= 4 ? '★ V20 ' : sk.currentValue >= 1 ? '• ' : '';
+                    return (
+                      <option key={sk.fieldId} value={sk.fieldId}>
+                        {suggested}
+                        {sk.label} ({sk.currentValue})
+                      </option>
+                    );
+                  })}
+              </select>
+              <input
+                type="text"
+                data-testid="xp-specialty-focus-input"
+                value={specFocus}
+                onChange={(e) => setSpecFocus(e.target.value)}
+                placeholder="Ex: Armas de Fogo: Precisão"
+                className="cyber-input min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setSpecOpen(false)}
+                className="cyber-btn-outline min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="button"
+                data-testid="xp-confirm-specialty-btn"
+                onClick={() => {
+                  const targetId =
+                    specSkillId || allTraits.find((tr) => tr.category === 'skill')?.fieldId || '';
+                  if (!targetId || !onBuySpecialty) return;
+                  const res = onBuySpecialty(targetId, specFocus);
+                  if (!res.ok) {
+                    setXpError(res.error ?? 'Erro ao comprar especialização.');
+                    return;
+                  }
+                  setXpError(null);
+                  setSpecFocus('');
+                  setSpecOpen(false);
+                }}
+                className="cyber-roll-btn min-h-[40px] px-4 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
+              >
+                CONFIRMAR ({SPECIALTY_XP_COST} XP)
+              </button>
+            </div>
+          </div>
+        )}
+
+        {bgOpen && (
+          <div className="p-4 border-t border-[var(--border-ink)] bg-[var(--bg-card-alt)] space-y-3">
+            <div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+              NOVO ANTECEDENTE / VANTAGEM (0 → 1)
+            </div>
+            <div className="flex flex-wrap gap-1.5">
+              {BACKGROUND_PRESETS.map((preset) => (
+                <button
+                  key={preset.key}
+                  type="button"
+                  onClick={() => setBgName(preset.label)}
+                  className={`min-h-[36px] px-2.5 py-1 text-[10px] font-mono-tech font-bold uppercase rounded-[var(--radius-pill)] border cursor-pointer ${
+                    bgName.trim().toLowerCase() === preset.label.toLowerCase()
+                      ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
+                      : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/50 hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  {preset.label}
+                </button>
+              ))}
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+              <input
+                type="text"
+                data-testid="xp-background-name-input"
+                value={bgName}
+                onChange={(e) => setBgName(e.target.value)}
+                placeholder="Nome (ex: Recursos, Refúgio)"
+                className="cyber-input sm:col-span-2 min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs"
+              />
+              <input
+                type="number"
+                min={0}
+                max={100}
+                data-testid="xp-background-cost-input"
+                value={bgCost}
+                onChange={(e) => setBgCost(e.target.value)}
+                aria-label="Custo em XP"
+                className="cyber-input min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs font-bold text-center tabular-nums"
+              />
+            </div>
+            <div className="flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setBgOpen(false)}
+                className="cyber-btn-outline min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
+              >
+                CANCELAR
+              </button>
+              <button
+                type="button"
+                data-testid="xp-confirm-background-btn"
+                onClick={() => {
+                  if (!onBuyBackground) return;
+                  const parsedCost = Number.parseInt(bgCost, 10);
+                  const cost = Number.isFinite(parsedCost) ? parsedCost : DEFAULT_BACKGROUND_XP_COST;
+                  const res = onBuyBackground(bgName, cost);
+                  if (!res.ok) {
+                    setXpError(res.error ?? 'Erro ao adicionar antecedente.');
+                    return;
+                  }
+                  setXpError(null);
+                  setBgName('');
+                  setBgCost(String(DEFAULT_BACKGROUND_XP_COST));
+                  setBgOpen(false);
+                }}
+                className="cyber-roll-btn min-h-[40px] px-4 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
+              >
+                ADICIONAR ({Number.parseInt(bgCost, 10) || DEFAULT_BACKGROUND_XP_COST} XP)
+              </button>
+            </div>
+          </div>
+        )}
+      </section>
     </div>
   );
 };

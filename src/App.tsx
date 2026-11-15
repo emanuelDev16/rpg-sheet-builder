@@ -100,6 +100,8 @@ import {
 import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
+  buyBackgroundWithXp,
+  buySpecialtyWithXp,
   getAvailableXp,
   undoLastUpgrade,
   upgradeTraitWithXp,
@@ -1171,6 +1173,46 @@ function HydratedAppWorkspace({
     if (flashText) triggerFlash(flashText);
   };
 
+  const handleBuySpecialty = (
+    skillFieldId: string,
+    focus: string,
+  ): { ok: boolean; error?: string } => {
+    const entryId = `xp_spec_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    let result: { ok: boolean; error?: string } = { ok: true };
+    setSheet((prev) => {
+      const res = buySpecialtyWithXp(prev, skillFieldId, focus, nowTimeString(), entryId, language);
+      if (!res.ok) {
+        result = { ok: false, error: res.error };
+        return prev;
+      }
+      return res.sheet;
+    });
+    if (result.ok) {
+      triggerFlash(`// XP: SPEC (${focus}) (-3 XP)`);
+    }
+    return result;
+  };
+
+  const handleBuyBackground = (
+    label: string,
+    customCost?: number,
+  ): { ok: boolean; error?: string } => {
+    const entryId = `xp_bg_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    let result: { ok: boolean; error?: string } = { ok: true };
+    setSheet((prev) => {
+      const res = buyBackgroundWithXp(prev, label, nowTimeString(), entryId, customCost, language);
+      if (!res.ok) {
+        result = { ok: false, error: res.error };
+        return prev;
+      }
+      return res.sheet;
+    });
+    if (result.ok) {
+      triggerFlash(`// XP: +${label.toUpperCase()} (-${customCost ?? 3} XP)`);
+    }
+    return result;
+  };
+
   const handleUndoLastUpgrade = () => {
     let flashText: string | null = null;
     setSheet((prev) => {
@@ -1346,6 +1388,8 @@ function HydratedAppWorkspace({
                 t={t.xp}
                 onAwardXp={handleAwardXp}
                 onUpgradeTrait={handleUpgradeTrait}
+                onBuySpecialty={handleBuySpecialty}
+                onBuyBackground={handleBuyBackground}
                 onUndoLastUpgrade={handleUndoLastUpgrade}
               />
             ) : (
