@@ -143,6 +143,8 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     private var indexingJob: Job? = null
     private var localSearchJob: Job? = null
+    private var lastScannedPdfUri: Uri? = null
+    private var lastScannedPdfSystemId: SystemId? = null
 
     val offlineSheetCount: StateFlow<Int> = repo.observeOfflineSheetCount()
         .catch { emit(_workspace.value.sheetsBySystem.size) }
@@ -604,31 +606,79 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     fun importPdfRulebook(uri: Uri, targetSystemId: SystemId = _workspace.value.activeSystemId) {
         indexingJob?.cancel()
         _scannedPdfAlert.value = null
+        lastScannedPdfUri = uri
+        lastScannedPdfSystemId = targetSystemId
         indexingJob = viewModelScope.launch {
-            repo.indexPdfRulebook(uri, targetSystemId).collect { progress ->
-                when (progress) {
-                    is IndexProgress.Extracting,
-                    is IndexProgress.Persisting -> {
-                        _indexProgress.value = progress
+            collectIndexingFlow(repo.indexPdfRulebook(uri, targetSystemId))
+        }
+    }
+
+    fun startOcrIndexing(startPage: Int? = null, endPage: Int? = null) {
+        val uri = lastScannedPdfUri
+        val alert = _scannedPdfAlert.value
+        val targetSystemId = lastScannedPdfSystemId ?: _workspace.value.activeSystemId
+        if (uri == null || alert == null) {
+            _statusMessage.value = "SELECIONE O PDF NOVAMENTE PARA EXECUTAR OCR"
+            return
+        }
+
+        val totalPages = alert.totalPages.coerceAtLeast(1)
+        val rawStart = startPage?.coerceIn(1, totalPages) ?: 1
+        val rawEnd = endPage?.coerceIn(1, totalPages) ?: totalPages
+        if (rawStart > rawEnd) {
+            _statusMessage.value = "PÁGINA INICIAL NÃO PODE SER MAIOR QUE A FINAL"
+            return
+        }
+        val zeroBasedRange = (rawStart - 1)..(rawEnd - 1)
+
+        indexingJob?.cancel()
+        _scannedPdfAlert.value = null
+        indexingJob = viewModelScope.launch {
+            collectIndexingFlow(
+                repo.indexPdfRulebookWithOcr(
+                    uri = uri,
+                    bookTitle = alert.bookTitle,
+                    systemId = targetSystemId,
+                    pageRange = zeroBasedRange
+                )
+            )
+        }
+    }
+
+    fun cancelIndexing() {
+        indexingJob?.cancel()
+        indexingJob = null
+        _indexProgress.value = null
+        _statusMessage.value = "INDEXAÇÃO CANCELADA"
+    }
+
+    private suspend fun collectIndexingFlow(flow: kotlinx.coroutines.flow.Flow<IndexProgress>) {
+        flow.collect { progress ->
+            when (progress) {
+                is IndexProgress.Extracting,
+                is IndexProgress.OcrExtracting,
+                is IndexProgress.Persisting -> {
+                    _indexProgress.value = progress
+                }
+                is IndexProgress.Completed -> {
+                    _indexProgress.value = null
+                    _scannedPdfAlert.value = null
+                    lastScannedPdfUri = null
+                    lastScannedPdfSystemId = null
+                    _statusMessage.value =
+                        "PDF INDEXADO: ${progress.book.title} (${progress.indexedPagesCount} PÁGS)"
+                    if (_rulesQuery.value.trim().length >= 2) {
+                        runLocalFts5Search(_rulesQuery.value, _workspace.value.activeSystemId)
                     }
-                    is IndexProgress.Completed -> {
-                        _indexProgress.value = null
-                        _scannedPdfAlert.value = null
-                        _statusMessage.value =
-                            "PDF INDEXADO: ${progress.book.title} (${progress.indexedPagesCount} PÁGS)"
-                        if (_rulesQuery.value.trim().length >= 2) {
-                            runLocalFts5Search(_rulesQuery.value, _workspace.value.activeSystemId)
-                        }
-                    }
-                    is IndexProgress.ScannedNoOcr -> {
-                        _indexProgress.value = null
-                        _scannedPdfAlert.value = progress
-                        _statusMessage.value = "PDF ESCANEADO (SEM OCR): ${progress.bookTitle}"
-                    }
-                    is IndexProgress.Error -> {
-                        _indexProgress.value = progress
-                        _statusMessage.value = "ERRO PDF: ${progress.message}"
-                    }
+                }
+                is IndexProgress.ScannedNoOcr -> {
+                    _indexProgress.value = null
+                    _scannedPdfAlert.value = progress
+                    _statusMessage.value = "PDF ESCANEADO (SEM OCR): ${progress.bookTitle}"
+                }
+                is IndexProgress.Error -> {
+                    _indexProgress.value = progress
+                    _statusMessage.value = "ERRO PDF: ${progress.message}"
                 }
             }
         }
@@ -636,6 +686,8 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     fun dismissScannedPdfAlert() {
         _scannedPdfAlert.value = null
+        lastScannedPdfUri = null
+        lastScannedPdfSystemId = null
     }
 
     fun dismissIndexError() {
@@ -643,6 +695,8 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
             _indexProgress.value = null
         }
         _scannedPdfAlert.value = null
+        lastScannedPdfUri = null
+        lastScannedPdfSystemId = null
     }
 
     fun deleteIndexedBook(bookId: String) {

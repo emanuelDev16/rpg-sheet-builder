@@ -96,6 +96,14 @@ class WorkspaceRepository(context: Context) {
     fun indexPdfRulebook(uri: Uri, systemId: SystemId): Flow<IndexProgress> =
         pdfRulesIndexer.indexPdf(uri, systemId.name)
 
+    fun indexPdfRulebookWithOcr(
+        uri: Uri,
+        bookTitle: String,
+        systemId: SystemId,
+        pageRange: IntRange? = null
+    ): Flow<IndexProgress> =
+        pdfRulesIndexer.indexPdfWithOcr(uri, bookTitle, systemId.name, pageRange)
+
     suspend fun deleteIndexedBook(bookId: String) = withContext(Dispatchers.IO) {
         pdfRulesDao.deleteBookCascade(bookId)
     }

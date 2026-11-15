@@ -15,6 +15,7 @@ import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.data.Fts5QuerySanitizer
+import com.gridsheet.app.data.OcrPageRangeHelper
 import com.gridsheet.app.data.PdfTextLayerDetector
 import com.gridsheet.app.data.ScannedPdfWithoutOcrException
 import com.gridsheet.app.data.local.FtsRuleHitRow
@@ -25,6 +26,8 @@ import com.gridsheet.app.data.local.RulePageFtsEntity
 import com.gridsheet.app.data.local.RulePagesStorageMode
 import com.gridsheet.app.data.local.SheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
+import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -636,5 +639,67 @@ class CoreEngineTest {
         assertTrue(plainQuery.first.contains("LIKE ? ESCAPE '\\'"))
         assertEquals("%100%", plainQuery.second[1])
         assertEquals("%test%", plainQuery.second[2])
+    }
+
+    @Test
+    fun ocrPipelineSanitizesTextRespectsPageRangeAndAbortsCleanlyOnCancellation() = runBlocking {
+        // 1. Range normalization and bitmap 1600px cap
+        assertEquals(3..5, OcrPageRangeHelper.normalizeRange(totalPages = 10, pageRange = 3..5))
+        assertEquals(0..9, OcrPageRangeHelper.normalizeRange(totalPages = 10, pageRange = -5..99))
+        assertTrue(OcrPageRangeHelper.normalizeRange(totalPages = 10, pageRange = 8..4).isEmpty())
+
+        val (cappedW, cappedH) = OcrPageRangeHelper.computeTargetBitmapSize(pageWidth = 3200, pageHeight = 4000)
+        assertEquals(1600, cappedW)
+        assertEquals(2000, cappedH)
+
+        // 2. Sequential OCR respects pageRange and sanitizes recognized text
+        val visited = mutableListOf<Int>()
+        val progressSteps = mutableListOf<Triple<Int, Int, Int>>()
+        val entities = OcrPageRangeHelper.runSequentialOcr(
+            bookId = "ocr_book_1",
+            systemId = "WOD",
+            totalPages = 10,
+            pageRange = 3..5,
+            recognizePageText = { idx ->
+                visited.add(idx)
+                when (idx) {
+                    3 -> "Frene-\nsi   e\tFome\u00AD   testes\uE001"
+                    4 -> "   "
+                    else -> "Combate tático página ${idx + 1}"
+                }
+            },
+            onPageProcessed = { processed, total, pdfPage ->
+                progressSteps.add(Triple(processed, total, pdfPage))
+            }
+        )
+
+        assertEquals(listOf(3, 4, 5), visited)
+        assertEquals(listOf(Triple(1, 3, 4), Triple(2, 3, 5), Triple(3, 3, 6)), progressSteps)
+        assertEquals(2, entities.size)
+        assertEquals(4, entities[0].pageNumber)
+        assertEquals("Frenesi e Fome testes", entities[0].content)
+        assertEquals(6, entities[1].pageNumber)
+
+        // 3. Cancellation mid-loop aborts immediately and prevents persistence
+        var persistedCalled = false
+        var cancelledCaught = false
+        try {
+            val partial = OcrPageRangeHelper.runSequentialOcr(
+                bookId = "ocr_abort",
+                systemId = "WOD",
+                totalPages = 10,
+                pageRange = 0..9,
+                recognizePageText = { idx ->
+                    if (idx == 2) throw CancellationException("User cancelled OCR")
+                    "Página ${idx + 1}"
+                }
+            )
+            if (partial.isNotEmpty()) persistedCalled = true
+        } catch (_: CancellationException) {
+            cancelledCaught = true
+        }
+
+        assertTrue(cancelledCaught)
+        assertFalse("Persistência não deve ocorrer após cancelamento do OCR", persistedCalled)
     }
 }

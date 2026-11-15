@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
@@ -57,6 +58,7 @@ import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
@@ -96,6 +98,8 @@ fun RollAndRulesBottomSheet(
     onSearchRules: (String, Boolean) -> Unit,
     onPickPdf: () -> Unit,
     onDeleteBook: (String) -> Unit,
+    onStartOcr: (Int?, Int?) -> Unit,
+    onCancelIndexing: () -> Unit,
     onDismissScannedPdfAlert: () -> Unit,
     onDismissIndexError: () -> Unit,
     onDismiss: () -> Unit
@@ -208,6 +212,8 @@ fun RollAndRulesBottomSheet(
                     onSearchRules = onSearchRules,
                     onPickPdf = onPickPdf,
                     onDeleteBook = onDeleteBook,
+                    onStartOcr = onStartOcr,
+                    onCancelIndexing = onCancelIndexing,
                     onDismissScannedPdfAlert = onDismissScannedPdfAlert,
                     onDismissIndexError = onDismissIndexError,
                     onOpenExternalUri = { uri ->
@@ -360,11 +366,15 @@ private fun RulesModeContent(
     onSearchRules: (String, Boolean) -> Unit,
     onPickPdf: () -> Unit,
     onDeleteBook: (String) -> Unit,
+    onStartOcr: (Int?, Int?) -> Unit,
+    onCancelIndexing: () -> Unit,
     onDismissScannedPdfAlert: () -> Unit,
     onDismissIndexError: () -> Unit,
     onOpenExternalUri: (String) -> Unit
 ) {
-    val isIndexing = indexProgress is IndexProgress.Extracting || indexProgress is IndexProgress.Persisting
+    val isIndexing = indexProgress is IndexProgress.Extracting ||
+        indexProgress is IndexProgress.OcrExtracting ||
+        indexProgress is IndexProgress.Persisting
     val suggestions = remember(systemId) {
         when (systemId) {
             SystemId.WOD -> listOf("Frenzy", "Hunger", "Superficial", "Rouse")
@@ -391,6 +401,8 @@ private fun RulesModeContent(
             onToggleExpand = onToggleLibrary,
             onPickPdf = onPickPdf,
             onDeleteBook = onDeleteBook,
+            onStartOcr = onStartOcr,
+            onCancelIndexing = onCancelIndexing,
             onDismissScannedPdfAlert = onDismissScannedPdfAlert,
             onDismissError = onDismissIndexError
         )
@@ -627,6 +639,8 @@ private fun PdfLibraryCard(
     onToggleExpand: () -> Unit,
     onPickPdf: () -> Unit,
     onDeleteBook: (String) -> Unit,
+    onStartOcr: (Int?, Int?) -> Unit,
+    onCancelIndexing: () -> Unit,
     onDismissScannedPdfAlert: () -> Unit,
     onDismissError: () -> Unit
 ) {
@@ -684,6 +698,9 @@ private fun PdfLibraryCard(
             }
 
             if (scannedPdfAlert != null) {
+                var startPageText by remember(scannedPdfAlert.bookTitle) { mutableStateOf("") }
+                var endPageText by remember(scannedPdfAlert.bookTitle) { mutableStateOf("") }
+
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(CyberDimens.ControlRadius),
@@ -718,18 +735,27 @@ private fun PdfLibraryCard(
                                     color = CyberColors.AccentDanger
                                 )
                             }
-                            Text(
-                                text = "FECHAR",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                fontWeight = FontWeight.Black,
-                                color = CyberColors.InkPrimary,
+                            Surface(
                                 modifier = Modifier
-                                    .border(1.dp, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.SmallRadius))
-                                    .background(CyberColors.BgCard, RoundedCornerShape(CyberDimens.SmallRadius))
-                                    .clickable(onClick = onDismissScannedPdfAlert)
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                            )
+                                    .heightIn(min = 48.dp)
+                                    .clickable(onClick = onDismissScannedPdfAlert),
+                                shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                                color = CyberColors.BgCard,
+                                border = BorderStroke(1.dp, CyberColors.BorderInk)
+                            ) {
+                                Box(
+                                    contentAlignment = Alignment.Center,
+                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "FECHAR",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = CyberColors.InkPrimary
+                                    )
+                                }
+                            }
                         }
                         Text(
                             text = "O arquivo \"${scannedPdfAlert.bookTitle}\" contém apenas imagens nas primeiras ${scannedPdfAlert.sampledPages} páginas (de ${scannedPdfAlert.totalPages}).",
@@ -738,12 +764,153 @@ private fun PdfLibraryCard(
                             fontWeight = FontWeight.SemiBold,
                             color = CyberColors.InkPrimary
                         )
-                        Text(
-                            text = "Aplique OCR antes de importar novamente (ex.: OCRmyPDF, PDF24 ou Adobe Acrobat).",
-                            fontSize = 14.sp,
-                            lineHeight = 19.sp,
-                            color = CyberColors.InkSecondary
-                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "PÁG. INICIAL",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.InkPrimary
+                                )
+                                BasicTextField(
+                                    value = startPageText,
+                                    onValueChange = { next ->
+                                        startPageText = next.filter { it.isDigit() }
+                                    },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Next
+                                    ),
+                                    textStyle = TextStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = CyberColors.InkPrimary
+                                    ),
+                                    decorationBox = { inner ->
+                                        Box(
+                                            contentAlignment = Alignment.CenterStart,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            if (startPageText.isEmpty()) {
+                                                Text(
+                                                    text = "1",
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 14.sp,
+                                                    color = CyberColors.InkMuted
+                                                )
+                                            }
+                                            inner()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .background(
+                                            CyberColors.BgInput,
+                                            RoundedCornerShape(CyberDimens.ControlRadius)
+                                        )
+                                        .border(
+                                            CyberDimens.BorderWidth,
+                                            CyberColors.BorderInk,
+                                            RoundedCornerShape(CyberDimens.ControlRadius)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 12.dp)
+                                )
+                            }
+
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "PÁG. FINAL",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.InkPrimary
+                                )
+                                BasicTextField(
+                                    value = endPageText,
+                                    onValueChange = { next ->
+                                        endPageText = next.filter { it.isDigit() }
+                                    },
+                                    singleLine = true,
+                                    keyboardOptions = KeyboardOptions(
+                                        keyboardType = KeyboardType.Number,
+                                        imeAction = ImeAction.Done
+                                    ),
+                                    textStyle = TextStyle(
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 14.sp,
+                                        color = CyberColors.InkPrimary
+                                    ),
+                                    decorationBox = { inner ->
+                                        Box(
+                                            contentAlignment = Alignment.CenterStart,
+                                            modifier = Modifier.fillMaxWidth()
+                                        ) {
+                                            if (endPageText.isEmpty()) {
+                                                Text(
+                                                    text = "${scannedPdfAlert.totalPages}",
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 14.sp,
+                                                    color = CyberColors.InkMuted
+                                                )
+                                            }
+                                            inner()
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .heightIn(min = 48.dp)
+                                        .background(
+                                            CyberColors.BgInput,
+                                            RoundedCornerShape(CyberDimens.ControlRadius)
+                                        )
+                                        .border(
+                                            CyberDimens.BorderWidth,
+                                            CyberColors.BorderInk,
+                                            RoundedCornerShape(CyberDimens.ControlRadius)
+                                        )
+                                        .padding(horizontal = 10.dp, vertical = 12.dp)
+                                )
+                            }
+                        }
+
+                        Button(
+                            onClick = {
+                                val start = startPageText.toIntOrNull()
+                                val end = endPageText.toIntOrNull()
+                                onStartOcr(start, end)
+                            },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .heightIn(min = 48.dp),
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CyberColors.AccentWine,
+                                contentColor = CyberColors.InkInverse
+                            ),
+                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                        ) {
+                            Text(
+                                text = "CONVERTER COM OCR (OFFLINE / LENTO)",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
                     }
                 }
             }
@@ -803,6 +970,93 @@ private fun PdfLibraryCard(
                                 color = CyberColors.AccentWine,
                                 trackColor = CyberColors.AccentWineSoft
                             )
+                        }
+                    }
+                }
+
+                is IndexProgress.OcrExtracting -> {
+                    val pct = if (indexProgress.totalPages > 0) {
+                        ((indexProgress.currentPage.toFloat() / indexProgress.totalPages) * 100f)
+                            .toInt()
+                            .coerceIn(0, 100)
+                    } else 0
+                    val fraction = if (indexProgress.totalPages > 0) {
+                        (indexProgress.currentPage.toFloat() / indexProgress.totalPages).coerceIn(0f, 1f)
+                    } else 0f
+
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                        color = CyberColors.BgCard,
+                        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(10.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = indexProgress.bookTitle,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.AccentWine,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Text(
+                                    text = if (indexProgress.totalPages > 0) {
+                                        "OCR PÁG. ${indexProgress.currentPage} / ${indexProgress.totalPages} ($pct%)"
+                                    } else {
+                                        "OCR PÁG. 0 / ..."
+                                    },
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = CyberColors.InkPrimary
+                                )
+                            }
+                            LinearProgressIndicator(
+                                progress = { fraction },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(6.dp),
+                                color = CyberColors.AccentWine,
+                                trackColor = CyberColors.AccentWineSoft
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "OCR offline via ML Kit (pág. PDF ${indexProgress.currentPdfPage})",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    color = CyberColors.InkSecondary,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                OutlinedButton(
+                                    onClick = onCancelIndexing,
+                                    modifier = Modifier.heightIn(min = 48.dp),
+                                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
+                                ) {
+                                    Text(
+                                        text = "CANCELAR",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 11.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = CyberColors.AccentDanger
+                                    )
+                                }
+                            }
                         }
                     }
                 }
