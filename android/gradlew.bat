@@ -45,38 +45,101 @@ set JAVA_EXE=java.exe
 %JAVA_EXE% -version >NUL 2>&1
 if %ERRORLEVEL% equ 0 goto execute
 
+@rem Recover JAVA_HOME from Windows Registry when running in a shell with stale environment variables
+call :tryRegistryJavaHome "HKCU\Environment"
+if defined JAVA_HOME goto findJavaFromJavaHome
+call :tryRegistryJavaHome "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+if defined JAVA_HOME goto findJavaFromJavaHome
+
+@rem Fallback: probe common Windows JDK / JBR locations (preferring JDK 17 / 21)
+for /d %%d in (
+    "%ProgramFiles%\Eclipse Adoptium\jdk-17*"
+    "%ProgramFiles%\Eclipse Adoptium\jdk-21*"
+    "%ProgramFiles%\Eclipse Adoptium\jdk-*"
+    "%ProgramFiles%\Java\jdk-17*"
+    "%ProgramFiles%\Java\jdk-21*"
+    "%ProgramFiles%\Java\jdk-*"
+    "%ProgramFiles%\Microsoft\jdk-17*"
+    "%ProgramFiles%\Microsoft\jdk-21*"
+    "%ProgramFiles%\Microsoft\jdk-*"
+    "%ProgramFiles%\Android\Android Studio\jbr*"
+    "%ProgramFiles%\JetBrains\IntelliJ IDEA*\jbr*"
+    "%USERPROFILE%\.jdks\*"
+) do (
+    if exist "%%~fd\bin\java.exe" (
+        set "JAVA_HOME=%%~fd"
+        goto findJavaFromJavaHome
+    )
+)
+
 echo. 1>&2
 echo ERROR: JAVA_HOME is not set and no 'java' command could be found in your PATH. 1>&2
 echo. 1>&2
 echo Please set the JAVA_HOME variable in your environment to match the 1>&2
 echo location of your Java installation. 1>&2
 
-"%COMSPEC%" /c exit 1
+goto fail
+
+:tryRegistryJavaHome
+for /f "tokens=1,2,*" %%a in ('reg query "%~1" /v JAVA_HOME 2^>NUL ^| findstr /I "JAVA_HOME"') do (
+    call :checkCandidateJavaHome "%%c"
+)
+exit /b 0
+
+:checkCandidateJavaHome
+if defined JAVA_HOME exit /b 0
+set "CANDIDATE_JAVA_HOME=%~1"
+if not defined CANDIDATE_JAVA_HOME exit /b 0
+set "CANDIDATE_JAVA_HOME=%CANDIDATE_JAVA_HOME:"=%"
+if "%CANDIDATE_JAVA_HOME%"=="" exit /b 0
+if "%CANDIDATE_JAVA_HOME:~-1%"=="\" set "CANDIDATE_JAVA_HOME=%CANDIDATE_JAVA_HOME:~0,-1%"
+if "%CANDIDATE_JAVA_HOME:~-1%"=="/" set "CANDIDATE_JAVA_HOME=%CANDIDATE_JAVA_HOME:~0,-1%"
+if exist "%CANDIDATE_JAVA_HOME%\bin\java.exe" set "JAVA_HOME=%CANDIDATE_JAVA_HOME%"
+set "CANDIDATE_JAVA_HOME="
+exit /b 0
 
 :findJavaFromJavaHome
-set JAVA_HOME=%JAVA_HOME:"=%
-set JAVA_EXE=%JAVA_HOME%/bin/java.exe
+if not defined JAVA_HOME goto failInvalidJavaHome
+set "JAVA_HOME=%JAVA_HOME:"=%"
+if "%JAVA_HOME%"=="" goto failInvalidJavaHome
+if "%JAVA_HOME:~-1%"=="\" set "JAVA_HOME=%JAVA_HOME:~0,-1%"
+if "%JAVA_HOME:~-1%"=="/" set "JAVA_HOME=%JAVA_HOME:~0,-1%"
+set "JAVA_EXE=%JAVA_HOME%\bin\java.exe"
 
 if exist "%JAVA_EXE%" goto execute
 
+:failInvalidJavaHome
 echo. 1>&2
 echo ERROR: JAVA_HOME is set to an invalid directory: %JAVA_HOME% 1>&2
 echo. 1>&2
 echo Please set the JAVA_HOME variable in your environment to match the 1>&2
 echo location of your Java installation. 1>&2
 
-"%COMSPEC%" /c exit 1
+goto fail
 
 :execute
+@rem Recover ANDROID_HOME from Windows Registry when running in a shell with stale environment variables
+if not defined ANDROID_HOME if not defined ANDROID_SDK_ROOT if not exist "%APP_HOME%\local.properties" (
+    call :tryRegistryAndroidHome "HKCU\Environment"
+    if not defined ANDROID_HOME call :tryRegistryAndroidHome "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+)
 @rem Setup the command line
+"%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %*
+if %ERRORLEVEL% equ 0 goto mainEnd
 
+:fail
+rem Set variable GRADLE_EXIT_CONSOLE if you need the _script_ return code instead of
+rem having the cmd.exe /c exit 1 terminate the caller's interactive shell.
+if %ERRORLEVEL% equ 0 (set "_GRADLE_EXIT_CODE=1") else (set "_GRADLE_EXIT_CODE=%ERRORLEVEL%")
+if not "%GRADLE_EXIT_CONSOLE%"=="" exit %_GRADLE_EXIT_CODE%
+exit /b %_GRADLE_EXIT_CODE%
 
+:mainEnd
+if "%OS%"=="Windows_NT" endlocal
+goto :eof
 
-@rem Execute gradlew
-@rem endlocal doesn't take effect until after the line is parsed and variables are expanded
-@rem which allows us to clear the local environment before executing the java command
-endlocal & "%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %* & call :exitWithErrorLevel
-
-:exitWithErrorLevel
-@rem Use "%COMSPEC%" /c exit to allow operators to work properly in scripts
-"%COMSPEC%" /c exit %ERRORLEVEL%
+:tryRegistryAndroidHome
+for /f "tokens=1,2,*" %%a in ('reg query "%~1" /v ANDROID_HOME 2^>NUL ^| findstr /I "ANDROID_HOME"') do (
+    if exist "%%~c\platforms" set "ANDROID_HOME=%%~c"
+)
+exit /b 0

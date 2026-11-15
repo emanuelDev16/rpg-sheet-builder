@@ -7,6 +7,7 @@ coverage/
 .env*
 !.env.example
 .data/
+local.properties
 
 # Android build & generated artifacts
 android/.gradle/

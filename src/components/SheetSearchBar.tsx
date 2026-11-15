@@ -23,7 +23,7 @@ export const SheetSearchBar: React.FC<SheetSearchBarProps> = ({
     <div
       role="search"
       aria-label={t.ariaInput}
-      className="no-print print:hidden mb-4 flex flex-wrap sm:flex-nowrap items-center gap-2 p-2.5 bg-[var(--bg-card)] border-2 border-[var(--border-ink)] rounded-[var(--radius-card)] shadow-[2px_2px_0_#0B0B0B]"
+      className="no-print print:hidden mb-4 flex flex-wrap sm:flex-nowrap items-center gap-2 p-2.5 bg-[var(--bg-card)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] shadow-[var(--shadow-btn)]"
     >
       <div className="flex items-center gap-2 flex-1 min-w-0">
         <Search className="w-4 h-4 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
@@ -48,7 +48,7 @@ export const SheetSearchBar: React.FC<SheetSearchBarProps> = ({
         <div className="flex items-center gap-2 shrink-0">
           <span
             data-testid="sheet-search-count"
-            className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] tabular-nums uppercase"
+            className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] tabular-nums uppercase"
           >
             {t.matchCount(matchedFieldCount, matchedCardCount)}
           </span>

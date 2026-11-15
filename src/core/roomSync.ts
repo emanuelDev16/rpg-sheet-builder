@@ -15,6 +15,7 @@ import {
   touchSheetMetadata,
   type WorkspaceState,
 } from './sheetModel.ts';
+import { type AppLanguage, createTranslator } from './i18n.ts';
 
 export const ROOM_SYNC_META_KEY = 'grid_sheet_room_sync_meta_v1';
 
@@ -1378,16 +1379,18 @@ function formatSyncTimeHHMMSS(timestampMillis: number | null): string | null {
 export function formatRoomSyncIndicator(
   state: RoomSyncIndicatorState,
   nowMillis: number,
+  lang: AppLanguage = 'pt-BR',
 ): FormattedRoomSyncIndicator {
+  const t = createTranslator(lang);
   const remainingSeconds = computeRemainingSyncSeconds(state.nextSyncAtMillis, nowMillis);
   const lastSyncStr = formatSyncTimeHHMMSS(state.lastSyncedAtMillis);
-  const lastSyncSuffix = lastSyncStr ? ` · Última sync: ${lastSyncStr}` : '';
+  const lastSyncSuffix = lastSyncStr ? t('statusBar.roomLastSyncSuffix', { time: lastSyncStr }) : '';
 
   if (state.phase === 'syncing') {
     return {
-      label: 'ROOM SYNC: ...',
-      ariaLabel: 'Sincronizando ficha com o Room Database local',
-      tooltip: `Gravando alterações no Room Database local...${lastSyncSuffix}`,
+      label: t('statusBar.roomSyncingLabel'),
+      ariaLabel: t('statusBar.roomSyncingAria'),
+      tooltip: t('statusBar.roomSyncingTooltip', { suffix: lastSyncSuffix }),
       remainingSeconds: 0,
       isPending: false,
       isSyncing: true,
@@ -1396,12 +1399,16 @@ export function formatRoomSyncIndicator(
   }
 
   if (state.phase === 'conflict') {
-    const serverRev = state.conflict?.serverSheet.revision ?? '?';
-    const localRev = state.conflict?.baseRevision ?? '?';
+    const serverRev = String(state.conflict?.serverSheet.revision ?? '?');
+    const localRev = String(state.conflict?.baseRevision ?? '?');
     return {
-      label: `SYNC CONFLICT (R${localRev}≠R${serverRev})`,
-      ariaLabel: `Conflito de revisão detectado (local R${localRev} vs servidor R${serverRev}).`,
-      tooltip: `Conflito otimista 409: revisão local R${localRev} diverge da revisão do servidor R${serverRev}.${lastSyncSuffix}`,
+      label: t('statusBar.roomConflictLabel', { local: localRev, server: serverRev }),
+      ariaLabel: t('statusBar.roomConflictAria', { local: localRev, server: serverRev }),
+      tooltip: t('statusBar.roomConflictTooltip', {
+        local: localRev,
+        server: serverRev,
+        suffix: lastSyncSuffix,
+      }),
       remainingSeconds: 0,
       isPending: false,
       isSyncing: false,
@@ -1410,11 +1417,16 @@ export function formatRoomSyncIndicator(
   }
 
   if (state.phase === 'error') {
-    const countdown = remainingSeconds > 0 ? `${remainingSeconds}s` : 'agora';
+    const countdown = remainingSeconds > 0 ? `${remainingSeconds}s` : t('statusBar.roomNowWord');
+    const errText = state.lastError ?? t('statusBar.roomNetworkWord');
     return {
-      label: `ROOM RETRY: ${countdown}`,
-      ariaLabel: `Erro ao sincronizar com Room Database. Nova tentativa em ${countdown}. Clique para tentar agora.`,
-      tooltip: `Falha no espelhamento Room (${state.lastError ?? 'rede'}). Nova tentativa em ${countdown}. Clique para sincronizar agora.${lastSyncSuffix}`,
+      label: t('statusBar.roomRetryLabel', { countdown }),
+      ariaLabel: t('statusBar.roomRetryAria', { countdown }),
+      tooltip: t('statusBar.roomRetryTooltip', {
+        error: errText,
+        countdown,
+        suffix: lastSyncSuffix,
+      }),
       remainingSeconds,
       isPending: false,
       isSyncing: false,
@@ -1425,9 +1437,9 @@ export function formatRoomSyncIndicator(
   if (state.phase === 'scheduled') {
     const secs = Math.max(1, remainingSeconds);
     return {
-      label: `ROOM SYNC: ${secs}s`,
-      ariaLabel: `Alterações pendentes — próxima sincronização com Room Database em ${secs}s. Clique para sincronizar agora.`,
-      tooltip: `Alterações locais detectadas — gravando no Room Database em ${secs}s. Clique para sincronizar agora.${lastSyncSuffix}`,
+      label: t('statusBar.roomSyncLabel', { secs }),
+      ariaLabel: t('statusBar.roomScheduledAria', { secs }),
+      tooltip: t('statusBar.roomScheduledTooltip', { secs, suffix: lastSyncSuffix }),
       remainingSeconds: secs,
       isPending: true,
       isSyncing: false,
@@ -1437,9 +1449,9 @@ export function formatRoomSyncIndicator(
 
   const secs = remainingSeconds;
   return {
-    label: `ROOM SYNC: ${secs}s`,
-    ariaLabel: `Room Database sincronizado — próxima verificação em ${secs}s. Clique para sincronizar agora.`,
-    tooltip: `Room Database sincronizado. Próxima verificação automática em ${secs}s (clique para sincronizar agora).${lastSyncSuffix}`,
+    label: t('statusBar.roomSyncLabel', { secs }),
+    ariaLabel: t('statusBar.roomSyncedAria', { secs }),
+    tooltip: t('statusBar.roomSyncedTooltip', { secs, suffix: lastSyncSuffix }),
     remainingSeconds: secs,
     isPending: false,
     isSyncing: false,

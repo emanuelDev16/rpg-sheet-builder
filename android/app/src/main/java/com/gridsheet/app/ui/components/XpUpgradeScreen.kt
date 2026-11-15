@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -17,11 +19,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -37,6 +42,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gridsheet.app.core.CharacterSheetState
+import com.gridsheet.app.core.UpgradableTrait
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.ui.theme.CyberColors
@@ -49,22 +55,24 @@ fun XpUpgradeWorkspace(
     onFilterChange: (XpUpgradeCategory?) -> Unit,
     onAwardXp: (Int, String) -> Unit,
     onUpgradeTrait: (String) -> Unit,
+    onToggleDisciplineClan: (String) -> Unit,
+    onSetCustomMultiplier: (String, Int?) -> Unit,
     onUndoLastUpgrade: () -> Unit
 ) {
     val xp = XpSystem.normalizeXpState(sheet.xp)
     val availableXp = XpSystem.getAvailableXp(xp)
     val allTraits = remember(sheet) { XpSystem.extractAllTraits(sheet) }
-    val possibleAll = remember(allTraits) { allTraits.filter { it.isPossible } }
-    val filteredPossible = remember(possibleAll, filter) {
-        if (filter == null) possibleAll else possibleAll.filter { it.category == filter }
+    val filteredTraits = remember(allTraits, filter) {
+        if (filter == null) allTraits else allTraits.filter { it.category == filter }
     }
-    val cheapestBlocked = remember(sheet) { XpSystem.getCheapestBlockedUpgrade(sheet) }
+    val possibleCount = remember(filteredTraits) { filteredTraits.count { it.isPossible } }
     val isWod = remember(sheet) { XpSystem.isWodSystem(sheet) }
     val rulesSummary = remember(sheet) { XpSystem.getCostRulesSummary(sheet) }
     val hasRecentUpgrade = xp.ledger.any { it.kind == "upgrade" }
 
     var customAmount by remember { mutableStateOf("3") }
     var customReason by remember { mutableStateOf("") }
+    var multiplierTarget by remember { mutableStateOf<UpgradableTrait?>(null) }
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // Card 1: XP Monitor
@@ -101,12 +109,13 @@ fun XpUpgradeWorkspace(
                     if (hasRecentUpgrade) {
                         OutlinedButton(
                             onClick = onUndoLastUpgrade,
+                            modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
                             shape = RoundedCornerShape(CyberDimens.ControlRadius),
                             border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Text(
-                                text = "DESFAZER",
+                                text = "DESFAZER (UNDO)",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
@@ -275,10 +284,10 @@ fun XpUpgradeWorkspace(
                 ) {
                     Column {
                         Text("//TRAIT_UPGRADES", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = CyberColors.AccentWine)
-                        Text("POSSIBLE UPGRADES", fontWeight = FontWeight.Black, fontSize = 15.sp, color = CyberColors.InkPrimary)
+                        Text("XP EVOLUTION CATALOG", fontWeight = FontWeight.Black, fontSize = 15.sp, color = CyberColors.InkPrimary)
                     }
                     Text(
-                        text = "${filteredPossible.size} DISPONÍVEIS",
+                        text = "$possibleCount / ${filteredTraits.size} COMPRÁVEIS",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
@@ -302,17 +311,19 @@ fun XpUpgradeWorkspace(
                         modifier = Modifier.horizontalScroll(rememberScrollState()),
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
-                        val attrCount = possibleAll.count { it.category == XpUpgradeCategory.ATTRIBUTE }
-                        val skillCount = possibleAll.count { it.category == XpUpgradeCategory.SKILL }
-                        val discCount = possibleAll.count { it.category == XpUpgradeCategory.DISCIPLINE }
+                        val attrCount = allTraits.count { it.category == XpUpgradeCategory.ATTRIBUTE }
+                        val skillCount = allTraits.count { it.category == XpUpgradeCategory.SKILL }
+                        val discCount = allTraits.count { it.category == XpUpgradeCategory.DISCIPLINE }
+                        val virtueCount = allTraits.count { it.category == XpUpgradeCategory.VIRTUE }
 
-                        FilterPill("TODOS (${possibleAll.size})", filter == null) { onFilterChange(null) }
-                        FilterPill("${if (isWod) "ATTRIBUTES" else "ABILITIES"} ($attrCount)", filter == XpUpgradeCategory.ATTRIBUTE) { onFilterChange(XpUpgradeCategory.ATTRIBUTE) }
-                        FilterPill("SKILLS ($skillCount)", filter == XpUpgradeCategory.SKILL) { onFilterChange(XpUpgradeCategory.SKILL) }
-                        FilterPill("${if (isWod) "DISCIPLINES" else "POWERS"} ($discCount)", filter == XpUpgradeCategory.DISCIPLINE) { onFilterChange(XpUpgradeCategory.DISCIPLINE) }
+                        FilterPill("TODOS (${allTraits.size})", filter == null) { onFilterChange(null) }
+                        FilterPill("${if (isWod) "ATRIBUTOS" else "ABILITIES"} ($attrCount)", filter == XpUpgradeCategory.ATTRIBUTE) { onFilterChange(XpUpgradeCategory.ATTRIBUTE) }
+                        FilterPill("${if (isWod) "HABILIDADES" else "SKILLS"} ($skillCount)", filter == XpUpgradeCategory.SKILL) { onFilterChange(XpUpgradeCategory.SKILL) }
+                        FilterPill("${if (isWod) "DISCIPLINAS" else "PODERES"} ($discCount)", filter == XpUpgradeCategory.DISCIPLINE) { onFilterChange(XpUpgradeCategory.DISCIPLINE) }
+                        FilterPill("VIRTUDES / WP ($virtueCount)", filter == XpUpgradeCategory.VIRTUE) { onFilterChange(XpUpgradeCategory.VIRTUE) }
                     }
 
-                    if (filteredPossible.isEmpty()) {
+                    if (filteredTraits.isEmpty()) {
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -320,53 +331,143 @@ fun XpUpgradeWorkspace(
                                 .border(CyberDimens.BorderWidth, CyberColors.BorderSubtle, RoundedCornerShape(CyberDimens.ControlRadius))
                                 .padding(14.dp)
                         ) {
-                            val hint = if (cheapestBlocked != null) {
-                                "Nenhum upgrade possível com $availableXp XP. Menor próximo: ${cheapestBlocked.label} (${cheapestBlocked.currentValue}→${cheapestBlocked.nextValue}) custa ${cheapestBlocked.cost} XP."
-                            } else {
-                                "Todos os atributos e perícias da ficha estão no limite máximo."
-                            }
-                            Text(hint, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = CyberColors.InkSecondary)
+                            Text(
+                                text = "Nenhum campo elegível encontrado nesta categoria na ficha atual.",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                color = CyberColors.InkSecondary
+                            )
                         }
                     } else {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                            filteredPossible.forEach { trait ->
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-                                        .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
-                                        .padding(horizontal = 12.dp, vertical = 10.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
-                                        Text(
-                                            text = "${trait.category.name} · ${trait.formulaLabel}",
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 10.sp,
-                                            color = CyberColors.AccentWine,
-                                            fontWeight = FontWeight.Bold
-                                        )
-                                        Text(
-                                            text = "${trait.label}  ${trait.currentValue} → ${trait.nextValue}",
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 13.sp,
-                                            fontWeight = FontWeight.Black,
-                                            color = CyberColors.InkPrimary
-                                        )
-                                    }
-                                    Button(
-                                        onClick = { onUpgradeTrait(trait.fieldId) },
-                                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                        colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack),
-                                        contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                        val grouped = filteredTraits.groupBy { it.category }
+                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                            grouped.forEach { (category, items) ->
+                                val catTitle = when (category) {
+                                    XpUpgradeCategory.ATTRIBUTE -> if (isWod) "ATRIBUTOS" else "ABILITIES"
+                                    XpUpgradeCategory.SKILL -> if (isWod) "HABILIDADES" else "SKILLS"
+                                    XpUpgradeCategory.DISCIPLINE -> if (isWod) "DISCIPLINAS / PODERES" else "POWERS"
+                                    XpUpgradeCategory.VIRTUE -> "VIRTUDES / HUMANIDADE / FORÇA DE VONTADE"
+                                }
+                                Text(
+                                    text = "// $catTitle (${items.size})",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = CyberColors.AccentWine
+                                )
+                                items.forEach { trait ->
+                                    Column(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+                                            .border(
+                                                CyberDimens.BorderWidth,
+                                                if (trait.isPossible) CyberColors.BorderInk else CyberColors.BorderSubtle,
+                                                RoundedCornerShape(CyberDimens.ControlRadius)
+                                            )
+                                            .padding(horizontal = 12.dp, vertical = 10.dp),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
-                                        Text(
-                                            text = "UPGRADE · ${trait.cost} XP ↗",
-                                            fontFamily = FontFamily.Monospace,
-                                            fontSize = 11.sp,
-                                            fontWeight = FontWeight.Bold
-                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
+                                                Text(
+                                                    text = "${trait.category.name} · ${trait.formulaLabel}",
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 10.sp,
+                                                    color = CyberColors.AccentWine,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                                Text(
+                                                    text = if (trait.isMaxed) {
+                                                        "${trait.label}  ${trait.currentValue} (MAX)"
+                                                    } else {
+                                                        "${trait.label}  ${trait.currentValue} → ${trait.nextValue}"
+                                                    },
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 13.sp,
+                                                    fontWeight = FontWeight.Black,
+                                                    color = CyberColors.InkPrimary
+                                                )
+                                            }
+                                            Button(
+                                                onClick = { onUpgradeTrait(trait.fieldId) },
+                                                enabled = trait.isPossible,
+                                                modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                                colors = ButtonDefaults.buttonColors(
+                                                    containerColor = CyberColors.AccentBlack,
+                                                    disabledContainerColor = CyberColors.BgInput,
+                                                    disabledContentColor = CyberColors.InkMuted
+                                                ),
+                                                contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
+                                            ) {
+                                                val btnText = when {
+                                                    trait.isMaxed -> "MAX (${trait.maxCap})"
+                                                    !trait.isAffordable -> "FALTA XP · ${trait.cost}"
+                                                    else -> "UPGRADE · ${trait.cost} XP ↗"
+                                                }
+                                                Text(
+                                                    text = btnText,
+                                                    fontFamily = FontFamily.Monospace,
+                                                    fontSize = 11.sp,
+                                                    fontWeight = FontWeight.Bold
+                                                )
+                                            }
+                                        }
+
+                                        Row(
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            if (trait.category == XpUpgradeCategory.DISCIPLINE && isWod) {
+                                                Surface(
+                                                    modifier = Modifier
+                                                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                                        .clickable { onToggleDisciplineClan(trait.fieldId) },
+                                                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                                                    color = if (trait.isOutOfClan) CyberColors.AccentWineSoft else CyberColors.BgCard,
+                                                    border = BorderStroke(1.dp, if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.BorderInk)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Text(
+                                                            text = if (trait.isOutOfClan) "FORA DE CLÃ (×7)" else "CLÃ (×5)",
+                                                            fontFamily = FontFamily.Monospace,
+                                                            fontSize = 10.sp,
+                                                            fontWeight = FontWeight.Bold,
+                                                            color = if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.InkPrimary
+                                                        )
+                                                    }
+                                                }
+                                            }
+                                            Surface(
+                                                modifier = Modifier
+                                                    .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                                    .clickable { multiplierTarget = trait },
+                                                shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                                                color = if (trait.customMultiplier != null) CyberColors.AccentCreamBadge else CyberColors.BgCard,
+                                                border = BorderStroke(1.dp, CyberColors.BorderInk)
+                                            ) {
+                                                Box(
+                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                    contentAlignment = Alignment.Center
+                                                ) {
+                                                    Text(
+                                                        text = if (trait.customMultiplier != null) "MULT: ×${trait.customMultiplier}" else "MULT: AUTO",
+                                                        fontFamily = FontFamily.Monospace,
+                                                        fontSize = 10.sp,
+                                                        fontWeight = FontWeight.Bold,
+                                                        color = CyberColors.InkPrimary
+                                                    )
+                                                }
+                                            }
+                                        }
                                     }
                                 }
                             }
@@ -375,6 +476,67 @@ fun XpUpgradeWorkspace(
                 }
             }
         }
+    }
+
+    multiplierTarget?.let { target ->
+        var multInput by remember(target.fieldId) {
+            mutableStateOf(target.customMultiplier?.toString().orEmpty())
+        }
+        AlertDialog(
+            onDismissRequest = { multiplierTarget = null },
+            containerColor = CyberColors.BgCard,
+            title = {
+                Text(
+                    text = "MULTIPLICADOR MANUAL · ${target.label}",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 13.sp,
+                    color = CyberColors.InkPrimary
+                )
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "Defina um multiplicador manual (custo = nível × multiplicador) para sistemas agnósticos ou regras da casa. Deixe vazio para usar a regra padrão.",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        color = CyberColors.InkSecondary
+                    )
+                    OutlinedTextField(
+                        value = multInput,
+                        onValueChange = { multInput = it.filter { ch -> ch.isDigit() } },
+                        label = { Text("MULTIPLICADOR (ex: 3, 5, 7)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val parsed = multInput.toIntOrNull()
+                        onSetCustomMultiplier(target.fieldId, parsed)
+                        multiplierTarget = null
+                    },
+                    colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                ) {
+                    Text("APLICAR", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
+                }
+            },
+            dismissButton = {
+                Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                    TextButton(onClick = {
+                        onSetCustomMultiplier(target.fieldId, null)
+                        multiplierTarget = null
+                    }) {
+                        Text("PADRÃO", fontFamily = FontFamily.Monospace, color = CyberColors.AccentWine)
+                    }
+                    TextButton(onClick = { multiplierTarget = null }) {
+                        Text("FECHAR", fontFamily = FontFamily.Monospace, color = CyberColors.InkMuted)
+                    }
+                }
+            }
+        )
     }
 }
 
@@ -394,18 +556,24 @@ private fun XpMetricBox(label: String, value: String, color: androidx.compose.ui
 @Composable
 private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
     Surface(
-        modifier = Modifier.clickable(onClick = onClick),
+        modifier = Modifier
+            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+            .clickable(onClick = onClick),
         shape = RoundedCornerShape(CyberDimens.ControlRadius),
         color = if (selected) CyberColors.AccentBlack else CyberColors.BgCard,
         border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
     ) {
-        Text(
-            text = label,
-            fontFamily = FontFamily.Monospace,
-            fontSize = 10.sp,
-            fontWeight = FontWeight.Bold,
-            color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary,
-            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp)
-        )
+        Box(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary
+            )
+        }
     }
 }

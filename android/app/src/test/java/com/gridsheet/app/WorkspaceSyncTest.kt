@@ -183,11 +183,10 @@ class WorkspaceSyncTest {
         assertFalse(res201.isDirty)
 
         // 2. Local edit marks isDirty = true while keeping baseRevision = 1
-        val locallyEditedSheet = SheetMutators.updateFieldValue(
-            initialSheet.copy(characterName = "LOCAL ANDROID EDIT"),
+        val locallyEditedSheet = SheetMutators.updateNumberField(
+            initialSheet.copy(characterName = "LOCAL ANDROID EDIT", deviceId = "android-device-uuid-1"),
             "f_strength",
-            com.gridsheet.app.core.FieldValue.NumberValue(4.0),
-            deviceId = "android-device-uuid-1"
+            4.0
         )
         assertEquals(1, locallyEditedSheet.revision)
         val dirtyEntity = WorkspaceSyncEngine.markLocalEdit(

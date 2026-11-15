@@ -1,8 +1,34 @@
 package com.gridsheet.app.core
 
+import android.content.Context
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import java.time.Instant
+import java.util.UUID
+import kotlin.math.max
+import kotlin.math.min
+
+@Serializable
+private data class PresetBundleV2(
+    val version: String = "2.0",
+    val presets: Map<String, JsonElement> = emptyMap()
+)
 
 object Presets {
+    val presetJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
+
+    @Volatile
+    private var cachedAssetPresets: Map<SystemId, CharacterSheetState> = emptyMap()
     val SYSTEM_OPTIONS = listOf(
         SystemOption(
             id = SystemId.WOD,
@@ -112,9 +138,9 @@ object Presets {
                     SheetField(id = "f_firearms", key = "firearms", label = "FIREARMS", kind = FieldKind.NUMBER, numValue = 3.0),
                     SheetField(id = "f_stealth", key = "stealth", label = "STEALTH", kind = FieldKind.NUMBER, numValue = 3.0),
                     SheetField(id = "f_subterfuge", key = "subterfuge", label = "SUBTERFUGE", kind = FieldKind.NUMBER, numValue = 4.0),
-                    SheetField(id = "f_roll_brawl", key = "roll_brawl", label = "MELEE / BRAWL", kind = FieldKind.ROLL, rollLabel = "ROLL BRAWL", rollExpr = "pool(strength + brawl + wp_boost, 6)"),
-                    SheetField(id = "f_roll_firearms", key = "roll_firearms", label = "RANGED ATTACK", kind = FieldKind.ROLL, rollLabel = "ROLL FIREARMS", rollExpr = "pool(dexterity + firearms + wp_boost, 6)"),
-                    SheetField(id = "f_roll_subterfuge", key = "roll_subterfuge", label = "SOCIAL MANIPULATION", kind = FieldKind.ROLL, rollLabel = "ROLL SUBTERFUGE", rollExpr = "pool(manipulation + subterfuge + wp_boost, 6)")
+                    SheetField(id = "f_roll_brawl", key = "roll_brawl", label = "MELEE / BRAWL", kind = FieldKind.ROLL, rollLabel = "ROLL BRAWL", rollExpr = "pool(strength + brawl + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false),
+                    SheetField(id = "f_roll_firearms", key = "roll_firearms", label = "RANGED ATTACK", kind = FieldKind.ROLL, rollLabel = "ROLL FIREARMS", rollExpr = "pool(dexterity + firearms + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false),
+                    SheetField(id = "f_roll_subterfuge", key = "roll_subterfuge", label = "SOCIAL MANIPULATION", kind = FieldKind.ROLL, rollLabel = "ROLL SUBTERFUGE", rollExpr = "pool(manipulation + subterfuge + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false)
                 )
             ),
             SheetCard(
@@ -152,8 +178,8 @@ object Presets {
                     SheetField(id = "f_presence", key = "presence", label = "PRESENCE", kind = FieldKind.NUMBER, numValue = 2.0),
                     SheetField(id = "f_occult", key = "occult", label = "OCCULT", kind = FieldKind.NUMBER, numValue = 3.0),
                     SheetField(id = "f_dominate_pool", key = "dominate_pool", label = "DOMINATE_POOL", kind = FieldKind.CALCULATED, formula = "manipulation + dominate", showPlus = false),
-                    SheetField(id = "f_roll_dominate", key = "roll_dominate", label = "MESMERIZE / COMMAND", kind = FieldKind.ROLL, rollLabel = "ROLL DOMINATE", rollExpr = "pool(manipulation + dominate + wp_boost, 6)"),
-                    SheetField(id = "f_roll_occult", key = "roll_occult", label = "ARCANE LORE CHECK", kind = FieldKind.ROLL, rollLabel = "ROLL OCCULT", rollExpr = "pool(wits + occult + wp_boost, 7)")
+                    SheetField(id = "f_roll_dominate", key = "roll_dominate", label = "MESMERIZE / COMMAND", kind = FieldKind.ROLL, rollLabel = "ROLL DOMINATE", rollExpr = "pool(manipulation + dominate + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false),
+                    SheetField(id = "f_roll_occult", key = "roll_occult", label = "ARCANE LORE CHECK", kind = FieldKind.ROLL, rollLabel = "ROLL OCCULT", rollExpr = "pool(wits + occult + wp_boost, 7)", rollDifficulty = 7, rollSpecialty = false)
                 )
             ),
             SheetCard(
@@ -655,11 +681,281 @@ object Presets {
         return if (changed) withMeta.copy(cards = updatedCards) else withMeta
     }
 
-    fun createPresetBySystemId(systemId: SystemId, deviceId: String = "local-device"): CharacterSheetState = when (systemId) {
-        SystemId.WOD -> createWorldOfDarknessSheet(deviceId)
-        SystemId.DND5E -> createDnd5ePreset(deviceId)
-        SystemId.CYBERPUNK -> createCyberpunkPreset(deviceId)
-        SystemId.DEFAULT -> createGenericD20Preset(deviceId)
-        SystemId.BLANK -> createBlankSheet(deviceId)
+    private val WOD_BASE_ONE_KEYS = setOf(
+        "strength", "dexterity", "stamina", "charisma", "manipulation", "wits"
+    )
+
+    private val DND_ABILITY_KEYS = setOf(
+        "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma",
+        "forca", "destreza", "constituicao", "inteligencia", "sabedoria", "carisma", "intelecto"
+    )
+
+    fun parseSystemId(raw: String): SystemId =
+        SystemId.entries.firstOrNull { it.name.equals(raw.trim(), ignoreCase = true) }
+            ?: SystemId.BLANK
+
+    fun createPresetBySystemId(systemId: SystemId, deviceId: String = "local-device"): CharacterSheetState {
+        cachedAssetPresets[systemId]?.let { cached ->
+            return cached.copy(deviceId = deviceId)
+        }
+        return when (systemId) {
+            SystemId.WOD -> createWorldOfDarknessSheet(deviceId)
+            SystemId.DND5E -> createDnd5ePreset(deviceId)
+            SystemId.CYBERPUNK -> createCyberpunkPreset(deviceId)
+            SystemId.DEFAULT -> createGenericD20Preset(deviceId)
+            SystemId.BLANK -> createBlankSheet(deviceId)
+        }
+    }
+
+    /**
+     * Instantiates a fresh, zeroed-out fillable character sheet for [systemId] with a unique ID,
+     * preserving card layout/formulas from `presets.v2.json` (when loaded) while resetting sample
+     * values, XP ledger, and roll logs.
+     */
+    fun createFreshSheetForSystem(
+        systemId: String,
+        deviceId: String = "local-device",
+        customName: String? = null,
+        nowIso: String = Instant.now().toString(),
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): CharacterSheetState = createFreshSheetForSystem(
+        systemId = parseSystemId(systemId),
+        deviceId = deviceId,
+        customName = customName,
+        nowIso = nowIso,
+        idGenerator = idGenerator
+    )
+
+    fun createFreshSheetForSystem(
+        systemId: SystemId,
+        deviceId: String = "local-device",
+        customName: String? = null,
+        nowIso: String = Instant.now().toString(),
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): CharacterSheetState {
+        val cleanName = customName?.trim()?.takeIf { it.isNotEmpty() }?.take(120)
+        val sheetDisplayName = cleanName?.uppercase() ?: "NOVO PERSONAGEM"
+        val freshId = idGenerator().ifBlank { UUID.randomUUID().toString() }.take(64)
+        val safeDeviceId = deviceId.ifBlank { "local-device" }
+
+        if (systemId == SystemId.BLANK) {
+            return createPresetBySystemId(SystemId.BLANK, safeDeviceId).copy(
+                id = freshId,
+                systemId = SystemId.BLANK,
+                characterName = sheetDisplayName,
+                revision = 1,
+                updatedAt = nowIso,
+                deviceId = safeDeviceId,
+                cards = emptyList(),
+                rollLogs = emptyList(),
+                xp = XpState()
+            )
+        }
+
+        val preset = createPresetBySystemId(systemId, safeDeviceId)
+        val resetCards = preset.cards.map { card ->
+            card.copy(
+                fields = card.fields.map { field ->
+                    val k = field.key.trim().lowercase()
+                    when (field.kind) {
+                        FieldKind.TEXT -> {
+                            val sample = field.textValue?.trim().orEmpty()
+                            val derivedHint = if (
+                                field.hint.isNullOrBlank() &&
+                                sample.isNotEmpty() &&
+                                sample.length <= 48 &&
+                                k != "notas_campanha"
+                            ) {
+                                sample
+                            } else {
+                                field.hint
+                            }
+                            val nextText = if (
+                                cleanName != null &&
+                                (field.id == "f_nome" || k == "character_name" || k == "nome_personagem")
+                            ) {
+                                cleanName
+                            } else {
+                                ""
+                            }
+                            field.copy(textValue = nextText, hint = derivedHint)
+                        }
+                        FieldKind.NUMBER -> {
+                            val nextNum = when (systemId) {
+                                SystemId.WOD -> when {
+                                    k == "generation" -> 13.0
+                                    k in WOD_BASE_ONE_KEYS -> 1.0
+                                    else -> 0.0
+                                }
+                                SystemId.CYBERPUNK -> when {
+                                    k == "nivel" || k == "level" -> 1.0
+                                    k in DND_ABILITY_KEYS -> 5.0
+                                    else -> 0.0
+                                }
+                                else -> when {
+                                    k == "level" || k == "nivel" -> 1.0
+                                    k in DND_ABILITY_KEYS -> 10.0
+                                    else -> 0.0
+                                }
+                            }
+                            field.copy(numValue = nextNum)
+                        }
+                        FieldKind.RESOURCE -> {
+                            val maxVal = max(1, field.max ?: 10)
+                            when {
+                                field.damageTrack == true -> field.copy(
+                                    max = maxVal,
+                                    numValue = maxVal.toDouble(),
+                                    superficialDamage = 0,
+                                    aggravatedDamage = 0
+                                )
+                                k == "hunger" -> field.copy(max = maxVal, numValue = 1.0)
+                                k == "humanity" -> field.copy(max = maxVal, numValue = min(maxVal, 7).toDouble())
+                                else -> field.copy(max = maxVal, numValue = maxVal.toDouble())
+                            }
+                        }
+                        FieldKind.BOOLEAN -> field.copy(boolValue = false)
+                        FieldKind.REPEATABLE -> field.copy(rows = emptyList())
+                        FieldKind.CALCULATED, FieldKind.ROLL -> field
+                    }
+                }
+            )
+        }
+
+        return preset.copy(
+            id = freshId,
+            systemId = systemId,
+            characterName = sheetDisplayName,
+            revision = 1,
+            updatedAt = nowIso,
+            deviceId = safeDeviceId,
+            cards = resetCards,
+            rollLogs = emptyList(),
+            xp = XpState(totalEarned = 0, spent = 0, ledger = emptyList())
+        )
+    }
+
+    fun getAvailablePresets(
+        context: Context? = null,
+        deviceId: String = "local-device"
+    ): List<PresetSummary> {
+        if (context != null && cachedAssetPresets.isEmpty()) {
+            loadPresetsFromAsset(context, deviceId)
+        }
+        return SYSTEM_OPTIONS.map { opt ->
+            val assetSheet = cachedAssetPresets[opt.id]
+            val resolved = assetSheet ?: createPresetBySystemId(opt.id, deviceId)
+            PresetSummary(
+                systemId = opt.id,
+                systemName = resolved.systemName,
+                systemCode = resolved.systemCode,
+                shortLabel = opt.shortLabel,
+                description = opt.description,
+                cardCount = resolved.cards.size,
+                fieldCount = resolved.cards.sumOf { it.fields.size },
+                fromAsset = assetSheet != null
+            )
+        }
+    }
+
+    fun loadPresetsFromJson(
+        rawJson: String,
+        deviceId: String = "local-device"
+    ): Map<SystemId, CharacterSheetState> = runCatching {
+        val bundle = presetJson.decodeFromString(PresetBundleV2.serializer(), rawJson)
+        val decodedMap = LinkedHashMap<SystemId, CharacterSheetState>()
+        for ((key, rawSheet) in bundle.presets) {
+            val sysId = enumValues<SystemId>().firstOrNull { it.name.equals(key, ignoreCase = true) }
+                ?: continue
+            val normalized = normalizePresetSheetElement(rawSheet)
+            val sheet = runCatching {
+                presetJson.decodeFromJsonElement(CharacterSheetState.serializer(), normalized)
+            }.getOrNull() ?: continue
+            decodedMap[sysId] = migrateLegacyWodSheet(
+                sheet.copy(systemId = sysId, deviceId = deviceId),
+                deviceId
+            )
+        }
+        decodedMap
+    }.getOrDefault(emptyMap())
+
+    fun loadPresetsFromAsset(
+        context: Context,
+        deviceId: String = "local-device"
+    ): Map<SystemId, CharacterSheetState> {
+        val loaded = runCatching {
+            context.assets.open("presets/presets.v2.json").bufferedReader(Charsets.UTF_8).use { reader ->
+                loadPresetsFromJson(reader.readText(), deviceId)
+            }
+        }.getOrDefault(emptyMap())
+        if (loaded.isNotEmpty()) {
+            cachedAssetPresets = loaded
+        }
+        return loaded
+    }
+
+    /**
+     * Loads the startup workspace from bundled `assets/presets/presets.v2.json` when available,
+     * and falls back safely to the in-memory Storyteller preset if asset I/O or JSON fails.
+     */
+    fun createDefaultWorkspace(
+        deviceId: String = "local-device",
+        context: Context? = null
+    ): WorkspaceState {
+        val assetPresets = runCatching {
+            if (context != null) loadPresetsFromAsset(context, deviceId) else cachedAssetPresets
+        }.getOrDefault(emptyMap())
+        val initialWod = assetPresets[SystemId.WOD] ?: createWorldOfDarknessSheet(deviceId)
+        return WorkspaceState(
+            activeSystemId = SystemId.WOD,
+            sheetsBySystem = mapOf(SystemId.WOD to initialWod)
+        )
+    }
+
+    /**
+     * Converts v2 web-style preset fields (`"value": 10|"text"|true` and numeric `row.col2`)
+     * into typed Android `SheetField` properties (`numValue`/`textValue`/`boolValue`).
+     */
+    internal fun normalizePresetSheetElement(element: JsonElement): JsonObject {
+        val sheetObj = element as? JsonObject ?: return JsonObject(emptyMap())
+        val rawCards = sheetObj["cards"] as? JsonArray ?: return sheetObj
+        val normalizedCards = JsonArray(rawCards.map { cardElem ->
+            val cardObj = cardElem as? JsonObject ?: return@map cardElem
+            val rawFields = cardObj["fields"] as? JsonArray ?: return@map cardObj
+            val normalizedFields = JsonArray(rawFields.map { fieldElem ->
+                val fieldObj = fieldElem as? JsonObject ?: return@map fieldElem
+                val mutableField = fieldObj.toMutableMap()
+                val rawValue = mutableField["value"] as? JsonPrimitive
+                if (rawValue != null) {
+                    val boolVal = if (!rawValue.isString) rawValue.booleanOrNull else null
+                    val numVal = if (!rawValue.isString) rawValue.doubleOrNull else null
+                    when {
+                        boolVal != null && "boolValue" !in mutableField ->
+                            mutableField["boolValue"] = JsonPrimitive(boolVal)
+                        numVal != null && "numValue" !in mutableField ->
+                            mutableField["numValue"] = JsonPrimitive(numVal)
+                        rawValue.isString && "textValue" !in mutableField ->
+                            mutableField["textValue"] = JsonPrimitive(rawValue.content)
+                    }
+                }
+                val rawRows = mutableField["rows"] as? JsonArray
+                if (rawRows != null) {
+                    mutableField["rows"] = JsonArray(rawRows.map { rowElem ->
+                        val rowObj = rowElem as? JsonObject ?: return@map rowElem
+                        val col2 = rowObj["col2"] as? JsonPrimitive
+                        if (col2 != null && !col2.isString) {
+                            JsonObject(rowObj.toMutableMap().apply {
+                                put("col2", JsonPrimitive(col2.content))
+                            })
+                        } else {
+                            rowObj
+                        }
+                    })
+                }
+                JsonObject(mutableField)
+            })
+            JsonObject(cardObj.toMutableMap().apply { put("fields", normalizedFields) })
+        })
+        return JsonObject(sheetObj.toMutableMap().apply { put("cards", normalizedCards) })
     }
 }

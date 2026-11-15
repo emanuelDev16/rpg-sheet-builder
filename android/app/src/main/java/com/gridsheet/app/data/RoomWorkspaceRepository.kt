@@ -6,6 +6,7 @@ import com.gridsheet.app.core.CharacterSheetState
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.WorkspaceState
 import com.gridsheet.app.data.local.GridSheetDatabase
+import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.SheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
 import kotlinx.coroutines.Dispatchers
@@ -59,16 +60,60 @@ class RoomWorkspaceRepository(context: Context) {
 
     val json = Json {
         ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
         encodeDefaults = true
         prettyPrint = false
     }
 
     fun observeAllSheets(): Flow<List<SheetEntity>> = sheetDao.observeAllSheets()
 
-    fun observeOfflineSheetCount(): Flow<Int> = sheetDao.observeAllSheets().map { it.size }
+    fun observeAllSavedSheets(): Flow<List<SavedSheetEntity>> = sheetDao.observeAllSavedSheets()
+
+    fun observeOfflineSheetCount(): Flow<Int> = sheetDao.observeAllSavedSheets().map { it.size }
 
     suspend fun getAllSheetEntities(): List<SheetEntity> = withContext(Dispatchers.IO) {
         sheetDao.getAllSheets()
+    }
+
+    suspend fun getAllSavedSheetEntities(): List<SavedSheetEntity> = withContext(Dispatchers.IO) {
+        sheetDao.getAllSavedSheets()
+    }
+
+    suspend fun getSavedSheetEntity(sheetId: String): SavedSheetEntity? = withContext(Dispatchers.IO) {
+        sheetDao.getSavedSheetById(sheetId)
+    }
+
+    suspend fun upsertSavedSheetEntity(entity: SavedSheetEntity) = withContext(Dispatchers.IO) {
+        sheetDao.upsertSavedSheet(entity)
+    }
+
+    suspend fun upsertSavedSheetEntities(entities: List<SavedSheetEntity>) = withContext(Dispatchers.IO) {
+        if (entities.isNotEmpty()) {
+            sheetDao.upsertSavedSheets(entities)
+        }
+    }
+
+    suspend fun deleteSavedSheetEntity(sheetId: String) = withContext(Dispatchers.IO) {
+        sheetDao.deleteSavedSheetById(sheetId)
+    }
+
+    suspend fun deleteWorkspaceSheetBySystem(systemId: SystemId) = withContext(Dispatchers.IO) {
+        sheetDao.deleteSheetBySystem(systemId.name)
+    }
+
+    suspend fun deleteAllWorkspaceSheets(
+        activeSystemId: SystemId,
+        updatedAtMillis: Long
+    ) = withContext(Dispatchers.IO) {
+        sheetDao.deleteAllSheets()
+        sheetDao.upsertMetadata(
+            WorkspaceMetadataEntity(
+                id = 1,
+                activeSystemId = activeSystemId.name,
+                updatedAtMillis = updatedAtMillis
+            )
+        )
     }
 
     suspend fun getMetadata(): WorkspaceMetadataEntity? = withContext(Dispatchers.IO) {

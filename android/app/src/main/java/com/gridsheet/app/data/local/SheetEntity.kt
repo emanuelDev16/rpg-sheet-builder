@@ -26,3 +26,16 @@ data class WorkspaceMetadataEntity(
     val activeSystemId: String,
     val updatedAtMillis: Long
 )
+
+@Entity(tableName = "saved_sheets")
+data class SavedSheetEntity(
+    @PrimaryKey
+    val sheetId: String,
+    val systemId: String,
+    val systemName: String,
+    val characterName: String,
+    val sheetJson: String,
+    val updatedAt: String = "1970-01-01T00:00:00Z",
+    val updatedAtMillis: Long,
+    val revision: Int = 1
+)
