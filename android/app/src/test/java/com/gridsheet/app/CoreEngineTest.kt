@@ -1,32 +1,50 @@
 package com.gridsheet.app
 
+import com.gridsheet.app.core.CharacterSheetState
 import com.gridsheet.app.core.FieldKind
 import com.gridsheet.app.core.FormulaEngine
+import com.gridsheet.app.core.PresetSummary
 import com.gridsheet.app.core.Presets
 import com.gridsheet.app.core.SheetCard
 import com.gridsheet.app.core.SheetEvaluator
 import com.gridsheet.app.core.SheetField
+import com.gridsheet.app.core.SheetMetadata
+import com.gridsheet.app.core.SheetMetadataMapper
 import com.gridsheet.app.core.SheetMutators
 import com.gridsheet.app.core.SheetPayloadValidator
 import com.gridsheet.app.core.SheetTransfer
 import com.gridsheet.app.core.SheetTransferException
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
+import com.gridsheet.app.core.WorkspaceState
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.data.Fts5QuerySanitizer
 import com.gridsheet.app.data.OcrPageRangeHelper
 import com.gridsheet.app.data.PdfTextLayerDetector
 import com.gridsheet.app.data.ScannedPdfWithoutOcrException
+import com.gridsheet.app.data.SheetLibraryOps
+import com.gridsheet.app.data.SheetRepositoryGateway
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.GridSheetDatabase
 import com.gridsheet.app.data.local.IndexedBookEntity
 import com.gridsheet.app.data.local.PdfRuleQueryBuilder
 import com.gridsheet.app.data.local.RulePageFtsEntity
 import com.gridsheet.app.data.local.RulePagesStorageMode
+import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.SheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
+import com.gridsheet.app.ui.ActiveScreen
+import com.gridsheet.app.ui.SheetStateController
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.runBlocking
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
@@ -35,7 +53,9 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotEquals
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -594,6 +614,16 @@ class CoreEngineTest {
             syncState = "SYNCED"
         )
         assertEquals("WOD", sheetRow.systemId)
+        val savedSheetRow = SavedSheetEntity(
+            sheetId = "sheet-1",
+            systemId = "WOD",
+            systemName = "WORLD OF DARKNESS",
+            characterName = "Julian Cross",
+            sheetJson = "{}",
+            updatedAt = "2026-11-15T12:00:00Z",
+            updatedAtMillis = 1L
+        )
+        assertEquals("sheet-1", savedSheetRow.sheetId)
         val metaRow = WorkspaceMetadataEntity(
             id = 1,
             activeSystemId = "WOD",
@@ -613,6 +643,8 @@ class CoreEngineTest {
         assertEquals(2, GridSheetDatabase.MIGRATION_1_2.endVersion)
         assertEquals(2, GridSheetDatabase.MIGRATION_2_3.startVersion)
         assertEquals(3, GridSheetDatabase.MIGRATION_2_3.endVersion)
+        assertEquals(3, GridSheetDatabase.MIGRATION_3_4.startVersion)
+        assertEquals(4, GridSheetDatabase.MIGRATION_3_4.endVersion)
 
         val samplePage = RulePageFtsEntity(
             bookId = "book-1",
@@ -701,5 +733,366 @@ class CoreEngineTest {
 
         assertTrue(cancelledCaught)
         assertFalse("Persistência não deve ocorrer após cancelamento do OCR", persistedCalled)
+    }
+
+    private class FakeSheetRepositoryGateway(
+        initialSheets: List<CharacterSheetState> = emptyList(),
+        initialBooks: List<IndexedBookEntity> = emptyList(),
+        private val failWorkspaceLoad: Boolean = false,
+        private val failRoomObserve: Boolean = false,
+        private val idGenerator: () -> String = { java.util.UUID.randomUUID().toString() }
+    ) : SheetRepositoryGateway {
+        private val deviceId = "test-device"
+        private val storedSheets = linkedMapOf<String, Pair<CharacterSheetState, Long>>()
+        private val savedSheetsFlow = MutableStateFlow<List<SheetMetadata>>(emptyList())
+        private val booksFlow = MutableStateFlow(initialBooks)
+        private var currentWorkspace: WorkspaceState = Presets.createDefaultWorkspace(context = null, deviceId = deviceId)
+
+        init {
+            val baseMillis = 1_700_000_000_000L
+            initialSheets.forEachIndexed { idx, sheet ->
+                val sysId = Presets.detectSystemId(sheet)
+                val tsMillis = runCatching {
+                    java.time.Instant.parse(sheet.updatedAt).toEpochMilli()
+                }.getOrDefault(baseMillis + idx * 1000L)
+                storedSheets[sheet.id] = sheet.copy(systemId = sysId) to tsMillis
+                currentWorkspace = WorkspaceState(
+                    activeSystemId = sysId,
+                    sheetsBySystem = currentWorkspace.sheetsBySystem + (sysId to sheet.copy(systemId = sysId))
+                )
+            }
+            emitMetadataSnapshot()
+        }
+
+        private fun emitMetadataSnapshot() {
+            val list = storedSheets.values.map { (sheet, millis) ->
+                SheetMetadataMapper.fromSheet(sheet, Presets.detectSystemId(sheet), millis)
+            }
+            savedSheetsFlow.value = SheetMetadataMapper.sortDescending(list)
+        }
+
+        override fun getOrCreateDeviceId(): String = deviceId
+
+        override fun loadAvailablePresets(): List<PresetSummary> =
+            Presets.getAvailablePresets(context = null, deviceId = deviceId)
+
+        override fun loadWorkspace(): WorkspaceState {
+            if (failWorkspaceLoad) throw IllegalStateException("Simulated empty/corrupt prefs")
+            return currentWorkspace
+        }
+
+        override fun saveWorkspace(workspace: WorkspaceState, timestampMillis: Long) {
+            currentWorkspace = workspace
+            workspace.sheetsBySystem.values.forEach { sheet ->
+                val sysId = Presets.detectSystemId(sheet)
+                storedSheets[sheet.id] = sheet.copy(systemId = sysId) to timestampMillis
+            }
+            emitMetadataSnapshot()
+        }
+
+        override suspend fun saveToRoom(workspace: WorkspaceState, timestampMillis: Long, isDirty: Boolean) {
+            saveWorkspace(workspace, timestampMillis)
+        }
+
+        override suspend fun pushRemoteMirror(workspace: WorkspaceState, timestampMillis: Long): Boolean = false
+
+        override suspend fun hydrateAndSyncFromRoom(): WorkspaceState {
+            if (failWorkspaceLoad) throw IllegalStateException("Simulated empty Room during init")
+            return currentWorkspace
+        }
+
+        override suspend fun syncWithRemoteMirror(): WorkspaceState? = null
+
+        override fun observeSavedSheets(): Flow<List<SheetMetadata>> =
+            if (failRoomObserve) {
+                flow { throw IllegalStateException("Simulated Room query error") }
+            } else {
+                savedSheetsFlow
+            }
+
+        override suspend fun getSavedSheet(sheetId: String): CharacterSheetState? =
+            storedSheets[sheetId]?.first
+
+        override suspend fun saveSheet(
+            sheet: CharacterSheetState,
+            timestampMillis: Long
+        ): CharacterSheetState {
+            val sysId = Presets.detectSystemId(sheet)
+            val tagged = sheet.copy(systemId = sysId)
+            storedSheets[tagged.id] = tagged to timestampMillis
+            emitMetadataSnapshot()
+            return tagged
+        }
+
+        override suspend fun createFreshSheetFromHome(
+            systemId: String,
+            customName: String?
+        ): Pair<CharacterSheetState, WorkspaceState> {
+            val fresh = Presets.createFreshSheetForSystem(
+                systemId = systemId,
+                deviceId = deviceId,
+                customName = customName,
+                nowIso = "2026-11-15T14:00:00Z",
+                idGenerator = idGenerator
+            )
+            val nowMillis = 1_794_837_600_000L
+            storedSheets[fresh.id] = fresh to nowMillis
+            val resolvedSys = Presets.detectSystemId(fresh)
+            val nextWs = WorkspaceState(
+                activeSystemId = resolvedSys,
+                sheetsBySystem = currentWorkspace.sheetsBySystem + (resolvedSys to fresh)
+            )
+            currentWorkspace = nextWs
+            emitMetadataSnapshot()
+            return fresh to nextWs
+        }
+
+        override suspend fun duplicateSheet(sheetId: String): CharacterSheetState? {
+            val source = storedSheets[sheetId]?.first ?: return null
+            val duplicated = SheetLibraryOps.buildDuplicatedSheet(
+                source = source,
+                existingIds = storedSheets.keys,
+                deviceId = deviceId,
+                nowIso = "2026-11-15T14:05:00Z",
+                idGenerator = idGenerator
+            )
+            val nowMillis = 1_794_837_900_000L
+            storedSheets[duplicated.id] = duplicated to nowMillis
+            emitMetadataSnapshot()
+            return duplicated
+        }
+
+        override suspend fun deleteSheet(sheetId: String): WorkspaceState {
+            val removed = storedSheets.remove(sheetId)?.first
+            if (removed != null) {
+                val sysId = Presets.detectSystemId(removed)
+                val replacement = storedSheets.values
+                    .filter { Presets.detectSystemId(it.first) == sysId }
+                    .maxByOrNull { it.second }
+                    ?.first
+                val updatedMap = currentWorkspace.sheetsBySystem.toMutableMap()
+                if (replacement != null) {
+                    updatedMap[sysId] = replacement
+                } else {
+                    updatedMap.remove(sysId)
+                }
+                val fallbackWs = if (updatedMap.isEmpty()) {
+                    WorkspaceState(activeSystemId = SystemId.WOD, sheetsBySystem = emptyMap())
+                } else {
+                    val activeSys = if (updatedMap.containsKey(currentWorkspace.activeSystemId)) {
+                        currentWorkspace.activeSystemId
+                    } else {
+                        updatedMap.keys.first()
+                    }
+                    WorkspaceState(activeSystemId = activeSys, sheetsBySystem = updatedMap)
+                }
+                currentWorkspace = fallbackWs
+            }
+            emitMetadataSnapshot()
+            return currentWorkspace
+        }
+
+        override fun observeIndexedBooks(systemId: SystemId): Flow<List<IndexedBookEntity>> =
+            booksFlow.map { list -> list.filter { it.systemId.equals(systemId.name, ignoreCase = true) } }
+
+        override fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>> = booksFlow
+    }
+
+    @Test
+    fun homeScreenStartsInHomeWithDefensiveFallbackAndBookCount() = runBlocking {
+        val emptyGateway = FakeSheetRepositoryGateway(
+            initialBooks = listOf(
+                IndexedBookEntity("b1", "V5 Core", "WOD", 420, 100L),
+                IndexedBookEntity("b2", "PHB 5e", "DND5E", 316, 200L)
+            )
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller = SheetStateController(emptyGateway, scope, Dispatchers.Unconfined)
+            controller.awaitIdle()
+
+            assertEquals(ActiveScreen.HOME, controller.uiState.value.activeScreen)
+            assertTrue(controller.uiState.value.sheets.isEmpty())
+            assertEquals(2, controller.uiState.value.indexedBooksCount)
+            assertTrue(controller.uiState.value.presets.any { it.systemId == SystemId.WOD })
+            assertTrue(controller.uiState.value.presets.any { it.systemId == SystemId.DND5E })
+        } finally {
+            scope.cancel()
+        }
+
+        // Fallback defensivo caso o Room / prefs falhem durante a inicialização
+        val failingGateway = FakeSheetRepositoryGateway(
+            failWorkspaceLoad = true,
+            failRoomObserve = true
+        )
+        val failingScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller = SheetStateController(failingGateway, failingScope, Dispatchers.Unconfined)
+            controller.awaitIdle()
+
+            assertEquals(ActiveScreen.HOME, controller.uiState.value.activeScreen)
+            assertTrue(controller.uiState.value.sheets.isEmpty())
+            assertTrue(controller.uiState.value.presets.isNotEmpty())
+        } finally {
+            failingScope.cancel()
+        }
+    }
+
+    @Test
+    fun createNewSheetFromHomeBuildsZeroedSheetWithoutRemovingExistingSheets() = runBlocking {
+        val existingWod = Presets.createWorldOfDarknessSheet().copy(
+            id = "existing-wod-1",
+            characterName = "JULIAN CROSS",
+            updatedAt = "2026-11-10T10:00:00Z"
+        )
+        val gateway = FakeSheetRepositoryGateway(initialSheets = listOf(existingWod))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller = SheetStateController(gateway, scope, Dispatchers.Unconfined)
+            controller.awaitIdle()
+
+            controller.createNewSheetFromHome("WOD", "  Helena Moreau  ")
+            controller.awaitIdle()
+
+            val state = controller.uiState.value
+            assertEquals(ActiveScreen.SHEET, state.activeScreen)
+            assertNotNull(state.activeSheetId)
+            assertNotEquals("existing-wod-1", state.activeSheetId)
+            assertEquals(2, state.sheets.size)
+            assertTrue(state.sheets.any { it.id == "existing-wod-1" })
+            assertTrue(state.sheets.any { it.characterName == "HELENA MOREAU" })
+
+            val active = controller.activeSheet.value
+            assertEquals("HELENA MOREAU", active.characterName)
+            assertEquals(0, active.xp.totalEarned)
+            assertEquals(0, active.xp.spent)
+            assertTrue(active.xp.ledger.isEmpty())
+            assertTrue(active.rollLogs.isEmpty())
+
+            val allFields = active.cards.flatMap { it.fields }
+            val nameField = allFields.firstOrNull { it.key == "nome_personagem" || it.key == "character_name" }
+            assertEquals("Helena Moreau", nameField?.textValue)
+            val clanField = allFields.firstOrNull { it.key == "clan" || it.key == "cla" }
+            assertEquals("", clanField?.textValue)
+            val strField = allFields.firstOrNull { it.key == "strength" }
+            assertEquals(1.0, strField?.numValue ?: -1.0, 0.001)
+            val genField = allFields.firstOrNull { it.key == "generation" }
+            assertEquals(13.0, genField?.numValue ?: -1.0, 0.001)
+
+            // Preserva comportamento de nome padrão quando customName é omitido/vazio
+            val freshDnd = Presets.createFreshSheetForSystem("DND5E", customName = "   ")
+            assertEquals("NOVO PERSONAGEM", freshDnd.characterName)
+            assertEquals(10.0, freshDnd.cards.flatMap { it.fields }.first { it.key == "strength" }.numValue ?: -1.0, 0.001)
+            assertEquals(1.0, freshDnd.cards.flatMap { it.fields }.first { it.key == "level" }.numValue ?: -1.0, 0.001)
+            assertEquals(0, freshDnd.xp.totalEarned)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun duplicateSheetAvoidsUuidCollisionAndDeleteRemovesOnlyTarget() = runBlocking {
+        val original = Presets.createDnd5ePreset().copy(
+            id = "sheet-dnd-1",
+            characterName = "LYRA VALERIAN",
+            updatedAt = "2026-11-12T08:00:00Z"
+        )
+        // Testa explicitamente colisão de UUID antes de gerar ID único
+        var attempts = 0
+        val collidingDup = SheetLibraryOps.buildDuplicatedSheet(
+            source = original,
+            existingIds = setOf("sheet-dnd-1"),
+            deviceId = "test-device",
+            idGenerator = {
+                if (attempts++ < 2) "sheet-dnd-1" else "sheet-dnd-unique-copy"
+            }
+        )
+        assertEquals("sheet-dnd-unique-copy", collidingDup.id)
+        assertEquals("LYRA VALERIAN (Cópia)", collidingDup.characterName)
+
+        var controllerAttempts = 0
+        val gateway = FakeSheetRepositoryGateway(
+            initialSheets = listOf(original),
+            idGenerator = {
+                if (controllerAttempts++ == 0) "sheet-dnd-1" else "sheet-dnd-dup-uuid"
+            }
+        )
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller = SheetStateController(gateway, scope, Dispatchers.Unconfined)
+            controller.awaitIdle()
+
+            controller.duplicateSheet("sheet-dnd-1")
+            controller.awaitIdle()
+
+            val afterDup = controller.uiState.value.sheets
+            assertEquals(2, afterDup.size)
+            assertEquals(2, afterDup.map { it.id }.toSet().size)
+            val duplicatedMeta = afterDup.firstOrNull { it.id != "sheet-dnd-1" }
+            assertNotNull(duplicatedMeta)
+            assertEquals("LYRA VALERIAN (Cópia)", duplicatedMeta?.characterName)
+
+            controller.deleteSheet(duplicatedMeta!!.id)
+            controller.awaitIdle()
+
+            val afterDelete = controller.uiState.value.sheets
+            assertEquals(1, afterDelete.size)
+            assertEquals("sheet-dnd-1", afterDelete.first().id)
+        } finally {
+            scope.cancel()
+        }
+    }
+
+    @Test
+    fun navigationTogglesBetweenHomeAndSheetAndFiltersSavedLibrary() = runBlocking {
+        val olderWod = Presets.createWorldOfDarknessSheet().copy(
+            id = "wod-old",
+            characterName = "JULIAN CROSS",
+            updatedAt = "2026-11-10T09:00:00Z"
+        )
+        val newerDnd = Presets.createDnd5ePreset().copy(
+            id = "dnd-new",
+            characterName = "LYRA VALERIAN",
+            updatedAt = "2026-11-14T18:30:00Z"
+        )
+        val gateway = FakeSheetRepositoryGateway(initialSheets = listOf(olderWod, newerDnd))
+        val scope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller = SheetStateController(gateway, scope, Dispatchers.Unconfined)
+            controller.awaitIdle()
+
+            assertEquals(ActiveScreen.HOME, controller.uiState.value.activeScreen)
+            assertEquals("dnd-new", controller.uiState.value.sheets.first().id)
+
+            // Filtragem por nome e por sistema na Home
+            controller.setHomeSearchQuery("jul")
+            assertEquals(listOf("wod-old"), controller.uiState.value.filteredSheets.map { it.id })
+
+            controller.setHomeSearchQuery("")
+            controller.setHomeSystemFilter(SystemId.DND5E)
+            assertEquals(listOf("dnd-new"), controller.uiState.value.filteredSheets.map { it.id })
+
+            controller.setHomeSystemFilter(null)
+            assertEquals(2, controller.uiState.value.filteredSheets.size)
+
+            // Alternância HOME -> SHEET carregando ficha específica do repositório
+            controller.navigateToSheet("wod-old")
+            controller.awaitIdle()
+            assertEquals(ActiveScreen.SHEET, controller.uiState.value.activeScreen)
+            assertEquals("wod-old", controller.uiState.value.activeSheetId)
+            assertEquals("JULIAN CROSS", controller.activeSheet.value.characterName)
+
+            // Retorno para HOME sem perder fichas salvas
+            controller.navigateToHome()
+            assertEquals(ActiveScreen.HOME, controller.uiState.value.activeScreen)
+            assertEquals(2, controller.uiState.value.sheets.size)
+
+            // Reabertura rápida da ficha ativa com sheetId = null
+            controller.navigateToSheet(null)
+            assertEquals(ActiveScreen.SHEET, controller.uiState.value.activeScreen)
+            assertEquals("wod-old", controller.activeSheet.value.id)
+        } finally {
+            scope.cancel()
+        }
     }
 }

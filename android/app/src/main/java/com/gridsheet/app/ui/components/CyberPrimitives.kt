@@ -8,14 +8,18 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.KeyboardOptions
@@ -29,9 +33,12 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.Icon
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -49,6 +56,7 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -59,12 +67,17 @@ import androidx.compose.ui.unit.sp
 import com.gridsheet.app.core.AppMode
 import com.gridsheet.app.core.FieldKind
 import com.gridsheet.app.core.FormulaEngine
+import com.gridsheet.app.core.PresetSummary
 import com.gridsheet.app.core.SheetCard
 import com.gridsheet.app.core.SheetEvaluation
 import com.gridsheet.app.core.SheetField
+import com.gridsheet.app.core.SheetMetadata
+import com.gridsheet.app.core.SheetMetadataMapper
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.ui.theme.CyberColors
 import com.gridsheet.app.ui.theme.CyberDimens
+import java.time.ZoneId
+import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
 
 @Composable
@@ -1235,6 +1248,844 @@ private fun AddFieldDialog(
         dismissButton = {
             TextButton(onClick = onDismiss) {
                 Text("CANCELAR", fontFamily = FontFamily.Monospace, color = CyberColors.InkMuted)
+            }
+        }
+    )
+}
+
+// --- HOME SCREEN LIGHT CYBER BRUTALISM PRIMITIVES ---
+
+private val homeDateFormatter: DateTimeFormatter =
+    DateTimeFormatter.ofPattern("dd/MM HH:mm").withZone(ZoneId.systemDefault())
+
+private fun formatSheetTimestamp(updatedAt: String, updatedAtMillis: Long): String {
+    val instant = SheetMetadataMapper.parseEffectiveInstant(updatedAt, updatedAtMillis)
+    return if (instant.epochSecond <= 0L) {
+        "AGORA"
+    } else {
+        runCatching { homeDateFormatter.format(instant) }.getOrDefault("RECENTE")
+    }
+}
+
+@Composable
+fun BrutalistSectionHeader(
+    code: String,
+    title: String,
+    trailingBadge: String? = null
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .padding(top = 4.dp, bottom = 2.dp),
+        horizontalArrangement = Arrangement.SpaceBetween,
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = code,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                letterSpacing = 1.sp,
+                color = CyberColors.AccentWine
+            )
+            Text(
+                text = title,
+                fontSize = 14.sp,
+                fontWeight = FontWeight.Bold,
+                color = CyberColors.InkPrimary
+            )
+        }
+        if (!trailingBadge.isNullOrBlank()) {
+            BrutalistTagBadge(
+                text = trailingBadge,
+                containerColor = CyberColors.BgCardAlt,
+                contentColor = CyberColors.InkPrimary
+            )
+        }
+    }
+}
+
+@Composable
+fun BrutalistTagBadge(
+    text: String,
+    containerColor: Color = CyberColors.AccentWineSoft,
+    contentColor: Color = CyberColors.AccentWine,
+    borderColor: Color = CyberColors.BorderInk
+) {
+    Surface(
+        shape = RoundedCornerShape(CyberDimens.SmallRadius),
+        color = containerColor,
+        border = BorderStroke(1.dp, borderColor)
+    ) {
+        Text(
+            text = text,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 9.sp,
+            fontWeight = FontWeight.Black,
+            letterSpacing = 0.6.sp,
+            color = contentColor,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.padding(horizontal = 7.dp, vertical = 3.dp)
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun ActiveSessionHeroCard(
+    latestSheet: SheetMetadata?,
+    onContinue: (String) -> Unit,
+    onDuplicate: (String) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = shape,
+        color = CyberColors.BgCard,
+        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+        shadowElevation = 2.dp
+    ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(CyberColors.BgHeaderStrip)
+                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "// SESSÃO_ATIVA",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    letterSpacing = 1.sp,
+                    color = CyberColors.AccentWine
+                )
+                BrutalistTagBadge(
+                    text = latestSheet?.systemCode ?: "WORKSPACE VAZIO",
+                    containerColor = if (latestSheet != null) CyberColors.AccentBlack else CyberColors.BgCard,
+                    contentColor = if (latestSheet != null) CyberColors.InkInverse else CyberColors.InkMuted
+                )
+            }
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .height(CyberDimens.BorderStrong)
+                    .background(CyberColors.BorderInk)
+            )
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(14.dp),
+                verticalArrangement = Arrangement.spacedBy(10.dp)
+            ) {
+                if (latestSheet != null) {
+                    Text(
+                        text = latestSheet.characterName,
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 20.sp,
+                        fontWeight = FontWeight.Black,
+                        color = CyberColors.InkPrimary,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                    Text(
+                        text = "${latestSheet.systemName} • ${latestSheet.cardCount} CARDS • ${latestSheet.rollCount} ROLAGENS • XP ${latestSheet.availableXp}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = CyberColors.InkSecondary
+                    )
+                    Text(
+                        text = "ÚLTIMA EDIÇÃO: ${formatSheetTimestamp(latestSheet.updatedAt, latestSheet.updatedAtMillis)}",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 10.sp,
+                        color = CyberColors.InkMuted
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Button(
+                            onClick = { onContinue(latestSheet.id) },
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = CyberColors.AccentWine,
+                                contentColor = CyberColors.InkInverse
+                            ),
+                            border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
+                            modifier = Modifier.defaultMinSize(
+                                minWidth = CyberDimens.MinTouchTarget,
+                                minHeight = CyberDimens.MinTouchTarget
+                            )
+                        ) {
+                            Text(
+                                text = "CONTINUAR FICHA →",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 12.sp,
+                                fontWeight = FontWeight.Black,
+                                letterSpacing = 0.6.sp
+                            )
+                        }
+                        OutlinedButton(
+                            onClick = { onDuplicate(latestSheet.id) },
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = CyberColors.BgCardAlt,
+                                contentColor = CyberColors.InkPrimary
+                            ),
+                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                            contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                            modifier = Modifier.defaultMinSize(
+                                minWidth = CyberDimens.MinTouchTarget,
+                                minHeight = CyberDimens.MinTouchTarget
+                            )
+                        ) {
+                            Text(
+                                text = "DUPLICAR",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black
+                            )
+                        }
+                    }
+                } else {
+                    Text(
+                        text = "NENHUMA FICHA SALVA NO DISPOSITIVO",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 14.sp,
+                        fontWeight = FontWeight.Black,
+                        color = CyberColors.InkPrimary
+                    )
+                    Text(
+                        text = "Escolha um sistema em // NOVO_PERSONAGEM abaixo para criar sua primeira ficha zerada, ou importe um backup .JSON em // PORTABILIDADE_&_REGRAS.",
+                        fontSize = 12.sp,
+                        color = CyberColors.InkSecondary
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+fun PresetSystemCard(
+    preset: PresetSummary,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+            .clip(shape)
+            .clickable(role = Role.Button, onClick = onClick),
+        shape = shape,
+        color = CyberColors.BgCard,
+        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+        shadowElevation = 2.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrutalistTagBadge(
+                    text = preset.systemCode,
+                    containerColor = CyberColors.AccentWineSoft,
+                    contentColor = CyberColors.AccentWine
+                )
+                Text(
+                    text = "+ CRIAR →",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = CyberColors.AccentWine
+                )
+            }
+            Text(
+                text = preset.shortLabel,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black,
+                color = CyberColors.InkPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = preset.description,
+                fontSize = 11.sp,
+                color = CyberColors.InkSecondary,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis
+            )
+            Text(
+                text = "${preset.cardCount} CARDS • ${preset.fieldCount} CAMPOS${if (preset.fromAsset) " • V2" else ""}",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 9.sp,
+                fontWeight = FontWeight.Bold,
+                color = CyberColors.InkMuted
+            )
+        }
+    }
+}
+
+@Composable
+fun DashedCustomSheetCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+            .clip(shape)
+            .background(CyberColors.BgCardAlt)
+            .drawBehind {
+                val strokeWidth = CyberDimens.BorderStrong.toPx()
+                val radiusPx = CyberDimens.CardRadius.toPx()
+                drawRoundRect(
+                    color = CyberColors.BorderInk,
+                    style = Stroke(
+                        width = strokeWidth,
+                        pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 9f), 0f)
+                    ),
+                    cornerRadius = CornerRadius(radiusPx, radiusPx)
+                )
+            }
+            .clickable(role = Role.Button, onClick = onClick)
+            .padding(14.dp)
+    ) {
+        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrutalistTagBadge(
+                    text = "CUSTOM // BLANK",
+                    containerColor = CyberColors.BgCard,
+                    contentColor = CyberColors.InkPrimary
+                )
+                Text(
+                    text = "+ CRIAR →",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = CyberColors.AccentWine
+                )
+            }
+            Text(
+                text = "FICHA PERSONALIZADA",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 15.sp,
+                fontWeight = FontWeight.Black,
+                color = CyberColors.InkPrimary
+            )
+            Text(
+                text = "Canvas em branco com criação livre de cards, status e fórmulas.",
+                fontSize = 11.sp,
+                color = CyberColors.InkSecondary
+            )
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun CharacterLibraryCard(
+    sheet: SheetMetadata,
+    isLatest: Boolean,
+    onOpen: () -> Unit,
+    onDuplicate: () -> Unit,
+    onDeleteRequest: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = shape,
+        color = CyberColors.BgCard,
+        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+        shadowElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    BrutalistTagBadge(text = sheet.systemCode)
+                    if (isLatest) {
+                        BrutalistTagBadge(
+                            text = "RECENTE",
+                            containerColor = CyberColors.AccentBlack,
+                            contentColor = CyberColors.InkInverse
+                        )
+                    }
+                }
+                Text(
+                    text = formatSheetTimestamp(sheet.updatedAt, sheet.updatedAtMillis),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = CyberColors.InkMuted
+                )
+            }
+
+            Text(
+                text = sheet.characterName,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 16.sp,
+                fontWeight = FontWeight.Black,
+                color = CyberColors.InkPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            Text(
+                text = "${sheet.systemName} • ${sheet.cardCount} CARDS • ${sheet.rollCount} ROLAGENS • XP ${sheet.availableXp}",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                color = CyberColors.InkSecondary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis
+            )
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onOpen,
+                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyberColors.AccentBlack,
+                        contentColor = CyberColors.InkInverse
+                    ),
+                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = CyberDimens.MinTouchTarget,
+                        minHeight = CyberDimens.MinTouchTarget
+                    )
+                ) {
+                    Text(
+                        text = "ABRIR",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                OutlinedButton(
+                    onClick = onDuplicate,
+                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = CyberColors.BgCardAlt,
+                        contentColor = CyberColors.InkPrimary
+                    ),
+                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = CyberDimens.MinTouchTarget,
+                        minHeight = CyberDimens.MinTouchTarget
+                    )
+                ) {
+                    Text(
+                        text = "DUPLICAR",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+                OutlinedButton(
+                    onClick = onDeleteRequest,
+                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = CyberColors.AccentDangerSoft,
+                        contentColor = CyberColors.AccentDanger
+                    ),
+                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.AccentDanger),
+                    contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = CyberDimens.MinTouchTarget,
+                        minHeight = CyberDimens.MinTouchTarget
+                    )
+                ) {
+                    Text(
+                        text = "EXCLUIR",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun PortabilityAndRulesCard(
+    indexedBooksCount: Int,
+    sheetCount: Int,
+    transferBusy: Boolean,
+    transferFeedbackMessage: String?,
+    transferFeedbackIsError: Boolean,
+    overwriteExisting: Boolean,
+    onOverwriteChange: (Boolean) -> Unit,
+    onExportBackup: () -> Unit,
+    onImportJson: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    Surface(
+        modifier = modifier.fillMaxWidth(),
+        shape = shape,
+        color = CyberColors.BgCard,
+        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+        shadowElevation = 1.dp
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(14.dp),
+            verticalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                BrutalistTagBadge(
+                    text = "LIVROS PDF INDEXADOS: $indexedBooksCount",
+                    containerColor = if (indexedBooksCount > 0) CyberColors.AccentWineSoft else CyberColors.BgCardAlt,
+                    contentColor = if (indexedBooksCount > 0) CyberColors.AccentWine else CyberColors.InkSecondary
+                )
+                Text(
+                    text = "$sheetCount ${if (sheetCount == 1) "FICHA" else "FICHAS"} NO ROOM",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberColors.InkMuted
+                )
+            }
+
+            Text(
+                text = "Exporte ou restaure todo o seu grimório em formato .JSON Schema V2 (compatível com a versão Web). Os PDFs indexados ficam disponíveis na aba REGRAS dentro de qualquer ficha.",
+                fontSize = 11.sp,
+                color = CyberColors.InkSecondary
+            )
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                Button(
+                    onClick = onExportBackup,
+                    enabled = !transferBusy && sheetCount > 0,
+                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = CyberColors.AccentBlack,
+                        contentColor = CyberColors.InkInverse,
+                        disabledContainerColor = CyberColors.BgHover,
+                        disabledContentColor = CyberColors.InkMuted
+                    ),
+                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = CyberDimens.MinTouchTarget,
+                        minHeight = CyberDimens.MinTouchTarget
+                    )
+                ) {
+                    Text(
+                        text = if (transferBusy) "PROCESSANDO..." else "BACKUP COMPLETO (.JSON)",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+
+                OutlinedButton(
+                    onClick = onImportJson,
+                    enabled = !transferBusy,
+                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    colors = ButtonDefaults.outlinedButtonColors(
+                        containerColor = CyberColors.BgCardAlt,
+                        contentColor = CyberColors.InkPrimary,
+                        disabledContentColor = CyberColors.InkMuted
+                    ),
+                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
+                    modifier = Modifier.defaultMinSize(
+                        minWidth = CyberDimens.MinTouchTarget,
+                        minHeight = CyberDimens.MinTouchTarget
+                    )
+                ) {
+                    Text(
+                        text = "IMPORTAR (.JSON)",
+                        fontFamily = FontFamily.Monospace,
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Black
+                    )
+                }
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = CyberDimens.MinTouchTarget)
+                    .toggleable(
+                        value = overwriteExisting,
+                        enabled = !transferBusy,
+                        role = Role.Checkbox,
+                        onValueChange = onOverwriteChange
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Checkbox(
+                    checked = overwriteExisting,
+                    onCheckedChange = null,
+                    enabled = !transferBusy,
+                    colors = CheckboxDefaults.colors(
+                        checkedColor = CyberColors.AccentWine,
+                        uncheckedColor = CyberColors.BorderInk,
+                        checkmarkColor = CyberColors.InkInverse
+                    )
+                )
+                Text(
+                    text = "SOBRESCREVER FICHAS COM MESMO ID NA IMPORTAÇÃO",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberColors.InkPrimary
+                )
+            }
+
+            if (!transferFeedbackMessage.isNullOrBlank()) {
+                val accent = if (transferFeedbackIsError) CyberColors.AccentDanger else CyberColors.AccentWine
+                val soft = if (transferFeedbackIsError) CyberColors.AccentDangerSoft else CyberColors.AccentWineSoft
+                Text(
+                    text = (if (transferFeedbackIsError) "> ERRO_ " else "> OK_ ") + transferFeedbackMessage,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = accent,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(soft, RoundedCornerShape(CyberDimens.SmallRadius))
+                        .border(CyberDimens.BorderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
+                        .padding(horizontal = 8.dp, vertical = 6.dp)
+                )
+            }
+        }
+    }
+}
+
+@Composable
+fun CreateCharacterDialog(
+    systemLabel: String,
+    systemCode: String,
+    description: String,
+    isCustomBlank: Boolean,
+    onDismiss: () -> Unit,
+    onConfirm: (String?) -> Unit
+) {
+    var characterName by remember { mutableStateOf("") }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CyberColors.BgCard,
+        title = {
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                BrutalistTagBadge(text = systemCode)
+                Text(
+                    text = if (isCustomBlank) "NOVA FICHA PERSONALIZADA" else "NOVO PERSONAGEM · $systemLabel",
+                    fontFamily = FontFamily.Monospace,
+                    fontWeight = FontWeight.Black,
+                    fontSize = 14.sp,
+                    color = CyberColors.InkPrimary
+                )
+            }
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                Text(
+                    text = description,
+                    fontSize = 12.sp,
+                    color = CyberColors.InkSecondary
+                )
+                OutlinedTextField(
+                    value = characterName,
+                    onValueChange = { characterName = it.take(120) },
+                    label = {
+                        Text(
+                            text = "NOME DO PERSONAGEM (OPCIONAL)",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp
+                        )
+                    },
+                    placeholder = {
+                        Text(
+                            text = "EX: NOVO PERSONAGEM",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp
+                        )
+                    },
+                    singleLine = true,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = CyberColors.AccentWine,
+                        unfocusedBorderColor = CyberColors.BorderInk,
+                        focusedLabelColor = CyberColors.AccentWine,
+                        cursorColor = CyberColors.AccentWine
+                    ),
+                    modifier = Modifier.fillMaxWidth()
+                )
+                Text(
+                    text = "Atributos base, rolamentos e XP iniciam zerados sem apagar suas fichas existentes.",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = CyberColors.InkMuted
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = { onConfirm(characterName.trim().ifEmpty { null }) },
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CyberColors.AccentWine,
+                    contentColor = CyberColors.InkInverse
+                ),
+                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                modifier = Modifier.defaultMinSize(
+                    minWidth = CyberDimens.MinTouchTarget,
+                    minHeight = CyberDimens.MinTouchTarget
+                )
+            ) {
+                Text(
+                    text = "CRIAR E ABRIR",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.defaultMinSize(
+                    minWidth = CyberDimens.MinTouchTarget,
+                    minHeight = CyberDimens.MinTouchTarget
+                )
+            ) {
+                Text(
+                    text = "CANCELAR",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberColors.InkMuted
+                )
+            }
+        }
+    )
+}
+
+@Composable
+fun DeleteCharacterConfirmDialog(
+    sheet: SheetMetadata,
+    onDismiss: () -> Unit,
+    onConfirm: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        containerColor = CyberColors.BgCard,
+        title = {
+            Text(
+                text = "EXCLUIR FICHA?",
+                fontFamily = FontFamily.Monospace,
+                fontWeight = FontWeight.Black,
+                fontSize = 15.sp,
+                color = CyberColors.AccentDanger
+            )
+        },
+        text = {
+            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "Deseja remover permanentemente \"${sheet.characterName}\" (${sheet.systemCode}) do armazenamento local?",
+                    fontSize = 12.sp,
+                    color = CyberColors.InkPrimary
+                )
+                Text(
+                    text = "Esta ação apaga apenas esta ficha no Room; outras fichas e livros PDF indexados permanecem intactos.",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    color = CyberColors.InkMuted
+                )
+            }
+        },
+        confirmButton = {
+            Button(
+                onClick = onConfirm,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = CyberColors.AccentDanger,
+                    contentColor = CyberColors.InkInverse
+                ),
+                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                modifier = Modifier.defaultMinSize(
+                    minWidth = CyberDimens.MinTouchTarget,
+                    minHeight = CyberDimens.MinTouchTarget
+                )
+            ) {
+                Text(
+                    text = "EXCLUIR",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black
+                )
+            }
+        },
+        dismissButton = {
+            TextButton(
+                onClick = onDismiss,
+                modifier = Modifier.defaultMinSize(
+                    minWidth = CyberDimens.MinTouchTarget,
+                    minHeight = CyberDimens.MinTouchTarget
+                )
+            ) {
+                Text(
+                    text = "CANCELAR",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberColors.InkMuted
+                )
             }
         }
     )

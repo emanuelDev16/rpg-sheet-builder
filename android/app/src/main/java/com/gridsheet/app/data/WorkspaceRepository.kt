@@ -4,7 +4,10 @@ import android.content.Context
 import android.net.Uri
 import com.gridsheet.app.BuildConfig
 import com.gridsheet.app.core.CharacterSheetState
+import com.gridsheet.app.core.PresetSummary
 import com.gridsheet.app.core.Presets
+import com.gridsheet.app.core.SheetMetadata
+import com.gridsheet.app.core.SheetMetadataMapper
 import com.gridsheet.app.core.SheetPayloadValidator
 import com.gridsheet.app.core.SheetTransfer
 import com.gridsheet.app.core.SheetTransferException
@@ -13,6 +16,7 @@ import com.gridsheet.app.core.WorkspaceState
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.GridSheetDatabase
 import com.gridsheet.app.data.local.IndexedBookEntity
+import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -27,6 +31,7 @@ import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
+import java.time.Instant
 import java.util.UUID
 
 @Serializable
@@ -59,7 +64,75 @@ data class SheetImportResult(
     val importedNames: List<String>
 )
 
-class WorkspaceRepository(context: Context) {
+interface SheetRepositoryGateway {
+    fun getOrCreateDeviceId(): String
+    fun loadAvailablePresets(): List<PresetSummary>
+    fun loadWorkspace(): WorkspaceState
+    fun saveWorkspace(workspace: WorkspaceState, timestampMillis: Long = System.currentTimeMillis())
+    suspend fun saveToRoom(
+        workspace: WorkspaceState,
+        timestampMillis: Long = System.currentTimeMillis(),
+        isDirty: Boolean = true
+    )
+    suspend fun pushRemoteMirror(
+        workspace: WorkspaceState,
+        timestampMillis: Long = System.currentTimeMillis()
+    ): Boolean
+    suspend fun hydrateAndSyncFromRoom(): WorkspaceState
+    suspend fun syncWithRemoteMirror(): WorkspaceState?
+    fun observeSavedSheets(): Flow<List<SheetMetadata>>
+    suspend fun getSavedSheet(sheetId: String): CharacterSheetState?
+    suspend fun saveSheet(
+        sheet: CharacterSheetState,
+        timestampMillis: Long = System.currentTimeMillis()
+    ): CharacterSheetState
+    suspend fun createFreshSheetFromHome(
+        systemId: String,
+        customName: String? = null
+    ): Pair<CharacterSheetState, WorkspaceState>
+    suspend fun duplicateSheet(sheetId: String): CharacterSheetState?
+    suspend fun deleteSheet(sheetId: String): WorkspaceState
+    fun observeIndexedBooks(systemId: SystemId): Flow<List<IndexedBookEntity>>
+    fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>>
+}
+
+object SheetLibraryOps {
+    fun generateNonCollidingId(
+        existingIds: Set<String>,
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): String {
+        var candidate = idGenerator().trim()
+        var guard = 0
+        while ((candidate.isEmpty() || candidate in existingIds) && guard++ < 64) {
+            candidate = idGenerator().trim()
+        }
+        if (candidate.isEmpty() || candidate in existingIds) {
+            candidate = UUID.randomUUID().toString()
+        }
+        return candidate
+    }
+
+    fun buildDuplicatedSheet(
+        source: CharacterSheetState,
+        existingIds: Set<String>,
+        deviceId: String,
+        nowIso: String = Instant.now().toString(),
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): CharacterSheetState {
+        val sysId = Presets.detectSystemId(source)
+        val newId = generateNonCollidingId(existingIds, idGenerator)
+        return source.copy(
+            id = newId,
+            systemId = sysId,
+            characterName = SheetTransfer.withCopySuffix(source.characterName),
+            revision = 1,
+            updatedAt = nowIso,
+            deviceId = deviceId.ifBlank { "local-device" }
+        )
+    }
+}
+
+class WorkspaceRepository(context: Context) : SheetRepositoryGateway {
     private val appContext = context.applicationContext
     private val prefs = appContext.getSharedPreferences("grid_sheet_prefs", Context.MODE_PRIVATE)
     private val db = GridSheetDatabase.getInstance(appContext)
@@ -75,7 +148,7 @@ class WorkspaceRepository(context: Context) {
         prettyPrint = true
     }
 
-    fun getOrCreateDeviceId(): String = runCatching {
+    override fun getOrCreateDeviceId(): String = runCatching {
         val existing = prefs.getString(DEVICE_ID_KEY, null)?.trim()
         if (!existing.isNullOrEmpty()) {
             return existing
@@ -85,12 +158,18 @@ class WorkspaceRepository(context: Context) {
         created
     }.getOrDefault("local-device")
 
+    override fun loadAvailablePresets(): List<PresetSummary> = runCatching {
+        Presets.getAvailablePresets(appContext, getOrCreateDeviceId())
+    }.getOrElse {
+        Presets.getAvailablePresets(context = null, deviceId = "local-device")
+    }
+
     fun observeOfflineSheetCount(): Flow<Int> = roomRepository.observeOfflineSheetCount()
 
-    fun observeIndexedBooks(systemId: SystemId): Flow<List<IndexedBookEntity>> =
+    override fun observeIndexedBooks(systemId: SystemId): Flow<List<IndexedBookEntity>> =
         pdfRulesDao.observeBooksBySystem(systemId.name)
 
-    fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>> =
+    override fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>> =
         pdfRulesDao.observeAllBooks()
 
     fun indexPdfRulebook(uri: Uri, systemId: SystemId): Flow<IndexProgress> =
@@ -120,11 +199,12 @@ class WorkspaceRepository(context: Context) {
         val raw = prefs.getString(WORKSPACE_KEY, null)
         val updatedAt = prefs.getLong(WORKSPACE_UPDATED_AT_KEY, 0L)
         val localDeviceId = getOrCreateDeviceId()
+        val savedInitialized = prefs.getBoolean(SAVED_SHEETS_INITIALIZED_KEY, false)
         if (!raw.isNullOrBlank()) {
             val parsed = runCatching {
                 json.decodeFromString<WorkspaceState>(raw)
             }.getOrNull()
-            if (parsed != null && parsed.sheetsBySystem.isNotEmpty()) {
+            if (parsed != null && (parsed.sheetsBySystem.isNotEmpty() || savedInitialized)) {
                 val migrated = parsed.copy(
                     sheetsBySystem = parsed.sheetsBySystem.mapValues { (sysId, s) ->
                         Presets.migrateSheetMetadata(s.copy(systemId = sysId), localDeviceId)
@@ -136,8 +216,9 @@ class WorkspaceRepository(context: Context) {
         null to updatedAt
     }.getOrDefault(null to 0L)
 
-    fun loadWorkspace(): WorkspaceState = runCatching {
+    override fun loadWorkspace(): WorkspaceState = runCatching {
         val localDeviceId = getOrCreateDeviceId()
+        runCatching { Presets.loadPresetsFromAsset(appContext, localDeviceId) }
         val (prefsWs, _) = readPrefsWorkspaceRaw()
         if (prefsWs != null) {
             return prefsWs.copy(
@@ -151,7 +232,7 @@ class WorkspaceRepository(context: Context) {
         Presets.createDefaultWorkspace("local-device", null)
     }
 
-    fun saveWorkspace(workspace: WorkspaceState, timestampMillis: Long = System.currentTimeMillis()) {
+    override fun saveWorkspace(workspace: WorkspaceState, timestampMillis: Long) {
         runCatching {
             val localDeviceId = getOrCreateDeviceId()
             val normalized = workspace.copy(
@@ -167,10 +248,10 @@ class WorkspaceRepository(context: Context) {
         }
     }
 
-    suspend fun saveToRoom(
+    override suspend fun saveToRoom(
         workspace: WorkspaceState,
-        timestampMillis: Long = System.currentTimeMillis(),
-        isDirty: Boolean = true
+        timestampMillis: Long,
+        isDirty: Boolean
     ) {
         val localDeviceId = getOrCreateDeviceId()
         val normalized = workspace.copy(
@@ -178,37 +259,61 @@ class WorkspaceRepository(context: Context) {
                 Presets.migrateSheetMetadata(sheet.copy(systemId = sysId), localDeviceId)
             }
         )
-        roomRepository.mirrorWorkspaceIntoRoom(
-            workspace = normalized,
-            updatedAtMillis = timestampMillis,
-            syncState = if (isDirty) "DIRTY" else "SYNCED",
-            isDirty = isDirty
-        )
+        if (normalized.sheetsBySystem.isNotEmpty()) {
+            roomRepository.mirrorWorkspaceIntoRoom(
+                workspace = normalized,
+                updatedAtMillis = timestampMillis,
+                syncState = if (isDirty) "DIRTY" else "SYNCED",
+                isDirty = isDirty
+            )
+            val savedEntities = normalized.sheetsBySystem.values.map { sheet ->
+                toSavedEntity(sheet, timestampMillis)
+            }
+            roomRepository.upsertSavedSheetEntities(savedEntities)
+            prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
+        } else {
+            roomRepository.deleteAllWorkspaceSheets(normalized.activeSystemId, timestampMillis)
+        }
     }
 
-    suspend fun pushRemoteMirror(
+    override suspend fun pushRemoteMirror(
         workspace: WorkspaceState,
-        timestampMillis: Long = System.currentTimeMillis()
+        timestampMillis: Long
     ): Boolean = roomRepository.pushRemoteMirror(workspace, timestampMillis)
 
-    suspend fun syncWithRemoteMirror(): WorkspaceState? = withContext(Dispatchers.IO) {
+    override suspend fun syncWithRemoteMirror(): WorkspaceState? = withContext(Dispatchers.IO) {
         runCatching {
             val outcome = roomRepository.syncWithRemoteMirror() ?: return@runCatching null
             if (outcome.updatedFromRemote) {
                 saveWorkspace(outcome.workspace, outcome.updatedAtMillis)
+                val savedEntities = outcome.workspace.sheetsBySystem.values.map { sheet ->
+                    toSavedEntity(sheet, outcome.updatedAtMillis)
+                }
+                roomRepository.upsertSavedSheetEntities(savedEntities)
+                prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
             }
             outcome.workspace
         }.getOrNull()
     }
 
-    suspend fun hydrateAndSyncFromRoom(): WorkspaceState = withContext(Dispatchers.IO) {
+    override suspend fun hydrateAndSyncFromRoom(): WorkspaceState = withContext(Dispatchers.IO) {
         runCatching {
+            val localDeviceId = getOrCreateDeviceId()
+            runCatching { Presets.loadPresetsFromAsset(appContext, localDeviceId) }
+            val alreadyInitialized = prefs.getBoolean(SAVED_SHEETS_INITIALIZED_KEY, false)
+            val existingSaved = roomRepository.getAllSavedSheetEntities()
+            if (alreadyInitialized && existingSaved.isEmpty()) {
+                val (prefsWs, _) = readPrefsWorkspaceRaw()
+                if (prefsWs != null && prefsWs.sheetsBySystem.isEmpty()) {
+                    return@runCatching prefsWs
+                }
+            }
+
             val roomSheets = roomRepository.getAllSheetEntities()
             val roomMeta = roomRepository.getMetadata()
             val (prefsWs, prefsUpdatedAt) = readPrefsWorkspaceRaw()
             val nowMillis = System.currentTimeMillis()
 
-            val localDeviceId = getOrCreateDeviceId()
             val reconciled = WorkspaceSyncEngine.reconcile(
                 roomSheets = roomSheets,
                 roomMeta = roomMeta,
@@ -230,6 +335,16 @@ class WorkspaceRepository(context: Context) {
                 }
             )
 
+            if (!alreadyInitialized) {
+                if (existingSaved.isEmpty() && migratedWorkspace.sheetsBySystem.isNotEmpty()) {
+                    val seeded = migratedWorkspace.sheetsBySystem.values.map { sheet ->
+                        toSavedEntity(sheet, reconciled.resolvedTimestamp)
+                    }
+                    roomRepository.upsertSavedSheetEntities(seeded)
+                }
+                prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
+            }
+
             if (reconciled.shouldUpdatePrefs || migratedWorkspace != reconciled.workspace) {
                 saveWorkspace(migratedWorkspace, reconciled.resolvedTimestamp)
             }
@@ -238,6 +353,205 @@ class WorkspaceRepository(context: Context) {
         }.getOrElse {
             loadWorkspace()
         }
+    }
+
+    override fun observeSavedSheets(): Flow<List<SheetMetadata>> =
+        roomRepository.observeAllSavedSheets().map { entities ->
+            val items = entities.mapNotNull { entity ->
+                val decoded = decodeSavedEntity(entity) ?: return@mapNotNull null
+                val sysId = Presets.detectSystemId(decoded)
+                SheetMetadataMapper.fromSheet(
+                    sheet = decoded,
+                    systemId = sysId,
+                    updatedAtMillis = entity.updatedAtMillis
+                )
+            }
+            SheetMetadataMapper.sortDescending(items)
+        }
+
+    override suspend fun getSavedSheet(sheetId: String): CharacterSheetState? = withContext(Dispatchers.IO) {
+        val localDeviceId = getOrCreateDeviceId()
+        roomRepository.getSavedSheetEntity(sheetId)?.let { entity ->
+            decodeSavedEntity(entity, localDeviceId)?.let { return@withContext it }
+        }
+        for (entity in roomRepository.getAllSheetEntities()) {
+            val decoded = runCatching {
+                roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson)
+            }.getOrNull() ?: continue
+            if (decoded.id == sheetId) {
+                return@withContext Presets.migrateLegacyWodSheet(decoded, localDeviceId)
+            }
+        }
+        null
+    }
+
+    override suspend fun saveSheet(
+        sheet: CharacterSheetState,
+        timestampMillis: Long
+    ): CharacterSheetState = withContext(Dispatchers.IO) {
+        val localDeviceId = getOrCreateDeviceId()
+        val sysId = Presets.detectSystemId(sheet)
+        val migrated = Presets.migrateLegacyWodSheet(
+            sheet.copy(systemId = sysId),
+            localDeviceId
+        )
+        roomRepository.upsertSavedSheetEntity(toSavedEntity(migrated, timestampMillis))
+        prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
+        migrated
+    }
+
+    override suspend fun createFreshSheetFromHome(
+        systemId: String,
+        customName: String?
+    ): Pair<CharacterSheetState, WorkspaceState> = withContext(Dispatchers.IO) {
+        val localDeviceId = getOrCreateDeviceId()
+        runCatching { Presets.loadPresetsFromAsset(appContext, localDeviceId) }
+        val baseWs = roomRepository.loadWorkspaceFromRoom().first ?: loadWorkspace()
+        val existingIds = collectAllExistingIds(baseWs)
+        val nowMillis = System.currentTimeMillis()
+        val nowIso = Instant.ofEpochMilli(nowMillis).toString()
+
+        val fresh = Presets.createFreshSheetForSystem(
+            systemId = systemId,
+            deviceId = localDeviceId,
+            customName = customName,
+            nowIso = nowIso,
+            idGenerator = { SheetLibraryOps.generateNonCollidingId(existingIds) }
+        )
+        val resolvedSysId = Presets.detectSystemId(fresh)
+        val normalizedFresh = fresh.copy(systemId = resolvedSysId)
+
+        roomRepository.upsertSavedSheetEntity(toSavedEntity(normalizedFresh, nowMillis))
+        prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
+
+        val nextWs = WorkspaceState(
+            activeSystemId = resolvedSysId,
+            sheetsBySystem = baseWs.sheetsBySystem + (resolvedSysId to normalizedFresh)
+        )
+        saveWorkspace(nextWs, nowMillis)
+        roomRepository.mirrorWorkspaceIntoRoom(
+            workspace = nextWs,
+            updatedAtMillis = nowMillis,
+            syncState = "DIRTY",
+            isDirty = true
+        )
+        normalizedFresh to nextWs
+    }
+
+    override suspend fun duplicateSheet(sheetId: String): CharacterSheetState? = withContext(Dispatchers.IO) {
+        val source = getSavedSheet(sheetId) ?: return@withContext null
+        val localDeviceId = getOrCreateDeviceId()
+        val baseWs = roomRepository.loadWorkspaceFromRoom().first ?: loadWorkspace()
+        val existingIds = collectAllExistingIds(baseWs)
+        val nowMillis = System.currentTimeMillis()
+        val nowIso = Instant.ofEpochMilli(nowMillis).toString()
+
+        val duplicated = SheetLibraryOps.buildDuplicatedSheet(
+            source = source,
+            existingIds = existingIds,
+            deviceId = localDeviceId,
+            nowIso = nowIso
+        )
+        roomRepository.upsertSavedSheetEntity(toSavedEntity(duplicated, nowMillis))
+        prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
+        duplicated
+    }
+
+    override suspend fun deleteSheet(sheetId: String): WorkspaceState = withContext(Dispatchers.IO) {
+        val nowMillis = System.currentTimeMillis()
+        val localDeviceId = getOrCreateDeviceId()
+        prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
+        roomRepository.deleteSavedSheetEntity(sheetId)
+
+        val remainingSheets = roomRepository.getAllSavedSheetEntities()
+            .mapNotNull { decodeSavedEntity(it, localDeviceId) }
+        val currentWs = roomRepository.loadWorkspaceFromRoom().first ?: loadWorkspace()
+
+        val updatedMap = LinkedHashMap<SystemId, CharacterSheetState>()
+        for ((sysId, sheet) in currentWs.sheetsBySystem) {
+            if (sheet.id != sheetId) {
+                updatedMap[sysId] = sheet
+            } else {
+                val replacement = remainingSheets.firstOrNull { Presets.detectSystemId(it) == sysId }
+                if (replacement != null) {
+                    updatedMap[sysId] = replacement
+                }
+            }
+        }
+        for (sheet in remainingSheets) {
+            val sysId = Presets.detectSystemId(sheet)
+            if (sysId !in updatedMap) {
+                updatedMap[sysId] = sheet
+            }
+        }
+
+        val nextActiveSystem = when {
+            updatedMap.containsKey(currentWs.activeSystemId) -> currentWs.activeSystemId
+            updatedMap.isNotEmpty() -> updatedMap.keys.first()
+            else -> SystemId.WOD
+        }
+        val nextWs = WorkspaceState(
+            activeSystemId = nextActiveSystem,
+            sheetsBySystem = updatedMap.toMap()
+        )
+        saveWorkspace(nextWs, nowMillis)
+        if (nextWs.sheetsBySystem.isEmpty()) {
+            roomRepository.deleteAllWorkspaceSheets(nextActiveSystem, nowMillis)
+        } else {
+            roomRepository.mirrorWorkspaceIntoRoom(
+                workspace = nextWs,
+                updatedAtMillis = nowMillis,
+                syncState = "DIRTY",
+                isDirty = true
+            )
+        }
+        nextWs
+    }
+
+    private suspend fun collectAllExistingIds(baseWorkspace: WorkspaceState? = null): Set<String> {
+        val ids = LinkedHashSet<String>()
+        baseWorkspace?.sheetsBySystem?.values?.forEach { ids += it.id }
+        roomRepository.getAllSavedSheetEntities().forEach { ids += it.sheetId }
+        roomRepository.getAllSheetEntities().forEach { entity ->
+            runCatching {
+                roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson).id
+            }.getOrNull()?.let { ids += it }
+        }
+        return ids
+    }
+
+    private fun decodeSavedEntity(
+        entity: SavedSheetEntity,
+        deviceId: String = getOrCreateDeviceId()
+    ): CharacterSheetState? = runCatching {
+        val parsed = roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson)
+        val sysId = WorkspaceSyncEngine.parseSystemId(entity.systemId) ?: Presets.detectSystemId(parsed)
+        Presets.migrateLegacyWodSheet(
+            parsed.copy(
+                id = parsed.id.ifBlank { entity.sheetId },
+                systemId = sysId
+            ),
+            deviceId
+        )
+    }.getOrNull()
+
+    private fun toSavedEntity(
+        sheet: CharacterSheetState,
+        timestampMillis: Long
+    ): SavedSheetEntity {
+        val localDeviceId = getOrCreateDeviceId()
+        val sysId = Presets.detectSystemId(sheet)
+        val migrated = Presets.migrateSheetMetadata(sheet.copy(systemId = sysId), localDeviceId)
+        return SavedSheetEntity(
+            sheetId = migrated.id,
+            systemId = sysId.name,
+            systemName = migrated.systemName,
+            characterName = migrated.characterName,
+            sheetJson = roomRepository.json.encodeToString(CharacterSheetState.serializer(), migrated),
+            updatedAt = migrated.updatedAt,
+            updatedAtMillis = timestampMillis,
+            revision = migrated.revision
+        )
     }
 
     fun exportSheetJson(sheet: CharacterSheetState): String =
@@ -258,20 +572,31 @@ class WorkspaceRepository(context: Context) {
     ): Int = withContext(Dispatchers.IO) {
         try {
             val localDeviceId = getOrCreateDeviceId()
-            val bySystem = LinkedHashMap<SystemId, CharacterSheetState>()
+            val byId = LinkedHashMap<String, CharacterSheetState>()
+            for (saved in roomRepository.getAllSavedSheetEntities()) {
+                val decoded = decodeSavedEntity(saved, localDeviceId) ?: continue
+                byId[decoded.id] = decoded
+            }
             for (entity in roomRepository.getAllSheetEntities()) {
                 val sysId = WorkspaceSyncEngine.parseSystemId(entity.systemId) ?: continue
                 val decoded = runCatching {
                     roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson)
                 }.getOrNull() ?: continue
-                bySystem[sysId] = decoded.copy(systemId = sysId)
+                val migrated = Presets.migrateSheetMetadata(decoded.copy(systemId = sysId), localDeviceId)
+                if (!byId.containsKey(migrated.id)) {
+                    byId[migrated.id] = migrated
+                }
             }
             for (live in liveSheets) {
-                bySystem[Presets.detectSystemId(live)] = live
+                val migratedLive = Presets.migrateSheetMetadata(
+                    live.copy(systemId = Presets.detectSystemId(live)),
+                    localDeviceId
+                )
+                byId[migratedLive.id] = migratedLive
             }
-            val pool = bySystem.values.map { Presets.migrateSheetMetadata(it, localDeviceId) }
+            val pool = byId.values.map { Presets.migrateSheetMetadata(it, localDeviceId) }
             val selected = if (sheetIds == null) {
-                pool
+                pool.take(SheetTransfer.MAX_SHEETS_PER_FILE)
             } else {
                 sheetIds.mapNotNull { id -> pool.firstOrNull { it.id == id } }
             }
@@ -290,8 +615,7 @@ class WorkspaceRepository(context: Context) {
      * them in Room through [SheetDao][com.gridsheet.app.data.local.SheetDao].
      *
      * When [overwriteExisting] is false, sheets whose `id` already exists get a new UUID and the
-     * " (Cópia)" suffix. Note: the workspace stores one sheet per [SystemId] (Room PK), so an
-     * imported sheet always occupies its system slot.
+     * " (Cópia)" suffix. All imported sheets are persisted in `saved_sheets` by unique `sheetId`.
      */
     suspend fun importSheetsFromStream(
         inputStream: InputStream,
@@ -303,39 +627,38 @@ class WorkspaceRepository(context: Context) {
         val raw = SheetTransfer.readBoundedUtf8(inputStream, maxBytes)
         val parsed = SheetTransfer.parseImportPayload(raw, localDeviceId)
 
-        val roomEntities = roomRepository.getAllSheetEntities()
         val base = baseWorkspace
             ?: roomRepository.loadWorkspaceFromRoom().first
             ?: loadWorkspace()
-        val existingIds = buildSet {
-            base.sheetsBySystem.values.forEach { add(it.id) }
-            roomEntities.forEach { entity ->
-                runCatching {
-                    roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson).id
-                }.getOrNull()?.let { add(it) }
-            }
-        }
+        val existingIds = collectAllExistingIds(base)
 
         val resolution = SheetTransfer.resolveIdCollisions(parsed, existingIds, overwriteExisting)
-        val importedBySystem = LinkedHashMap<SystemId, CharacterSheetState>()
-        for (sheet in resolution.sheets) {
+        val now = System.currentTimeMillis()
+        val normalizedImported = resolution.sheets.map { sheet ->
             val sysId = Presets.detectSystemId(sheet)
-            importedBySystem[sysId] = sheet.copy(systemId = sysId)
+            Presets.migrateSheetMetadata(sheet.copy(systemId = sysId), localDeviceId)
+        }
+        val importedBySystem = LinkedHashMap<SystemId, CharacterSheetState>()
+        for (sheet in normalizedImported) {
+            importedBySystem[Presets.detectSystemId(sheet)] = sheet
         }
         val nextWorkspace = WorkspaceState(
             activeSystemId = importedBySystem.keys.first(),
             sheetsBySystem = base.sheetsBySystem + importedBySystem
         )
-        val now = System.currentTimeMillis()
+        roomRepository.upsertSavedSheetEntities(
+            normalizedImported.map { toSavedEntity(it, now) }
+        )
+        prefs.edit().putBoolean(SAVED_SHEETS_INITIALIZED_KEY, true).apply()
         saveToRoom(nextWorkspace, now, isDirty = true)
         saveWorkspace(nextWorkspace, now)
 
         SheetImportResult(
             workspace = nextWorkspace,
-            importedCount = importedBySystem.size,
+            importedCount = normalizedImported.size,
             clonedCount = resolution.clonedCount,
-            skippedSameSystemCount = resolution.sheets.size - importedBySystem.size,
-            importedNames = importedBySystem.values.map { it.characterName }
+            skippedSameSystemCount = 0,
+            importedNames = normalizedImported.map { it.characterName }
         )
     }
 
@@ -393,5 +716,6 @@ class WorkspaceRepository(context: Context) {
         private const val WORKSPACE_KEY = "grid_sheet_workspace_v2"
         private const val WORKSPACE_UPDATED_AT_KEY = "grid_sheet_workspace_updated_at"
         private const val DEVICE_ID_KEY = "grid_sheet_device_id"
+        private const val SAVED_SHEETS_INITIALIZED_KEY = "grid_sheet_saved_sheets_seeded_v1"
     }
 }

@@ -67,6 +67,75 @@ data class SystemOption(
     val description: String
 )
 
+data class SheetMetadata(
+    val id: String,
+    val systemId: SystemId,
+    val systemName: String,
+    val systemCode: String,
+    val characterName: String,
+    val updatedAt: String,
+    val updatedAtMillis: Long,
+    val cardCount: Int = 0,
+    val rollCount: Int = 0,
+    val availableXp: Int = 0
+)
+
+data class PresetSummary(
+    val systemId: SystemId,
+    val systemName: String,
+    val systemCode: String,
+    val shortLabel: String,
+    val description: String,
+    val cardCount: Int,
+    val fieldCount: Int,
+    val fromAsset: Boolean = false
+)
+
+object SheetMetadataMapper {
+    fun parseEffectiveInstant(updatedAt: String, updatedAtMillis: Long): Instant {
+        val trimmed = updatedAt.trim()
+        if (trimmed.isNotEmpty() && trimmed != "1970-01-01T00:00:00Z") {
+            runCatching { Instant.parse(trimmed) }.getOrNull()?.let { return it }
+        }
+        return Instant.ofEpochMilli(updatedAtMillis.coerceAtLeast(0L))
+    }
+
+    fun fromSheet(
+        sheet: CharacterSheetState,
+        systemId: SystemId,
+        updatedAtMillis: Long
+    ): SheetMetadata {
+        val effectiveUpdatedAt = sheet.updatedAt.takeIf {
+            it.isNotBlank() && it != "1970-01-01T00:00:00Z"
+        } ?: Instant.ofEpochMilli(updatedAtMillis.coerceAtLeast(0L)).toString()
+        val effectiveMillis = max(
+            updatedAtMillis,
+            runCatching { Instant.parse(effectiveUpdatedAt).toEpochMilli() }.getOrDefault(0L)
+        )
+        return SheetMetadata(
+            id = sheet.id,
+            systemId = systemId,
+            systemName = sheet.systemName,
+            systemCode = sheet.systemCode,
+            characterName = sheet.characterName.ifBlank { "SEM NOME" },
+            updatedAt = effectiveUpdatedAt,
+            updatedAtMillis = effectiveMillis,
+            cardCount = sheet.cards.size,
+            rollCount = sheet.rollLogs.size,
+            availableXp = XpSystem.getAvailableXp(sheet.xp)
+        )
+    }
+
+    fun sortDescending(items: List<SheetMetadata>): List<SheetMetadata> =
+        items.sortedWith(
+            compareByDescending<SheetMetadata> {
+                parseEffectiveInstant(it.updatedAt, it.updatedAtMillis)
+            }.thenByDescending { it.updatedAtMillis }
+                .thenByDescending { it.updatedAt }
+                .thenBy { it.characterName.lowercase() }
+        )
+}
+
 @Serializable
 data class RepeatableRow(
     val id: String,

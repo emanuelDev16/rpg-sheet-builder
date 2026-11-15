@@ -18,9 +18,10 @@ enum class RulePagesStorageMode {
     entities = [
         SheetEntity::class,
         WorkspaceMetadataEntity::class,
-        IndexedBookEntity::class
+        IndexedBookEntity::class,
+        SavedSheetEntity::class
     ],
-    version = 3,
+    version = 4,
     exportSchema = false
 )
 abstract class GridSheetDatabase : RoomDatabase() {
@@ -81,6 +82,51 @@ abstract class GridSheetDatabase : RoomDatabase() {
         val MIGRATION_2_3: Migration = object : Migration(2, 3) {
             override fun migrate(db: SupportSQLiteDatabase) {
                 createPdfRulesSchema(db)
+            }
+        }
+
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `saved_sheets` (
+                        `sheetId` TEXT NOT NULL,
+                        `systemId` TEXT NOT NULL,
+                        `systemName` TEXT NOT NULL,
+                        `characterName` TEXT NOT NULL,
+                        `sheetJson` TEXT NOT NULL,
+                        `updatedAt` TEXT NOT NULL DEFAULT '1970-01-01T00:00:00Z',
+                        `updatedAtMillis` INTEGER NOT NULL,
+                        `revision` INTEGER NOT NULL DEFAULT 1,
+                        PRIMARY KEY(`sheetId`)
+                    )
+                    """.trimIndent()
+                )
+                db.query(
+                    "SELECT systemId, systemName, characterName, sheetJson, updatedAt, updatedAtMillis, revision FROM character_sheets"
+                ).use { cursor ->
+                    while (cursor.moveToNext()) {
+                        val sysId = cursor.getString(0) ?: continue
+                        val sysName = cursor.getString(1) ?: ""
+                        val charName = cursor.getString(2) ?: ""
+                        val rawJson = cursor.getString(3) ?: continue
+                        val updatedAt = cursor.getString(4) ?: "1970-01-01T00:00:00Z"
+                        val updatedAtMillis = cursor.getLong(5)
+                        val revision = cursor.getInt(6)
+                        val extractedId = Regex("\"id\"\\s*:\\s*\"([^\"]+)\"")
+                            .find(rawJson)?.groupValues?.getOrNull(1)
+                            ?.takeIf { it.isNotBlank() }
+                            ?: "sheet_${sysId.lowercase()}"
+                        db.execSQL(
+                            """
+                            INSERT OR IGNORE INTO `saved_sheets`
+                            (`sheetId`, `systemId`, `systemName`, `characterName`, `sheetJson`, `updatedAt`, `updatedAtMillis`, `revision`)
+                            VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                            """.trimIndent(),
+                            arrayOf<Any>(extractedId, sysId, sysName, charName, rawJson, updatedAt, updatedAtMillis, revision)
+                        )
+                    }
+                }
             }
         }
 
@@ -185,7 +231,7 @@ abstract class GridSheetDatabase : RoomDatabase() {
                     GridSheetDatabase::class.java,
                     "gridsheet_offline.db"
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)

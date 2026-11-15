@@ -10,6 +10,9 @@ import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.doubleOrNull
 import java.time.Instant
+import java.util.UUID
+import kotlin.math.max
+import kotlin.math.min
 
 @Serializable
 private data class PresetBundleV2(
@@ -678,6 +681,19 @@ object Presets {
         return if (changed) withMeta.copy(cards = updatedCards) else withMeta
     }
 
+    private val WOD_BASE_ONE_KEYS = setOf(
+        "strength", "dexterity", "stamina", "charisma", "manipulation", "wits"
+    )
+
+    private val DND_ABILITY_KEYS = setOf(
+        "strength", "dexterity", "constitution", "intelligence", "wisdom", "charisma",
+        "forca", "destreza", "constituicao", "inteligencia", "sabedoria", "carisma", "intelecto"
+    )
+
+    fun parseSystemId(raw: String): SystemId =
+        SystemId.entries.firstOrNull { it.name.equals(raw.trim(), ignoreCase = true) }
+            ?: SystemId.BLANK
+
     fun createPresetBySystemId(systemId: SystemId, deviceId: String = "local-device"): CharacterSheetState {
         cachedAssetPresets[systemId]?.let { cached ->
             return cached.copy(deviceId = deviceId)
@@ -688,6 +704,157 @@ object Presets {
             SystemId.CYBERPUNK -> createCyberpunkPreset(deviceId)
             SystemId.DEFAULT -> createGenericD20Preset(deviceId)
             SystemId.BLANK -> createBlankSheet(deviceId)
+        }
+    }
+
+    /**
+     * Instantiates a fresh, zeroed-out fillable character sheet for [systemId] with a unique ID,
+     * preserving card layout/formulas from `presets.v2.json` (when loaded) while resetting sample
+     * values, XP ledger, and roll logs.
+     */
+    fun createFreshSheetForSystem(
+        systemId: String,
+        deviceId: String = "local-device",
+        customName: String? = null,
+        nowIso: String = Instant.now().toString(),
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): CharacterSheetState = createFreshSheetForSystem(
+        systemId = parseSystemId(systemId),
+        deviceId = deviceId,
+        customName = customName,
+        nowIso = nowIso,
+        idGenerator = idGenerator
+    )
+
+    fun createFreshSheetForSystem(
+        systemId: SystemId,
+        deviceId: String = "local-device",
+        customName: String? = null,
+        nowIso: String = Instant.now().toString(),
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): CharacterSheetState {
+        val cleanName = customName?.trim()?.takeIf { it.isNotEmpty() }?.take(120)
+        val sheetDisplayName = cleanName?.uppercase() ?: "NOVO PERSONAGEM"
+        val freshId = idGenerator().ifBlank { UUID.randomUUID().toString() }.take(64)
+        val safeDeviceId = deviceId.ifBlank { "local-device" }
+
+        if (systemId == SystemId.BLANK) {
+            return createPresetBySystemId(SystemId.BLANK, safeDeviceId).copy(
+                id = freshId,
+                systemId = SystemId.BLANK,
+                characterName = sheetDisplayName,
+                revision = 1,
+                updatedAt = nowIso,
+                deviceId = safeDeviceId,
+                cards = emptyList(),
+                rollLogs = emptyList(),
+                xp = XpState()
+            )
+        }
+
+        val preset = createPresetBySystemId(systemId, safeDeviceId)
+        val resetCards = preset.cards.map { card ->
+            card.copy(
+                fields = card.fields.map { field ->
+                    val k = field.key.trim().lowercase()
+                    when (field.kind) {
+                        FieldKind.TEXT -> {
+                            val sample = field.textValue?.trim().orEmpty()
+                            val derivedHint = if (
+                                field.hint.isNullOrBlank() &&
+                                sample.isNotEmpty() &&
+                                sample.length <= 48 &&
+                                k != "notas_campanha"
+                            ) {
+                                sample
+                            } else {
+                                field.hint
+                            }
+                            val nextText = if (
+                                cleanName != null &&
+                                (field.id == "f_nome" || k == "character_name" || k == "nome_personagem")
+                            ) {
+                                cleanName
+                            } else {
+                                ""
+                            }
+                            field.copy(textValue = nextText, hint = derivedHint)
+                        }
+                        FieldKind.NUMBER -> {
+                            val nextNum = when (systemId) {
+                                SystemId.WOD -> when {
+                                    k == "generation" -> 13.0
+                                    k in WOD_BASE_ONE_KEYS -> 1.0
+                                    else -> 0.0
+                                }
+                                SystemId.CYBERPUNK -> when {
+                                    k == "nivel" || k == "level" -> 1.0
+                                    k in DND_ABILITY_KEYS -> 5.0
+                                    else -> 0.0
+                                }
+                                else -> when {
+                                    k == "level" || k == "nivel" -> 1.0
+                                    k in DND_ABILITY_KEYS -> 10.0
+                                    else -> 0.0
+                                }
+                            }
+                            field.copy(numValue = nextNum)
+                        }
+                        FieldKind.RESOURCE -> {
+                            val maxVal = max(1, field.max ?: 10)
+                            when {
+                                field.damageTrack == true -> field.copy(
+                                    max = maxVal,
+                                    numValue = maxVal.toDouble(),
+                                    superficialDamage = 0,
+                                    aggravatedDamage = 0
+                                )
+                                k == "hunger" -> field.copy(max = maxVal, numValue = 1.0)
+                                k == "humanity" -> field.copy(max = maxVal, numValue = min(maxVal, 7).toDouble())
+                                else -> field.copy(max = maxVal, numValue = maxVal.toDouble())
+                            }
+                        }
+                        FieldKind.BOOLEAN -> field.copy(boolValue = false)
+                        FieldKind.REPEATABLE -> field.copy(rows = emptyList())
+                        FieldKind.CALCULATED, FieldKind.ROLL -> field
+                    }
+                }
+            )
+        }
+
+        return preset.copy(
+            id = freshId,
+            systemId = systemId,
+            characterName = sheetDisplayName,
+            revision = 1,
+            updatedAt = nowIso,
+            deviceId = safeDeviceId,
+            cards = resetCards,
+            rollLogs = emptyList(),
+            xp = XpState(totalEarned = 0, spent = 0, ledger = emptyList())
+        )
+    }
+
+    fun getAvailablePresets(
+        context: Context? = null,
+        deviceId: String = "local-device"
+    ): List<PresetSummary> {
+        if (context != null && cachedAssetPresets.isEmpty()) {
+            loadPresetsFromAsset(context, deviceId)
+        }
+        return SYSTEM_OPTIONS.map { opt ->
+            val assetSheet = cachedAssetPresets[opt.id]
+            val resolved = assetSheet ?: createPresetBySystemId(opt.id, deviceId)
+            PresetSummary(
+                systemId = opt.id,
+                systemName = resolved.systemName,
+                systemCode = resolved.systemCode,
+                shortLabel = opt.shortLabel,
+                description = opt.description,
+                cardCount = resolved.cards.size,
+                fieldCount = resolved.cards.sumOf { it.fields.size },
+                fromAsset = assetSheet != null
+            )
         }
     }
 
