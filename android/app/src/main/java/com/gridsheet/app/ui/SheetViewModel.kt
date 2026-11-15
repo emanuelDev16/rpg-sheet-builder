@@ -1,6 +1,8 @@
 package com.gridsheet.app.ui
 
 import android.app.Application
+import android.net.Uri
+import android.os.SystemClock
 import androidx.lifecycle.AndroidViewModel
 import androidx.lifecycle.viewModelScope
 import com.gridsheet.app.core.AppMode
@@ -19,12 +21,20 @@ import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.WorkspaceState
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
+import com.gridsheet.app.data.Fts5QuerySanitizer
+import com.gridsheet.app.data.IndexProgress
 import com.gridsheet.app.data.RulesSearchResponse
 import com.gridsheet.app.data.WorkspaceRepository
+import com.gridsheet.app.data.local.FtsRuleHitRow
+import com.gridsheet.app.data.local.IndexedBookEntity
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -90,6 +100,28 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     private val _rulesResult = MutableStateFlow<RulesSearchResponse?>(null)
     val rulesResult: StateFlow<RulesSearchResponse?> = _rulesResult.asStateFlow()
+
+    private val _rulesQuery = MutableStateFlow("")
+    val rulesQuery: StateFlow<String> = _rulesQuery.asStateFlow()
+
+    private val _indexProgress = MutableStateFlow<IndexProgress?>(null)
+    val indexProgress: StateFlow<IndexProgress?> = _indexProgress.asStateFlow()
+
+    private val _localRuleHits = MutableStateFlow<List<FtsRuleHitRow>>(emptyList())
+    val localRuleHits: StateFlow<List<FtsRuleHitRow>> = _localRuleHits.asStateFlow()
+
+    private val _localSearchElapsedMs = MutableStateFlow<Long?>(null)
+    val localSearchElapsedMs: StateFlow<Long?> = _localSearchElapsedMs.asStateFlow()
+
+    @OptIn(ExperimentalCoroutinesApi::class)
+    val indexedBooks: StateFlow<List<IndexedBookEntity>> = _workspace
+        .map { it.activeSystemId }
+        .distinctUntilChanged()
+        .flatMapLatest { sysId -> repo.observeIndexedBooks(sysId) }
+        .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
+
+    private var indexingJob: Job? = null
+    private var localSearchJob: Job? = null
 
     val offlineSheetCount: StateFlow<Int> = repo.observeOfflineSheetCount()
         .stateIn(viewModelScope, SharingStarted.Eagerly, _workspace.value.sheetsBySystem.size)
@@ -167,6 +199,12 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         )
         persistWorkspace(nextWs)
         _xpFilter.value = null
+        _localRuleHits.value = emptyList()
+        _localSearchElapsedMs.value = null
+        _rulesResult.value = null
+        if (_rulesQuery.value.trim().length >= 2) {
+            runLocalFts5Search(_rulesQuery.value, nextSystemId)
+        }
         if (nextSystemId == SystemId.BLANK && targetSheet.cards.isEmpty()) {
             if (_activeTab.value == TabId.XP) _activeTab.value = TabId.GERAL
             _mode.value = AppMode.EDICAO
@@ -395,9 +433,83 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         return true
     }
 
-    fun searchRules(query: String) {
+    fun updateRulesQuery(rawQuery: String) {
+        _rulesQuery.value = rawQuery
+        runLocalFts5Search(rawQuery, _workspace.value.activeSystemId)
+    }
+
+    private fun runLocalFts5Search(rawQuery: String, systemId: SystemId) {
+        localSearchJob?.cancel()
+        val trimmed = rawQuery.trim()
+        if (trimmed.length < 2 || Fts5QuerySanitizer.sanitizeQuery(trimmed).isEmpty()) {
+            _localRuleHits.value = emptyList()
+            _localSearchElapsedMs.value = null
+            return
+        }
+        localSearchJob = viewModelScope.launch {
+            val startedAt = SystemClock.elapsedRealtime()
+            val hits = runCatching {
+                repo.searchLocalPdfRules(trimmed, systemId, limit = 15)
+            }.getOrElse { emptyList() }
+            val elapsed = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(1L)
+            _localRuleHits.value = hits
+            _localSearchElapsedMs.value = elapsed
+        }
+    }
+
+    fun importPdfRulebook(uri: Uri, targetSystemId: SystemId = _workspace.value.activeSystemId) {
+        indexingJob?.cancel()
+        indexingJob = viewModelScope.launch {
+            repo.indexPdfRulebook(uri, targetSystemId).collect { progress ->
+                when (progress) {
+                    is IndexProgress.Extracting,
+                    is IndexProgress.Persisting -> {
+                        _indexProgress.value = progress
+                    }
+                    is IndexProgress.Completed -> {
+                        _indexProgress.value = null
+                        _statusMessage.value =
+                            "PDF INDEXADO: ${progress.book.title} (${progress.indexedPagesCount} PÁGS)"
+                        if (_rulesQuery.value.trim().length >= 2) {
+                            runLocalFts5Search(_rulesQuery.value, _workspace.value.activeSystemId)
+                        }
+                    }
+                    is IndexProgress.Error -> {
+                        _indexProgress.value = progress
+                        _statusMessage.value = "ERRO PDF: ${progress.message}"
+                    }
+                }
+            }
+        }
+    }
+
+    fun dismissIndexError() {
+        if (_indexProgress.value is IndexProgress.Error) {
+            _indexProgress.value = null
+        }
+    }
+
+    fun deleteIndexedBook(bookId: String) {
+        viewModelScope.launch {
+            runCatching { repo.deleteIndexedBook(bookId) }
+                .onSuccess {
+                    _statusMessage.value = "MANUAL REMOVIDO DO ÍNDICE"
+                    if (_rulesQuery.value.trim().length >= 2) {
+                        runLocalFts5Search(_rulesQuery.value, _workspace.value.activeSystemId)
+                    }
+                }
+                .onFailure { err ->
+                    _statusMessage.value = "FALHA AO REMOVER PDF: ${err.message ?: "erro"}"
+                }
+        }
+    }
+
+    fun searchRules(query: String, forceOnline: Boolean = false) {
         val trimmed = query.trim()
+        _rulesQuery.value = query
         if (trimmed.length < 2) {
+            _localRuleHits.value = emptyList()
+            _localSearchElapsedMs.value = null
             _rulesResult.value = RulesSearchResponse(
                 ok = false,
                 query = trimmed,
@@ -406,9 +518,22 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
             return
         }
         viewModelScope.launch {
-            _rulesLoading.value = true
-            _rulesResult.value = repo.searchRules(trimmed, activeSheet.value.systemName)
-            _rulesLoading.value = false
+            val activeSys = _workspace.value.activeSystemId
+            val startedAt = SystemClock.elapsedRealtime()
+            val localHits = runCatching {
+                repo.searchLocalPdfRules(trimmed, activeSys, limit = 15)
+            }.getOrElse { emptyList() }
+            _localRuleHits.value = localHits
+            _localSearchElapsedMs.value = (SystemClock.elapsedRealtime() - startedAt).coerceAtLeast(1L)
+
+            val shouldSearchOnline = forceOnline || (indexedBooks.value.isEmpty() && localHits.isEmpty())
+            if (shouldSearchOnline) {
+                _rulesLoading.value = true
+                _rulesResult.value = repo.searchRules(trimmed, activeSheet.value.systemName)
+                _rulesLoading.value = false
+            } else {
+                _rulesResult.value = null
+            }
         }
     }
 

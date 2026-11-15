@@ -1,13 +1,16 @@
 package com.gridsheet.app.data
 
 import android.content.Context
+import android.net.Uri
 import com.gridsheet.app.BuildConfig
 import com.gridsheet.app.core.CharacterSheetState
 import com.gridsheet.app.core.Presets
 import com.gridsheet.app.core.SheetPayloadValidator
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.WorkspaceState
+import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.GridSheetDatabase
+import com.gridsheet.app.data.local.IndexedBookEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -45,8 +48,12 @@ private data class RulesSearchRequest(
 )
 
 class WorkspaceRepository(context: Context) {
-    private val prefs = context.getSharedPreferences("grid_sheet_prefs", Context.MODE_PRIVATE)
-    val roomRepository = RoomWorkspaceRepository(context)
+    private val appContext = context.applicationContext
+    private val prefs = appContext.getSharedPreferences("grid_sheet_prefs", Context.MODE_PRIVATE)
+    private val db = GridSheetDatabase.getInstance(appContext)
+    private val pdfRulesDao = db.pdfRulesDao()
+    private val pdfRulesIndexer = PdfRulesIndexer(appContext, pdfRulesDao)
+    val roomRepository = RoomWorkspaceRepository(appContext)
 
     val json = Json {
         ignoreUnknownKeys = true
@@ -65,6 +72,27 @@ class WorkspaceRepository(context: Context) {
     }
 
     fun observeOfflineSheetCount(): Flow<Int> = roomRepository.observeOfflineSheetCount()
+
+    fun observeIndexedBooks(systemId: SystemId): Flow<List<IndexedBookEntity>> =
+        pdfRulesDao.observeBooksBySystem(systemId.name)
+
+    fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>> =
+        pdfRulesDao.observeAllBooks()
+
+    fun indexPdfRulebook(uri: Uri, systemId: SystemId): Flow<IndexProgress> =
+        pdfRulesIndexer.indexPdf(uri, systemId.name)
+
+    suspend fun deleteIndexedBook(bookId: String) = withContext(Dispatchers.IO) {
+        pdfRulesDao.deleteBookCascade(bookId)
+    }
+
+    suspend fun searchLocalPdfRules(
+        query: String,
+        systemId: SystemId,
+        limit: Int = 15
+    ): List<FtsRuleHitRow> = withContext(Dispatchers.IO) {
+        pdfRulesDao.searchRulesFts5(query, systemId.name, limit)
+    }
 
     private fun readPrefsWorkspaceRaw(): Pair<WorkspaceState?, Long> {
         val raw = prefs.getString(WORKSPACE_KEY, null)

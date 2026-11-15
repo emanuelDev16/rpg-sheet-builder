@@ -12,6 +12,8 @@ import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
+import com.gridsheet.app.data.Fts5QuerySanitizer
+import com.gridsheet.app.data.local.FtsRuleHitRow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
 import org.junit.Assert.assertEquals
@@ -178,5 +180,76 @@ class CoreEngineTest {
         val badBoundsRes = SheetPayloadValidator.validateRawJson(badBoundsJson)
         assertFalse(badBoundsRes.valid)
         assertTrue(badBoundsRes.errors.size >= 3)
+    }
+
+    @Test
+    fun fts5QuerySanitizerPreventsSyntaxErrorsOnSpecialCharacters() {
+        assertEquals(
+            "\"super\"* \"natural\"* \"frenzy\"* \"check\"* \"1\"*",
+            Fts5QuerySanitizer.sanitizeQuery("super-natural * \"frenzy\" (check):^1")
+        )
+        assertEquals(
+            "\"frenzy\"* \"and\"* \"or\"* \"not\"* \"near\"*",
+            Fts5QuerySanitizer.sanitizeQuery("frenzy AND OR NOT NEAR")
+        )
+        assertEquals("", Fts5QuerySanitizer.sanitizeQuery("   --- *** \"\" () : ^ + /   "))
+        assertEquals(
+            "\"frenesi\"* \"ação\"* \"rápida\"*",
+            Fts5QuerySanitizer.sanitizeQuery("Frenesi, frenesi! Ação-rápida")
+        )
+    }
+
+    @Test
+    fun fts5ResultSortingOrdersByBm25ScoreAndBreaksTiesByPageAndTitle() {
+        val hits = listOf(
+            FtsRuleHitRow(
+                bookId = "b2",
+                bookTitle = "Player Guide",
+                systemId = "WOD",
+                pageNumber = 120,
+                snippet = "weak match",
+                rank = -1.2
+            ),
+            FtsRuleHitRow(
+                bookId = "b1",
+                bookTitle = "Vampire Core",
+                systemId = "WOD",
+                pageNumber = 88,
+                snippet = "best match",
+                rank = -5.75
+            ),
+            FtsRuleHitRow(
+                bookId = "b2",
+                bookTitle = "Companion",
+                systemId = "WOD",
+                pageNumber = 45,
+                snippet = "tied mid B",
+                rank = -2.4
+            ),
+            FtsRuleHitRow(
+                bookId = "b1",
+                bookTitle = "Anarch",
+                systemId = "WOD",
+                pageNumber = 45,
+                snippet = "tied mid A",
+                rank = -2.4
+            )
+        )
+
+        val sorted = Fts5QuerySanitizer.sortHits(hits)
+        assertEquals(listOf("best match", "tied mid A", "tied mid B", "weak match"), sorted.map { it.snippet })
+    }
+
+    @Test
+    fun pdfTextSanitizerAndSnippetParserNormalizeAndHighlightMatches() {
+        val cleaned = Fts5QuerySanitizer.sanitizeExtractedText("desen-\nvolvimento com\u00ADplexo   de\tregras\uE001")
+        assertEquals("desenvolvimento complexo de regras", cleaned)
+
+        val snippet = "Teste de ${Fts5QuerySanitizer.SNIPPET_START}frenesi${Fts5QuerySanitizer.SNIPPET_END} em combate."
+        val segments = Fts5QuerySanitizer.parseSnippetSegments(snippet)
+        assertEquals(
+            listOf("Teste de " to false, "frenesi" to true, " em combate." to false),
+            segments
+        )
     }
 }
