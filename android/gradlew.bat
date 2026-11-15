@@ -118,6 +118,11 @@ echo location of your Java installation. 1>&2
 goto fail
 
 :execute
+@rem Recover ANDROID_HOME from Windows Registry when running in a shell with stale environment variables
+if not defined ANDROID_HOME if not defined ANDROID_SDK_ROOT if not exist "%APP_HOME%\local.properties" (
+    call :tryRegistryAndroidHome "HKCU\Environment"
+    if not defined ANDROID_HOME call :tryRegistryAndroidHome "HKLM\SYSTEM\CurrentControlSet\Control\Session Manager\Environment"
+)
 @rem Setup the command line
 "%JAVA_EXE%" %DEFAULT_JVM_OPTS% %JAVA_OPTS% %GRADLE_OPTS% "-Dorg.gradle.appname=%APP_BASE_NAME%" -jar "%APP_HOME%\gradle\wrapper\gradle-wrapper.jar" %*
 if %ERRORLEVEL% equ 0 goto mainEnd
@@ -131,3 +136,10 @@ exit /b %_GRADLE_EXIT_CODE%
 
 :mainEnd
 if "%OS%"=="Windows_NT" endlocal
+goto :eof
+
+:tryRegistryAndroidHome
+for /f "tokens=1,2,*" %%a in ('reg query "%~1" /v ANDROID_HOME 2^>NUL ^| findstr /I "ANDROID_HOME"') do (
+    if exist "%%~c\platforms" set "ANDROID_HOME=%%~c"
+)
+exit /b 0

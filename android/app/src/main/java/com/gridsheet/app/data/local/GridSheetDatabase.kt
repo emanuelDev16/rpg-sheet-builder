@@ -100,6 +100,16 @@ abstract class GridSheetDatabase : RoomDatabase() {
             ensureRulePagesTable(db)
         }
 
+        private fun queryCompileOptions(db: SupportSQLiteDatabase): Set<String> = runCatching {
+            val options = LinkedHashSet<String>()
+            db.query("PRAGMA compile_options").use { cursor ->
+                while (cursor.moveToNext()) {
+                    cursor.getString(0)?.trim()?.uppercase()?.let { options += it }
+                }
+            }
+            options
+        }.getOrDefault(emptySet())
+
         fun detectRulePagesStorageMode(db: SupportSQLiteDatabase): RulePagesStorageMode? {
             val tableSql = runCatching {
                 db.query(
@@ -109,6 +119,22 @@ abstract class GridSheetDatabase : RoomDatabase() {
                 }
             }.getOrNull() ?: return null
 
+            val detected = when {
+                tableSql.contains("using fts5") -> RulePagesStorageMode.FTS5
+                tableSql.contains("using fts4") || tableSql.contains("using fts3") -> RulePagesStorageMode.FTS4
+                else -> RulePagesStorageMode.PLAIN
+            }
+            val compileOptions = queryCompileOptions(db)
+            val compatibleWithRuntime = when (detected) {
+                RulePagesStorageMode.FTS5 -> compileOptions.isEmpty() || "ENABLE_FTS5" in compileOptions
+                RulePagesStorageMode.FTS4 -> compileOptions.isEmpty() || "ENABLE_FTS4" in compileOptions || "ENABLE_FTS3" in compileOptions
+                RulePagesStorageMode.PLAIN -> true
+            }
+            if (!compatibleWithRuntime) {
+                runCatching { db.execSQL("DROP TABLE IF EXISTS `rule_pages_fts`") }
+                return null
+            }
+
             val readable = runCatching {
                 db.query("SELECT 1 FROM `rule_pages_fts` LIMIT 0").use { }
             }.isSuccess
@@ -116,27 +142,26 @@ abstract class GridSheetDatabase : RoomDatabase() {
                 runCatching { db.execSQL("DROP TABLE IF EXISTS `rule_pages_fts`") }
                 return null
             }
-
-            return when {
-                tableSql.contains("using fts5") -> RulePagesStorageMode.FTS5
-                tableSql.contains("using fts4") || tableSql.contains("using fts3") -> RulePagesStorageMode.FTS4
-                else -> RulePagesStorageMode.PLAIN
-            }
+            return detected
         }
 
         /**
          * Stock Android platform SQLite frequently compiles FTS3/FTS4 without SQLITE_ENABLE_FTS5.
-         * Probe FTS5 safely, then fall back to FTS4 (unicode61) and finally a regular table so DB
-         * initialization never crashes on cold start.
+         * Check `PRAGMA compile_options` before attempting FTS5 so we avoid throwing a SQLite error
+         * inside Room's `onCreate`/`onUpgrade` transaction, then fall back to FTS4 or a plain table.
          */
         fun ensureRulePagesTable(db: SupportSQLiteDatabase): RulePagesStorageMode {
             detectRulePagesStorageMode(db)?.let { return it }
 
-            val attempts = listOf(
-                RulePagesStorageMode.FTS5 to listOf(FTS5_CREATE_SQL),
-                RulePagesStorageMode.FTS4 to listOf(FTS4_CREATE_SQL),
-                RulePagesStorageMode.PLAIN to listOf(PLAIN_CREATE_SQL, PLAIN_INDEX_SQL)
-            )
+            val compileOptions = queryCompileOptions(db)
+            val allowFts5 = compileOptions.isEmpty() || "ENABLE_FTS5" in compileOptions
+            val allowFts4 = compileOptions.isEmpty() || "ENABLE_FTS4" in compileOptions || "ENABLE_FTS3" in compileOptions
+
+            val attempts = buildList {
+                if (allowFts5) add(RulePagesStorageMode.FTS5 to listOf(FTS5_CREATE_SQL))
+                if (allowFts4) add(RulePagesStorageMode.FTS4 to listOf(FTS4_CREATE_SQL))
+                add(RulePagesStorageMode.PLAIN to listOf(PLAIN_CREATE_SQL, PLAIN_INDEX_SQL))
+            }
             for ((mode, statements) in attempts) {
                 val created = runCatching {
                     statements.forEach { db.execSQL(it) }

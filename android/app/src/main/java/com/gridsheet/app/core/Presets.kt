@@ -704,7 +704,10 @@ object Presets {
             val sheet = runCatching {
                 presetJson.decodeFromJsonElement(CharacterSheetState.serializer(), normalized)
             }.getOrNull() ?: continue
-            decodedMap[sysId] = migrateLegacyWodSheet(sheet.copy(systemId = sysId), deviceId)
+            decodedMap[sysId] = migrateLegacyWodSheet(
+                sheet.copy(systemId = sysId, deviceId = deviceId),
+                deviceId
+            )
         }
         decodedMap
     }.getOrDefault(emptyMap())
