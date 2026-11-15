@@ -1,5 +1,10 @@
 package com.gridsheet.app.ui.components
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
@@ -30,6 +35,7 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -138,11 +144,15 @@ fun BentoCardView(
     onUpdateRow: (String, String, String?, String?) -> Unit,
     onRemoveRow: (String, String) -> Unit,
     onUpdateSchema: (String, (SheetField) -> SheetField) -> Unit,
-    onAddField: (String, String, String, FieldKind, String) -> Unit,
+    onAddField: (String, String, String, FieldKind, String, Boolean) -> Unit,
+    onMoveField: (String, String, Int) -> Unit,
+    onCycleRollDifficulty: (String) -> Unit,
+    onToggleRollSpecialty: (String) -> Unit,
     onRemoveField: (String, String) -> Unit,
     onRemoveCard: (String) -> Unit
 ) {
     var showAddFieldDialog by remember { mutableStateOf(false) }
+    var expandedFieldId by remember(card.id, mode) { mutableStateOf<String?>(null) }
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
@@ -223,20 +233,61 @@ fun BentoCardView(
                     .padding(14.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (card.fields.isEmpty() && mode == AppMode.EDICAO) {
-                    Text(
-                        text = "Bloco vazio. Toque abaixo para adicionar o primeiro campo.",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
-                        color = CyberColors.InkMuted
-                    )
+                if (card.fields.isEmpty()) {
+                    if (mode == AppMode.EDICAO) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                .clip(RoundedCornerShape(CyberDimens.ControlRadius))
+                                .background(CyberColors.BgCardAlt)
+                                .drawBehind {
+                                    drawRoundRect(
+                                        color = CyberColors.AccentWine,
+                                        style = Stroke(
+                                            width = CyberDimens.BorderWidth.toPx(),
+                                            pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
+                                        ),
+                                        cornerRadius = CornerRadius(CyberDimens.ControlRadius.toPx())
+                                    )
+                                }
+                                .clickable { showAddFieldDialog = true }
+                                .padding(horizontal = 12.dp, vertical = 12.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Text(
+                                text = "+ ADICIONAR PRIMEIRO CAMPO",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = CyberColors.AccentWine
+                            )
+                        }
+                    } else {
+                        Text(
+                            text = "Bloco vazio.",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            color = CyberColors.InkMuted
+                        )
+                    }
                 }
 
-                card.fields.forEach { field ->
+                card.fields.forEachIndexed { index, field ->
                     FieldRenderer(
                         field = field,
                         mode = mode,
                         evaluation = evaluation,
+                        isFirst = index == 0,
+                        isLast = index == card.fields.lastIndex,
+                        isExpanded = expandedFieldId == field.id,
+                        onToggleExpand = {
+                            expandedFieldId = if (expandedFieldId == field.id) null else field.id
+                        },
+                        onMoveUp = { onMoveField(card.id, field.id, -1) },
+                        onMoveDown = { onMoveField(card.id, field.id, +1) },
+                        onCycleRollDifficulty = { onCycleRollDifficulty(field.id) },
+                        onToggleRollSpecialty = { onToggleRollSpecialty(field.id) },
                         onUpdateNumber = onUpdateNumber,
                         onUpdateText = onUpdateText,
                         onUpdateBoolean = onUpdateBoolean,
@@ -248,14 +299,19 @@ fun BentoCardView(
                         onUpdateRow = onUpdateRow,
                         onRemoveRow = onRemoveRow,
                         onUpdateSchema = onUpdateSchema,
-                        onRemoveField = { onRemoveField(card.id, field.id) }
+                        onRemoveField = {
+                            if (expandedFieldId == field.id) expandedFieldId = null
+                            onRemoveField(card.id, field.id)
+                        }
                     )
                 }
 
-                if (mode == AppMode.EDICAO) {
+                if (mode == AppMode.EDICAO && card.fields.isNotEmpty()) {
                     OutlinedButton(
                         onClick = { showAddFieldDialog = true },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
                         shape = RoundedCornerShape(CyberDimens.ControlRadius),
                         border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
                         colors = ButtonDefaults.outlinedButtonColors(
@@ -281,8 +337,8 @@ fun BentoCardView(
         AddFieldDialog(
             cardCode = card.code,
             onDismiss = { showAddFieldDialog = false },
-            onConfirm = { label, key, kind, expr ->
-                onAddField(card.id, label, key, kind, expr)
+            onConfirm = { label, key, kind, expr, isSkillTemplate ->
+                onAddField(card.id, label, key, kind, expr, isSkillTemplate)
                 showAddFieldDialog = false
             }
         )
@@ -403,6 +459,14 @@ private fun FieldRenderer(
     field: SheetField,
     mode: AppMode,
     evaluation: SheetEvaluation,
+    isFirst: Boolean,
+    isLast: Boolean,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    onMoveUp: () -> Unit,
+    onMoveDown: () -> Unit,
+    onCycleRollDifficulty: () -> Unit,
+    onToggleRollSpecialty: () -> Unit,
     onUpdateNumber: (String, Double) -> Unit,
     onUpdateText: (String, String) -> Unit,
     onUpdateBoolean: (String, Boolean) -> Unit,
@@ -422,28 +486,210 @@ private fun FieldRenderer(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(CyberColors.BgCardAlt, RoundedCornerShape(4.dp))
-                    .border(1.dp, CyberColors.BorderSubtle, RoundedCornerShape(4.dp))
-                    .padding(horizontal = 8.dp, vertical = 4.dp),
+                    .border(1.dp, if (isExpanded) CyberColors.AccentWine else CyberColors.BorderSubtle, RoundedCornerShape(4.dp))
+                    .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
                 Text(
-                    text = "KEY: ${field.key} · ${field.kind.name}",
+                    text = "${field.key} · ${field.kind.name}",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = CyberColors.InkSecondary
+                    color = CyberColors.InkSecondary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f)
                 )
-                TextButton(
-                    onClick = onRemoveField,
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 6.dp, vertical = 0.dp)
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(2.dp)
                 ) {
-                    Text(
-                        text = "REMOVER ×",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 10.sp,
-                        fontWeight = FontWeight.Bold,
-                        color = CyberColors.AccentDanger
+                    TextButton(
+                        onClick = onMoveUp,
+                        enabled = !isFirst,
+                        modifier = Modifier.defaultMinSize(minWidth = CyberDimens.MinTouchTarget, minHeight = CyberDimens.MinTouchTarget),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            text = "↑",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (!isFirst) CyberColors.InkPrimary else CyberColors.InkMuted
+                        )
+                    }
+                    TextButton(
+                        onClick = onMoveDown,
+                        enabled = !isLast,
+                        modifier = Modifier.defaultMinSize(minWidth = CyberDimens.MinTouchTarget, minHeight = CyberDimens.MinTouchTarget),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Text(
+                            text = "↓",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 14.sp,
+                            fontWeight = FontWeight.Black,
+                            color = if (!isLast) CyberColors.InkPrimary else CyberColors.InkMuted
+                        )
+                    }
+                    TextButton(
+                        onClick = onToggleExpand,
+                        modifier = Modifier.defaultMinSize(minWidth = CyberDimens.MinTouchTarget, minHeight = CyberDimens.MinTouchTarget),
+                        contentPadding = PaddingValues(0.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Settings,
+                            contentDescription = "Editar ${field.label}",
+                            tint = if (isExpanded) CyberColors.AccentWine else CyberColors.InkPrimary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+            }
+
+            AnimatedVisibility(
+                visible = isExpanded,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                var labelDraft by remember(field.id, field.label) { mutableStateOf(field.label) }
+                var keyDraft by remember(field.id, field.key) { mutableStateOf(field.key) }
+
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
+                        .border(1.dp, CyberColors.AccentWine, RoundedCornerShape(CyberDimens.ControlRadius))
+                        .padding(10.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    OutlinedTextField(
+                        value = labelDraft,
+                        onValueChange = { next ->
+                            labelDraft = next
+                            onUpdateSchema(field.id) {
+                                it.copy(
+                                    label = next.uppercase(),
+                                    rollLabel = if (it.kind == FieldKind.ROLL) next.uppercase() else it.rollLabel
+                                )
+                            }
+                        },
+                        label = { Text("RÓTULO", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
                     )
+                    OutlinedTextField(
+                        value = keyDraft,
+                        onValueChange = { next ->
+                            val clean = next.lowercase().replace(Regex("[^a-z0-9_]+"), "_")
+                            keyDraft = clean
+                            if (clean.isNotBlank()) {
+                                onUpdateSchema(field.id) { it.copy(key = clean) }
+                            }
+                        },
+                        label = { Text("CHAVE (FÓRMULA)", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    if (field.kind == FieldKind.CALCULATED) {
+                        var formulaDraft by remember(field.id, field.formula) { mutableStateOf(field.formula.orEmpty()) }
+                        OutlinedTextField(
+                            value = formulaDraft,
+                            onValueChange = { next ->
+                                formulaDraft = next
+                                onUpdateSchema(field.id) { it.copy(formula = next) }
+                            },
+                            label = { Text("FÓRMULA", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (field.kind == FieldKind.ROLL) {
+                        var exprDraft by remember(field.id, field.rollExpr) { mutableStateOf(field.rollExpr.orEmpty()) }
+                        OutlinedTextField(
+                            value = exprDraft,
+                            onValueChange = { next ->
+                                exprDraft = next
+                                onUpdateSchema(field.id) { it.copy(rollExpr = next) }
+                            },
+                            label = { Text("EXPRESSÃO DE ROLAGEM", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (field.kind == FieldKind.RESOURCE) {
+                        var maxDraft by remember(field.id, field.max) { mutableStateOf((field.max ?: 6).toString()) }
+                        OutlinedTextField(
+                            value = maxDraft,
+                            onValueChange = { next ->
+                                val digits = next.filter { it.isDigit() }
+                                maxDraft = digits
+                                digits.toIntOrNull()?.coerceIn(1, 1000)?.let { maxVal ->
+                                    onUpdateSchema(field.id) { it.copy(max = maxVal) }
+                                }
+                            },
+                            label = { Text("MÁXIMO DO RECURSO", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+
+                    if (field.rollDifficulty != null || field.kind == FieldKind.ROLL) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val diff = (field.rollDifficulty ?: 6).coerceIn(2, 10)
+                            val spec = field.rollSpecialty == true
+                            OutlinedButton(
+                                onClick = onCycleRollDifficulty,
+                                modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                border = BorderStroke(1.dp, CyberColors.BorderInk)
+                            ) {
+                                Text("DIFF $diff ↻", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = onToggleRollSpecialty,
+                                modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                border = BorderStroke(1.dp, if (spec) CyberColors.AccentWine else CyberColors.BorderInk),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = if (spec) CyberColors.AccentWineSoft else CyberColors.BgCard
+                                )
+                            ) {
+                                Text(
+                                    text = if (spec) "SPECIALTY: ON" else "SPECIALTY: OFF",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 11.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (spec) CyberColors.AccentWine else CyberColors.InkPrimary
+                                )
+                            }
+                        }
+                    }
+
+                    OutlinedButton(
+                        onClick = onRemoveField,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                        border = BorderStroke(1.dp, CyberColors.AccentDanger)
+                    ) {
+                        Text(
+                            text = "REMOVER CAMPO ×",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold,
+                            color = CyberColors.AccentDanger
+                        )
+                    }
                 }
             }
         }
@@ -467,6 +713,32 @@ private fun FieldRenderer(
                         color = CyberColors.InkPrimary,
                         modifier = Modifier.weight(1f)
                     )
+                    if (field.rollDifficulty != null) {
+                        val diff = field.rollDifficulty.coerceIn(2, 10)
+                        val pillText = if (field.rollSpecialty == true) "DIFF $diff · SPEC" else "DIFF $diff"
+                        Surface(
+                            modifier = Modifier
+                                .padding(end = 6.dp)
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                .clickable(onClick = onCycleRollDifficulty),
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            color = CyberColors.AccentCreamBadge,
+                            border = BorderStroke(1.dp, CyberColors.AccentWine)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = pillText,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.AccentWine
+                                )
+                            }
+                        }
+                    }
                     BasicTextField(
                         value = textState,
                         onValueChange = { raw ->
@@ -539,37 +811,14 @@ private fun FieldRenderer(
                             fontSize = 12.sp,
                             color = CyberColors.InkPrimary
                         )
-                        if (mode == AppMode.EDICAO) {
-                            var formulaDraft by remember(field.id, field.formula) { mutableStateOf(field.formula.orEmpty()) }
-                            BasicTextField(
-                                value = formulaDraft,
-                                onValueChange = { next ->
-                                    formulaDraft = next
-                                    onUpdateSchema(field.id) { it.copy(formula = next) }
-                                },
-                                singleLine = true,
-                                textStyle = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 11.sp,
-                                    color = CyberColors.AccentWine
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(top = 3.dp)
-                                    .background(CyberColors.BgInput, RoundedCornerShape(4.dp))
-                                    .border(1.dp, CyberColors.AccentWine, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 6.dp, vertical = 4.dp)
-                            )
-                        } else {
-                            Text(
-                                text = "= ${field.formula.orEmpty()}",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                color = CyberColors.InkMuted,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
-                        }
+                        Text(
+                            text = "= ${field.formula.orEmpty()}",
+                            fontFamily = FontFamily.Monospace,
+                            fontSize = 10.sp,
+                            color = CyberColors.InkMuted,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
+                        )
                     }
 
                     Box(
@@ -914,31 +1163,41 @@ private fun FieldRenderer(
                 val expr = field.rollExpr ?: "2d6"
                 val preview = FormulaEngine.resolveRollPreview(expr, evaluation.variables)
 
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                    if (mode == AppMode.EDICAO) {
-                        var exprDraft by remember(field.id, expr) { mutableStateOf(expr) }
-                        BasicTextField(
-                            value = exprDraft,
-                            onValueChange = { next ->
-                                exprDraft = next
-                                onUpdateSchema(field.id) { it.copy(rollExpr = next) }
-                            },
-                            singleLine = true,
-                            textStyle = TextStyle(
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
-                                color = CyberColors.AccentWine
-                            ),
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    if (field.rollDifficulty != null) {
+                        val diff = field.rollDifficulty.coerceIn(2, 10)
+                        val pillText = if (field.rollSpecialty == true) "DIFF $diff · SPEC" else "DIFF $diff"
+                        Surface(
                             modifier = Modifier
-                                .fillMaxWidth()
-                                .background(CyberColors.BgInput, RoundedCornerShape(4.dp))
-                                .border(1.dp, CyberColors.AccentWine, RoundedCornerShape(4.dp))
-                                .padding(horizontal = 8.dp, vertical = 5.dp)
-                        )
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                .clickable(onClick = onCycleRollDifficulty),
+                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            color = CyberColors.AccentCreamBadge,
+                            border = BorderStroke(1.dp, CyberColors.AccentWine)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = pillText,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.AccentWine
+                                )
+                            }
+                        }
                     }
                     Button(
                         onClick = { onRoll(label, expr) },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .weight(1f)
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
                         shape = RoundedCornerShape(CyberDimens.ControlRadius),
                         colors = ButtonDefaults.buttonColors(
                             containerColor = CyberColors.AccentBlack,
@@ -1147,17 +1406,38 @@ private fun SmallSquareButton(label: String, onClick: () -> Unit) {
     }
 }
 
+private data class FieldPresetOption(
+    val id: String,
+    val label: String,
+    val kind: FieldKind,
+    val defaultExpr: String = "",
+    val isSkillTemplate: Boolean = false
+)
+
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun AddFieldDialog(
     cardCode: String,
     onDismiss: () -> Unit,
-    onConfirm: (String, String, FieldKind, String) -> Unit
+    onConfirm: (String, String, FieldKind, String, Boolean) -> Unit
 ) {
     var label by remember { mutableStateOf("") }
     var key by remember { mutableStateOf("") }
     var kind by remember { mutableStateOf(FieldKind.NUMBER) }
     var expr by remember { mutableStateOf("") }
+    var selectedPresetId by remember { mutableStateOf<String?>(null) }
+    var isSkillTemplate by remember { mutableStateOf(false) }
+
+    val presetOptions = remember {
+        listOf(
+            FieldPresetOption("skill_d10", "Habilidade / Perícia d10", FieldKind.ROLL, "pool(3, 6)", isSkillTemplate = true),
+            FieldPresetOption("attribute", "Atributo", FieldKind.NUMBER),
+            FieldPresetOption("discipline", "Disciplina / Poder", FieldKind.NUMBER),
+            FieldPresetOption("resource", "Recurso (Barra)", FieldKind.RESOURCE),
+            FieldPresetOption("calculated", "Calculado", FieldKind.CALCULATED, "0"),
+            FieldPresetOption("text", "Texto/Notas", FieldKind.TEXT)
+        )
+    }
 
     val kindLabels = listOf(
         FieldKind.NUMBER to "NÚMERO",
@@ -1183,6 +1463,49 @@ private fun AddFieldDialog(
         },
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(
+                    text = "PRESETS RÁPIDOS",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Bold,
+                    color = CyberColors.AccentWine
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    presetOptions.forEach { preset ->
+                        val selected = selectedPresetId == preset.id
+                        Surface(
+                            modifier = Modifier
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                .clickable {
+                                    selectedPresetId = preset.id
+                                    kind = preset.kind
+                                    isSkillTemplate = preset.isSkillTemplate
+                                    if (preset.defaultExpr.isNotEmpty() && expr.isBlank()) {
+                                        expr = preset.defaultExpr
+                                    }
+                                },
+                            shape = RoundedCornerShape(4.dp),
+                            color = if (selected) CyberColors.AccentBlack else CyberColors.AccentCreamBadge,
+                            border = BorderStroke(1.dp, if (selected) CyberColors.AccentBlack else CyberColors.AccentWine)
+                        ) {
+                            Box(
+                                modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = preset.label,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (selected) CyberColors.InkInverse else CyberColors.AccentWine
+                                )
+                            }
+                        }
+                    }
+                }
                 OutlinedTextField(
                     value = label,
                     onValueChange = {
@@ -1205,7 +1528,10 @@ private fun AddFieldDialog(
                     kindLabels.forEach { (k, title) ->
                         val selected = kind == k
                         Surface(
-                            modifier = Modifier.clickable { kind = k },
+                            modifier = Modifier.clickable {
+                                kind = k
+                                if (k != FieldKind.ROLL) isSkillTemplate = false
+                            },
                             shape = RoundedCornerShape(4.dp),
                             color = if (selected) CyberColors.AccentWine else CyberColors.BgCardAlt,
                             border = BorderStroke(1.dp, CyberColors.BorderInk)
@@ -1227,7 +1553,7 @@ private fun AddFieldDialog(
                         onValueChange = { expr = it },
                         label = {
                             Text(
-                                if (kind == FieldKind.CALCULATED) "FÓRMULA (ex: atributo * 2)" else "EXPRESSÃO (ex: 2d6 + atributo)",
+                                if (kind == FieldKind.CALCULATED) "FÓRMULA (ex: atributo * 2)" else "EXPRESSÃO (ex: pool(strength + brawl, 6))",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp
                             )
@@ -1239,7 +1565,7 @@ private fun AddFieldDialog(
         },
         confirmButton = {
             Button(
-                onClick = { onConfirm(label, key, kind, expr) },
+                onClick = { onConfirm(label, key, kind, expr, isSkillTemplate) },
                 colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
             ) {
                 Text("CRIAR", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)

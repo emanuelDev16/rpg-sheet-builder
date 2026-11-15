@@ -1095,4 +1095,122 @@ class CoreEngineTest {
             scope.cancel()
         }
     }
+
+    @Test
+    fun skillFieldAutoInjectsDifficulty6AndSupportsCycleAndReorder() {
+        var wod = Presets.createWorldOfDarknessSheet()
+        val skillsCard = wod.cards.first { it.id == "card_skills" }
+
+        val skillNumField = SheetMutators.buildFieldForCard(
+            card = skillsCard,
+            id = "f_athletics",
+            label = "ATHLETICS",
+            key = "athletics",
+            kind = FieldKind.NUMBER
+        )
+        assertEquals(6, skillNumField.rollDifficulty)
+        assertEquals(false, skillNumField.rollSpecialty)
+
+        val skillRollField = SheetMutators.buildFieldForCard(
+            card = null,
+            id = "f_roll_athletics",
+            label = "ROLL ATHLETICS",
+            key = "roll_athletics",
+            kind = FieldKind.ROLL,
+            formulaOrExpr = "",
+            isSkillTemplate = true
+        )
+        assertEquals(6, skillRollField.rollDifficulty)
+        assertEquals(false, skillRollField.rollSpecialty)
+        assertEquals("pool(3, 6)", skillRollField.rollExpr)
+
+        wod = SheetMutators.addFieldToCard(wod, "card_skills", skillRollField)
+        wod = SheetMutators.cycleRollDifficulty(wod, "f_roll_athletics")
+        val cycled = wod.cards.first { it.id == "card_skills" }.fields.first { it.id == "f_roll_athletics" }
+        assertEquals(7, cycled.rollDifficulty)
+        assertEquals("pool(3, 7)", cycled.rollExpr)
+
+        wod = SheetMutators.toggleRollSpecialty(wod, "f_roll_athletics")
+        val withSpec = wod.cards.first { it.id == "card_skills" }.fields.first { it.id == "f_roll_athletics" }
+        assertEquals(true, withSpec.rollSpecialty)
+
+        // Move newly added field up by 1
+        val originalSize = wod.cards.first { it.id == "card_skills" }.fields.size
+        wod = SheetMutators.moveFieldInCard(wod, "card_skills", "f_roll_athletics", -1)
+        val reordered = wod.cards.first { it.id == "card_skills" }.fields
+        assertEquals("f_roll_athletics", reordered[originalSize - 2].id)
+    }
+
+    @Test
+    fun wodXpCatalogCoversAllCategoriesClanVsOutOfClanManualOverrideAndUndo() {
+        var wod = Presets.createWorldOfDarknessSheet()
+        // Add a 0-dot skill, a 0-dot discipline, and a virtue (Conscience)
+        wod = SheetMutators.addFieldToCard(
+            wod,
+            "card_skills",
+            SheetField(id = "f_larceny", key = "larceny", label = "LARCENY", kind = FieldKind.NUMBER, numValue = 0.0)
+        )
+        wod = SheetMutators.addFieldToCard(
+            wod,
+            "card_arcano",
+            SheetField(id = "f_auspex", key = "auspex", label = "AUSPEX", kind = FieldKind.NUMBER, numValue = 0.0)
+        )
+        wod = SheetMutators.addFieldToCard(
+            wod,
+            "card_combate",
+            SheetField(id = "f_conscience", key = "conscience", label = "CONSCIENCE", kind = FieldKind.NUMBER, numValue = 3.0)
+        )
+
+        val traits = XpSystem.extractAllTraits(wod)
+        val byId = traits.associateBy { it.fieldId }
+
+        // Attribute: Strength 3 -> 4 = 3 * 4 = 12
+        assertEquals(XpUpgradeCategory.ATTRIBUTE, byId["f_strength"]?.category)
+        assertEquals(12, byId["f_strength"]?.cost)
+
+        // Skill: 0 -> 1 = 3 XP; Brawl 2 -> 3 = 2 * 2 = 4 XP
+        assertEquals(XpUpgradeCategory.SKILL, byId["f_larceny"]?.category)
+        assertEquals(3, byId["f_larceny"]?.cost)
+        assertEquals(4, byId["f_brawl"]?.cost)
+
+        // Discipline: 0 -> 1 = 10 XP; Clan Dominate 3 -> 4 = 3 * 5 = 15 XP
+        assertEquals(XpUpgradeCategory.DISCIPLINE, byId["f_auspex"]?.category)
+        assertEquals(10, byId["f_auspex"]?.cost)
+        assertEquals(15, byId["f_dominate"]?.cost)
+        assertFalse(byId["f_dominate"]?.isOutOfClan ?: true)
+
+        // Toggle Dominate to Out-of-Clan: 3 * 7 = 21 XP
+        wod = XpSystem.toggleDisciplineClan(wod, "f_dominate")
+        val afterOutOfClan = XpSystem.extractAllTraits(wod).associateBy { it.fieldId }
+        assertTrue(afterOutOfClan["f_dominate"]?.isOutOfClan == true)
+        assertEquals(21, afterOutOfClan["f_dominate"]?.cost)
+
+        // Virtue: Conscience 3 -> 4 = 6 XP; Humanity 7 -> 8 = 14 XP; Willpower 6 -> 7 = 6 XP
+        assertEquals(XpUpgradeCategory.VIRTUE, afterOutOfClan["f_conscience"]?.category)
+        assertEquals(6, afterOutOfClan["f_conscience"]?.cost)
+        assertEquals(XpUpgradeCategory.VIRTUE, afterOutOfClan["f_humanity"]?.category)
+        assertEquals(14, afterOutOfClan["f_humanity"]?.cost)
+        assertEquals(10, afterOutOfClan["f_humanity"]?.maxCap)
+        assertEquals(XpUpgradeCategory.VIRTUE, afterOutOfClan["f_willpower"]?.category)
+        assertEquals(6, afterOutOfClan["f_willpower"]?.cost)
+        assertEquals(10, afterOutOfClan["f_willpower"]?.maxCap)
+
+        // Manual multiplier override on Strength: 3 * 2 = 6 XP
+        wod = XpSystem.setCustomMultiplier(wod, "f_strength", 2)
+        val afterManual = XpSystem.extractAllTraits(wod).associateBy { it.fieldId }
+        assertEquals(6, afterManual["f_strength"]?.cost)
+
+        // Insufficient XP blocks Dominate (21 > 14)
+        val blocked = XpSystem.upgradeTraitWithXp(wod, "f_dominate", "19:00", "xp_blocked")
+        assertFalse(blocked.ok)
+
+        // Purchase Willpower 6 -> 7 (6 XP), leaving 8 XP, then Undo restores 14 XP
+        val boughtWp = XpSystem.upgradeTraitWithXp(wod, "f_willpower", "19:05", "xp_wp")
+        assertTrue(boughtWp.ok)
+        assertEquals(8, XpSystem.getAvailableXp(boughtWp.sheet.xp))
+
+        val undone = XpSystem.undoLastUpgrade(boughtWp.sheet)
+        assertTrue(undone.ok)
+        assertEquals(14, XpSystem.getAvailableXp(undone.sheet.xp))
+    }
 }

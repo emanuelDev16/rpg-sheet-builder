@@ -732,33 +732,38 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         controller.setStatusMessage("BLOCO REMOVIDO")
     }
 
-    fun addFieldToCard(cardId: String, label: String, key: String, kind: FieldKind, formulaOrExpr: String) {
-        val cleanKey = key.trim().lowercase().replace(Regex("[^a-z0-9_]+"), "_").trim('_').ifEmpty {
-            "campo_${UUID.randomUUID().toString().take(4)}"
-        }
-        val newField = SheetField(
+    fun addFieldToCard(
+        cardId: String,
+        label: String,
+        key: String,
+        kind: FieldKind,
+        formulaOrExpr: String,
+        isSkillTemplate: Boolean = false
+    ) {
+        val targetCard = activeSheet.value.cards.find { it.id == cardId }
+        val newField = SheetMutators.buildFieldForCard(
+            card = targetCard,
             id = "f_${UUID.randomUUID().toString().take(8)}",
-            key = cleanKey,
-            label = label.trim().uppercase().ifEmpty { "NOVO CAMPO" },
+            label = label,
+            key = key,
             kind = kind,
-            numValue = when (kind) {
-                FieldKind.NUMBER -> 0.0
-                FieldKind.RESOURCE -> 4.0
-                else -> null
-            },
-            textValue = if (kind == FieldKind.TEXT) "" else null,
-            boolValue = if (kind == FieldKind.BOOLEAN) false else null,
-            max = if (kind == FieldKind.RESOURCE) 6 else null,
-            formula = if (kind == FieldKind.CALCULATED) formulaOrExpr.ifBlank { "0" } else null,
-            showPlus = if (kind == FieldKind.CALCULATED) true else null,
-            rollLabel = if (kind == FieldKind.ROLL) label.trim().uppercase().ifEmpty { "ROLAR TESTE" } else null,
-            rollExpr = if (kind == FieldKind.ROLL) formulaOrExpr.ifBlank { "2d6" } else null,
-            columns = if (kind == FieldKind.REPEATABLE) listOf("ITEM", "VALOR") else null,
-            col2Type = if (kind == FieldKind.REPEATABLE) "text" else null,
-            rows = if (kind == FieldKind.REPEATABLE) emptyList() else null
+            formulaOrExpr = formulaOrExpr,
+            isSkillTemplate = isSkillTemplate
         )
         controller.updateActiveSheet { SheetMutators.addFieldToCard(it, cardId, newField) }
         controller.setStatusMessage("CAMPO ADICIONADO: ${newField.label}")
+    }
+
+    fun moveFieldInCard(cardId: String, fieldId: String, delta: Int) {
+        controller.updateActiveSheet { SheetMutators.moveFieldInCard(it, cardId, fieldId, delta) }
+    }
+
+    fun cycleRollDifficulty(fieldId: String) {
+        controller.updateActiveSheet { SheetMutators.cycleRollDifficulty(it, fieldId) }
+    }
+
+    fun toggleRollSpecialty(fieldId: String) {
+        controller.updateActiveSheet { SheetMutators.toggleRollSpecialty(it, fieldId) }
     }
 
     fun removeFieldFromCard(cardId: String, fieldId: String) {
@@ -822,6 +827,14 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         res.trait?.let {
             controller.setStatusMessage("UPGRADE: ${it.label} ${it.currentValue} → ${it.nextValue} (-${it.cost} XP)")
         }
+    }
+
+    fun toggleDisciplineClan(fieldId: String) {
+        controller.updateActiveSheet { XpSystem.toggleDisciplineClan(it, fieldId) }
+    }
+
+    fun setTraitCustomMultiplier(fieldId: String, multiplier: Int?) {
+        controller.updateActiveSheet { XpSystem.setCustomMultiplier(it, fieldId, multiplier) }
     }
 
     fun undoLastUpgrade() {

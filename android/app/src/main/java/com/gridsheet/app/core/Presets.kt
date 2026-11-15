@@ -138,9 +138,9 @@ object Presets {
                     SheetField(id = "f_firearms", key = "firearms", label = "FIREARMS", kind = FieldKind.NUMBER, numValue = 3.0),
                     SheetField(id = "f_stealth", key = "stealth", label = "STEALTH", kind = FieldKind.NUMBER, numValue = 3.0),
                     SheetField(id = "f_subterfuge", key = "subterfuge", label = "SUBTERFUGE", kind = FieldKind.NUMBER, numValue = 4.0),
-                    SheetField(id = "f_roll_brawl", key = "roll_brawl", label = "MELEE / BRAWL", kind = FieldKind.ROLL, rollLabel = "ROLL BRAWL", rollExpr = "pool(strength + brawl + wp_boost, 6)"),
-                    SheetField(id = "f_roll_firearms", key = "roll_firearms", label = "RANGED ATTACK", kind = FieldKind.ROLL, rollLabel = "ROLL FIREARMS", rollExpr = "pool(dexterity + firearms + wp_boost, 6)"),
-                    SheetField(id = "f_roll_subterfuge", key = "roll_subterfuge", label = "SOCIAL MANIPULATION", kind = FieldKind.ROLL, rollLabel = "ROLL SUBTERFUGE", rollExpr = "pool(manipulation + subterfuge + wp_boost, 6)")
+                    SheetField(id = "f_roll_brawl", key = "roll_brawl", label = "MELEE / BRAWL", kind = FieldKind.ROLL, rollLabel = "ROLL BRAWL", rollExpr = "pool(strength + brawl + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false),
+                    SheetField(id = "f_roll_firearms", key = "roll_firearms", label = "RANGED ATTACK", kind = FieldKind.ROLL, rollLabel = "ROLL FIREARMS", rollExpr = "pool(dexterity + firearms + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false),
+                    SheetField(id = "f_roll_subterfuge", key = "roll_subterfuge", label = "SOCIAL MANIPULATION", kind = FieldKind.ROLL, rollLabel = "ROLL SUBTERFUGE", rollExpr = "pool(manipulation + subterfuge + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false)
                 )
             ),
             SheetCard(
@@ -178,8 +178,8 @@ object Presets {
                     SheetField(id = "f_presence", key = "presence", label = "PRESENCE", kind = FieldKind.NUMBER, numValue = 2.0),
                     SheetField(id = "f_occult", key = "occult", label = "OCCULT", kind = FieldKind.NUMBER, numValue = 3.0),
                     SheetField(id = "f_dominate_pool", key = "dominate_pool", label = "DOMINATE_POOL", kind = FieldKind.CALCULATED, formula = "manipulation + dominate", showPlus = false),
-                    SheetField(id = "f_roll_dominate", key = "roll_dominate", label = "MESMERIZE / COMMAND", kind = FieldKind.ROLL, rollLabel = "ROLL DOMINATE", rollExpr = "pool(manipulation + dominate + wp_boost, 6)"),
-                    SheetField(id = "f_roll_occult", key = "roll_occult", label = "ARCANE LORE CHECK", kind = FieldKind.ROLL, rollLabel = "ROLL OCCULT", rollExpr = "pool(wits + occult + wp_boost, 7)")
+                    SheetField(id = "f_roll_dominate", key = "roll_dominate", label = "MESMERIZE / COMMAND", kind = FieldKind.ROLL, rollLabel = "ROLL DOMINATE", rollExpr = "pool(manipulation + dominate + wp_boost, 6)", rollDifficulty = 6, rollSpecialty = false),
+                    SheetField(id = "f_roll_occult", key = "roll_occult", label = "ARCANE LORE CHECK", kind = FieldKind.ROLL, rollLabel = "ROLL OCCULT", rollExpr = "pool(wits + occult + wp_boost, 7)", rollDifficulty = 7, rollSpecialty = false)
                 )
             ),
             SheetCard(

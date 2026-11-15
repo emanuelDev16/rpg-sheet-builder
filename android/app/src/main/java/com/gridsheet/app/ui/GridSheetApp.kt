@@ -319,6 +319,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onFilterChange = vm::setXpFilter,
                             onAwardXp = vm::awardXp,
                             onUpgradeTrait = vm::upgradeTrait,
+                            onToggleDisciplineClan = vm::toggleDisciplineClan,
+                            onSetCustomMultiplier = vm::setTraitCustomMultiplier,
                             onUndoLastUpgrade = vm::undoLastUpgrade
                         )
                     }
@@ -340,6 +342,9 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onRemoveRow = vm::removeRepeatableRow,
                             onUpdateSchema = vm::updateFieldSchema,
                             onAddField = vm::addFieldToCard,
+                            onMoveField = vm::moveFieldInCard,
+                            onCycleRollDifficulty = vm::cycleRollDifficulty,
+                            onToggleRollSpecialty = vm::toggleRollSpecialty,
                             onRemoveField = vm::removeFieldFromCard,
                             onRemoveCard = vm::removeCardFromSheet
                         )

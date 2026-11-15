@@ -57,7 +57,8 @@ enum class FieldKind {
 enum class XpUpgradeCategory {
     @SerialName("attribute") ATTRIBUTE,
     @SerialName("skill") SKILL,
-    @SerialName("discipline") DISCIPLINE
+    @SerialName("discipline") DISCIPLINE,
+    @SerialName("virtue") VIRTUE
 }
 
 data class SystemOption(
@@ -160,6 +161,8 @@ data class SheetField(
     val showPlus: Boolean? = null,
     val rollLabel: String? = null,
     val rollExpr: String? = null,
+    val rollDifficulty: Int? = null,
+    val rollSpecialty: Boolean? = null,
     val columns: List<String>? = null,
     val col2Type: String? = null, // "number" | "text"
     val rows: List<RepeatableRow>? = null,
@@ -206,7 +209,9 @@ data class XpLedgerEntry(
 data class XpState(
     val totalEarned: Int = 0,
     val spent: Int = 0,
-    val ledger: List<XpLedgerEntry> = emptyList()
+    val ledger: List<XpLedgerEntry> = emptyList(),
+    val outOfClanFieldIds: Set<String> = emptySet(),
+    val customMultipliers: Map<String, Int> = emptyMap()
 )
 
 @Serializable
@@ -516,6 +521,65 @@ object SheetMutators {
         transform: (SheetField) -> SheetField
     ): CharacterSheetState = mapField(sheet, fieldId, transform)
 
+    fun isSkillCard(card: SheetCard): Boolean {
+        val code = card.code.uppercase()
+        val title = card.title.uppercase()
+        return card.id == "card_skills" ||
+            code.contains("SKILL") ||
+            code.contains("PERICIA") ||
+            code.contains("HABILIDADE") ||
+            title.contains("SKILL") ||
+            title.contains("PERICIA") ||
+            title.contains("PERÍCIA") ||
+            title.contains("HABILIDADE")
+    }
+
+    fun buildFieldForCard(
+        card: SheetCard?,
+        id: String,
+        label: String,
+        key: String,
+        kind: FieldKind,
+        formulaOrExpr: String = "",
+        isSkillTemplate: Boolean = false
+    ): SheetField {
+        val cleanKey = key.trim().lowercase().replace(Regex("[^a-z0-9_]+"), "_").trim('_').ifEmpty {
+            "campo_${id.takeLast(4)}"
+        }
+        val cleanLabel = label.trim().uppercase().ifEmpty { "NOVO CAMPO" }
+        val injectWodRollConfig = kind == FieldKind.ROLL || isSkillTemplate || (card != null && isSkillCard(card))
+        val defaultDiff = if (injectWodRollConfig) 6 else null
+        val defaultSpec = if (injectWodRollConfig) false else null
+        val resolvedRollExpr = if (kind == FieldKind.ROLL) {
+            formulaOrExpr.ifBlank { if (injectWodRollConfig) "pool(3, 6)" else "2d6" }
+        } else {
+            null
+        }
+        return SheetField(
+            id = id,
+            key = cleanKey,
+            label = cleanLabel,
+            kind = kind,
+            numValue = when (kind) {
+                FieldKind.NUMBER -> 0.0
+                FieldKind.RESOURCE -> 4.0
+                else -> null
+            },
+            textValue = if (kind == FieldKind.TEXT) "" else null,
+            boolValue = if (kind == FieldKind.BOOLEAN) false else null,
+            max = if (kind == FieldKind.RESOURCE) 6 else null,
+            formula = if (kind == FieldKind.CALCULATED) formulaOrExpr.ifBlank { "0" } else null,
+            showPlus = if (kind == FieldKind.CALCULATED) true else null,
+            rollLabel = if (kind == FieldKind.ROLL) cleanLabel else null,
+            rollExpr = resolvedRollExpr,
+            rollDifficulty = defaultDiff,
+            rollSpecialty = defaultSpec,
+            columns = if (kind == FieldKind.REPEATABLE) listOf("ITEM", "VALOR") else null,
+            col2Type = if (kind == FieldKind.REPEATABLE) "text" else null,
+            rows = if (kind == FieldKind.REPEATABLE) emptyList() else null
+        )
+    }
+
     fun addFieldToCard(sheet: CharacterSheetState, cardId: String, newField: SheetField): CharacterSheetState =
         touchMetadata(
             sheet.copy(
@@ -524,6 +588,74 @@ object SheetMutators {
                 }
             )
         )
+
+    fun moveFieldInCard(
+        sheet: CharacterSheetState,
+        cardId: String,
+        fieldId: String,
+        delta: Int
+    ): CharacterSheetState {
+        if (delta == 0) return sheet
+        return touchMetadata(
+            sheet.copy(
+                cards = sheet.cards.map { card ->
+                    if (card.id != cardId) return@map card
+                    val idx = card.fields.indexOfFirst { it.id == fieldId }
+                    if (idx == -1) return@map card
+                    val targetIdx = (idx + delta).coerceIn(0, card.fields.lastIndex)
+                    if (targetIdx == idx) return@map card
+                    val mutable = card.fields.toMutableList()
+                    val item = mutable.removeAt(idx)
+                    mutable.add(targetIdx, item)
+                    card.copy(fields = mutable)
+                }
+            )
+        )
+    }
+
+    fun syncRollExprDifficulty(expr: String?, nextDifficulty: Int): String? {
+        if (expr.isNullOrBlank()) return expr
+        val clamped = nextDifficulty.coerceIn(2, 10)
+        val trimmed = expr.trim()
+        val poolRegex = Regex("^pool\\((.+)\\)$", RegexOption.IGNORE_CASE)
+        poolRegex.matchEntire(trimmed)?.let { match ->
+            val inner = match.groupValues[1]
+            var depth = 0
+            var splitIdx = -1
+            for (i in inner.indices) {
+                when (inner[i]) {
+                    '(' -> depth++
+                    ')' -> depth--
+                    ',' -> if (depth == 0) {
+                        splitIdx = i
+                        break
+                    }
+                }
+            }
+            val countPart = if (splitIdx == -1) inner.trim() else inner.substring(0, splitIdx).trim()
+            return "pool($countPart, $clamped)"
+        }
+        val shortPoolRegex = Regex("^(.+?d10\\s*(?:@|>=)\\s*)(\\d+)$", RegexOption.IGNORE_CASE)
+        shortPoolRegex.matchEntire(trimmed)?.let { match ->
+            return "${match.groupValues[1]}$clamped"
+        }
+        return expr
+    }
+
+    fun cycleRollDifficulty(sheet: CharacterSheetState, fieldId: String): CharacterSheetState =
+        mapField(sheet, fieldId) { field ->
+            val current = (field.rollDifficulty ?: 6).coerceIn(2, 10)
+            val next = if (current >= 10) 2 else current + 1
+            field.copy(
+                rollDifficulty = next,
+                rollExpr = syncRollExprDifficulty(field.rollExpr, next)
+            )
+        }
+
+    fun toggleRollSpecialty(sheet: CharacterSheetState, fieldId: String): CharacterSheetState =
+        mapField(sheet, fieldId) { field ->
+            field.copy(rollSpecialty = !(field.rollSpecialty ?: false))
+        }
 
     fun removeFieldFromCard(sheet: CharacterSheetState, cardId: String, fieldId: String): CharacterSheetState =
         touchMetadata(

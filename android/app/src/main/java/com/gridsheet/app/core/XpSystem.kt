@@ -16,7 +16,10 @@ data class UpgradableTrait(
     val formulaLabel: String,
     val isMaxed: Boolean,
     val isAffordable: Boolean,
-    val isPossible: Boolean
+    val isPossible: Boolean,
+    val isOutOfClan: Boolean = false,
+    val customMultiplier: Int? = null,
+    val isWillpower: Boolean = false
 )
 
 data class XpMutationResult(
@@ -51,10 +54,28 @@ object XpSystem {
         "oblivion", "necromancy", "chimerstry", "dementation"
     )
 
+    private val WILLPOWER_KEYS = setOf("willpower", "forca_de_vontade")
+
+    private val VIRTUE_TEN_CAP_KEYS = setOf(
+        "willpower", "forca_de_vontade", "humanity", "humanidade", "path", "trilha", "road"
+    )
+
+    private val VIRTUE_KEYS = setOf(
+        "willpower", "forca_de_vontade", "humanity", "humanidade", "path", "trilha", "road",
+        "conscience", "consciencia", "self_control", "autocontrole", "courage", "coragem",
+        "conviction", "conviccao", "instinct", "instinto"
+    )
+
     fun normalizeXpState(xp: XpState?): XpState {
         val total = max(0, xp?.totalEarned ?: 0)
         val spent = max(0, xp?.spent ?: 0)
-        return XpState(totalEarned = total, spent = spent, ledger = xp?.ledger.orEmpty())
+        return XpState(
+            totalEarned = total,
+            spent = spent,
+            ledger = xp?.ledger.orEmpty(),
+            outOfClanFieldIds = xp?.outOfClanFieldIds.orEmpty(),
+            customMultipliers = xp?.customMultipliers.orEmpty()
+        )
     }
 
     fun getAvailableXp(xp: XpState?): Int {
@@ -63,26 +84,37 @@ object XpSystem {
     }
 
     fun classifyTraitField(card: SheetCard, field: SheetField): XpUpgradeCategory? {
-        if (field.kind != FieldKind.NUMBER) return null
         val key = field.key.trim().lowercase()
         if (key.isEmpty() || key in IGNORED_NUMERIC_KEYS) return null
 
         val cardCode = card.code.uppercase()
-        val isSkillCard = card.id == "card_skills" || cardCode.contains("SKILL") || cardCode.contains("PERICIA")
+        val cardTitle = card.title.uppercase()
+        val isVirtueCard = cardCode.contains("VIRTUE") || cardCode.contains("VIRTUDE") ||
+            cardCode.contains("HUMANITY") || cardCode.contains("HUMANIDADE") ||
+            cardTitle.contains("VIRTUE") || cardTitle.contains("VIRTUDE")
+
+        if (field.kind == FieldKind.RESOURCE) {
+            return if (key in VIRTUE_KEYS || isVirtueCard) XpUpgradeCategory.VIRTUE else null
+        }
+        if (field.kind != FieldKind.NUMBER) return null
+
+        val isSkillCard = card.id == "card_skills" || cardCode.contains("SKILL") || cardCode.contains("PERICIA") || cardCode.contains("HABILIDADE")
 
         if (key == "perception" && isSkillCard) return XpUpgradeCategory.SKILL
 
         if (key in ATTRIBUTE_KEYS) return XpUpgradeCategory.ATTRIBUTE
         if (key in SKILL_KEYS) return XpUpgradeCategory.SKILL
         if (key in DISCIPLINE_KEYS) return XpUpgradeCategory.DISCIPLINE
+        if (key in VIRTUE_KEYS) return XpUpgradeCategory.VIRTUE
 
         if (card.id == "card_atributos" || cardCode.contains("ATTRIBUTE") || cardCode.contains("ATRIBUTO") || cardCode.contains("ABILITY")) {
             return XpUpgradeCategory.ATTRIBUTE
         }
         if (isSkillCard) return XpUpgradeCategory.SKILL
-        if (card.id == "card_arcano" || cardCode.contains("DISCIPLINE") || cardCode.contains("ARCANO")) {
+        if (card.id == "card_arcano" || cardCode.contains("DISCIPLINE") || cardCode.contains("ARCANO") || cardCode.contains("PODER") || cardCode.contains("POWER")) {
             return XpUpgradeCategory.DISCIPLINE
         }
+        if (isVirtueCard) return XpUpgradeCategory.VIRTUE
         return null
     }
 
@@ -96,9 +128,19 @@ object XpSystem {
     fun calculateUpgradeCost(
         category: XpUpgradeCategory,
         currentValue: Int,
-        useD20Scale: Boolean = false
+        useD20Scale: Boolean = false,
+        isOutOfClan: Boolean = false,
+        isWillpower: Boolean = false,
+        customMultiplier: Int? = null
     ): Pair<Int, String> {
         val rating = max(0, currentValue)
+        if (customMultiplier != null && customMultiplier > 0) {
+            return if (rating == 0) {
+                customMultiplier to "NEW ($customMultiplier XP · MANUAL)"
+            } else {
+                (rating * customMultiplier) to "$rating × $customMultiplier (MANUAL)"
+            }
+        }
         if (useD20Scale) {
             return when (category) {
                 XpUpgradeCategory.ATTRIBUTE ->
@@ -107,6 +149,8 @@ object XpSystem {
                     if (rating == 0) 50 to "NEW (50 XP)" else (rating * 50) to "$rating × 50"
                 XpUpgradeCategory.DISCIPLINE ->
                     if (rating == 0) 150 to "NEW (150 XP)" else (rating * 150) to "$rating × 150"
+                XpUpgradeCategory.VIRTUE ->
+                    if (rating == 0) 50 to "NEW (50 XP)" else (rating * 50) to "$rating × 50"
             }
         }
         return when (category) {
@@ -115,13 +159,23 @@ object XpSystem {
             XpUpgradeCategory.SKILL ->
                 if (rating == 0) 3 to "NEW (3 XP)" else (rating * 2) to "$rating × 2"
             XpUpgradeCategory.DISCIPLINE ->
-                if (rating == 0) 10 to "NEW (10 XP)" else (rating * 5) to "$rating × 5"
+                when {
+                    rating == 0 -> 10 to "NEW (10 XP)"
+                    isOutOfClan -> (rating * 7) to "$rating × 7 (FORA)"
+                    else -> (rating * 5) to "$rating × 5 (CLÃ)"
+                }
+            XpUpgradeCategory.VIRTUE ->
+                if (isWillpower) {
+                    if (rating == 0) 1 to "NEW (1 XP)" else (rating * 1) to "$rating × 1 (WP)"
+                } else {
+                    if (rating == 0) 2 to "NEW (2 XP)" else (rating * 2) to "$rating × 2"
+                }
         }
     }
 
     fun getCostRulesSummary(sheet: CharacterSheetState): List<String> =
         if (isWodSystem(sheet)) {
-            listOf("ATTR CUR×4", "SKILL CUR×2 (3 EM 0)", "DISC CUR×5 (10 EM 0)", "CAP 5")
+            listOf("ATTR ×4", "SKILL ×2 (3 EM 0)", "CLÃ ×5 / FORA ×7 (10 EM 0)", "VIRT ×2", "WP ×1")
         } else {
             listOf("ABILITY CUR×100", "SKILL CUR×50 (50 EM 0)", "CAP 20/10")
         }
@@ -129,26 +183,66 @@ object XpSystem {
     fun getTraitMaxCap(
         sheet: CharacterSheetState,
         currentValue: Int,
-        category: XpUpgradeCategory? = null
+        category: XpUpgradeCategory? = null,
+        key: String = ""
     ): Int {
-        if (isWodSystem(sheet)) return 5
+        if (isWodSystem(sheet)) {
+            val cleanKey = key.trim().lowercase()
+            return if (category == XpUpgradeCategory.VIRTUE && cleanKey in VIRTUE_TEN_CAP_KEYS) 10 else 5
+        }
         if (category == XpUpgradeCategory.SKILL) return max(10, currentValue)
         return if (currentValue >= 5) 20 else 10
     }
 
+    fun toggleDisciplineClan(sheet: CharacterSheetState, fieldId: String): CharacterSheetState {
+        val norm = normalizeXpState(sheet.xp)
+        val nextSet = if (fieldId in norm.outOfClanFieldIds) {
+            norm.outOfClanFieldIds - fieldId
+        } else {
+            norm.outOfClanFieldIds + fieldId
+        }
+        return SheetMutators.touchMetadata(
+            sheet.copy(xp = norm.copy(outOfClanFieldIds = nextSet))
+        )
+    }
+
+    fun setCustomMultiplier(sheet: CharacterSheetState, fieldId: String, multiplier: Int?): CharacterSheetState {
+        val norm = normalizeXpState(sheet.xp)
+        val nextMap = if (multiplier == null || multiplier <= 0) {
+            norm.customMultipliers - fieldId
+        } else {
+            norm.customMultipliers + (fieldId to multiplier.coerceIn(1, 1000))
+        }
+        return SheetMutators.touchMetadata(
+            sheet.copy(xp = norm.copy(customMultipliers = nextMap))
+        )
+    }
+
     fun extractAllTraits(sheet: CharacterSheetState): List<UpgradableTrait> {
-        val availableXp = getAvailableXp(sheet.xp)
+        val normXp = normalizeXpState(sheet.xp)
+        val availableXp = getAvailableXp(normXp)
         val useD20Scale = !isWodSystem(sheet)
         val traits = mutableListOf<UpgradableTrait>()
 
         for (card in sheet.cards) {
             for (field in card.fields) {
                 val category = classifyTraitField(card, field) ?: continue
+                val cleanKey = field.key.trim().lowercase()
                 val raw = field.numValue ?: 0.0
                 val currentValue = if (raw.isFinite()) max(0, raw.roundToInt()) else 0
-                val maxCap = getTraitMaxCap(sheet, currentValue, category)
+                val maxCap = getTraitMaxCap(sheet, currentValue, category, cleanKey)
                 val isMaxed = currentValue >= maxCap
-                val (cost, formulaLabel) = calculateUpgradeCost(category, currentValue, useD20Scale)
+                val isOutOfClan = category == XpUpgradeCategory.DISCIPLINE && field.id in normXp.outOfClanFieldIds
+                val isWillpower = category == XpUpgradeCategory.VIRTUE && cleanKey in WILLPOWER_KEYS
+                val customMult = normXp.customMultipliers[field.id]
+                val (cost, formulaLabel) = calculateUpgradeCost(
+                    category = category,
+                    currentValue = currentValue,
+                    useD20Scale = useD20Scale,
+                    isOutOfClan = isOutOfClan,
+                    isWillpower = isWillpower,
+                    customMultiplier = customMult
+                )
                 val isAffordable = cost <= availableXp
 
                 traits.add(
@@ -164,7 +258,10 @@ object XpSystem {
                         formulaLabel = formulaLabel,
                         isMaxed = isMaxed,
                         isAffordable = isAffordable,
-                        isPossible = !isMaxed && isAffordable
+                        isPossible = !isMaxed && isAffordable,
+                        isOutOfClan = isOutOfClan,
+                        customMultiplier = customMult,
+                        isWillpower = isWillpower
                     )
                 )
             }
@@ -173,7 +270,8 @@ object XpSystem {
         val order = mapOf(
             XpUpgradeCategory.ATTRIBUTE to 0,
             XpUpgradeCategory.SKILL to 1,
-            XpUpgradeCategory.DISCIPLINE to 2
+            XpUpgradeCategory.DISCIPLINE to 2,
+            XpUpgradeCategory.VIRTUE to 3
         )
         return traits.sortedBy { order[it.category] ?: 9 }
     }
@@ -268,7 +366,13 @@ object XpSystem {
             toValue = trait.nextValue
         )
 
-        val updatedSheet = SheetMutators.updateNumberField(sheet, fieldId, trait.nextValue.toDouble()).copy(
+        val updatedSheet = SheetMutators.updateFieldSchema(sheet, fieldId) { field ->
+            if (field.kind == FieldKind.RESOURCE && (field.max ?: 10) < trait.nextValue) {
+                field.copy(numValue = trait.nextValue.toDouble(), max = trait.nextValue)
+            } else {
+                field.copy(numValue = trait.nextValue.toDouble())
+            }
+        }.copy(
             xp = currentXp.copy(
                 spent = currentXp.spent + trait.cost,
                 ledger = (listOf(entry) + currentXp.ledger).take(40)
