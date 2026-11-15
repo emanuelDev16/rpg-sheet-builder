@@ -26,11 +26,11 @@ export const PrintSheetHeader: React.FC<PrintSheetHeaderProps> = ({
   return (
     <header
       aria-label={t('printHeader.ariaLabel')}
-      className="print-only-header hidden print:flex items-center justify-between gap-4 mb-4 p-3.5 bg-[var(--bg-card)] border-2 border-[var(--border-ink)] rounded-[var(--radius-card)]"
+      className="print-only-header hidden print:flex items-center justify-between gap-4 mb-4 p-3.5 bg-[var(--bg-card)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)]"
     >
       <div className="flex items-center gap-3 min-w-0">
         <span
-          className="font-mono-tech text-xs font-bold px-2 py-1 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[4px] shrink-0"
+          className="font-mono-tech text-xs font-bold px-2 py-1 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[var(--radius-pill)] shrink-0"
           aria-hidden="true"
         >
           +
@@ -46,7 +46,7 @@ export const PrintSheetHeader: React.FC<PrintSheetHeaderProps> = ({
       </div>
 
       <div className="flex flex-col items-end gap-1 shrink-0 text-right">
-        <span className="font-mono-tech text-[11px] font-bold px-2.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[4px] uppercase">
+        <span className="font-mono-tech text-[11px] font-bold px-2.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[var(--radius-pill)] uppercase">
           {sectionLabel}
         </span>
         <div className="font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase flex items-center gap-2">

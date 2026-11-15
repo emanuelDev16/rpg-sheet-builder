@@ -265,7 +265,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
   return (
     <div
-      className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/45"
+      className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--overlay-backdrop)]"
       role="presentation"
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
@@ -275,7 +275,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-label={mode === 'new' ? t.newTitle : mode === 'open' ? t.openTitle : t.saveTitle}
-        className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto bg-[var(--bg-card)] shadow-[6px_6px_0_#0B0B0B]"
+        className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
       >
         <header className="bento-card-header sticky top-0 z-10">
           <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
@@ -341,45 +341,41 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         aria-checked={isSelected}
                         data-testid={`new-sheet-system-${opt.id}`}
                         onClick={() => setSelectedSystem(opt.id)}
-                        className={`cyber-btn-outline p-3 text-left flex items-center justify-between gap-3 cursor-pointer ${
+                        className={`cyber-btn-outline !rounded-[var(--radius-card)] p-3 text-left flex items-center justify-between gap-3 cursor-pointer ${
                           isBlank ? 'border-dashed' : ''
-                        } ${
-                          isSelected
-                            ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)]'
-                            : ''
-                        }`}
+                        } ${isSelected ? 'cyber-active-tint' : ''}`}
                       >
                         <div className="min-w-0">
                           <div className="flex flex-wrap items-center gap-2">
                             <span
                               className={`text-xs font-bold uppercase ${
                                 isSelected
-                                  ? 'text-[var(--accent-wine)]'
+                                  ? 'cyber-active-title'
                                   : 'text-[var(--ink-primary)]'
                               }`}
                             >
                               {isBlank ? t.newBlankTitle : opt.label}
                             </span>
                             {isCurrent && (
-                              <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[3px] uppercase">
+                              <span className="cyber-active-badge font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] rounded-[var(--radius-pill)] uppercase">
                                 {t.newCurrentBadge}
                               </span>
                             )}
                           </div>
-                          <div className="text-[11px] text-[var(--ink-muted)]">
+                          <div className="cyber-active-muted text-[11px] text-[var(--ink-muted)]">
                             {isBlank ? t.newBlankDesc : opt.description}
                           </div>
                         </div>
                         <span
                           aria-hidden="true"
-                          className={`w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                          className={`cyber-radio-ring w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
                             isSelected
                               ? 'border-[var(--accent-wine)] bg-[var(--accent-wine)]'
                               : 'border-[var(--border-ink)] bg-[var(--bg-card)]'
                           }`}
                         >
                           {isSelected && (
-                            <span className="w-1.5 h-1.5 rounded-full bg-[var(--ink-inverse)]" />
+                            <span className="cyber-radio-dot w-1.5 h-1.5 rounded-full bg-[var(--ink-inverse)]" />
                           )}
                         </span>
                       </button>
@@ -477,23 +473,23 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         onLoadPreset(opt.id);
                         onClose();
                       }}
-                      className={`cyber-btn-outline min-h-[36px] p-3 text-left flex items-center justify-between gap-4 cursor-pointer ${
-                        isActive ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)]' : ''
+                      className={`cyber-btn-outline !rounded-[var(--radius-card)] min-h-[36px] p-3 text-left flex items-center justify-between gap-4 cursor-pointer ${
+                        isActive ? 'cyber-active-tint' : ''
                       }`}
                     >
                       <div className="min-w-0">
                         <div
                           className={`text-xs font-bold uppercase ${
-                            isActive ? 'text-[var(--accent-wine)]' : 'text-[var(--ink-primary)]'
+                            isActive ? 'cyber-active-title' : 'text-[var(--ink-primary)]'
                           }`}
                         >
                           {opt.label}
                         </div>
-                        <div className="text-[11px] text-[var(--ink-muted)]">{opt.description}</div>
+                        <div className="cyber-active-muted text-[11px] text-[var(--ink-muted)]">{opt.description}</div>
                       </div>
                       <span
                         className={`text-xs font-bold whitespace-nowrap shrink-0 ${
-                          isActive ? 'text-[var(--accent-wine)]' : ''
+                          isActive ? 'cyber-active-title' : ''
                         }`}
                       >
                         {isActive ? t.t('modal.presetResetBtn') : t.t('modal.presetLoadBtn')}
@@ -520,7 +516,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                             onLoadCustomTemplate(tpl);
                             onClose();
                           }}
-                          className="cyber-btn-outline min-h-[36px] flex-1 p-2.5 text-left flex items-center justify-between gap-3 cursor-pointer"
+                          className="cyber-btn-outline !rounded-[var(--radius-card)] min-h-[36px] flex-1 p-2.5 text-left flex items-center justify-between gap-3 cursor-pointer"
                         >
                           <div className="min-w-0">
                             <div className="text-xs font-bold uppercase truncate">{tpl.name}</div>
@@ -563,7 +559,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       onClick={() => setImportMode('overwrite')}
                       className={`cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase cursor-pointer ${
                         importMode === 'overwrite'
-                          ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)] text-[var(--accent-wine)]'
+                          ? 'cyber-active-tint'
                           : 'text-[var(--ink-secondary)]'
                       }`}
                     >
@@ -574,7 +570,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       onClick={() => setImportMode('keep')}
                       className={`cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase cursor-pointer ${
                         importMode === 'keep'
-                          ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)] text-[var(--accent-wine)]'
+                          ? 'cyber-active-tint'
                           : 'text-[var(--ink-secondary)]'
                       }`}
                     >
@@ -605,7 +601,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   <div
                     role="status"
                     data-testid="import-snapshot-banner"
-                    className="border-2 border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2.5 py-2 flex flex-wrap items-center justify-between gap-2"
+                    className="rounded-[var(--radius-card)] border-2 border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2.5 py-2 flex flex-wrap items-center justify-between gap-2"
                   >
                     <div className="flex items-center gap-1.5 min-w-0">
                       <ShieldCheck
@@ -632,7 +628,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 {importError && (
                   <div
                     role="alert"
-                    className="font-mono-tech text-[11px] font-bold text-[var(--accent-danger)] border-2 border-[var(--accent-danger)] bg-[var(--bg-card)] px-2.5 py-1.5"
+                    className="rounded-[var(--radius-card)] font-mono-tech text-[11px] font-bold text-[var(--accent-danger)] border-2 border-[var(--accent-danger)] bg-[var(--bg-card)] px-2.5 py-1.5"
                   >
                     {importError}
                   </div>
@@ -668,7 +664,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         <div
                           key={snap.snapshotId}
                           data-testid={`snapshot-item-${snap.snapshotId}`}
-                          className="border-2 border-[var(--border-ink)] bg-[var(--bg-card-alt)] px-2.5 py-1.5 flex items-center justify-between gap-2"
+                          className="rounded-[var(--radius-card)] border-2 border-[var(--border-ink)] bg-[var(--bg-card-alt)] px-2.5 py-1.5 flex items-center justify-between gap-2"
                         >
                           <div className="min-w-0">
                             <div className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] truncate">
@@ -709,7 +705,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   onClick={() => {
                     void Promise.resolve(onSaveLocal()).finally(() => onClose());
                   }}
-                  className="cyber-roll-btn p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
+                  className="cyber-roll-btn !rounded-[var(--radius-card)] p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div>
                     <div className="text-xs font-bold uppercase">{t.saveLocalTitle}</div>
@@ -725,7 +721,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       const clean = templateName.trim() || sheet.characterName || 'TEMPLATE';
                       void Promise.resolve(onSaveCustomTemplate(clean)).finally(() => onClose());
                     }}
-                    className="cyber-btn-outline p-3 flex flex-col gap-2 bg-[var(--bg-card-alt)]"
+                    className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 flex flex-col gap-2 bg-[var(--bg-card-alt)]"
                   >
                     <div className="flex items-center justify-between gap-2">
                       <span className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]">
@@ -758,7 +754,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     onClose();
                     window.requestAnimationFrame(() => onPrintPdf());
                   }}
-                  className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 bg-[var(--accent-cream-badge)] cursor-pointer"
+                  className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 text-left flex items-center justify-between gap-4 bg-[var(--accent-cream-badge)] cursor-pointer"
                 >
                   <div>
                     <div className="text-xs font-bold uppercase text-[var(--accent-wine)]">
@@ -782,7 +778,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       );
                     });
                   }}
-                  className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
+                  className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div>
                     <div className="text-xs font-bold uppercase">{t.downloadJsonTitle}</div>
@@ -802,7 +798,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       );
                     });
                   }}
-                  className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 bg-[var(--accent-cream-badge)] cursor-pointer"
+                  className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 text-left flex items-center justify-between gap-4 bg-[var(--accent-cream-badge)] cursor-pointer"
                 >
                   <div>
                     <div className="text-xs font-bold uppercase text-[var(--accent-wine)]">

@@ -13,6 +13,8 @@ import {
   X,
 } from 'lucide-react';
 import { AppLanguage, createTranslator } from '../core/i18n';
+import { ThemeMode } from '../utils/theme';
+import { ThemeSelector } from './ThemeSelector';
 
 export interface HomeSheetItem {
   id: string;
@@ -32,6 +34,8 @@ export interface HomeViewProps {
   activeSheet?: HomeSheetItem;
   systems: HomeSystemItem[];
   language?: AppLanguage;
+  theme?: ThemeMode;
+  onChangeTheme?: (theme: ThemeMode) => void;
   onContinueSheet: () => void;
   onSelectSheet: (id: string) => void;
   onCreateSheet: (systemId: string, customName?: string) => void;
@@ -75,6 +79,8 @@ export const HomeView: React.FC<HomeViewProps> = ({
   activeSheet,
   systems,
   language = 'pt-BR',
+  theme = 'light',
+  onChangeTheme,
   onContinueSheet,
   onSelectSheet,
   onCreateSheet,
@@ -136,6 +142,15 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
   return (
     <div className="mx-auto w-full max-w-[1320px] space-y-6 pb-8">
+      {onChangeTheme && (
+        <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--bg-card)] px-3.5 py-2 shadow-[var(--shadow-btn)]">
+          <span className="font-mono-tech text-[11px] font-bold tracking-[0.14em] text-[var(--accent-primary)] uppercase">
+            GRID//SHEET · THEME
+          </span>
+          <ThemeSelector theme={theme} onChangeTheme={onChangeTheme} />
+        </div>
+      )}
+
       {/* 1. Active Session */}
       <section className="bento-card" aria-labelledby="home-active-session-heading">
         <header className="bento-card-header">
@@ -191,7 +206,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </button>
             </div>
           ) : (
-            <div className="flex flex-col gap-3 rounded-[var(--radius-control)] border-[1.5px] border-dashed border-[var(--border-ink)] bg-[var(--bg-card-alt)] p-4 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-dashed border-[var(--border-color)] bg-[var(--bg-card-alt)] p-4 sm:flex-row sm:items-center sm:justify-between">
               <div className="space-y-1">
                 <p className="font-mono-tech text-xs font-bold tracking-wider text-[var(--ink-primary)] uppercase">
                   {t('home.noActiveTitle')}
@@ -240,7 +255,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           {systems.map((sys) => (
             <article
               key={sys.id}
-              className="flex flex-col justify-between gap-4 rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-input)] p-4 transition-colors hover:bg-[var(--bg-card-alt)]"
+              className="flex flex-col justify-between gap-4 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--bg-input)] p-4 transition-colors hover:bg-[var(--bg-card-alt)]"
             >
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
@@ -271,7 +286,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
           {/* Dashed Custom Sheet card */}
           <form
             onSubmit={handleCreateCustomSheet}
-            className="flex flex-col justify-between gap-4 rounded-[var(--radius-control)] border-2 border-dashed border-[var(--border-ink)] bg-[var(--bg-card-alt)] p-4"
+            className="flex flex-col justify-between gap-4 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-dashed border-[var(--border-color)] bg-[var(--bg-card-alt)] p-4"
           >
             <div className="space-y-2">
               <div className="flex items-center justify-between gap-2">
@@ -411,7 +426,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
           {/* Responsive Grid */}
           {filteredSheets.length === 0 ? (
-            <div className="rounded-[var(--radius-control)] border-[1.5px] border-dashed border-[var(--border-ink)] bg-[var(--bg-card-alt)] p-6 text-center">
+            <div className="rounded-[var(--radius-card)] border-[length:var(--border-width)] border-dashed border-[var(--border-color)] bg-[var(--bg-card-alt)] p-6 text-center">
               {sheets.length === 0 ? (
                 <div className="mx-auto max-w-md space-y-2">
                   <p className="font-mono-tech text-xs font-bold tracking-wider text-[var(--ink-primary)] uppercase">
@@ -449,10 +464,10 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 return (
                   <article
                     key={item.id}
-                    className={`flex flex-col justify-between gap-4 rounded-[var(--radius-control)] border-[1.5px] p-4 transition-colors ${
+                    className={`flex flex-col justify-between gap-4 rounded-[var(--radius-card)] border-[length:var(--border-width)] p-4 transition-colors ${
                       isCurrentActive
-                        ? 'border-[var(--accent-wine)] bg-[var(--bg-card-alt)] shadow-[2px_2px_0_#5B0F18]'
-                        : 'border-[var(--border-ink)] bg-[var(--bg-card)]'
+                        ? 'border-[var(--accent-primary)] bg-[var(--bg-card-alt)] shadow-[var(--shadow-btn)]'
+                        : 'border-[var(--border-color)] bg-[var(--bg-card)]'
                     }`}
                   >
                     <div className="min-w-0 space-y-2">
@@ -538,7 +553,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </header>
 
         <div className="grid grid-cols-1 gap-4 p-4 md:grid-cols-2 sm:p-5">
-          <div className="flex flex-col justify-between gap-4 rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-input)] p-4">
+          <div className="flex flex-col justify-between gap-4 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--bg-input)] p-4">
             <div className="space-y-1.5">
               <span className="font-mono-tech text-[10px] font-bold tracking-wider text-[var(--accent-wine)] uppercase">
                 {t('home.localPortabilityTag')}
@@ -561,7 +576,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </div>
 
-          <div className="flex flex-col justify-between gap-4 rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-input)] p-4">
+          <div className="flex flex-col justify-between gap-4 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--bg-input)] p-4">
             <div className="space-y-1.5">
               <span className="font-mono-tech text-[10px] font-bold tracking-wider text-[var(--accent-wine)] uppercase">
                 {t('home.offlineIndexTag')}

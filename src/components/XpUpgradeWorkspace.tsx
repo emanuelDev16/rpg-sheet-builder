@@ -141,7 +141,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
 
         <div className="bento-card-body p-4 flex flex-col gap-4">
           {/* 3-metric telemetry strip separated by hairline borders */}
-          <div className="grid grid-cols-3 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] divide-x divide-[var(--border-ink)]">
+          <div className="grid grid-cols-3 border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] divide-x divide-[var(--border-color)]">
             <div className="p-3 flex flex-col gap-0.5">
               <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
                 {t.availableXp}
@@ -257,7 +257,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             {xpError && (
               <div
                 role="alert"
-                className="p-2.5 border-[1.5px] border-[var(--accent-danger)] rounded-[var(--radius-control)] bg-[var(--accent-danger-soft)] font-mono-tech text-[11px] font-semibold text-[var(--accent-danger)] break-words"
+                className="p-2.5 border-[length:var(--border-width)] border-[var(--accent-danger)] rounded-[var(--radius-card)] bg-[var(--accent-danger-soft)] font-mono-tech text-[11px] font-semibold text-[var(--accent-danger)] break-words"
               >
                 {xpError}
               </div>
@@ -283,11 +283,11 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             </div>
 
             {xpState.ledger.length === 0 ? (
-              <div className="p-3 border-[1.5px] border-dashed border-[var(--border-ink)]/35 rounded-[var(--radius-control)] font-mono-tech text-[11px] text-[var(--ink-muted)] text-center">
+              <div className="p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/35 rounded-[var(--radius-card)] font-mono-tech text-[11px] text-[var(--ink-muted)] text-center">
                 {t.emptyLedger}
               </div>
             ) : (
-              <ul className="max-h-[240px] overflow-y-auto print:max-h-none print:overflow-visible border border-[var(--border-subtle)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]">
+              <ul className="max-h-[240px] overflow-y-auto print:max-h-none print:overflow-visible border border-[var(--border-subtle)] rounded-[var(--radius-card)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]">
                 {xpState.ledger.map((entry) => (
                   <li
                     key={entry.id}
@@ -360,10 +360,10 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   role="tab"
                   aria-selected={isSelected}
                   onClick={() => setCategoryFilter(tab.id)}
-                  className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                  className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
                     isSelected
-                      ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
-                      : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+                      ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                      : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                   }`}
                 >
                   {tab.label} ({countsByCategory[tab.id]})
@@ -374,7 +374,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
 
           {/* Filtered possible upgrades list */}
           {filteredPossible.length === 0 ? (
-            <div className="p-5 border-[1.5px] border-dashed border-[var(--border-ink)]/40 rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] flex flex-col gap-2 text-center">
+            <div className="p-5 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/40 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2 text-center">
               {allPossible.length > 0 && categoryFilter !== 'all' ? (
                 <>
                   <p className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] uppercase">
@@ -419,7 +419,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
           ) : (
             <ul
               data-testid="possible-upgrades-list"
-              className="max-h-[468px] overflow-y-auto print:max-h-none print:overflow-visible border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
+              className="max-h-[468px] overflow-y-auto print:max-h-none print:overflow-visible border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
             >
               {filteredPossible.map((trait) => (
                 <li

@@ -640,12 +640,13 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             aria-expanded={booksOpen}
             onClick={() => setBooksOpen((prev) => !prev)}
             className={`cyber-btn-outline min-h-[36px] px-2.5 py-1.5 text-[10px] font-bold uppercase inline-flex items-center gap-1 shrink-0 cursor-pointer ${
-              booksOpen
-                ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)] text-[var(--accent-wine)]'
-                : ''
+              booksOpen ? 'cyber-active-tint' : ''
             }`}
           >
-            <BookOpen className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
+            <BookOpen
+              className={`w-3.5 h-3.5 shrink-0 ${booksOpen ? 'cyber-active-title' : 'text-[var(--accent-wine)]'}`}
+              aria-hidden="true"
+            />
             <span className="tabular-nums">
               {t.t('sidebar.booksToggleBtn', { count: indexedBooks.length })}
             </span>
@@ -697,8 +698,8 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                   <div
                     key={book.bookId}
                     data-testid="indexed-book-item"
-                    className={`flex flex-col gap-1.5 p-2 rounded-[4px] border-[1.5px] border-[var(--border-ink)] ${
-                      isActiveSys ? 'bg-[var(--bg-card)]' : 'bg-[var(--bg-header-strip)]'
+                    className={`flex flex-col gap-1.5 p-2 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] ${
+                      isActiveSys ? 'bg-[var(--bg-card)]' : 'bg-[var(--bg-strip)]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2">
@@ -707,7 +708,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                           {book.bookTitle}
                         </div>
                         <div className="flex flex-wrap items-center gap-1.5 mt-0.5 font-mono-tech text-[9px] text-[var(--ink-muted)]">
-                          <span className="px-1.5 py-0.5 bg-[var(--accent-cream-badge)] border border-[var(--border-ink)] rounded-[2px] font-bold uppercase text-[var(--accent-wine)]">
+                          <span className="px-1.5 py-0.5 bg-[var(--accent-cream-badge)] border border-[var(--border-color)] rounded-[var(--radius-pill)] font-bold uppercase text-[var(--accent-wine)]">
                             {book.systemId}
                           </span>
                           <span className="tabular-nums font-semibold">
@@ -743,7 +744,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                             type="button"
                             onClick={() => void handleConfirmRemoveBook(book.bookId)}
                             data-testid={`confirm-remove-book-${book.bookId}`}
-                            className="min-h-[36px] px-2.5 py-1 rounded-[4px] border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-danger)] text-[var(--ink-inverse)] font-mono-tech text-[10px] font-bold uppercase cursor-pointer"
+                            className="min-h-[36px] px-2.5 py-1 rounded-[var(--radius-pill)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--accent-danger)] text-[var(--accent-danger-contrast)] font-mono-tech text-[10px] font-bold uppercase cursor-pointer"
                           >
                             {t.t('sidebar.confirmBtn')}
                           </button>
@@ -776,7 +777,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               aria-valuemin={0}
               aria-valuemax={Math.max(1, indexingProgress.totalPages)}
               aria-valuenow={indexingProgress.page}
-              className="p-2.5 border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card)] shadow-[2px_2px_0_#0B0B0B] flex flex-col gap-1.5"
+              className="p-2.5 border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] bg-[var(--bg-card)] shadow-[var(--shadow-btn)] flex flex-col gap-1.5"
             >
               <div className="flex items-center justify-between gap-2 font-mono-tech text-[10px] font-bold">
                 <span className="truncate text-[var(--accent-wine)]">
@@ -798,10 +799,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                       : t.t('sidebar.indexingProgressWait')}
                 </span>
               </div>
-              <div className="w-full h-2.5 bg-[var(--bg-header-strip)] border-[1.5px] border-[var(--border-ink)] rounded-[2px] overflow-hidden">
+              <div className="w-full h-2.5 bg-[var(--bg-strip)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-pill)] overflow-hidden">
                 <div
                   className="h-full transition-all duration-150"
-                  style={{ width: `${progressPercent}%`, backgroundColor: '#5B0F18' }}
+                  style={{ width: `${progressPercent}%`, backgroundColor: 'var(--accent-primary)' }}
                 />
               </div>
               {indexingProgress.mode === 'ocr' && (
@@ -815,7 +816,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                     type="button"
                     data-testid="cancel-ocr-button"
                     onClick={handleAbortOcr}
-                    className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase text-[var(--accent-danger)] border-[var(--border-ink)] shrink-0 cursor-pointer"
+                    className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase text-[var(--accent-danger)] border-[var(--border-color)] shrink-0 cursor-pointer"
                   >
                     {t.t('sidebar.cancelOcrBtn')}
                   </button>
@@ -828,7 +829,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             <div
               role="alert"
               data-testid="scanned-pdf-alert"
-              className="p-3 border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--accent-danger-soft)] shadow-[3px_3px_0_#0B0B0B] flex flex-col gap-2.5"
+              className="p-3 border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] bg-[var(--accent-danger-soft)] shadow-[var(--shadow-card)] flex flex-col gap-2.5"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-[var(--accent-danger)] font-mono-tech text-xs font-black uppercase tracking-tight">
@@ -855,7 +856,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 })}
               </p>
 
-              <div className="p-2 border-[1.5px] border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] flex flex-col gap-2">
+              <div className="p-2 border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] bg-[var(--bg-card)] flex flex-col gap-2">
                 <div className="flex flex-col gap-1">
                   <label
                     htmlFor="ocr-lang-select"
@@ -933,7 +934,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             <div
               role="alert"
               data-testid="pdf-error-alert"
-              className="p-2.5 border-[1.5px] border-[var(--accent-danger)] rounded-[4px] bg-[var(--accent-danger-soft)] flex items-start justify-between gap-2"
+              className="p-2.5 border-[length:var(--border-width)] border-[var(--accent-danger)] rounded-[var(--radius-card)] bg-[var(--accent-danger-soft)] flex items-start justify-between gap-2"
             >
               <span className="font-mono-tech text-[11px] font-semibold text-[var(--accent-danger)] break-words">
                 {pdfError}
@@ -993,10 +994,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 type="button"
                 data-testid="rules-scope-system"
                 onClick={() => setScopeMode('system')}
-                className={`font-mono-tech min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase rounded-[4px] border border-[var(--border-ink)] cursor-pointer transition-colors ${
+                className={`font-mono-tech min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] cursor-pointer transition-colors ${
                   scopeMode === 'system'
-                    ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
-                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]'
+                    : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 {effectiveSystemId.toUpperCase()} ({booksForActiveSystem.length})
@@ -1005,10 +1006,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 type="button"
                 data-testid="rules-scope-all"
                 onClick={() => setScopeMode('all')}
-                className={`font-mono-tech min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase rounded-[4px] border border-[var(--border-ink)] cursor-pointer transition-colors ${
+                className={`font-mono-tech min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] cursor-pointer transition-colors ${
                   scopeMode === 'all'
-                    ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
-                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+                    ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                    : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
                 }`}
               >
                 {t.t('sidebar.scopeAllBtn', { count: indexedBooks.length })}
@@ -1065,7 +1066,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
         {indexedBooks.length === 0 ? (
           <div
             data-testid="pdf-empty-state"
-            className="p-4 border-[1.5px] border-dashed border-[var(--border-ink)]/60 rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] flex flex-col items-center text-center gap-2.5"
+            className="p-4 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/60 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col items-center text-center gap-2.5"
           >
             <BookOpen className="w-6 h-6 text-[var(--accent-wine)]" aria-hidden="true" />
             <p className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] uppercase">
@@ -1088,7 +1089,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
         ) : !localMeta ? (
           <div
             data-testid="pdf-ready-state"
-            className="p-4 border-[1.5px] border-dashed border-[var(--border-ink)]/45 rounded-[var(--radius-control)] flex flex-col items-center text-center gap-2"
+            className="p-4 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/45 rounded-[var(--radius-card)] flex flex-col items-center text-center gap-2"
           >
             <Search className="w-5 h-5 text-[var(--accent-wine)]" aria-hidden="true" />
             <p className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] uppercase">
@@ -1123,7 +1124,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             </div>
 
             {localHits.length === 0 ? (
-              <div className="p-3 border-[1.5px] border-dashed border-[var(--border-ink)]/50 rounded-[var(--radius-control)] bg-[var(--bg-card-alt)] flex flex-col gap-2">
+              <div className="p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/50 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2">
                 <p className="font-mono-tech text-[11px] text-[var(--ink-secondary)] leading-relaxed">
                   {t.t('sidebar.noHitsMessage', { query: localMeta.query })}
                 </p>
@@ -1151,13 +1152,13 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                   <article
                     key={hit.id}
                     data-testid="local-rule-hit"
-                    className="p-2.5 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card)] shadow-[2px_2px_0_#0B0B0B] flex flex-col gap-1.5"
+                    className="p-2.5 border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] bg-[var(--bg-card)] shadow-[var(--shadow-btn)] flex flex-col gap-1.5"
                   >
                     <header className="flex items-center justify-between gap-1.5 pb-1 border-b border-[var(--border-subtle)]">
                       <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)] truncate">
                         {hit.bookTitle}
                       </span>
-                      <span className="font-mono-tech text-[10px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums shrink-0">
+                      <span className="font-mono-tech text-[10px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] rounded-[var(--radius-pill)] tabular-nums shrink-0">
                         {t.t('sidebar.pageBadge', { page: hit.page })}
                       </span>
                     </header>
@@ -1166,7 +1167,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                         part.matched ? (
                           <mark
                             key={idx}
-                            className="bg-[var(--accent-wine)] text-[var(--ink-inverse)] px-0.5 rounded-[2px] font-semibold"
+                            className="bg-[var(--accent-primary)] text-[var(--accent-contrast)] px-0.5 rounded-[var(--radius-pill)] font-semibold"
                           >
                             {part.text}
                           </mark>

@@ -59,7 +59,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
             {isEmptySheet ? t.createFromZero : t.addNewBlock}
           </h2>
         </div>
-        <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] uppercase shrink-0">
+        <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase shrink-0">
           {activeTab === 'geral' ? '01' : '02'}
         </span>
       </header>
@@ -110,14 +110,14 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
             <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase">
               {t.width}
             </span>
-            <div className="flex border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] overflow-hidden">
+            <div className="flex border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-pill)] overflow-hidden">
               <button
                 type="button"
                 onClick={() => setColSpan(1)}
                 className={`mobile-touch-input min-h-[36px] flex-1 font-mono-tech text-[10px] font-bold py-1.5 cursor-pointer ${
                   colSpan === 1
-                    ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
-                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)]'
+                    ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                    : 'bg-[var(--bg-card)] text-[var(--text-primary)]'
                 }`}
               >
                 1 COL
@@ -125,10 +125,10 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               <button
                 type="button"
                 onClick={() => setColSpan(2)}
-                className={`mobile-touch-input min-h-[36px] flex-1 font-mono-tech text-[10px] font-bold py-1.5 border-l border-[var(--border-ink)] cursor-pointer ${
+                className={`mobile-touch-input min-h-[36px] flex-1 font-mono-tech text-[10px] font-bold py-1.5 border-l-[length:var(--border-width)] border-[var(--border-color)] cursor-pointer ${
                   colSpan === 2
-                    ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
-                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)]'
+                    ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                    : 'bg-[var(--bg-card)] text-[var(--text-primary)]'
                 }`}
               >
                 2 COL

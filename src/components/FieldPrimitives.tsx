@@ -137,7 +137,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
         </span>
         <div className="flex items-center gap-1.5 shrink-0">
           {wpArmed && (
-            <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--ink-inverse)]/40 rounded-[3px]">
+            <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)]">
               {t.t('cards.pool.wpBadge')}
             </span>
           )}
@@ -155,7 +155,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
             aria-expanded={optionsOpen}
             aria-controls={`roll-opts-panel-${field.id}`}
             onClick={() => setOptionsOpen((prev) => !prev)}
-            className={`font-mono-tech min-h-[36px] sm:min-h-[30px] text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-[4px] border inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+            className={`font-mono-tech min-h-[36px] sm:min-h-[30px] text-[10px] font-bold uppercase tracking-wider px-2 py-1 rounded-[var(--radius-pill)] border inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
               optionsOpen || isCustomized
                 ? 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
                 : 'bg-[var(--bg-card-alt)] text-[var(--ink-secondary)] border-[var(--border-ink)]/55 hover:border-[var(--border-ink)] hover:bg-[var(--bg-hover)]'
@@ -176,7 +176,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
           <div
             id={`roll-opts-panel-${field.id}`}
             data-testid={`roll-opts-panel-${field.id}`}
-            className="px-2 py-1.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)]/75 rounded-[var(--radius-control)] flex flex-wrap items-center justify-between gap-2"
+            className="px-2 py-1.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)]/75 rounded-[var(--radius-card)] flex flex-wrap items-center justify-between gap-2"
           >
             <div className="flex items-center gap-2.5 flex-wrap">
               <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
@@ -210,7 +210,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
                 data-testid={`roll-spec-${field.id}`}
                 checked={specialty}
                 onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
-                className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[#5B0F18] cursor-pointer"
+                className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[var(--accent-primary)] cursor-pointer"
               />
               <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>
                 {t.t('cards.pool.specialty')}
@@ -276,7 +276,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     const defaultCol1 = t.t('cards.defaultItemCol');
     const defaultCol2 = t.t('cards.defaultValueCol');
     return (
-      <div className="no-print print:hidden mt-2 pt-2 border-t border-dashed border-[var(--border-ink)]/40 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[var(--bg-header-strip)] p-2 rounded-[4px]">
+      <div className="no-print print:hidden mt-2 pt-2 border-t border-dashed border-[var(--border-ink)]/40 grid grid-cols-1 sm:grid-cols-2 gap-1.5 bg-[var(--bg-header-strip)] p-2 rounded-[var(--radius-card)]">
         <div className={`flex items-center gap-1.5 ${isCustomSystem ? '' : 'sm:col-span-2'}`}>
           <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase shrink-0">
             {t.t('cards.strip.label')}
@@ -553,14 +553,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     return (
       <div
         data-testid={`health-damage-track-${field.id}`}
-        className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] flex flex-col gap-2"
+        className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2"
       >
         <div className="flex flex-wrap items-center justify-between gap-2">
           <div className="flex items-center gap-2 min-w-0">
             <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
               {field.label}
             </span>
-            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[3px] whitespace-nowrap">
+            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
               {t.aggEqRule(max)}
             </span>
           </div>
@@ -686,7 +686,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     return (
       <div
         data-testid={`resource-field-${field.id}`}
-        className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-control)] min-w-0 max-w-full overflow-hidden"
+        className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] min-w-0 max-w-full overflow-hidden"
       >
         <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
           <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words min-w-0">
@@ -721,7 +721,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         {useContinuousBar ? (
           <div
             data-testid={`resource-continuous-bar-${field.id}`}
-            className="seg-meter-track relative h-[14px] rounded-[2px] bg-[var(--accent-wine-soft)] border border-[rgba(91,15,24,0.35)] cursor-pointer"
+            className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer"
             role="meter"
             aria-label={field.label}
             aria-valuemin={0}
@@ -735,7 +735,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             }}
           >
             <div
-              className="h-full bg-[var(--accent-wine)] transition-[width] duration-150"
+              className="h-full bg-[var(--accent-primary)] transition-[width] duration-150"
               style={{ width: `${fillPct}%` }}
             />
           </div>
@@ -822,12 +822,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
             <span
               data-testid="willpower-auto-success-badge"
-              className={`font-mono-tech text-[10px] font-extrabold px-2 py-0.5 rounded-[3px] border shrink-0 tracking-wider uppercase ${
+              className={`font-mono-tech text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] border shrink-0 tracking-wider uppercase ${
                 isEmpty
-                  ? 'bg-[var(--accent-danger-soft)] text-[#991B1B] border-[var(--accent-danger)]'
+                  ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
                   : effectiveChecked
-                    ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
-                    : 'bg-[var(--bg-card)] text-[var(--ink-secondary)] border-[var(--border-ink)]/65'
+                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                    : 'bg-[var(--bg-card)] text-[var(--text-secondary)] border-[var(--border-color)]/65'
               }`}
             >
               {badgeLabel}
@@ -927,13 +927,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             {field.label}
           </span>
           {field.col2Type === 'number' && (
-            <span className="font-mono-tech text-[11px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px]">
+            <span className="font-mono-tech text-[11px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
               {t.cargoBadge} {totalCargoWeight} KG
             </span>
           )}
         </div>
 
-        <div className="border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] overflow-x-auto max-w-full bg-[var(--bg-card-alt)]">
+        <div className="border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] overflow-x-auto max-w-full bg-[var(--bg-card-alt)]">
           <table className="w-full min-w-[280px] border-collapse font-mono-tech text-xs">
             <thead>
               <tr className="bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] text-[10px] text-[var(--ink-muted)] uppercase">
@@ -961,7 +961,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         aria-label={t.t('cards.rowColAria', { col: col1Title, row: row.col1 })}
                         value={row.col1}
                         onChange={(e) => onUpdateRow(field.id, row.id, 'col1', e.target.value)}
-                        className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
+                        className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[var(--radius-pill)]"
                       />
                     </td>
                     <td className="p-1.5">
@@ -978,7 +978,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                             field.col2Type === 'number' ? Number(e.target.value) : e.target.value,
                           )
                         }
-                        className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[3px]"
+                        className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[var(--radius-pill)]"
                       />
                     </td>
                     <td className="p-1.5 text-center no-print print:hidden">
@@ -986,7 +986,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         type="button"
                         aria-label={t.t('cards.removeRowAria', { row: row.col1 })}
                         onClick={() => onRemoveRow(field.id, row.id)}
-                        className="mobile-touch-stepper w-6 h-6 inline-flex items-center justify-center rounded-[4px] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
+                        className="mobile-touch-stepper w-6 h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
                       >
                         <X className="w-3.5 h-3.5" aria-hidden="true" />
                       </button>

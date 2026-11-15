@@ -123,7 +123,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 
         <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center pt-0.5 sm:pt-0">
           {filteredInfo && (
-            <span className="no-print print:hidden font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[4px] tabular-nums whitespace-nowrap">
+            <span className="no-print print:hidden font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] tabular-nums whitespace-nowrap">
               {t.filteredPill(filteredInfo.shown, filteredInfo.total)}
             </span>
           )}
@@ -135,7 +135,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   type="button"
                   onClick={() => onUpdateCard(card.id, { colSpan: card.colSpan === 2 ? 1 : 2 })}
                   title={t.t('cards.toggleWidthTitle')}
-                  className="font-mono-tech text-[10px] font-bold px-2 py-0.5 border border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] cursor-pointer"
+                  className="font-mono-tech text-[10px] font-bold px-2 py-0.5 border border-[var(--border-ink)] rounded-[var(--radius-pill)] bg-[var(--bg-card)] hover:bg-[var(--bg-hover)] cursor-pointer"
                 >
                   {card.colSpan === 2 ? t.t('cards.col2Label') : t.t('cards.col1Label')}
                 </button>
@@ -143,7 +143,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   type="button"
                   aria-label={t.t('cards.removeCardAria', { title: card.title })}
                   onClick={() => onRemoveCard(card.id)}
-                  className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[4px] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
+                  className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
                 >
                   <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
                 </button>
@@ -172,7 +172,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
         {fieldsToRender.length === 0 && (
           <div
             data-testid={mode === 'jogo' ? `empty-card-play-${card.id}` : undefined}
-            className="no-print print:hidden p-3 border-[1.5px] border-dashed border-[var(--border-ink)]/45 rounded-[var(--radius-control)] bg-[var(--bg-card-alt)]"
+            className="no-print print:hidden p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/45 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)]"
           >
             <p className="font-mono-tech text-[11px] font-semibold text-[var(--ink-secondary)]">
               {mode === 'edicao' ? t.emptyBlockEdit : t.emptyBlockPlay}
@@ -226,7 +226,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                     onAddField(card.id, kind, newFieldLabel.trim() || undefined);
                     setNewFieldLabel('');
                   }}
-                  className="font-mono-tech text-[10px] font-bold px-2 py-1 border border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card-alt)] hover:bg-[var(--accent-wine)] hover:text-[var(--ink-inverse)] cursor-pointer uppercase transition-colors"
+                  className="font-mono-tech text-[10px] font-bold px-2 py-1 border border-[var(--border-ink)] rounded-[var(--radius-pill)] bg-[var(--bg-card-alt)] hover:bg-[var(--accent-primary)] hover:text-[var(--accent-contrast)] cursor-pointer uppercase transition-colors"
                 >
                   + {t.t(labelKey)}
                 </button>

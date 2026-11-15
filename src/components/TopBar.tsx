@@ -7,12 +7,15 @@ import {
   getLocalizedSystemOptions,
   LANGUAGE_OPTIONS,
 } from '../core/i18n';
+import { ThemeMode } from '../utils/theme';
+import { ThemeSelector } from './ThemeSelector';
 
 interface TopBarProps {
   systemCode: string;
   activeSystemId: SystemId;
   mode: AppMode;
   language: AppLanguage;
+  theme?: ThemeMode;
   isAudioMuted: boolean;
   activeView?: 'home' | 'sheet';
   t: AppTranslations['topBar'];
@@ -20,6 +23,7 @@ interface TopBarProps {
   onChangeSystemCode: (nextCode: string) => void;
   onSwitchSystem: (systemId: SystemId) => void;
   onChangeLanguage: (lang: AppLanguage) => void;
+  onChangeTheme?: (theme: ThemeMode) => void;
   onToggleAudioMute: () => void;
   onModeChange: (mode: AppMode) => void;
   onNewSheet: () => void;
@@ -33,6 +37,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   activeSystemId,
   mode,
   language,
+  theme = 'light',
   isAudioMuted,
   activeView = 'sheet',
   t,
@@ -40,6 +45,7 @@ export const TopBar: React.FC<TopBarProps> = ({
   onChangeSystemCode,
   onSwitchSystem,
   onChangeLanguage,
+  onChangeTheme,
   onToggleAudioMute,
   onModeChange,
   onNewSheet,
@@ -51,7 +57,7 @@ export const TopBar: React.FC<TopBarProps> = ({
 
   return (
     <header
-      className="no-print print:hidden topbar-root flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 bg-[var(--bg-card)] border-b-2 border-[var(--border-ink)] shrink-0 max-w-full overflow-x-hidden"
+      className="no-print print:hidden topbar-root flex flex-wrap items-center justify-between gap-2.5 sm:gap-3 px-4 sm:px-5 py-2.5 sm:py-3 bg-[var(--bg-card)] border-b-[length:var(--border-width)] border-[var(--border-color)] shrink-0 max-w-full overflow-x-hidden"
       aria-label={t.ariaHeader}
     >
       <div className="flex items-center gap-2.5 sm:gap-3 min-w-0 max-w-full">
@@ -61,17 +67,17 @@ export const TopBar: React.FC<TopBarProps> = ({
             data-testid="topbar-home-btn"
             onClick={onGoHome}
             aria-current={activeView === 'home' ? 'page' : undefined}
-            className={`font-mono-tech mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-[11px] font-bold tracking-wider uppercase rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+            className={`font-mono-tech mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-[11px] font-bold tracking-wider uppercase rounded-[var(--radius-pill)] border-[length:var(--border-width)] border-[var(--border-color)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
               activeView === 'home'
-                ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
-                : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+                ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]'
+                : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
             {t.home}
           </button>
         )}
         <span
-          className="font-mono-tech text-xs font-bold px-2 py-1 bg-[var(--accent-black)] text-[var(--ink-inverse)] rounded-[4px] select-none shrink-0"
+          className="font-mono-tech text-xs font-bold px-2 py-1 bg-[var(--accent-black)] text-[var(--accent-contrast)] rounded-[var(--radius-pill)] select-none shrink-0"
           aria-hidden="true"
         >
           +
@@ -187,10 +193,14 @@ export const TopBar: React.FC<TopBarProps> = ({
           </button>
         </div>
 
+        {onChangeTheme && (
+          <ThemeSelector theme={theme} onChangeTheme={onChangeTheme} />
+        )}
+
         <div
           role="group"
           aria-label={t.modeSelectorAria}
-          className="inline-flex border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] overflow-hidden bg-[var(--bg-card)] shrink-0"
+          className="inline-flex border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-pill)] overflow-hidden bg-[var(--bg-card)] shrink-0"
         >
           <button
             type="button"
@@ -198,8 +208,8 @@ export const TopBar: React.FC<TopBarProps> = ({
             onClick={() => onModeChange('jogo')}
             className={`font-mono-tech min-h-[36px] px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 cursor-pointer transition-colors duration-75 ${
               mode === 'jogo'
-                ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
-                : 'bg-[var(--bg-card)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+                ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                : 'bg-[var(--bg-card)] text-[var(--ink-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             {t.playMode}
@@ -208,10 +218,10 @@ export const TopBar: React.FC<TopBarProps> = ({
             type="button"
             aria-pressed={mode === 'edicao'}
             onClick={() => onModeChange('edicao')}
-            className={`font-mono-tech min-h-[36px] px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 border-l-2 border-[var(--border-ink)] cursor-pointer transition-colors duration-75 ${
+            className={`font-mono-tech min-h-[36px] px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 border-l-[length:var(--border-width)] border-[var(--border-color)] cursor-pointer transition-colors duration-75 ${
               mode === 'edicao'
-                ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
-                : 'bg-[var(--bg-card)] text-[var(--ink-muted)] hover:text-[var(--ink-primary)]'
+                ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]'
+                : 'bg-[var(--bg-card)] text-[var(--ink-muted)] hover:text-[var(--text-primary)]'
             }`}
           >
             {t.editMode}

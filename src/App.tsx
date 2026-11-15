@@ -85,6 +85,12 @@ import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
 import { PrintSheetHeader } from './components/PrintSheetHeader';
 import { HomeSheetItem, HomeSystemItem, HomeView } from './components/HomeView';
 import { RulesSearchPanel } from './components/RulesSearchPanel';
+import {
+  applyThemeToDocument,
+  persistTheme,
+  readStoredTheme,
+  ThemeMode,
+} from './utils/theme';
 import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
@@ -204,6 +210,7 @@ export default function App() {
   const [activeTab, setActiveTab] = useState<TabId>('geral');
   const [mode, setMode] = useState<AppMode>('jogo');
   const [language, setLanguage] = useState<AppLanguage>(readStoredLanguage);
+  const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
   const [searchQuery, setSearchQuery] = useState('');
   const [modalMode, setModalMode] = useState<'new' | 'open' | 'save' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -237,6 +244,11 @@ export default function App() {
       document.documentElement.lang = langMeta.htmlLang;
     }
   }, [language]);
+
+  useEffect(() => {
+    applyThemeToDocument(theme);
+    persistTheme(theme);
+  }, [theme]);
 
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
@@ -1281,12 +1293,13 @@ export default function App() {
   };
 
   return (
-    <div className="print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-canvas)] text-[var(--ink-primary)] overflow-hidden print:overflow-visible">
+    <div className="print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden print:overflow-visible">
       <TopBar
         systemCode={sheet.systemCode}
         activeSystemId={activeSystemId}
         mode={mode}
         language={language}
+        theme={theme}
         isAudioMuted={isAudioMuted}
         activeView={activeView}
         t={t.topBar}
@@ -1298,6 +1311,7 @@ export default function App() {
         onChangeSystemCode={(systemCode) => setSheet((prev) => ({ ...prev, systemCode }))}
         onSwitchSystem={handleSwitchSystem}
         onChangeLanguage={setLanguage}
+        onChangeTheme={setTheme}
         onToggleAudioMute={handleToggleAudioMute}
         onModeChange={setMode}
         onNewSheet={handleNewSheet}
@@ -1314,6 +1328,8 @@ export default function App() {
               activeSheet={activeHomeSheet}
               systems={homeSystems}
               language={language}
+              theme={theme}
+              onChangeTheme={setTheme}
               onContinueSheet={() => {
                 setHomeRulesOpen(false);
                 setActiveView('sheet');
@@ -1338,7 +1354,7 @@ export default function App() {
 
           {homeRulesOpen && (
             <div
-              className="no-print print:hidden fixed inset-0 z-40 flex justify-end bg-[#0B0B0B]/55"
+              className="no-print print:hidden fixed inset-0 z-40 flex justify-end bg-[var(--overlay-backdrop)]"
               role="presentation"
               onClick={(e) => {
                 if (e.target === e.currentTarget) {
@@ -1351,9 +1367,9 @@ export default function App() {
                 aria-modal="true"
                 aria-label={t.sidebar.rulesTab}
                 data-testid="home-rules-drawer"
-                className="mobile-drawer-panel w-[min(94vw,400px)] bg-[var(--bg-card)] border-l-2 border-[var(--border-ink)] shadow-[-6px_0_0_#0B0B0B] flex flex-col min-h-0"
+                className="mobile-drawer-panel w-[min(94vw,400px)] bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] shadow-[var(--shadow-drawer)] flex flex-col min-h-0"
               >
-                <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] shrink-0">
+                <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-strip)] border-b-[length:var(--border-width)] border-[var(--border-color)] shrink-0">
                   <span className="font-mono-tech text-[11px] font-bold tracking-wider uppercase text-[var(--accent-wine)]">
                     {t.t('sidebar.rulesDrawerTitle')}
                   </span>
@@ -1534,13 +1550,13 @@ export default function App() {
         />
       </div>
 
-      <div className="no-print print:hidden relative shrink-0 mobile-bottom-dock bg-[var(--bg-card)] border-t-2 border-[var(--border-ink)] lg:border-t-0 lg:bg-transparent">
+      <div className="no-print print:hidden relative shrink-0 mobile-bottom-dock bg-[var(--bg-card)] border-t-[length:var(--border-width)] border-[var(--border-color)] lg:border-t-0 lg:bg-transparent">
         {mobileRollToast && (
           <div
             role="status"
             aria-live="polite"
             data-testid="mobile-roll-toast"
-            className="mobile-roll-toast lg:hidden absolute bottom-full mb-2 z-30 flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-card)] border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] shadow-[3px_3px_0_#0B0B0B]"
+            className="mobile-roll-toast lg:hidden absolute bottom-full mb-2 z-30 flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-card)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] shadow-[var(--shadow-card)]"
           >
             <div className="flex items-center gap-2.5 min-w-0 flex-1">
               <span
@@ -1567,7 +1583,7 @@ export default function App() {
                         return (
                           <span
                             data-testid="mobile-roll-toast-status"
-                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[#991B1B] border border-[var(--accent-danger)] rounded-[3px] uppercase shrink-0"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
                           >
                             {t.t('sidebar.roll.botch')}
                           </span>
@@ -1577,7 +1593,7 @@ export default function App() {
                         return (
                           <span
                             data-testid="mobile-roll-toast-status"
-                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--ink-secondary)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--text-secondary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
                           >
                             {t.t('sidebar.roll.failure')}
                           </span>
@@ -1586,7 +1602,7 @@ export default function App() {
                       return (
                         <span
                           data-testid="mobile-roll-toast-status"
-                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
                         >
                           {t.t('sidebar.roll.success')}
                         </span>
@@ -1596,7 +1612,7 @@ export default function App() {
                       return (
                         <span
                           data-testid="mobile-roll-toast-status"
-                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase shrink-0"
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
                         >
                           {t.t('sidebar.roll.critShort')}
                         </span>
@@ -1606,7 +1622,7 @@ export default function App() {
                       return (
                         <span
                           data-testid="mobile-roll-toast-status"
-                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[#991B1B] border border-[var(--accent-danger)] rounded-[3px] uppercase shrink-0"
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
                         >
                           {t.t('sidebar.roll.fumble1')}
                         </span>
@@ -1703,7 +1719,7 @@ export default function App() {
           >
             <Dices className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
             <span>{t.t('statusBar.mobileLogsBtn')}</span>
-            <span className="px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] rounded-[3px] tabular-nums leading-none">
+            <span className="px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)] tabular-nums leading-none">
               {sheet.rollLogs.length}
             </span>
           </button>
