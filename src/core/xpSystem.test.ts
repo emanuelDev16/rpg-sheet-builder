@@ -4,6 +4,7 @@ import {
   createDefaultSheet,
   createDnd5ePreset,
   createGenericD20Preset,
+  createNewSheetForSystem,
   updateFieldValue,
 } from './sheetModel';
 import {
@@ -13,24 +14,81 @@ import {
   getAvailableXp,
   getCheapestBlockedUpgrade,
   getPossibleUpgrades,
+  resetXpPricingConfig,
+  setXpRulePreset,
   undoLastUpgrade,
   upgradeTraitWithXp,
 } from './xpSystem';
 
-test('calculateUpgradeCost applies World of Darkness costs for attributes, skills, and disciplines', () => {
-  assert.equal(calculateUpgradeCost('attribute', 3).cost, 12);
-  assert.equal(calculateUpgradeCost('attribute', 0).cost, 4);
+test('calculateUpgradeCost applies World of Darkness V20 costs for attributes, skills, disciplines, and virtues', () => {
+  assert.equal(calculateUpgradeCost(3, 'attribute', 'storyteller-v20'), 12);
+  assert.equal(calculateUpgradeCost(2, 'attribute', 'storyteller-v20'), 8);
+  assert.equal(calculateUpgradeCost(0, 'attribute', 'storyteller-v20'), 4);
 
-  assert.equal(calculateUpgradeCost('skill', 2).cost, 4);
-  assert.equal(calculateUpgradeCost('skill', 0).cost, 3);
+  assert.equal(calculateUpgradeCost(2, 'skill', 'storyteller-v20'), 4);
+  assert.equal(calculateUpgradeCost(0, 'skill', 'storyteller-v20'), 3);
 
-  assert.equal(calculateUpgradeCost('discipline', 2).cost, 10);
-  assert.equal(calculateUpgradeCost('discipline', 3).cost, 15);
-  assert.equal(calculateUpgradeCost('discipline', 0).cost, 10);
+  assert.equal(calculateUpgradeCost(2, 'discipline', 'storyteller-v20'), 10);
+  assert.equal(calculateUpgradeCost(3, 'discipline', 'storyteller-v20'), 15);
+  assert.equal(calculateUpgradeCost(0, 'discipline', 'storyteller-v20'), 10);
+  assert.equal(calculateUpgradeCost(2, 'discipline', 'storyteller-v20', { isOutOfClan: true }), 14);
+  assert.equal(calculateUpgradeCost(0, 'discipline', 'storyteller-v20', { isOutOfClan: true }), 10);
+
+  assert.equal(calculateUpgradeCost(5, 'virtue', 'storyteller-v20', { virtueSubtype: 'willpower' }), 5);
+  assert.equal(calculateUpgradeCost(0, 'virtue', 'storyteller-v20', { virtueSubtype: 'willpower' }), 1);
+  assert.equal(calculateUpgradeCost(7, 'virtue', 'storyteller-v20', { virtueSubtype: 'humanity' }), 14);
+});
+
+test('calculateUpgradeCost applies Vampire V5 costs and blocks Willpower and Humanity direct purchases', () => {
+  // Attribute 2 -> 3 = (2 + 1) * 5 = 15 XP (vs 8 XP in V20)
+  assert.equal(calculateUpgradeCost(2, 'attribute', 'vampire-v5'), 15);
+  // Skill 0 -> 1 = (0 + 1) * 3 = 3 XP
+  assert.equal(calculateUpgradeCost(0, 'skill', 'vampire-v5'), 3);
+  assert.equal(calculateUpgradeCost(2, 'skill', 'vampire-v5'), 9);
+  // Clan Discipline 0 -> 1 = (0 + 1) * 5 = 5 XP (vs 10 XP in V20)
+  assert.equal(calculateUpgradeCost(0, 'discipline', 'vampire-v5'), 5);
+  assert.equal(calculateUpgradeCost(2, 'discipline', 'vampire-v5'), 15);
+  // Out-of-Clan Discipline 0 -> 1 = 7 XP, 2 -> 3 = 21 XP
+  assert.equal(calculateUpgradeCost(0, 'discipline', 'vampire-v5', { isOutOfClan: true }), 7);
+  assert.equal(calculateUpgradeCost(2, 'discipline', 'vampire-v5', { isOutOfClan: true }), 21);
+  // Advantages / Virtues = (current + 1) * 3
+  assert.equal(calculateUpgradeCost(2, 'virtue', 'vampire-v5', { virtueSubtype: 'virtue' }), 9);
+
+  // Willpower & Humanity return null in V5
+  assert.equal(calculateUpgradeCost(6, 'virtue', 'vampire-v5', { virtueSubtype: 'willpower' }), null);
+  assert.equal(calculateUpgradeCost(7, 'virtue', 'vampire-v5', { virtueSubtype: 'humanity' }), null);
+});
+
+test('calculateUpgradeCost custom preset supports base switching (current vs next) and custom multipliers', () => {
+  assert.equal(
+    calculateUpgradeCost(2, 'attribute', 'custom', { customMultiplier: 6, useNewLevelBase: false }),
+    12,
+  );
+  assert.equal(
+    calculateUpgradeCost(2, 'attribute', 'custom', { customMultiplier: 6, useNewLevelBase: true }),
+    18,
+  );
+  assert.equal(
+    calculateUpgradeCost(0, 'discipline', 'custom', { customMultiplier: 8, useNewLevelBase: true }),
+    8,
+  );
+});
+
+test('createNewSheetForSystem auto-detects vampire-v5 for v5 systemId and storyteller-v20 otherwise', () => {
+  const wodV20 = createNewSheetForSystem('wod');
+  assert.equal(wodV20.xpRulePreset, 'storyteller-v20');
+
+  const wodV5 = createNewSheetForSystem('wod-v5');
+  assert.equal(wodV5.systemId, 'wod');
+  assert.equal(wodV5.xpRulePreset, 'vampire-v5');
+
+  const dnd = createNewSheetForSystem('dnd5e');
+  assert.equal(dnd.xpRulePreset, 'storyteller-v20');
 });
 
 test('getPossibleUpgrades reads current sheet ratings and filters out unaffordable or maxed traits', () => {
   let sheet = createDefaultSheet(); // starts with 14 available XP
+  resetXpPricingConfig(sheet);
   assert.equal(getAvailableXp(sheet.xp), 14);
 
   const possibleAt14 = getPossibleUpgrades(sheet);
@@ -61,8 +119,51 @@ test('getPossibleUpgrades reads current sheet ratings and filters out unaffordab
   assert.equal(possibleAt16.some((t) => t.key === 'dexterity'), true);
 });
 
+test('upgradeTraitWithXp blocks Willpower/Humanity in V5 and Undo refunds exact original XP after switching presets', () => {
+  // Start with Strength = 2 and 20 XP under V20
+  let sheet = updateFieldValue(createDefaultSheet(), 'f_strength', 2);
+  resetXpPricingConfig(sheet);
+  sheet = awardXp(sheet, 6, 'Session', '21:00', 'xp_s1').sheet; // 20 XP available
+
+  // Under V20, upgrading Strength 2 -> 3 costs 8 XP
+  const v20Upgrade = upgradeTraitWithXp(sheet, 'f_strength', '21:05', 'xp_upg_v20');
+  assert.equal(v20Upgrade.ok, true);
+  assert.equal(v20Upgrade.trait?.cost, 8);
+  assert.equal(v20Upgrade.sheet.xp?.spent, 8);
+  assert.equal(v20Upgrade.sheet.xp?.ledger[0]?.xpSpent, 8);
+  assert.equal(getAvailableXp(v20Upgrade.sheet.xp), 12);
+
+  // Switch rule preset to Vampire V5 mid-campaign (Strength 3->4 would cost 20 XP, 2->3 would cost 15 XP)
+  const v5Sheet = setXpRulePreset(v20Upgrade.sheet, 'vampire-v5');
+  const v5Traits = extractAllTraits(v5Sheet, 'pt-BR');
+  const wpTrait = v5Traits.find((t) => t.virtueSubtype === 'willpower');
+  const humTrait = v5Traits.find((t) => t.virtueSubtype === 'humanity');
+  assert.equal(wpTrait?.cost, null);
+  assert.equal(wpTrait?.isBlockedByRule, true);
+  assert.equal(wpTrait?.isPossible, false);
+  assert.equal(humTrait?.cost, null);
+  assert.equal(humTrait?.isBlockedByRule, true);
+  assert.equal(humTrait?.isPossible, false);
+
+  // Direct purchase of Willpower/Humanity is rejected in V5
+  const blockedPurchase = upgradeTraitWithXp(v5Sheet, 'f_willpower', '21:10', 'xp_wp_fail', 'pt-BR');
+  assert.equal(blockedPurchase.ok, false);
+  assert.match(blockedPurchase.error ?? '', /V5/i);
+
+  // Undo after switching preset still refunds the exact 8 XP spent originally (not 15 XP!)
+  const reverted = undoLastUpgrade(v5Sheet);
+  assert.equal(reverted.ok, true);
+  assert.equal(reverted.sheet.xp?.spent, 0);
+  assert.equal(getAvailableXp(reverted.sheet.xp), 20);
+  const restoredStrength = reverted.sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_strength');
+  assert.equal(restoredStrength?.value, 2);
+});
+
 test('upgradeTraitWithXp updates sheet field, deducts XP, updates possible list, and undo restores state', () => {
   const sheet = createDefaultSheet(); // 14 XP available
+  resetXpPricingConfig(sheet);
   const upg = upgradeTraitWithXp(sheet, 'f_strength', '23:10', 'xp_upg_1');
   assert.equal(upg.ok, true);
   assert.equal(upg.trait?.cost, 12);
@@ -93,6 +194,7 @@ test('upgradeTraitWithXp updates sheet field, deducts XP, updates possible list,
 
 test('awardXp prevents lowering totalEarned below already spent XP and handles D20 / D&D 5e presets', () => {
   const sheet = createDefaultSheet();
+  resetXpPricingConfig(sheet);
   const upg = upgradeTraitWithXp(sheet, 'f_presence', '23:15', 'xp_upg_p');
   assert.equal(upg.ok, true); // spent = 10, totalEarned = 14
 
@@ -117,3 +219,4 @@ test('awardXp prevents lowering totalEarned below already spent XP and handles D
   const remaining = getPossibleUpgrades(upgStr.sheet);
   assert.equal(remaining.every((t) => t.category === 'skill'), true);
 });
+

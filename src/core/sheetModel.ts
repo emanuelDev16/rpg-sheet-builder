@@ -180,12 +180,14 @@ export interface RollLogEntry {
 }
 
 export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
+export type XpRulePreset = 'storyteller-v20' | 'vampire-v5' | 'custom';
 
 export interface XpLedgerEntry {
   id: string;
   timestamp: string;
   kind: 'award' | 'upgrade';
   delta: number;
+  xpSpent?: number;
   label: string;
   fieldId?: string;
   category?: XpUpgradeCategory;
@@ -208,6 +210,8 @@ export interface CharacterSheetState {
   revision: number;
   updatedAt: string;
   deviceId: string;
+  xpRulePreset?: XpRulePreset;
+  customUseNewLevelBase?: boolean;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
   xp?: XpState;
@@ -299,6 +303,7 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
+    xpRulePreset: 'storyteller-v20',
     cards: [
       {
         id: 'card_identidade',
@@ -2231,11 +2236,18 @@ export interface NewSheetIdentityInput {
 }
 
 export function createNewSheetForSystem(
-  systemId: SystemId,
+  systemId: SystemId | string,
   identity?: NewSheetIdentityInput,
 ): CharacterSheetState {
   const validIds: SystemId[] = ['wod', 'dnd5e', 'cyberpunk', 'default', 'blank'];
-  const resolvedId: SystemId = validIds.includes(systemId) ? systemId : 'blank';
+  const rawSystemId = String(systemId ?? '').toLowerCase();
+  const isV5System = rawSystemId.includes('v5');
+  const resolvedId: SystemId = validIds.includes(systemId as SystemId)
+    ? (systemId as SystemId)
+    : isV5System
+      ? 'wod'
+      : 'blank';
+  const defaultXpRulePreset: XpRulePreset = isV5System ? 'vampire-v5' : 'storyteller-v20';
   const customCharName = identity?.characterName?.trim() ?? '';
   const customSecondaryTrait = identity?.secondaryTrait?.trim() ?? '';
   const defaultNewName = identity?.localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM';
@@ -2243,8 +2255,8 @@ export function createNewSheetForSystem(
   if (resolvedId === 'blank') {
     const blank = createBlankSheet(identity?.localeOptions);
     return customCharName
-      ? { ...blank, characterName: customCharName.toUpperCase() }
-      : blank;
+      ? { ...blank, characterName: customCharName.toUpperCase(), xpRulePreset: defaultXpRulePreset }
+      : { ...blank, xpRulePreset: defaultXpRulePreset };
   }
 
   const preset = createPresetBySystemId(resolvedId);
@@ -2255,6 +2267,7 @@ export function createNewSheetForSystem(
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
+    xpRulePreset: defaultXpRulePreset,
     cards: preset.cards.map((card) => ({
       ...card,
       fields: card.fields.map((field) => {
@@ -2344,6 +2357,8 @@ export function createNewSheetForSystem(
     },
   };
 }
+
+export const createFreshSheetForSystem = createNewSheetForSystem;
 
 function sanitizeCanonicalFieldId(rawId: string, fallbackIndex: number): string {
   const cleaned = rawId.trim().replace(/[^a-zA-Z0-9_]/g, '_');
@@ -2499,6 +2514,7 @@ const ALLOWED_FIELD_KINDS = new Set([
   'repeatable',
 ]);
 const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline', 'virtue']);
+const ALLOWED_XP_RULE_PRESETS = new Set(['storyteller-v20', 'vampire-v5', 'custom']);
 
 const ROOT_SHEET_KEYS = new Set([
   'id',
@@ -2509,6 +2525,8 @@ const ROOT_SHEET_KEYS = new Set([
   'revision',
   'updatedAt',
   'deviceId',
+  'xpRulePreset',
+  'customUseNewLevelBase',
   'tabs',
   'cards',
   'rollLogs',
@@ -2570,6 +2588,7 @@ const XP_LEDGER_KEYS = new Set([
   'timestamp',
   'kind',
   'delta',
+  'xpSpent',
   'label',
   'fieldId',
   'category',
@@ -2643,6 +2662,12 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
     if (typeof data.deviceId !== 'string' || data.deviceId.length < 1 || data.deviceId.length > 128) {
       errors.push('$.deviceId: string inválida (1..128 caracteres).');
     }
+  }
+  if (data.xpRulePreset !== undefined && !ALLOWED_XP_RULE_PRESETS.has(String(data.xpRulePreset))) {
+    errors.push(`$.xpRulePreset: preset de XP inválido "${String(data.xpRulePreset)}".`);
+  }
+  if (data.customUseNewLevelBase !== undefined && typeof data.customUseNewLevelBase !== 'boolean') {
+    errors.push('$.customUseNewLevelBase: deve ser booleano.');
   }
 
   if (data.tabs !== undefined) {
@@ -2803,6 +2828,12 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           }
           if (entry.category !== undefined && !ALLOWED_XP_CATEGORIES.has(String(entry.category))) {
             errors.push(`${xPath}.category: categoria inválida.`);
+          }
+          if (
+            entry.xpSpent !== undefined &&
+            (typeof entry.xpSpent !== 'number' || !Number.isFinite(entry.xpSpent) || entry.xpSpent < 0)
+          ) {
+            errors.push(`${xPath}.xpSpent: deve ser número >= 0.`);
           }
         });
       }

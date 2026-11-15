@@ -3,6 +3,7 @@ import type {
   SheetCard,
   SheetField,
   XpLedgerEntry,
+  XpRulePreset,
   XpState,
   XpUpgradeCategory,
 } from './sheetModel.ts';
@@ -11,6 +12,8 @@ import { type AppLanguage, createTranslator } from './i18n.ts';
 export type VirtueSubtype = 'willpower' | 'humanity' | 'virtue';
 
 export interface XpPricingConfig {
+  xpRulePreset?: XpRulePreset;
+  customUseNewLevelBase?: boolean;
   outOfClanFieldIds?: Record<string, boolean>;
   categoryMultipliers?: Partial<Record<XpUpgradeCategory, number>>;
   fieldCustomCosts?: Record<string, number>;
@@ -26,11 +29,13 @@ export interface UpgradableTrait {
   currentValue: number;
   nextValue: number;
   maxCap: number;
-  cost: number;
-  defaultCost: number;
+  cost: number | null;
+  defaultCost: number | null;
   formulaLabel: string;
   isOutOfClan?: boolean;
   isCustomCost?: boolean;
+  isBlockedByRule?: boolean;
+  blockedReason?: string;
   multiplier?: number;
   isMaxed: boolean;
   isAffordable: boolean;
@@ -147,6 +152,52 @@ export function resetXpPricingConfig(sheet: CharacterSheetState): XpPricingConfi
   delete all[key];
   writeAllStoredPricing(all);
   return {};
+}
+
+export function getEffectiveXpRulePreset(
+  sheet: CharacterSheetState,
+  pricingOverride?: XpPricingConfig,
+): XpRulePreset {
+  const pricing = pricingOverride ?? getXpPricingConfig(sheet);
+  return pricing.xpRulePreset ?? sheet.xpRulePreset ?? 'storyteller-v20';
+}
+
+export function getEffectiveCustomUseNewLevelBase(
+  sheet: CharacterSheetState,
+  pricingOverride?: XpPricingConfig,
+): boolean {
+  const pricing = pricingOverride ?? getXpPricingConfig(sheet);
+  return pricing.customUseNewLevelBase ?? sheet.customUseNewLevelBase ?? false;
+}
+
+export function setXpRulePreset(
+  sheet: CharacterSheetState,
+  preset: XpRulePreset,
+): CharacterSheetState {
+  return {
+    ...sheet,
+    xpRulePreset: preset,
+  };
+}
+
+export function setXpRulePresetConfig(
+  sheet: CharacterSheetState,
+  preset: XpRulePreset,
+): XpPricingConfig {
+  return updateSheetPricingConfig(sheet, (prev) => ({
+    ...prev,
+    xpRulePreset: preset,
+  }));
+}
+
+export function setCustomUseNewLevelBaseConfig(
+  sheet: CharacterSheetState,
+  useNewLevelBase: boolean,
+): XpPricingConfig {
+  return updateSheetPricingConfig(sheet, (prev) => ({
+    ...prev,
+    customUseNewLevelBase: useNewLevelBase,
+  }));
 }
 
 const IGNORED_NUMERIC_KEYS = new Set([
@@ -373,95 +424,237 @@ export interface CalculateCostOptions {
   virtueSubtype?: VirtueSubtype;
   customMultiplier?: number;
   customCost?: number;
+  useNewLevelBase?: boolean;
+  useD20Scale?: boolean;
+}
+
+export interface CalculateCostDetails {
+  cost: number | null;
+  formulaLabel: string;
+  multiplier: number;
+  isBlocked: boolean;
+  blockedReason?: string;
+}
+
+function resolveDefaultMultiplier(
+  category: XpUpgradeCategory,
+  preset: XpRulePreset,
+  options?: CalculateCostOptions,
+): number {
+  if (options?.useD20Scale && preset === 'storyteller-v20') {
+    if (category === 'attribute') return 100;
+    if (category === 'discipline') return 150;
+    return 50;
+  }
+
+  const useNewBase =
+    preset === 'vampire-v5' || (preset === 'custom' && Boolean(options?.useNewLevelBase));
+
+  if (useNewBase) {
+    if (category === 'attribute') return 5;
+    if (category === 'skill') return 3;
+    if (category === 'virtue') return 3;
+    return options?.isOutOfClan ? 7 : 5;
+  }
+
+  if (category === 'attribute') return 4;
+  if (category === 'skill') return 2;
+  if (category === 'virtue') return options?.virtueSubtype === 'willpower' ? 1 : 2;
+  return options?.isOutOfClan ? 7 : 5;
+}
+
+function normalizeCustomOverride(
+  customOverride?: CalculateCostOptions | number | null,
+): CalculateCostOptions {
+  if (typeof customOverride === 'number') {
+    return Number.isFinite(customOverride) && customOverride >= 1
+      ? { customMultiplier: Math.round(customOverride) }
+      : {};
+  }
+  return customOverride ?? {};
 }
 
 export function calculateUpgradeCost(
+  currentLevel: number,
   category: XpUpgradeCategory,
-  currentValue: number,
-  useD20Scale = false,
-  lang: AppLanguage = 'pt-BR',
-  options?: CalculateCostOptions,
-): { cost: number; formulaLabel: string; multiplier: number } {
-  const t = createTranslator(lang);
-  const rating = Math.max(0, Math.round(currentValue));
+  preset: XpRulePreset = 'storyteller-v20',
+  customOverride?: CalculateCostOptions | number | null,
+): number | null {
+  const options = normalizeCustomOverride(customOverride);
+  const rating = Math.max(0, Math.round(currentLevel));
+  const nextLevel = rating + 1;
 
   if (
-    typeof options?.customCost === 'number' &&
+    preset === 'vampire-v5' &&
+    (options.virtueSubtype === 'willpower' || options.virtueSubtype === 'humanity')
+  ) {
+    return null;
+  }
+
+  if (
+    typeof options.customCost === 'number' &&
     Number.isFinite(options.customCost) &&
     options.customCost >= 0
   ) {
-    const fixed = Math.round(options.customCost);
-    const customTag = lang === 'en' ? 'CUSTOM' : lang === 'es' ? 'AJUSTE' : 'CUSTOM';
+    return Math.round(options.customCost);
+  }
+
+  const hasCustomMultiplier =
+    typeof options.customMultiplier === 'number' &&
+    Number.isFinite(options.customMultiplier) &&
+    options.customMultiplier >= 1;
+  const customMult = hasCustomMultiplier ? Math.round(options.customMultiplier as number) : undefined;
+  const defaultMult = resolveDefaultMultiplier(category, preset, options);
+  const mult = customMult ?? defaultMult;
+
+  if (options.useD20Scale && preset === 'storyteller-v20') {
+    return rating === 0 ? mult : rating * mult;
+  }
+
+  if (preset === 'vampire-v5') {
+    return nextLevel * mult;
+  }
+
+  if (preset === 'custom') {
+    if (options.useNewLevelBase) {
+      return nextLevel * mult;
+    }
+    if (rating === 0) {
+      if (customMult !== undefined) return mult;
+      if (category === 'skill') return 3;
+      if (category === 'discipline') return 10;
+      return mult;
+    }
+    return rating * mult;
+  }
+
+  // storyteller-v20 (Base = currentLevel)
+  if (customMult !== undefined) {
+    return rating === 0 ? mult : rating * mult;
+  }
+  if (category === 'attribute') {
+    return rating === 0 ? 4 : rating * 4;
+  }
+  if (category === 'skill') {
+    return rating === 0 ? 3 : rating * 2;
+  }
+  if (category === 'virtue') {
+    return rating === 0 ? mult : rating * mult;
+  }
+  return rating === 0 ? 10 : rating * mult;
+}
+
+export function calculateUpgradeCostDetails(
+  currentLevel: number,
+  category: XpUpgradeCategory,
+  preset: XpRulePreset = 'storyteller-v20',
+  lang: AppLanguage = 'pt-BR',
+  customOverride?: CalculateCostOptions | number | null,
+): CalculateCostDetails {
+  const t = createTranslator(lang);
+  const options = normalizeCustomOverride(customOverride);
+  const rating = Math.max(0, Math.round(currentLevel));
+  const nextLevel = rating + 1;
+  const defaultMult = resolveDefaultMultiplier(category, preset, options);
+  const hasCustomMultiplier =
+    typeof options.customMultiplier === 'number' &&
+    Number.isFinite(options.customMultiplier) &&
+    options.customMultiplier >= 1;
+  const mult = hasCustomMultiplier
+    ? Math.round(options.customMultiplier as number)
+    : defaultMult;
+
+  const cost = calculateUpgradeCost(rating, category, preset, options);
+  if (cost === null) {
     return {
-      cost: fixed,
-      formulaLabel: `${fixed} XP (${customTag})`,
-      multiplier: rating > 0 ? Number((fixed / rating).toFixed(1)) : fixed,
+      cost: null,
+      formulaLabel: t('xp.v5BlockedShort'),
+      multiplier: mult,
+      isBlocked: true,
+      blockedReason: t('xp.v5BlockedNotice'),
     };
   }
 
   if (
-    typeof options?.customMultiplier === 'number' &&
-    Number.isFinite(options.customMultiplier) &&
-    options.customMultiplier >= 1
+    typeof options.customCost === 'number' &&
+    Number.isFinite(options.customCost) &&
+    options.customCost >= 0
   ) {
-    const mult = Math.round(options.customMultiplier);
-    if (rating === 0) {
-      return {
-        cost: mult,
-        formulaLabel: t('xp.newCostFormula', { cost: mult }),
-        multiplier: mult,
-      };
-    }
+    const customTag = lang === 'en' ? 'CUSTOM' : lang === 'es' ? 'AJUSTE' : 'CUSTOM';
     return {
-      cost: rating * mult,
-      formulaLabel: `${rating} × ${mult}`,
-      multiplier: mult,
+      cost,
+      formulaLabel: `${cost} XP (${customTag})`,
+      multiplier: rating > 0 ? Number((cost / rating).toFixed(1)) : cost,
+      isBlocked: false,
     };
   }
 
-  if (useD20Scale) {
-    if (category === 'attribute') {
-      if (rating === 0) return { cost: 100, formulaLabel: t('xp.newCostFormula', { cost: 100 }), multiplier: 100 };
-      return { cost: rating * 100, formulaLabel: `${rating} × 100`, multiplier: 100 };
-    }
-    if (category === 'skill') {
-      if (rating === 0) return { cost: 50, formulaLabel: t('xp.newCostFormula', { cost: 50 }), multiplier: 50 };
-      return { cost: rating * 50, formulaLabel: `${rating} × 50`, multiplier: 50 };
-    }
-    if (category === 'virtue') {
-      if (rating === 0) return { cost: 50, formulaLabel: t('xp.newCostFormula', { cost: 50 }), multiplier: 50 };
-      return { cost: rating * 50, formulaLabel: `${rating} × 50`, multiplier: 50 };
-    }
-    if (rating === 0) return { cost: 150, formulaLabel: t('xp.newCostFormula', { cost: 150 }), multiplier: 150 };
-    return { cost: rating * 150, formulaLabel: `${rating} × 150`, multiplier: 150 };
+  const usesNewLevelBase =
+    preset === 'vampire-v5' || (preset === 'custom' && Boolean(options.useNewLevelBase));
+
+  if (usesNewLevelBase) {
+    return {
+      cost,
+      formulaLabel: `${nextLevel} × ${mult}`,
+      multiplier: mult,
+      isBlocked: false,
+    };
   }
 
-  if (category === 'attribute') {
-    if (rating === 0) return { cost: 4, formulaLabel: t('xp.newCostFormula', { cost: 4 }), multiplier: 4 };
-    return { cost: rating * 4, formulaLabel: `${rating} × 4`, multiplier: 4 };
-  }
-  if (category === 'skill') {
-    if (rating === 0) return { cost: 3, formulaLabel: t('xp.newCostFormula', { cost: 3 }), multiplier: 2 };
-    return { cost: rating * 2, formulaLabel: `${rating} × 2`, multiplier: 2 };
-  }
-  if (category === 'virtue') {
-    const mult = options?.virtueSubtype === 'willpower' ? 1 : 2;
-    if (rating === 0) {
-      return { cost: mult, formulaLabel: t('xp.newCostFormula', { cost: mult }), multiplier: mult };
-    }
-    return { cost: rating * mult, formulaLabel: `${rating} × ${mult}`, multiplier: mult };
-  }
-
-  // discipline: Clan (x5) vs Out-of-Clan (x7), 0->1 = 10 XP
-  const discMult = options?.isOutOfClan ? 7 : 5;
   if (rating === 0) {
-    return { cost: 10, formulaLabel: t('xp.newCostFormula', { cost: 10 }), multiplier: discMult };
+    return {
+      cost,
+      formulaLabel: t('xp.newCostFormula', { cost }),
+      multiplier: mult,
+      isBlocked: false,
+    };
   }
-  return { cost: rating * discMult, formulaLabel: `${rating} × ${discMult}`, multiplier: discMult };
+
+  return {
+    cost,
+    formulaLabel: `${rating} × ${mult}`,
+    multiplier: mult,
+    isBlocked: false,
+  };
 }
 
-export function getCostRulesSummary(sheet: CharacterSheetState, lang: AppLanguage = 'pt-BR'): string[] {
+export function getCostRulesSummary(
+  sheet: CharacterSheetState,
+  lang: AppLanguage = 'pt-BR',
+  pricingOverride?: XpPricingConfig,
+): string[] {
   const t = createTranslator(lang);
+  const pricing = pricingOverride ?? getXpPricingConfig(sheet);
+  const preset = getEffectiveXpRulePreset(sheet, pricing);
+  const useNewBase = getEffectiveCustomUseNewLevelBase(sheet, pricing);
+
+  if (preset === 'vampire-v5') {
+    return [
+      t('xp.ruleV5Attr'),
+      t('xp.ruleV5Skill'),
+      t('xp.ruleV5Disc'),
+      t('xp.ruleV5Virtue'),
+    ];
+  }
+
+  if (preset === 'custom') {
+    const attrMult =
+      pricing.categoryMultipliers?.attribute ?? (useNewBase ? 5 : 4);
+    const skillMult =
+      pricing.categoryMultipliers?.skill ?? (useNewBase ? 3 : 2);
+    const discMult =
+      pricing.categoryMultipliers?.discipline ?? 5;
+    const virtMult =
+      pricing.categoryMultipliers?.virtue ?? (useNewBase ? 3 : 2);
+    return [
+      useNewBase ? t('xp.ruleCustomBaseNew') : t('xp.ruleCustomBaseCurrent'),
+      `${t('xp.cat.attribute')} ×${attrMult}`,
+      `${t('xp.cat.skill')} ×${skillMult}`,
+      `${t('xp.cat.discipline')} ×${discMult}`,
+      `${lang === 'en' ? 'VIRT' : 'VIRT'} ×${virtMult}`,
+    ];
+  }
+
   if (isWodSystem(sheet)) {
     const discRule =
       lang === 'en'
@@ -516,8 +709,10 @@ export function extractAllTraits(
   pricingOverride?: XpPricingConfig,
 ): UpgradableTrait[] {
   const availableXp = getAvailableXp(sheet.xp);
-  const useD20Scale = !isWodSystem(sheet);
   const pricing = pricingOverride ?? getXpPricingConfig(sheet);
+  const preset = getEffectiveXpRulePreset(sheet, pricing);
+  const customUseNewLevelBase = getEffectiveCustomUseNewLevelBase(sheet, pricing);
+  const useD20Scale = !isWodSystem(sheet) && preset === 'storyteller-v20';
   const traits: UpgradableTrait[] = [];
 
   for (const card of sheet.cards) {
@@ -536,20 +731,27 @@ export function extractAllTraits(
       const customCost = pricing.fieldCustomCosts?.[field.id];
       const customMultiplier = pricing.categoryMultipliers?.[category];
 
-      const defaultCalc = calculateUpgradeCost(category, currentValue, useD20Scale, lang, {
+      const defaultCalc = calculateUpgradeCostDetails(currentValue, category, preset, lang, {
         isOutOfClan,
         virtueSubtype,
+        useNewLevelBase: customUseNewLevelBase,
+        useD20Scale,
       });
-      const effectiveCalc = calculateUpgradeCost(category, currentValue, useD20Scale, lang, {
+      const effectiveCalc = calculateUpgradeCostDetails(currentValue, category, preset, lang, {
         isOutOfClan,
         virtueSubtype,
         customMultiplier,
         customCost,
+        useNewLevelBase: customUseNewLevelBase,
+        useD20Scale,
       });
 
-      const isAffordable = effectiveCalc.cost <= availableXp;
+      const isBlockedByRule = effectiveCalc.isBlocked || effectiveCalc.cost === null;
+      const isAffordable =
+        !isBlockedByRule && effectiveCalc.cost !== null && effectiveCalc.cost <= availableXp;
       const isCustomCost =
-        typeof customCost === 'number' || typeof customMultiplier === 'number';
+        !isBlockedByRule &&
+        (typeof customCost === 'number' || typeof customMultiplier === 'number');
 
       traits.push({
         fieldId: field.id,
@@ -566,10 +768,12 @@ export function extractAllTraits(
         formulaLabel: effectiveCalc.formulaLabel,
         isOutOfClan,
         isCustomCost,
+        isBlockedByRule,
+        blockedReason: effectiveCalc.blockedReason,
         multiplier: effectiveCalc.multiplier,
         isMaxed,
         isAffordable,
-        isPossible: !isMaxed && isAffordable,
+        isPossible: !isMaxed && !isBlockedByRule && isAffordable,
       });
     }
   }
@@ -600,9 +804,13 @@ export function getCheapestBlockedUpgrade(
   lang: AppLanguage = 'pt-BR',
   pricingOverride?: XpPricingConfig,
 ): UpgradableTrait | null {
-  const candidates = extractAllTraits(sheet, lang, pricingOverride).filter((t) => !t.isMaxed);
+  const candidates = extractAllTraits(sheet, lang, pricingOverride).filter(
+    (t) => !t.isMaxed && !t.isBlockedByRule && t.cost !== null,
+  );
   if (candidates.length === 0) return null;
-  return candidates.reduce((best, curr) => (curr.cost < best.cost ? curr : best));
+  return candidates.reduce((best, curr) =>
+    (curr.cost ?? Infinity) < (best.cost ?? Infinity) ? curr : best,
+  );
 }
 
 export function awardXp(
@@ -689,7 +897,8 @@ export function upgradeTraitWithXp(
   trait?: UpgradableTrait;
   error?: string;
 } {
-  const trait = extractAllTraits(sheet, lang, pricingOverride).find((t) => t.fieldId === fieldId);
+  const t = createTranslator(lang);
+  const trait = extractAllTraits(sheet, lang, pricingOverride).find((tr) => tr.fieldId === fieldId);
   if (!trait) {
     return {
       ok: false,
@@ -700,6 +909,13 @@ export function upgradeTraitWithXp(
           : lang === 'es'
             ? 'Rasgo no encontrado en la hoja.'
             : 'Traço não encontrado na ficha.',
+    };
+  }
+  if (trait.isBlockedByRule || trait.cost === null) {
+    return {
+      ok: false,
+      sheet,
+      error: t('xp.errBlockedV5', { label: trait.label }),
     };
   }
   if (trait.isMaxed) {
@@ -742,6 +958,7 @@ export function upgradeTraitWithXp(
     timestamp,
     kind: 'upgrade',
     delta: -trait.cost,
+    xpSpent: trait.cost,
     label: `${trait.label}${clanTag} ${trait.currentValue} → ${trait.nextValue}`,
     fieldId: trait.fieldId,
     category: trait.category,
@@ -818,7 +1035,10 @@ export function undoLastUpgrade(
     };
   }
 
-  const refund = Math.abs(entry.delta);
+  const refund =
+    typeof entry.xpSpent === 'number' && Number.isFinite(entry.xpSpent) && entry.xpSpent >= 0
+      ? Math.round(entry.xpSpent)
+      : Math.abs(entry.delta);
   const fromValue = entry.fromValue;
   const nextCards = sheet.cards.map((card) => ({
     ...card,
