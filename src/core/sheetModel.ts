@@ -179,7 +179,7 @@ export interface RollLogEntry {
   isPoolRoll?: boolean;
 }
 
-export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline';
+export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
 
 export interface XpLedgerEntry {
   id: string;
@@ -2024,16 +2024,94 @@ export function updateFieldSchema(
   });
 }
 
+function buildUniqueFieldKey(existingKeys: Set<string>, rawKey: string): string {
+  const base = rawKey.trim() || 'field';
+  if (!existingKeys.has(base)) return base;
+  let suffix = 2;
+  while (existingKeys.has(`${base}_${suffix}`)) {
+    suffix += 1;
+  }
+  return `${base}_${suffix}`;
+}
+
+export function reorderFieldInCard(
+  fields: SheetField[],
+  fieldId: string,
+  direction: 'up' | 'down',
+): SheetField[] {
+  const idx = fields.findIndex((f) => f.id === fieldId);
+  if (idx === -1) return fields;
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= fields.length) return fields;
+  const next = [...fields];
+  const [moved] = next.splice(idx, 1);
+  next.splice(targetIdx, 0, moved);
+  return next;
+}
+
 export function addFieldToCard(
   sheet: CharacterSheetState,
   cardId: string,
   newField: SheetField,
 ): CharacterSheetState {
+  const sysId = detectSystemId(sheet);
+
   return touchSheetMetadata({
     ...sheet,
-    cards: sheet.cards.map((card) =>
-      card.id === cardId ? { ...card, fields: [...card.fields, newField] } : card,
-    ),
+    cards: sheet.cards.map((card) => {
+      if (card.id !== cardId) return card;
+
+      const existingKeys = new Set(card.fields.map((f) => f.key));
+      let normalizedField: SheetField = { ...newField };
+
+      if (normalizedField.kind === 'roll') {
+        const clampedDiff = Math.max(
+          2,
+          Math.min(10, Math.round(normalizedField.rollDifficulty ?? 6)),
+        );
+        const matchingNumericField = card.fields.find(
+          (f) => f.kind === 'number' && f.key === normalizedField.key,
+        );
+        const cardSig = `${card.code} ${card.title}`.toUpperCase();
+        const isD10RollCard =
+          sysId === 'wod' ||
+          /SKILL|PERICIA|PERÍCIA|HABILIDAD|ABILIT|DISCIPLIN|PODER|POWER|ARCANO|POOL|D10/.test(
+            cardSig,
+          );
+
+        const nextKey = matchingNumericField
+          ? buildUniqueFieldKey(existingKeys, `roll_${matchingNumericField.key}`)
+          : buildUniqueFieldKey(existingKeys, normalizedField.key);
+
+        let nextExpr = normalizedField.rollExpr ?? '2d6';
+        if (nextExpr.trim() === '2d6') {
+          if (matchingNumericField) {
+            nextExpr = `pool(${matchingNumericField.key}, ${clampedDiff})`;
+          } else if (isD10RollCard) {
+            nextExpr = `pool(1, ${clampedDiff})`;
+          }
+        }
+
+        normalizedField = {
+          ...normalizedField,
+          key: nextKey,
+          rollExpr: nextExpr,
+          rollDifficulty: clampedDiff,
+          rollSpecialty: Boolean(normalizedField.rollSpecialty ?? false),
+          rollMod:
+            typeof normalizedField.rollMod === 'number' && Number.isFinite(normalizedField.rollMod)
+              ? Math.round(normalizedField.rollMod)
+              : 0,
+        };
+      } else {
+        normalizedField = {
+          ...normalizedField,
+          key: buildUniqueFieldKey(existingKeys, normalizedField.key),
+        };
+      }
+
+      return { ...card, fields: [...card.fields, normalizedField] };
+    }),
   });
 }
 
@@ -2065,7 +2143,7 @@ export function addCardToSheet(
 export function updateCardSchema(
   sheet: CharacterSheetState,
   cardId: string,
-  patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'tab'>>,
+  patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'tab' | 'fields'>>,
 ): CharacterSheetState {
   return touchSheetMetadata({
     ...sheet,
@@ -2420,7 +2498,7 @@ const ALLOWED_FIELD_KINDS = new Set([
   'roll',
   'repeatable',
 ]);
-const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline']);
+const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline', 'virtue']);
 
 const ROOT_SHEET_KEYS = new Set([
   'id',

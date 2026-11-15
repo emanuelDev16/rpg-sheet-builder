@@ -1,15 +1,19 @@
 import React, { useMemo, useState } from 'react';
-import { ArrowUpRight, RotateCcw } from 'lucide-react';
+import { ArrowUpRight, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { CharacterSheetState, XpUpgradeCategory } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
 import {
   extractAllTraits,
   getAvailableXp,
-  getCheapestBlockedUpgrade,
   getCostRulesSummary,
-  getPossibleUpgrades,
+  getXpPricingConfig,
   isWodSystem,
   normalizeXpState,
+  resetXpPricingConfig,
+  setCategoryMultiplierOverride,
+  setTraitCustomCostOverride,
+  setTraitOutOfClan,
+  UpgradableTrait,
 } from '../core/xpSystem';
 
 interface XpUpgradeWorkspaceProps {
@@ -25,6 +29,106 @@ type CategoryFilter = 'all' | XpUpgradeCategory;
 
 const DEFAULT_XP_T = getTranslations('pt-BR').xp;
 
+const LOCALIZED_XP_EXTRAS: Record<
+  AppLanguage,
+  {
+    virtuesTab: string;
+    virtueCat: string;
+    willpowerCat: string;
+    humanityCat: string;
+    clanLabel: string;
+    outOfClanLabel: string;
+    showAllTraits: string;
+    onlyAffordable: string;
+    rulesEditorBtn: string;
+    rulesEditorTitle: string;
+    resetRulesBtn: string;
+    customCostBtn: string;
+    customCostAria: string;
+    clearCustomCost: string;
+    applyCustomCost: string;
+    insufficientBadge: (missing: number) => string;
+    insufficientClickError: (label: string, cost: number, available: number) => string;
+    maxBadge: string;
+    catalogCount: (possible: number, total: number) => string;
+    multiplierLabel: string;
+    autoRuleOption: string;
+  }
+> = {
+  'pt-BR': {
+    virtuesTab: 'Virtudes / Vontade',
+    virtueCat: 'VIRTUDE',
+    willpowerCat: 'FORÇA DE VONTADE',
+    humanityCat: 'HUMANIDADE / TRILHA',
+    clanLabel: 'CLÃ (×5)',
+    outOfClanLabel: 'FORA DE CLÃ (×7)',
+    showAllTraits: 'VER: TODOS',
+    onlyAffordable: 'VER: COMPRÁVEIS',
+    rulesEditorBtn: 'Multiplicadores',
+    rulesEditorTitle: 'SOBRESCREVER MULTIPLICADORES POR CATEGORIA',
+    resetRulesBtn: 'RESTAURAR PADRÃO',
+    customCostBtn: 'Custo',
+    customCostAria: 'Sobrescrever custo de XP',
+    clearCustomCost: 'Padrão',
+    applyCustomCost: 'Aplicar',
+    insufficientBadge: (missing) => `FALTA ${missing} XP`,
+    insufficientClickError: (label, cost, available) =>
+      `XP insuficiente para ${label} (custo: ${cost} XP, disponível: ${available} XP).`,
+    maxBadge: 'MÁXIMO',
+    catalogCount: (possible, total) => `${possible} COMPRÁVEIS · ${total} TOTAL`,
+    multiplierLabel: '×',
+    autoRuleOption: 'Padrão',
+  },
+  en: {
+    virtuesTab: 'Virtues / Willpower',
+    virtueCat: 'VIRTUE',
+    willpowerCat: 'WILLPOWER',
+    humanityCat: 'HUMANITY / PATH',
+    clanLabel: 'CLAN (×5)',
+    outOfClanLabel: 'OUT-OF-CLAN (×7)',
+    showAllTraits: 'SHOW: ALL',
+    onlyAffordable: 'SHOW: AFFORDABLE',
+    rulesEditorBtn: 'Multipliers',
+    rulesEditorTitle: 'OVERRIDE MULTIPLIERS BY CATEGORY',
+    resetRulesBtn: 'RESET DEFAULTS',
+    customCostBtn: 'Cost',
+    customCostAria: 'Override XP cost',
+    clearCustomCost: 'Default',
+    applyCustomCost: 'Apply',
+    insufficientBadge: (missing) => `NEED ${missing} XP`,
+    insufficientClickError: (label, cost, available) =>
+      `Insufficient XP for ${label} (cost: ${cost} XP, available: ${available} XP).`,
+    maxBadge: 'MAXED',
+    catalogCount: (possible, total) => `${possible} AFFORDABLE · ${total} TOTAL`,
+    multiplierLabel: '×',
+    autoRuleOption: 'Default',
+  },
+  es: {
+    virtuesTab: 'Virtudes / Voluntad',
+    virtueCat: 'VIRTUD',
+    willpowerCat: 'VOLUNTAD',
+    humanityCat: 'HUMANIDAD / SENDA',
+    clanLabel: 'CLAN (×5)',
+    outOfClanLabel: 'FUERA CLAN (×7)',
+    showAllTraits: 'VER: TODOS',
+    onlyAffordable: 'VER: COMPRABLES',
+    rulesEditorBtn: 'Multiplicadores',
+    rulesEditorTitle: 'SOBRESCRIBIR MULTIPLICADORES POR CATEGORÍA',
+    resetRulesBtn: 'RESTAURAR',
+    customCostBtn: 'Costo',
+    customCostAria: 'Sobrescribir costo XP',
+    clearCustomCost: 'Estándar',
+    applyCustomCost: 'Aplicar',
+    insufficientBadge: (missing) => `FALTA ${missing} XP`,
+    insufficientClickError: (label, cost, available) =>
+      `XP insuficiente para ${label} (costo: ${cost} XP, disponible: ${available} XP).`,
+    maxBadge: 'MÁXIMO',
+    catalogCount: (possible, total) => `${possible} COMPRABLES · ${total} TOTAL`,
+    multiplierLabel: '×',
+    autoRuleOption: 'Estándar',
+  },
+};
+
 export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   sheet,
   language = 'pt-BR',
@@ -37,32 +141,52 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const [reasonInput, setReasonInput] = useState('');
   const [xpError, setXpError] = useState<string | null>(null);
   const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>('all');
+  const [onlyAffordable, setOnlyAffordable] = useState(false);
+  const [rulesEditorOpen, setRulesEditorOpen] = useState(false);
+  const [editingCostFieldId, setEditingCostFieldId] = useState<string | null>(null);
+  const [customCostDraft, setCustomCostDraft] = useState('');
+  const [pricingVersion, setPricingVersion] = useState(0);
+
+  const ext = LOCALIZED_XP_EXTRAS[language] ?? LOCALIZED_XP_EXTRAS['pt-BR'];
 
   const xpState = useMemo(() => normalizeXpState(sheet.xp), [sheet.xp]);
   const availableXp = useMemo(() => getAvailableXp(xpState), [xpState]);
-
-  const allTraits = useMemo(() => extractAllTraits(sheet, language), [sheet, language]);
-  const allPossible = useMemo(() => getPossibleUpgrades(sheet, 'all', language), [sheet, language]);
-  const filteredPossible = useMemo(
-    () =>
-      categoryFilter === 'all'
-        ? allPossible
-        : allPossible.filter((item) => item.category === categoryFilter),
-    [allPossible, categoryFilter],
+  const pricingConfig = useMemo(
+    () => getXpPricingConfig(sheet),
+    [sheet, pricingVersion],
   );
 
+  const allTraits = useMemo(
+    () => extractAllTraits(sheet, language, pricingConfig),
+    [sheet, language, pricingConfig],
+  );
+  const allPossible = useMemo(
+    () => allTraits.filter((trait) => trait.isPossible),
+    [allTraits],
+  );
+
+  const visibleTraits = useMemo(() => {
+    return allTraits.filter((trait) => {
+      if (categoryFilter !== 'all' && trait.category !== categoryFilter) return false;
+      if (onlyAffordable && !trait.isPossible) return false;
+      return true;
+    });
+  }, [allTraits, categoryFilter, onlyAffordable]);
+
   const countsByCategory = useMemo(() => {
-    const counts = { all: allPossible.length, attribute: 0, skill: 0, discipline: 0 };
-    for (const item of allPossible) {
+    const counts: Record<CategoryFilter, number> = {
+      all: allTraits.length,
+      attribute: 0,
+      skill: 0,
+      discipline: 0,
+      virtue: 0,
+    };
+    for (const item of allTraits) {
       counts[item.category] += 1;
     }
     return counts;
-  }, [allPossible]);
+  }, [allTraits]);
 
-  const cheapestBlocked = useMemo(
-    () => getCheapestBlockedUpgrade(sheet, language),
-    [sheet, language],
-  );
   const costRulesSummary = useMemo(
     () => getCostRulesSummary(sheet, language),
     [sheet, language],
@@ -72,6 +196,13 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     () => xpState.ledger.some((entry) => entry.kind === 'upgrade'),
     [xpState.ledger],
   );
+
+  const hasCustomPricing = useMemo(() => {
+    const multCount = Object.keys(pricingConfig.categoryMultipliers ?? {}).length;
+    const costCount = Object.keys(pricingConfig.fieldCustomCosts ?? {}).length;
+    const clanCount = Object.keys(pricingConfig.outOfClanFieldIds ?? {}).length;
+    return multCount > 0 || costCount > 0 || clanCount > 0;
+  }, [pricingConfig]);
 
   // 12-block segmented utilization meter for spent vs earned XP
   const totalBlocks = 12;
@@ -105,20 +236,107 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     setReasonInput('');
   };
 
-  const filterTabs = [
-    { id: 'all' as const, label: t.filterAll },
+  const handleAttemptUpgrade = (trait: UpgradableTrait) => {
+    if (trait.isMaxed) return;
+    if (!trait.isAffordable) {
+      setXpError(ext.insufficientClickError(trait.label, trait.cost, availableXp));
+      return;
+    }
+    setXpError(null);
+    onUpgradeTrait(trait.fieldId);
+  };
+
+  const handleToggleDisciplineClan = (trait: UpgradableTrait) => {
+    setTraitOutOfClan(sheet, trait.fieldId, !trait.isOutOfClan);
+    setPricingVersion((v) => v + 1);
+  };
+
+  const handleCategoryMultiplierChange = (cat: XpUpgradeCategory, raw: string) => {
+    if (raw.trim() === '') {
+      setCategoryMultiplierOverride(sheet, cat, null);
+    } else {
+      const parsed = Number(raw);
+      if (Number.isFinite(parsed) && parsed >= 1) {
+        setCategoryMultiplierOverride(sheet, cat, Math.round(parsed));
+      }
+    }
+    setPricingVersion((v) => v + 1);
+  };
+
+  const handleApplyTraitCustomCost = (fieldId: string) => {
+    const trimmed = customCostDraft.trim();
+    if (trimmed === '') {
+      setTraitCustomCostOverride(sheet, fieldId, null);
+    } else {
+      const parsed = Number(trimmed);
+      if (Number.isFinite(parsed) && parsed >= 0) {
+        setTraitCustomCostOverride(sheet, fieldId, Math.round(parsed));
+      }
+    }
+    setEditingCostFieldId(null);
+    setCustomCostDraft('');
+    setPricingVersion((v) => v + 1);
+  };
+
+  const handleClearTraitCustomCost = (fieldId: string) => {
+    setTraitCustomCostOverride(sheet, fieldId, null);
+    setEditingCostFieldId(null);
+    setCustomCostDraft('');
+    setPricingVersion((v) => v + 1);
+  };
+
+  const handleResetAllPricing = () => {
+    resetXpPricingConfig(sheet);
+    setEditingCostFieldId(null);
+    setCustomCostDraft('');
+    setPricingVersion((v) => v + 1);
+  };
+
+  const getTraitCategoryBadge = (trait: UpgradableTrait): string => {
+    if (trait.category === 'virtue') {
+      if (trait.virtueSubtype === 'willpower') return ext.willpowerCat;
+      if (trait.virtueSubtype === 'humanity') return ext.humanityCat;
+      return ext.virtueCat;
+    }
+    return t.t(`xp.cat.${trait.category}`);
+  };
+
+  const filterTabs: Array<{ id: CategoryFilter; label: string }> = [
+    { id: 'all', label: t.filterAll },
     {
-      id: 'attribute' as const,
+      id: 'attribute',
       label: isWod ? t.t('xp.filterAttributes') : t.t('xp.filterAbilities'),
     },
-    { id: 'skill' as const, label: t.t('xp.filterSkills') },
+    { id: 'skill', label: t.t('xp.filterSkills') },
     {
-      id: 'discipline' as const,
+      id: 'discipline',
       label: isWod ? t.t('xp.filterDisciplines') : t.t('xp.filterPowers'),
     },
+    { id: 'virtue', label: ext.virtuesTab },
   ];
-  const activeFilterLabel =
-    filterTabs.find((tab) => tab.id === categoryFilter)?.label ?? t.filterAll;
+
+  const categoryEditorRows: Array<{ id: XpUpgradeCategory; label: string; defaultMult: number }> = [
+    {
+      id: 'attribute',
+      label: isWod ? t.t('xp.filterAttributes') : t.t('xp.filterAbilities'),
+      defaultMult: isWod ? 4 : 100,
+    },
+    {
+      id: 'skill',
+      label: t.t('xp.filterSkills'),
+      defaultMult: isWod ? 2 : 50,
+    },
+    {
+      id: 'discipline',
+      label: isWod ? t.t('xp.filterDisciplines') : t.t('xp.filterPowers'),
+      defaultMult: isWod ? 5 : 150,
+    },
+    {
+      id: 'virtue',
+      label: ext.virtuesTab,
+      defaultMult: isWod ? 2 : 50,
+    },
+  ];
 
   return (
     <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
@@ -133,7 +351,10 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               {t.monitorTitle}
             </h2>
           </div>
-          <div className="flex items-center gap-1.5 shrink-0 self-start sm:self-center pt-0.5 sm:pt-0" aria-hidden="true">
+          <div
+            className="flex items-center gap-1.5 shrink-0 self-start sm:self-center pt-0.5 sm:pt-0"
+            aria-hidden="true"
+          >
             <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--bg-card)]" />
             <span className="w-2.5 h-2.5 rounded-full border-[1.5px] border-[var(--border-ink)] bg-[var(--accent-wine)]" />
           </div>
@@ -213,7 +434,9 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   <button
                     key={amt}
                     type="button"
-                    onClick={() => handleQuickAdjust(amt, t.t('xp.quickAwardLabel', { amount: amt }))}
+                    onClick={() =>
+                      handleQuickAdjust(amt, t.t('xp.quickAwardLabel', { amount: amt }))
+                    }
                     className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[11px] font-bold whitespace-nowrap shrink-0 cursor-pointer"
                   >
                     +{amt} XP
@@ -230,7 +453,10 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               </div>
             </div>
 
-            <form onSubmit={handleCustomSubmit} className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+            <form
+              onSubmit={handleCustomSubmit}
+              className="flex flex-wrap sm:flex-nowrap items-center gap-2"
+            >
               <input
                 type="number"
                 aria-label={t.availableXp}
@@ -257,9 +483,18 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             {xpError && (
               <div
                 role="alert"
-                className="p-2.5 border-[length:var(--border-width)] border-[var(--accent-danger)] rounded-[var(--radius-card)] bg-[var(--accent-danger-soft)] font-mono-tech text-[11px] font-semibold text-[var(--accent-danger)] break-words"
+                data-testid="xp-error-banner"
+                className="p-2.5 border-[length:var(--border-width)] border-[var(--accent-danger)] rounded-[var(--radius-card)] bg-[var(--accent-danger-soft)] font-mono-tech text-[11px] font-semibold text-[var(--accent-danger)] break-words flex items-center justify-between gap-2"
               >
-                {xpError}
+                <span>{xpError}</span>
+                <button
+                  type="button"
+                  aria-label="Dismiss"
+                  onClick={() => setXpError(null)}
+                  className="shrink-0 cursor-pointer"
+                >
+                  <X className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
               </div>
             )}
           </div>
@@ -273,7 +508,11 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               {hasUndoableUpgrade && (
                 <button
                   type="button"
-                  onClick={onUndoLastUpgrade}
+                  data-testid="xp-undo-last-btn"
+                  onClick={() => {
+                    setXpError(null);
+                    onUndoLastUpgrade();
+                  }}
                   className="no-print print:hidden cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer"
                 >
                   <RotateCcw className="w-3 h-3" aria-hidden="true" />
@@ -316,7 +555,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
         </div>
       </section>
 
-      {/* RIGHT CARD: POSSIBLE TRAIT UPGRADES */}
+      {/* RIGHT CARD: COMPLETE EVOLUTION CATALOG */}
       <section className="bento-card" aria-label={t.possibleTitle}>
         <header className="bento-card-header">
           <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
@@ -327,162 +566,342 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               {t.possibleTitle}
             </h2>
           </div>
-          <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] whitespace-nowrap shrink-0 self-start sm:self-center">
-            {t.availableCount(allPossible.length)}
+          <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] whitespace-nowrap shrink-0 self-start sm:self-center">
+            {ext.catalogCount(allPossible.length, allTraits.length)}
           </span>
         </header>
 
         <div className="bento-card-body p-4 flex flex-col gap-3">
-          {/* Transparent cost rules line (unboxed metadata) */}
-          <div className="font-mono-tech text-[10px] font-semibold text-[var(--ink-muted)] flex flex-wrap items-center gap-1.5">
-            <span>{t.costRulesLabel}</span>
-            {costRulesSummary.map((rule) => (
-              <React.Fragment key={rule}>
-                <span>{rule}</span>
-                <span aria-hidden="true">·</span>
-              </React.Fragment>
-            ))}
-            <span>{t.budgetLabel(availableXp)}</span>
+          {/* Cost rules + multipliers toggle */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div className="font-mono-tech text-[10px] font-semibold text-[var(--ink-muted)] flex flex-wrap items-center gap-1.5">
+              <span>{t.costRulesLabel}</span>
+              {costRulesSummary.map((rule) => (
+                <React.Fragment key={rule}>
+                  <span>{rule}</span>
+                  <span aria-hidden="true">·</span>
+                </React.Fragment>
+              ))}
+              <span>{t.budgetLabel(availableXp)}</span>
+            </div>
+
+            <button
+              type="button"
+              data-testid="xp-rules-editor-toggle"
+              aria-expanded={rulesEditorOpen}
+              onClick={() => setRulesEditorOpen((prev) => !prev)}
+              className={`no-print print:hidden font-mono-tech min-h-[32px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border inline-flex items-center gap-1.5 cursor-pointer transition-colors ${
+                rulesEditorOpen || hasCustomPricing
+                  ? 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                  : 'bg-[var(--bg-card-alt)] text-[var(--ink-primary)] border-[var(--border-ink)]/60 hover:bg-[var(--bg-hover)]'
+              }`}
+            >
+              <SlidersHorizontal className="w-3 h-3" aria-hidden="true" />
+              <span>{ext.rulesEditorBtn}</span>
+            </button>
           </div>
 
-          {/* Interactive category filter tabs */}
-          <div
-            role="tablist"
-            aria-label={t.possibleTitle}
-            className="flex flex-wrap items-center gap-1.5"
-          >
-            {filterTabs.map((tab) => {
-              const isSelected = categoryFilter === tab.id;
-              return (
-                <button
-                  key={tab.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={isSelected}
-                  onClick={() => setCategoryFilter(tab.id)}
-                  className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
-                    isSelected
-                      ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
-                      : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
-                  }`}
-                >
-                  {tab.label} ({countsByCategory[tab.id]})
-                </button>
-              );
-            })}
-          </div>
-
-          {/* Filtered possible upgrades list */}
-          {filteredPossible.length === 0 ? (
-            <div className="p-5 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/40 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2 text-center">
-              {allPossible.length > 0 && categoryFilter !== 'all' ? (
-                <>
-                  <p className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] uppercase">
-                    {t.t('xp.noUpgradeInCategory', {
-                      category: activeFilterLabel,
-                      xp: availableXp,
-                    })}
-                  </p>
+          {/* Collapsible Category Multipliers Override Panel */}
+          {rulesEditorOpen && (
+            <div
+              data-testid="xp-rules-editor-panel"
+              className="no-print print:hidden p-3 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2.5"
+            >
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)]">
+                  {ext.rulesEditorTitle}
+                </span>
+                {hasCustomPricing && (
                   <button
                     type="button"
-                    onClick={() => setCategoryFilter('all')}
-                    className="cyber-btn-outline min-h-[36px] self-center px-3 py-1 text-[11px] font-bold uppercase cursor-pointer"
+                    data-testid="xp-rules-reset-btn"
+                    onClick={handleResetAllPricing}
+                    className="cyber-btn-outline min-h-[28px] px-2 py-0.5 text-[10px] font-bold uppercase cursor-pointer"
                   >
-                    {t.filterAll} ({allPossible.length})
+                    {ext.resetRulesBtn}
                   </button>
-                </>
-              ) : allTraits.length === 0 ? (
-                <p className="font-mono-tech text-xs text-[var(--ink-muted)]">
-                  {t.t('xp.emptyTraits')}
-                </p>
-              ) : cheapestBlocked ? (
-                <>
-                  <p className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] uppercase">
-                    {t.t('xp.insufficientXpTitle')}
-                  </p>
-                  <p className="text-xs text-[var(--ink-secondary)] leading-relaxed">
-                    {t.t('xp.insufficientXpDetail', {
-                      available: availableXp,
-                      label: cheapestBlocked.label,
-                      from: cheapestBlocked.currentValue,
-                      to: cheapestBlocked.nextValue,
-                      cost: cheapestBlocked.cost,
+                )}
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                {categoryEditorRows.map((row) => {
+                  const activeVal = pricingConfig.categoryMultipliers?.[row.id];
+                  return (
+                    <label
+                      key={row.id}
+                      className="flex items-center justify-between gap-2 px-2.5 py-1.5 bg-[var(--bg-card)] border border-[var(--border-subtle)] rounded-[var(--radius-card)] font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
+                    >
+                      <span className="truncate">{row.label}</span>
+                      <div className="flex items-center gap-1 shrink-0">
+                        <span className="text-[var(--ink-muted)]">{ext.multiplierLabel}</span>
+                        <input
+                          type="number"
+                          min={1}
+                          max={500}
+                          data-testid={`xp-mult-input-${row.id}`}
+                          aria-label={`${row.label} ${ext.rulesEditorBtn}`}
+                          placeholder={String(row.defaultMult)}
+                          value={activeVal ?? ''}
+                          onChange={(e) => handleCategoryMultiplierChange(row.id, e.target.value)}
+                          className="cyber-input w-16 px-1.5 py-0.5 text-[11px] font-bold text-center tabular-nums"
+                        />
+                      </div>
+                    </label>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Category filter tabs + affordability filter */}
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <div
+              role="tablist"
+              aria-label={t.possibleTitle}
+              className="flex flex-wrap items-center gap-1.5"
+            >
+              {filterTabs.map((tab) => {
+                const isSelected = categoryFilter === tab.id;
+                return (
+                  <button
+                    key={tab.id}
+                    type="button"
+                    role="tab"
+                    data-testid={`xp-tab-${tab.id}`}
+                    aria-selected={isSelected}
+                    onClick={() => setCategoryFilter(tab.id)}
+                    className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] whitespace-nowrap shrink-0 cursor-pointer transition-colors ${
+                      isSelected
+                        ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                        : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
+                    }`}
+                  >
+                    {tab.label} ({countsByCategory[tab.id]})
+                  </button>
+                );
+              })}
+            </div>
+
+            <button
+              type="button"
+              data-testid="xp-only-affordable-toggle"
+              aria-pressed={onlyAffordable}
+              onClick={() => setOnlyAffordable((prev) => !prev)}
+              className={`no-print print:hidden font-mono-tech min-h-[32px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border cursor-pointer transition-colors ${
+                onlyAffordable
+                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                  : 'bg-[var(--bg-card-alt)] text-[var(--ink-secondary)] border-[var(--border-ink)]/50 hover:bg-[var(--bg-hover)]'
+              }`}
+            >
+              {onlyAffordable ? ext.onlyAffordable : ext.showAllTraits}
+            </button>
+          </div>
+
+          {/* Filtered traits catalog */}
+          {visibleTraits.length === 0 ? (
+            <div className="p-5 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/40 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2 text-center">
+              <p className="font-mono-tech text-xs text-[var(--ink-muted)]">
+                {allTraits.length === 0
+                  ? t.t('xp.emptyTraits')
+                  : t.t('xp.noUpgradeInCategory', {
+                      category:
+                        filterTabs.find((tab) => tab.id === categoryFilter)?.label ?? t.filterAll,
+                      xp: availableXp,
                     })}
-                  </p>
-                </>
-              ) : (
-                <p className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] uppercase">
-                  {t.t('xp.maxReached')}
-                </p>
+              </p>
+              {onlyAffordable && allTraits.length > 0 && (
+                <button
+                  type="button"
+                  onClick={() => setOnlyAffordable(false)}
+                  className="cyber-btn-outline min-h-[36px] self-center px-3 py-1 text-[11px] font-bold uppercase cursor-pointer"
+                >
+                  {ext.showAllTraits} ({allTraits.length})
+                </button>
               )}
             </div>
           ) : (
             <ul
               data-testid="possible-upgrades-list"
-              className="max-h-[468px] overflow-y-auto print:max-h-none print:overflow-visible border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
+              className="max-h-[480px] overflow-y-auto print:max-h-none print:overflow-visible border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
             >
-              {filteredPossible.map((trait) => (
-                <li
-                  key={trait.fieldId}
-                  className="px-3.5 py-2 flex items-center justify-between gap-3 hover:bg-[var(--bg-card-alt)] transition-colors"
-                >
-                  <div className="flex flex-col gap-1 min-w-0">
-                    <div className="flex items-center gap-2 font-mono-tech text-[10px] text-[var(--ink-muted)]">
-                      <span className="font-bold text-[var(--accent-wine)]">
-                        {t.t(`xp.cat.${trait.category}`)}
-                      </span>
-                      <span aria-hidden="true">·</span>
-                      <span>{trait.formulaLabel}</span>
-                    </div>
+              {visibleTraits.map((trait) => {
+                const missingXp = Math.max(0, trait.cost - availableXp);
+                const isEditingCost = editingCostFieldId === trait.fieldId;
+                const dotCap = trait.maxCap <= 10 ? trait.maxCap : 0;
 
-                    <div className="flex items-center gap-2.5 min-w-0">
-                      <span className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible">
-                        {trait.label}
-                      </span>
-
-                      <span className="font-mono-tech text-xs font-semibold text-[var(--ink-secondary)] whitespace-nowrap shrink-0 tabular-nums">
-                        {trait.currentValue} → {trait.nextValue}
-                      </span>
-
-                      {trait.maxCap <= 5 && (
-                        <span className="hidden sm:inline-flex items-center gap-0.5 shrink-0" aria-hidden="true">
-                          {Array.from({ length: trait.maxCap }).map((_, idx) => {
-                            const filled = idx < trait.currentValue;
-                            const nextDot = idx === trait.currentValue;
-                            return (
-                              <span
-                                key={idx}
-                                className={`w-2 h-2 rounded-[2px] border ${
-                                  filled
-                                    ? 'bg-[var(--accent-wine)] border-[var(--accent-wine)]'
-                                    : nextDot
-                                      ? 'bg-[var(--accent-wine-soft)] border-[var(--accent-wine)] border-dashed'
-                                      : 'bg-transparent border-[var(--border-ink)]/35'
-                                }`}
-                              />
-                            );
-                          })}
-                        </span>
-                      )}
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => onUpgradeTrait(trait.fieldId)}
-                    aria-label={t.t('xp.upgradeAria', {
-                      label: trait.label,
-                      from: trait.currentValue,
-                      to: trait.nextValue,
-                      cost: trait.cost,
-                    })}
-                    className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[11px] font-bold uppercase inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"
+                return (
+                  <li
+                    key={trait.fieldId}
+                    data-testid={`xp-trait-row-${trait.fieldId}`}
+                    className={`px-3.5 py-2.5 flex flex-col gap-2 transition-colors ${
+                      trait.isPossible
+                        ? 'hover:bg-[var(--bg-card-alt)]'
+                        : 'bg-[var(--bg-card-alt)]/45'
+                    }`}
                   >
-                    <span>{t.upgradeBtn(trait.cost)}</span>
-                    <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
-                  </button>
-                </li>
-              ))}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2.5">
+                      <div className="flex flex-col gap-1 min-w-0 flex-1">
+                        <div className="flex flex-wrap items-center gap-1.5 font-mono-tech text-[10px] text-[var(--ink-muted)]">
+                          <span className="font-bold text-[var(--accent-wine)]">
+                            {getTraitCategoryBadge(trait)}
+                          </span>
+                          <span aria-hidden="true">·</span>
+                          <span data-testid={`xp-trait-formula-${trait.fieldId}`}>
+                            {trait.formulaLabel}
+                          </span>
+
+                          {trait.category === 'discipline' && isWod && (
+                            <button
+                              type="button"
+                              data-testid={`disc-clan-toggle-${trait.fieldId}`}
+                              onClick={() => handleToggleDisciplineClan(trait)}
+                              className={`no-print print:hidden px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-[var(--radius-pill)] border cursor-pointer transition-colors ${
+                                trait.isOutOfClan
+                                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                  : 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                              }`}
+                            >
+                              {trait.isOutOfClan ? ext.outOfClanLabel : ext.clanLabel}
+                            </button>
+                          )}
+                        </div>
+
+                        <div className="flex flex-wrap items-center gap-2 min-w-0">
+                          <span className="font-mono-tech text-xs font-bold text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible">
+                            {trait.label}
+                          </span>
+
+                          <span className="font-mono-tech text-xs font-semibold text-[var(--ink-secondary)] whitespace-nowrap shrink-0 tabular-nums">
+                            {trait.isMaxed
+                              ? `${trait.currentValue} / ${trait.maxCap}`
+                              : `${trait.currentValue} → ${trait.nextValue}`}
+                          </span>
+
+                          {dotCap > 0 && (
+                            <span
+                              className="hidden sm:inline-flex items-center gap-0.5 shrink-0"
+                              aria-hidden="true"
+                            >
+                              {Array.from({ length: dotCap }).map((_, idx) => {
+                                const filled = idx < trait.currentValue;
+                                const nextDot = !trait.isMaxed && idx === trait.currentValue;
+                                return (
+                                  <span
+                                    key={idx}
+                                    className={`w-2 h-2 rounded-[2px] border ${
+                                      filled
+                                        ? 'bg-[var(--accent-wine)] border-[var(--accent-wine)]'
+                                        : nextDot
+                                          ? 'bg-[var(--accent-wine-soft)] border-[var(--accent-wine)] border-dashed'
+                                          : 'bg-transparent border-[var(--border-ink)]/35'
+                                    }`}
+                                  />
+                                );
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 shrink-0">
+                        {!trait.isMaxed && (
+                          <button
+                            type="button"
+                            data-testid={`trait-custom-cost-toggle-${trait.fieldId}`}
+                            aria-label={`${ext.customCostAria}: ${trait.label}`}
+                            aria-expanded={isEditingCost}
+                            onClick={() => {
+                              if (isEditingCost) {
+                                setEditingCostFieldId(null);
+                              } else {
+                                setEditingCostFieldId(trait.fieldId);
+                                setCustomCostDraft(
+                                  pricingConfig.fieldCustomCosts?.[trait.fieldId] !== undefined
+                                    ? String(pricingConfig.fieldCustomCosts[trait.fieldId])
+                                    : String(trait.cost),
+                                );
+                              }
+                            }}
+                            className={`no-print print:hidden min-h-[36px] px-2 text-[10px] font-mono-tech font-bold uppercase rounded-[var(--radius-pill)] border cursor-pointer ${
+                              trait.isCustomCost
+                                ? 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                                : 'bg-[var(--bg-card)] text-[var(--ink-secondary)] border-[var(--border-ink)]/45 hover:bg-[var(--bg-hover)]'
+                            }`}
+                          >
+                            {ext.customCostBtn}
+                          </button>
+                        )}
+
+                        {trait.isMaxed ? (
+                          <span className="font-mono-tech min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center rounded-[var(--radius-pill)] border border-[var(--border-subtle)] bg-[var(--bg-header-strip)] text-[var(--ink-muted)]">
+                            {ext.maxBadge}
+                          </span>
+                        ) : trait.isAffordable ? (
+                          <button
+                            key="affordable"
+                            type="button"
+                            data-testid={`xp-upgrade-btn-${trait.fieldId}`}
+                            onClick={() => handleAttemptUpgrade(trait)}
+                            aria-label={t.t('xp.upgradeAria', {
+                              label: trait.label,
+                              from: trait.currentValue,
+                              to: trait.nextValue,
+                              cost: trait.cost,
+                            })}
+                            className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[11px] font-bold uppercase inline-flex items-center gap-1.5 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"
+                          >
+                            <span>{t.upgradeBtn(trait.cost)}</span>
+                            <ArrowUpRight className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        ) : (
+                          <button
+                            key="locked"
+                            type="button"
+                            data-testid={`xp-upgrade-btn-${trait.fieldId}`}
+                            aria-disabled="true"
+                            onClick={() => handleAttemptUpgrade(trait)}
+                            title={ext.insufficientBadge(missingXp)}
+                            className="font-mono-tech min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 tabular-nums rounded-[var(--radius-control)] border border-dashed border-[var(--accent-danger)] bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-not-allowed"
+                          >
+                            <span>{trait.cost} XP · {ext.insufficientBadge(missingXp)}</span>
+                          </button>
+                        )}
+                      </div>
+                    </div>
+
+                    {isEditingCost && (
+                      <div className="no-print print:hidden pt-1.5 border-t border-dashed border-[var(--border-ink)]/35 flex flex-wrap items-center justify-end gap-1.5">
+                        <input
+                          type="number"
+                          min={0}
+                          max={9999}
+                          data-testid={`trait-custom-cost-input-${trait.fieldId}`}
+                          aria-label={`${ext.customCostAria}: ${trait.label}`}
+                          value={customCostDraft}
+                          onChange={(e) => setCustomCostDraft(e.target.value)}
+                          className="cyber-input w-20 px-2 py-1 text-[11px] font-bold text-center tabular-nums"
+                        />
+                        <button
+                          type="button"
+                          data-testid={`trait-custom-cost-apply-${trait.fieldId}`}
+                          onClick={() => handleApplyTraitCustomCost(trait.fieldId)}
+                          className="cyber-roll-btn min-h-[30px] px-2.5 py-1 text-[10px] font-bold uppercase cursor-pointer"
+                        >
+                          {ext.applyCustomCost}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`trait-custom-cost-clear-${trait.fieldId}`}
+                          onClick={() => handleClearTraitCustomCost(trait.fieldId)}
+                          className="cyber-btn-outline min-h-[30px] px-2.5 py-1 text-[10px] font-bold uppercase cursor-pointer"
+                        >
+                          {ext.clearCustomCost}
+                        </button>
+                      </div>
+                    )}
+                  </li>
+                );
+              })}
             </ul>
           )}
         </div>

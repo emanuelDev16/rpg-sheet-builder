@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { Plus } from 'lucide-react';
-import { SheetCard, TabId } from '../core/sheetModel';
-import { AppTranslations, getTranslations } from '../core/i18n';
+import { SheetCard, SheetField, TabId } from '../core/sheetModel';
+import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
 
 interface CustomCardBuilderProps {
   activeTab: Exclude<TabId, 'xp'>;
@@ -10,7 +10,276 @@ interface CustomCardBuilderProps {
   onCreateCard: (card: SheetCard) => void;
 }
 
+type StarterTemplateId =
+  | 'empty'
+  | 'skill_d10'
+  | 'attribute'
+  | 'discipline'
+  | 'resource'
+  | 'calculated'
+  | 'text';
+
 const DEFAULT_BUILDER_T = getTranslations('pt-BR').customBuilder;
+
+function inferLang(t: AppTranslations['customBuilder']): AppLanguage {
+  if (t.createBtn === 'CREATE CARD') return 'en';
+  if (t.createBtn === 'CREAR BLOQUE') return 'es';
+  return 'pt-BR';
+}
+
+const TEMPLATE_LABELS: Record<
+  AppLanguage,
+  {
+    heading: string;
+    options: Record<StarterTemplateId, { label: string; hint: string; defaultTitle: string; defaultCode: string }>;
+  }
+> = {
+  'pt-BR': {
+    heading: 'TEMPLATE INICIAL',
+    options: {
+      empty: {
+        label: 'Bloco Vazio',
+        hint: 'Começar sem campos',
+        defaultTitle: 'NOVO BLOCO',
+        defaultCode: '//BLOCO',
+      },
+      skill_d10: {
+        label: 'Habilidade / Perícia d10',
+        hint: 'Perícia + Rolagem d10 (DIFF 6)',
+        defaultTitle: 'HABILIDADES',
+        defaultCode: '//SKILLS_D10',
+      },
+      attribute: {
+        label: 'Atributo',
+        hint: 'Valor numérico (1–5)',
+        defaultTitle: 'ATRIBUTOS',
+        defaultCode: '//ATTRIBUTES',
+      },
+      discipline: {
+        label: 'Disciplina / Poder',
+        hint: 'Poder / Disciplina (XP)',
+        defaultTitle: 'DISCIPLINAS',
+        defaultCode: '//DISCIPLINES',
+      },
+      resource: {
+        label: 'Recurso (Barra)',
+        hint: 'Barra segmentada (ex: Sangue)',
+        defaultTitle: 'RECURSOS',
+        defaultCode: '//RESOURCES',
+      },
+      calculated: {
+        label: 'Calculado',
+        hint: 'Fórmula automática',
+        defaultTitle: 'DERIVADOS',
+        defaultCode: '//DERIVED',
+      },
+      text: {
+        label: 'Texto/Notas',
+        hint: 'Anotações e histórico',
+        defaultTitle: 'ANOTAÇÕES',
+        defaultCode: '//NOTES',
+      },
+    },
+  },
+  en: {
+    heading: 'STARTER TEMPLATE',
+    options: {
+      empty: {
+        label: 'Empty Card',
+        hint: 'Start with no fields',
+        defaultTitle: 'NEW CARD',
+        defaultCode: '//CARD',
+      },
+      skill_d10: {
+        label: 'Skill / Roll d10',
+        hint: 'Skill + d10 Pool (DIFF 6)',
+        defaultTitle: 'SKILLS',
+        defaultCode: '//SKILLS_D10',
+      },
+      attribute: {
+        label: 'Attribute',
+        hint: 'Numeric rating (1–5)',
+        defaultTitle: 'ATTRIBUTES',
+        defaultCode: '//ATTRIBUTES',
+      },
+      discipline: {
+        label: 'Discipline / Power',
+        hint: 'Power / Discipline (XP)',
+        defaultTitle: 'DISCIPLINES',
+        defaultCode: '//DISCIPLINES',
+      },
+      resource: {
+        label: 'Resource (Bar)',
+        hint: 'Segmented bar (e.g. Energy)',
+        defaultTitle: 'RESOURCES',
+        defaultCode: '//RESOURCES',
+      },
+      calculated: {
+        label: 'Calculated',
+        hint: 'Automatic formula',
+        defaultTitle: 'DERIVED',
+        defaultCode: '//DERIVED',
+      },
+      text: {
+        label: 'Text/Notes',
+        hint: 'Notes & biography',
+        defaultTitle: 'NOTES',
+        defaultCode: '//NOTES',
+      },
+    },
+  },
+  es: {
+    heading: 'PLANTILLA INICIAL',
+    options: {
+      empty: {
+        label: 'Bloque Vacío',
+        hint: 'Comenzar sin campos',
+        defaultTitle: 'NUEVO BLOQUE',
+        defaultCode: '//BLOQUE',
+      },
+      skill_d10: {
+        label: 'Habilidad / Pericia d10',
+        hint: 'Habilidad + Tirada d10 (DIF 6)',
+        defaultTitle: 'HABILIDADES',
+        defaultCode: '//SKILLS_D10',
+      },
+      attribute: {
+        label: 'Atributo',
+        hint: 'Valor numérico (1–5)',
+        defaultTitle: 'ATRIBUTOS',
+        defaultCode: '//ATTRIBUTES',
+      },
+      discipline: {
+        label: 'Disciplina / Poder',
+        hint: 'Poder / Disciplina (XP)',
+        defaultTitle: 'DISCIPLINAS',
+        defaultCode: '//DISCIPLINES',
+      },
+      resource: {
+        label: 'Recurso (Barra)',
+        hint: 'Barra segmentada',
+        defaultTitle: 'RECURSOS',
+        defaultCode: '//RESOURCES',
+      },
+      calculated: {
+        label: 'Calculado',
+        hint: 'Fórmula automática',
+        defaultTitle: 'DERIVADOS',
+        defaultCode: '//DERIVED',
+      },
+      text: {
+        label: 'Texto/Notas',
+        hint: 'Notas e historia',
+        defaultTitle: 'NOTAS',
+        defaultCode: '//NOTES',
+      },
+    },
+  },
+};
+
+const TEMPLATE_ORDER: StarterTemplateId[] = [
+  'empty',
+  'skill_d10',
+  'attribute',
+  'discipline',
+  'resource',
+  'calculated',
+  'text',
+];
+
+function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): SheetField[] {
+  const uid = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
+  switch (template) {
+    case 'skill_d10': {
+      const skillKey = `pericia_${uid.slice(0, 4)}`;
+      const skillLabel =
+        lang === 'en' ? 'NEW SKILL' : lang === 'es' ? 'NUEVA HABILIDAD' : 'NOVA PERÍCIA';
+      const rollLabel =
+        lang === 'en' ? 'ROLL SKILL' : lang === 'es' ? 'TIRAR HABILIDAD' : 'ROLAR PERÍCIA';
+      return [
+        {
+          id: `f_${uid}_num`,
+          key: skillKey,
+          label: skillLabel,
+          kind: 'number',
+          value: 1,
+        },
+        {
+          id: `f_${uid}_roll`,
+          key: `roll_${skillKey}`,
+          label: skillLabel,
+          kind: 'roll',
+          rollLabel,
+          rollExpr: `pool(${skillKey}, 6)`,
+          rollDifficulty: 6,
+          rollSpecialty: false,
+          rollMod: 0,
+        },
+      ];
+    }
+    case 'attribute':
+      return [
+        {
+          id: `f_${uid}`,
+          key: `attr_${uid.slice(0, 4)}`,
+          label: lang === 'en' ? 'NEW ATTRIBUTE' : lang === 'es' ? 'NUEVO ATRIBUTO' : 'NOVO ATRIBUTO',
+          kind: 'number',
+          value: 2,
+        },
+      ];
+    case 'discipline':
+      return [
+        {
+          id: `f_${uid}`,
+          key: `disc_${uid.slice(0, 4)}`,
+          label:
+            lang === 'en'
+              ? 'NEW DISCIPLINE'
+              : lang === 'es'
+                ? 'NUEVA DISCIPLINA'
+                : 'NOVA DISCIPLINA',
+          kind: 'number',
+          value: 1,
+        },
+      ];
+    case 'resource':
+      return [
+        {
+          id: `f_${uid}`,
+          key: `res_${uid.slice(0, 4)}`,
+          label: lang === 'en' ? 'NEW RESOURCE' : lang === 'es' ? 'NUEVO RECURSO' : 'NOVO RECURSO',
+          kind: 'resource',
+          value: 4,
+          max: 6,
+        },
+      ];
+    case 'calculated':
+      return [
+        {
+          id: `f_${uid}`,
+          key: `calc_${uid.slice(0, 4)}`,
+          label:
+            lang === 'en' ? 'CALCULATED STAT' : lang === 'es' ? 'CAMPO CALCULADO' : 'DERIVADO',
+          kind: 'calculated',
+          formula: '0',
+          showPlus: true,
+        },
+      ];
+    case 'text':
+      return [
+        {
+          id: `f_${uid}`,
+          key: `txt_${uid.slice(0, 4)}`,
+          label: lang === 'en' ? 'NOTES' : lang === 'es' ? 'NOTAS' : 'NOTAS',
+          kind: 'text',
+          value: '',
+        },
+      ];
+    case 'empty':
+    default:
+      return [];
+  }
+}
 
 export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   activeTab,
@@ -21,13 +290,22 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   const [title, setTitle] = useState('');
   const [code, setCode] = useState('');
   const [colSpan, setColSpan] = useState<1 | 2>(1);
+  const [starterTemplate, setStarterTemplate] = useState<StarterTemplateId>('empty');
+
+  const lang = inferLang(t);
+  const copy = TEMPLATE_LABELS[lang];
+  const selectedMeta = copy.options[starterTemplate];
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
-    const cleanTitle = title.trim().toUpperCase() || t.defaultBlockTitle;
+    const cleanTitle =
+      title.trim().toUpperCase() ||
+      (starterTemplate === 'empty' ? t.defaultBlockTitle : selectedMeta.defaultTitle);
     const derivedCode =
       code.trim().toUpperCase() ||
-      `//${cleanTitle.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 16) || t.defaultBlockCode}`;
+      (starterTemplate !== 'empty' && !title.trim()
+        ? selectedMeta.defaultCode
+        : `//${cleanTitle.replace(/[^A-Z0-9]+/g, '_').replace(/^_|_$/g, '').slice(0, 16) || t.defaultBlockCode}`);
 
     const normalizedCode = derivedCode.startsWith('//') ? derivedCode : `//${derivedCode}`;
     const uid = `card_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
@@ -38,11 +316,12 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
       code: normalizedCode,
       title: cleanTitle,
       colSpan,
-      fields: [],
+      fields: buildStarterFields(starterTemplate, lang),
     });
 
     setTitle('');
     setCode('');
+    setStarterTemplate('empty');
   };
 
   return (
@@ -71,6 +350,40 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
           </p>
         )}
 
+        {/* Guided Starter Template Selector */}
+        <div className="flex flex-col gap-1.5">
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-muted)] uppercase">
+              {copy.heading}
+            </span>
+            <span className="font-mono-tech text-[10px] font-semibold text-[var(--accent-wine)]">
+              {selectedMeta.hint}
+            </span>
+          </div>
+          <div className="flex flex-wrap gap-1.5" role="radiogroup" aria-label={copy.heading}>
+            {TEMPLATE_ORDER.map((tplId) => {
+              const active = starterTemplate === tplId;
+              return (
+                <button
+                  key={tplId}
+                  type="button"
+                  role="radio"
+                  aria-checked={active}
+                  data-testid={`builder-tpl-${tplId}`}
+                  onClick={() => setStarterTemplate(tplId)}
+                  className={`font-mono-tech min-h-[36px] sm:min-h-[30px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border transition-colors cursor-pointer ${
+                    active
+                      ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                      : 'bg-[var(--bg-card-alt)] text-[var(--ink-primary)] border-[var(--border-ink)]/65 hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  {copy.options[tplId].label}
+                </button>
+              );
+            })}
+          </div>
+        </div>
+
         <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
           <div className="md:col-span-5 flex flex-col gap-1">
             <label
@@ -84,7 +397,11 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               type="text"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder={t.blockTitlePlaceholder}
+              placeholder={
+                starterTemplate === 'empty'
+                  ? t.blockTitlePlaceholder
+                  : selectedMeta.defaultTitle
+              }
               className="cyber-input mobile-touch-input px-2.5 py-1.5 text-xs font-bold uppercase w-full"
             />
           </div>
@@ -101,7 +418,11 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               type="text"
               value={code}
               onChange={(e) => setCode(e.target.value)}
-              placeholder={t.techTagPlaceholder}
+              placeholder={
+                starterTemplate === 'empty'
+                  ? t.techTagPlaceholder
+                  : selectedMeta.defaultCode
+              }
               className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-xs font-mono-tech w-full"
             />
           </div>
