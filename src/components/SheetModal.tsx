@@ -1,5 +1,5 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Download, Copy, Check, Upload, Printer } from 'lucide-react';
+import { X, Download, Copy, Check, Upload, Printer, BookmarkPlus, Trash2 } from 'lucide-react';
 import {
   CharacterSheetState,
   NewSheetIdentityInput,
@@ -7,6 +7,7 @@ import {
   SystemId,
   validateSheetPayload,
 } from '../core/sheetModel';
+import { CustomSheetTemplate } from '../core/sheetsStore';
 import { AppTranslations, getTranslations } from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 
@@ -14,13 +15,18 @@ interface SheetModalProps {
   mode: 'new' | 'open' | 'save' | null;
   sheet: CharacterSheetState;
   activeSystemId: SystemId;
+  customTemplates?: CustomSheetTemplate[];
   t?: AppTranslations['modal'];
   onClose: () => void;
   onCreateNewSheet: (systemId: SystemId, identity?: NewSheetIdentityInput) => void;
   onLoadPreset: (presetId: SystemId) => void;
   onImportJson: (nextSheet: CharacterSheetState) => void;
-  onSaveLocal: () => void;
+  onSaveLocal: () => void | Promise<void>;
   onPrintPdf: () => void;
+  onFlushSave?: () => void | Promise<void>;
+  onSaveCustomTemplate?: (templateName: string) => void | Promise<void>;
+  onLoadCustomTemplate?: (template: CustomSheetTemplate) => void;
+  onDeleteCustomTemplate?: (templateId: string) => void | Promise<void>;
 }
 
 const DEFAULT_MODAL_T = getTranslations('pt-BR').modal;
@@ -29,6 +35,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   mode,
   sheet,
   activeSystemId,
+  customTemplates = [],
   t = DEFAULT_MODAL_T,
   onClose,
   onCreateNewSheet,
@@ -36,12 +43,17 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   onImportJson,
   onSaveLocal,
   onPrintPdf,
+  onFlushSave,
+  onSaveCustomTemplate,
+  onLoadCustomTemplate,
+  onDeleteCustomTemplate,
 }) => {
   const [importError, setImportError] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<SystemId>(activeSystemId);
   const [charName, setCharName] = useState('');
   const [secondaryTrait, setSecondaryTrait] = useState('');
+  const [templateName, setTemplateName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
@@ -53,8 +65,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       setSelectedSystem(activeSystemId);
       setCharName('');
       setSecondaryTrait('');
+    } else if (mode === 'save') {
+      setTemplateName(sheet.characterName || '');
     }
-  }, [mode, activeSystemId]);
+  }, [mode, activeSystemId, sheet.characterName]);
 
   useEffect(() => {
     if (!mode) return;
@@ -368,6 +382,51 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 })}
               </div>
 
+              {customTemplates.length > 0 && onLoadCustomTemplate && (
+                <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-2">
+                  <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
+                    TEMPLATES CUSTOMIZADOS (INDEXEDDB)
+                  </span>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {customTemplates.map((tpl) => (
+                      <div
+                        key={tpl.id}
+                        className="flex items-center gap-1.5"
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            onLoadCustomTemplate(tpl);
+                            onClose();
+                          }}
+                          className="cyber-btn-outline flex-1 p-2.5 text-left flex items-center justify-between gap-3 cursor-pointer"
+                        >
+                          <div className="min-w-0">
+                            <div className="text-xs font-bold uppercase truncate">{tpl.name}</div>
+                            <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
+                              {tpl.systemId} · {tpl.sheet.cards.length} BLOCOS
+                            </div>
+                          </div>
+                          <span className="text-[11px] font-bold text-[var(--accent-wine)] shrink-0">
+                            USAR ↗
+                          </span>
+                        </button>
+                        {onDeleteCustomTemplate && (
+                          <button
+                            type="button"
+                            onClick={() => void onDeleteCustomTemplate(tpl.id)}
+                            aria-label={`Remover template ${tpl.name}`}
+                            className="cyber-btn-outline p-2.5 text-[var(--accent-danger)] cursor-pointer shrink-0"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
               <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
                 <input
                   ref={fileInputRef}
@@ -400,8 +459,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 <button
                   type="button"
                   onClick={() => {
-                    onSaveLocal();
-                    onClose();
+                    void Promise.resolve(onSaveLocal()).finally(() => onClose());
                   }}
                   className="cyber-roll-btn p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
@@ -412,9 +470,43 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   <span className="text-xs font-bold whitespace-nowrap shrink-0">OK ↗</span>
                 </button>
 
+                {onSaveCustomTemplate && (
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const clean = templateName.trim() || sheet.characterName || 'TEMPLATE';
+                      void Promise.resolve(onSaveCustomTemplate(clean)).finally(() => onClose());
+                    }}
+                    className="cyber-btn-outline p-3 flex flex-col gap-2 bg-[var(--bg-card-alt)]"
+                  >
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]">
+                        SALVAR TEMPLATE CUSTOMIZADO (INDEXEDDB)
+                      </span>
+                      <BookmarkPlus className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        value={templateName}
+                        onChange={(e) => setTemplateName(e.target.value)}
+                        placeholder="Nome do template..."
+                        className="cyber-input px-2 py-1 text-xs font-semibold flex-1 min-w-0"
+                      />
+                      <button
+                        type="submit"
+                        className="cyber-btn-outline px-2.5 py-1 text-[11px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                      >
+                        SALVAR
+                      </button>
+                    </div>
+                  </form>
+                )}
+
                 <button
                   type="button"
                   onClick={() => {
+                    void onFlushSave?.();
                     onClose();
                     window.requestAnimationFrame(() => onPrintPdf());
                   }}
@@ -433,13 +525,15 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    handleDownload(
-                      'ficha-agnóstica.json',
-                      JSON.stringify(sheet, null, 2),
-                      'application/json',
-                    )
-                  }
+                  onClick={() => {
+                    void Promise.resolve(onFlushSave?.()).finally(() => {
+                      handleDownload(
+                        'ficha-agnóstica.json',
+                        JSON.stringify(sheet, null, 2),
+                        'application/json',
+                      );
+                    });
+                  }}
                   className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 cursor-pointer"
                 >
                   <div>
@@ -451,13 +545,15 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
                 <button
                   type="button"
-                  onClick={() =>
-                    handleDownload(
-                      'prototipo-ficha-rpg.html',
-                      generateSingleFilePureHtml(sheet),
-                      'text/html',
-                    )
-                  }
+                  onClick={() => {
+                    void Promise.resolve(onFlushSave?.()).finally(() => {
+                      handleDownload(
+                        'prototipo-ficha-rpg.html',
+                        generateSingleFilePureHtml(sheet),
+                        'text/html',
+                      );
+                    });
+                  }}
                   className="cyber-btn-outline p-3 text-left flex items-center justify-between gap-4 bg-[var(--accent-cream-badge)] cursor-pointer"
                 >
                   <div>

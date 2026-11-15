@@ -60,6 +60,17 @@ import {
   LANGUAGE_STORAGE_KEY,
   readStoredLanguage,
 } from './core/i18n';
+import {
+  AUTOSAVE_DEBOUNCE_MS,
+  createDebouncedSheetSaver,
+  CustomSheetTemplate,
+  DebouncedSheetSaver,
+  deleteCustomTemplate,
+  getDefaultSheetsStore,
+  PersistenceSnapshot,
+  resolveSheetRecordId,
+  saveCustomTemplate,
+} from './core/sheetsStore';
 import { filterCardsByQuery } from './core/sheetSearch';
 import { TopBar } from './components/TopBar';
 import { TabNav } from './components/TabNav';
@@ -79,9 +90,6 @@ import {
   undoLastUpgrade,
   upgradeTraitWithXp,
 } from './core/xpSystem';
-
-const LEGACY_STORAGE_KEY = 'grid_sheet_wod_v1';
-const WORKSPACE_STORAGE_KEY = 'grid_sheet_workspace_v2';
 
 interface InitialWorkspaceBootstrap {
   workspace: WorkspaceState;
@@ -147,47 +155,6 @@ function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
   const now = Date.now();
 
   try {
-    const rawWorkspace = localStorage.getItem(WORKSPACE_STORAGE_KEY);
-    if (rawWorkspace) {
-      const parsed = JSON.parse(rawWorkspace) as WorkspaceState;
-      if (parsed && parsed.activeSystemId && parsed.sheetsBySystem) {
-        const migratedWs = migrateWorkspaceSheets(parsed);
-        const activeSheet = migratedWs.sheetsBySystem[migratedWs.activeSystemId];
-        if (activeSheet && Array.isArray(activeSheet.cards)) {
-          return {
-            workspace: {
-              activeSystemId: migratedWs.activeSystemId,
-              sheetsBySystem: {
-                ...migratedWs.sheetsBySystem,
-                [migratedWs.activeSystemId]: withSafeXpState(activeSheet),
-              },
-            },
-            hadLocalWorkspace: true,
-            updatedAtMillis: existingMeta?.updatedAtMillis ?? now,
-            lastMirroredDigest: existingMeta?.lastMirroredDigest ?? '',
-          };
-        }
-      }
-    }
-
-    const legacyRaw = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacyRaw) {
-      const parsed = JSON.parse(legacyRaw) as CharacterSheetState;
-      if (parsed && Array.isArray(parsed.cards)) {
-        const normalized = withSafeXpState(parsed);
-        const sysId = detectSystemId(normalized);
-        return {
-          workspace: {
-            activeSystemId: sysId,
-            sheetsBySystem: { [sysId]: normalized },
-          },
-          hadLocalWorkspace: true,
-          updatedAtMillis: existingMeta?.updatedAtMillis ?? now,
-          lastMirroredDigest: '',
-        };
-      }
-    }
-
     const bridgeRaw =
       typeof window !== 'undefined' ? window.AndroidRoomBridge?.loadWorkspace?.() : null;
     if (bridgeRaw) {
@@ -196,14 +163,14 @@ function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
         const migratedBridge = migrateWorkspaceSheets(parsed);
         return {
           workspace: migratedBridge,
-          hadLocalWorkspace: false,
+          hadLocalWorkspace: true,
           updatedAtMillis: now,
           lastMirroredDigest: computeWorkspaceDigest(migratedBridge),
         };
       }
     }
   } catch {
-    // Fallback to default seed sheet
+    // Fallback to default seed sheet while IndexedDB loads asynchronously
   }
 
   const defaultSheet = createDefaultSheet();
@@ -213,8 +180,8 @@ function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
       sheetsBySystem: { wod: defaultSheet },
     },
     hadLocalWorkspace: false,
-    updatedAtMillis: now,
-    lastMirroredDigest: '',
+    updatedAtMillis: existingMeta?.updatedAtMillis ?? now,
+    lastMirroredDigest: existingMeta?.lastMirroredDigest ?? '',
   };
 }
 
@@ -238,6 +205,13 @@ export default function App() {
   const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
   const mobileRollToastTimerRef = useRef<number | null>(null);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [customTemplates, setCustomTemplates] = useState<CustomSheetTemplate[]>([]);
+  const [persistenceState, setPersistenceState] = useState<PersistenceSnapshot>({
+    status: 'idle',
+    lastSavedAtMillis: null,
+    errorMessage: null,
+    pendingCount: 0,
+  });
   const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
     phase: 'synced',
     nextSyncAtMillis: Date.now() + ROOM_PERIODIC_SYNC_INTERVAL_MS,
@@ -269,6 +243,12 @@ export default function App() {
     readRoomSyncLocalMeta()?.dirtySystems ?? {},
   );
   const hydratedRemoteRef = useRef(false);
+  const hydratedIdbRef = useRef(false);
+  const hadPersistedLocalRef = useRef(bootstrap.hadLocalWorkspace);
+  const editedBeforeIdbHydrationRef = useRef(false);
+  const skipNextIdbScheduleRef = useRef(false);
+  const sheetsStoreRef = useRef(getDefaultSheetsStore());
+  const debouncedSaverRef = useRef<DebouncedSheetSaver | null>(null);
   const editDebounceTimerRef = useRef<number | null>(null);
   const syncRunIdRef = useRef(0);
 
@@ -279,9 +259,52 @@ export default function App() {
     [workspace, activeSystemId],
   );
 
+  const flushLocalPersistence = async () => {
+    const saver = debouncedSaverRef.current;
+    if (!saver) return;
+    await saver.flush();
+  };
+
+  useEffect(() => {
+    const saver = createDebouncedSheetSaver({
+      store: sheetsStoreRef.current,
+      debounceMs: AUTOSAVE_DEBOUNCE_MS,
+      onStatusChange: (nextStatus) => {
+        setPersistenceState(nextStatus);
+      },
+    });
+    debouncedSaverRef.current = saver;
+
+    const flushBeforeLeaving = () => {
+      void saver.flush();
+    };
+    const onVisibilityChange = () => {
+      if (document.visibilityState === 'hidden') {
+        void saver.flush();
+      }
+    };
+
+    window.addEventListener('beforeunload', flushBeforeLeaving);
+    window.addEventListener('pagehide', flushBeforeLeaving);
+    document.addEventListener('visibilitychange', onVisibilityChange);
+
+    return () => {
+      window.removeEventListener('beforeunload', flushBeforeLeaving);
+      window.removeEventListener('pagehide', flushBeforeLeaving);
+      document.removeEventListener('visibilitychange', onVisibilityChange);
+      saver.dispose();
+      if (debouncedSaverRef.current === saver) {
+        debouncedSaverRef.current = null;
+      }
+    };
+  }, []);
+
   const setSheet = (
     updater: CharacterSheetState | ((prev: CharacterSheetState) => CharacterSheetState),
   ) => {
+    if (!hydratedIdbRef.current) {
+      editedBeforeIdbHydrationRef.current = true;
+    }
     setWorkspace((prevWs) => {
       const sysId = prevWs.activeSystemId;
       const currentSheet =
@@ -307,11 +330,20 @@ export default function App() {
   };
 
   useEffect(() => {
-    try {
-      localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspace));
-    } catch {
-      // Ignore storage quota errors
+    if (!hydratedIdbRef.current) {
+      return;
     }
+    if (skipNextIdbScheduleRef.current) {
+      skipNextIdbScheduleRef.current = false;
+      return;
+    }
+    const sysId = workspace.activeSystemId;
+    const activeSheet =
+      workspace.sheetsBySystem[sysId] ?? createPresetBySystemId(sysId);
+    debouncedSaverRef.current?.scheduleSave(activeSheet, {
+      activeSheetId: resolveSheetRecordId(activeSheet),
+      activeSystemId: sysId,
+    });
   }, [workspace]);
 
   const executeRoomSync = async (
@@ -389,10 +421,61 @@ export default function App() {
     }
   };
 
-  // Hydrate from Android Room mirror on mount if Android has newer offline edits
+  // Hydrate asynchronously from IndexedDB (including legacy localStorage migration) then reconcile Room mirror
   useEffect(() => {
     let cancelled = false;
     (async () => {
+      try {
+        const snapshot = await sheetsStoreRef.current.loadWorkspaceSnapshot(
+          workspaceRef.current,
+        );
+        if (cancelled) return;
+
+        setCustomTemplates(snapshot.customTemplates);
+        const migratedOrPersisted =
+          snapshot.hadPersistedSheets || snapshot.migration.migratedCount > 0;
+        hadPersistedLocalRef.current =
+          hadPersistedLocalRef.current || migratedOrPersisted;
+
+        if (snapshot.hadPersistedSheets && !editedBeforeIdbHydrationRef.current) {
+          const activeSys = snapshot.workspace.activeSystemId;
+          const activeSheet = snapshot.workspace.sheetsBySystem[activeSys];
+          const normalizedWorkspace: WorkspaceState = activeSheet
+            ? {
+                ...snapshot.workspace,
+                sheetsBySystem: {
+                  ...snapshot.workspace.sheetsBySystem,
+                  [activeSys]: withSafeXpState(activeSheet),
+                },
+              }
+            : snapshot.workspace;
+          skipNextIdbScheduleRef.current = true;
+          workspaceRef.current = normalizedWorkspace;
+          setWorkspace(normalizedWorkspace);
+        } else {
+          const currentSys = workspaceRef.current.activeSystemId;
+          const currentSheet =
+            workspaceRef.current.sheetsBySystem[currentSys] ??
+            createPresetBySystemId(currentSys);
+          await debouncedSaverRef.current?.saveNow(currentSheet, {
+            activeSheetId: resolveSheetRecordId(currentSheet),
+            activeSystemId: currentSys,
+          });
+        }
+      } catch (err) {
+        const message =
+          err instanceof Error ? err.message : 'Falha ao inicializar IndexedDB.';
+        setPersistenceState((prev) => ({
+          ...prev,
+          status: 'error',
+          errorMessage: message,
+        }));
+      } finally {
+        if (!cancelled) {
+          hydratedIdbRef.current = true;
+        }
+      }
+
       const remoteMirror = await fetchRoomMirrorSnapshot();
       if (cancelled) return;
       hydratedRemoteRef.current = true;
@@ -400,7 +483,7 @@ export default function App() {
         workspaceRef.current,
         updatedAtRef.current,
         remoteMirror,
-        { hadLocalWorkspace: bootstrap.hadLocalWorkspace },
+        { hadLocalWorkspace: hadPersistedLocalRef.current },
       );
       if (reconciled.adoptedRemote) {
         const adoptedActive = reconciled.workspace.sheetsBySystem[reconciled.workspace.activeSystemId];
@@ -432,7 +515,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [bootstrap.hadLocalWorkspace]);
+  }, []);
 
   // Automatically mirror every workspace change into Android Room database (WebView bridge + /api/workspace-sync)
   useEffect(() => {
@@ -804,6 +887,7 @@ export default function App() {
     targetSystemId: SystemId,
     identity?: NewSheetIdentityInput,
   ) => {
+    void flushLocalPersistence();
     const existingTarget = workspaceRef.current.sheetsBySystem[targetSystemId];
     const baseRev = baseRevisionsRef.current[targetSystemId] ?? existingTarget?.revision ?? 1;
     baseRevisionsRef.current[targetSystemId] = baseRev;
@@ -855,6 +939,7 @@ export default function App() {
   };
 
   const handleSwitchSystem = (nextSystemId: SystemId) => {
+    void flushLocalPersistence();
     const existing = workspace.sheetsBySystem[nextSystemId];
     const nextSheet = existing ? withSafeXpState(existing) : createPresetBySystemId(nextSystemId);
     setWorkspace((prevWs) => ({
@@ -876,6 +961,7 @@ export default function App() {
   };
 
   const handleLoadPreset = (presetId: SystemId) => {
+    void flushLocalPersistence();
     const existingTarget = workspaceRef.current.sheetsBySystem[presetId];
     const baseRev = baseRevisionsRef.current[presetId] ?? existingTarget?.revision ?? 1;
     baseRevisionsRef.current[presetId] = baseRev;
@@ -950,6 +1036,7 @@ export default function App() {
   const availableXp = useMemo(() => getAvailableXp(sheet.xp), [sheet.xp]);
 
   const handlePrintPdf = () => {
+    void flushLocalPersistence();
     const res = printActiveSheetView(sheet, activeTab);
     if (!res.ok && res.error) {
       triggerFlash(`// PDF ERRO: ${res.error}`);
@@ -1257,7 +1344,17 @@ export default function App() {
               rollCount={sheet.rollLogs.length}
               flashMessage={flashMessage}
               roomSyncState={roomSyncState}
+              persistenceState={persistenceState}
               t={t.statusBar}
+              onFlushSave={() => {
+                void (async () => {
+                  await flushLocalPersistence();
+                  await debouncedSaverRef.current?.saveNow(sheet, {
+                    activeSheetId: resolveSheetRecordId(sheet),
+                    activeSystemId,
+                  });
+                })();
+              }}
               onForceRoomSync={() => {
                 if (editDebounceTimerRef.current !== null) {
                   window.clearTimeout(editDebounceTimerRef.current);
@@ -1291,12 +1388,15 @@ export default function App() {
         mode={modalMode}
         sheet={sheet}
         activeSystemId={activeSystemId}
+        customTemplates={customTemplates}
         t={t.modal}
         onClose={() => setModalMode(null)}
         onCreateNewSheet={handleCreateNewSheet}
         onLoadPreset={handleLoadPreset}
         onPrintPdf={handlePrintPdf}
+        onFlushSave={flushLocalPersistence}
         onImportJson={(next) => {
+          void flushLocalPersistence();
           const normalized = withSafeXpState(next);
           const nextId = detectSystemId(normalized);
           setWorkspace((prevWs) => ({
@@ -1309,13 +1409,52 @@ export default function App() {
           setSearchQuery('');
           triggerFlash('// STATUS: JSON IMPORTADO COM SUCESSO');
         }}
-        onSaveLocal={() => {
+        onSaveLocal={async () => {
           try {
-            localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspace));
-            triggerFlash('// STATUS: FICHA SALVA LOCALMENTE');
+            await flushLocalPersistence();
+            await debouncedSaverRef.current?.saveNow(sheet, {
+              activeSheetId: resolveSheetRecordId(sheet),
+              activeSystemId,
+            });
+            triggerFlash('// STATUS: FICHA SALVA NO INDEXEDDB');
           } catch {
             triggerFlash('// STATUS: ERRO AO SALVAR NO NAVEGADOR');
           }
+        }}
+        onSaveCustomTemplate={async (templateName) => {
+          try {
+            await flushLocalPersistence();
+            const saved = await saveCustomTemplate({
+              name: templateName,
+              sheet,
+            });
+            setCustomTemplates((prev) => [
+              saved,
+              ...prev.filter((item) => item.id !== saved.id),
+            ]);
+            triggerFlash(`// TEMPLATE SALVO: ${saved.name}`);
+          } catch {
+            triggerFlash('// STATUS: ERRO AO SALVAR TEMPLATE');
+          }
+        }}
+        onLoadCustomTemplate={(template) => {
+          void flushLocalPersistence();
+          const normalized = withSafeXpState(template.sheet);
+          const nextSys = detectSystemId(normalized);
+          setWorkspace((prevWs) => ({
+            activeSystemId: nextSys,
+            sheetsBySystem: {
+              ...prevWs.sheetsBySystem,
+              [nextSys]: normalized,
+            },
+          }));
+          setActiveTab('geral');
+          setSearchQuery('');
+          triggerFlash(`// TEMPLATE CARREGADO: ${template.name}`);
+        }}
+        onDeleteCustomTemplate={async (templateId) => {
+          await deleteCustomTemplate(templateId);
+          setCustomTemplates((prev) => prev.filter((item) => item.id !== templateId));
         }}
       />
     </div>

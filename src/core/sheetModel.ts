@@ -2453,6 +2453,7 @@ const FIELD_KEYS = new Set([
   'col2Type',
   'rows',
   'hint',
+  'placeholder',
 ]);
 const ROW_KEYS = new Set(['id', 'col1', 'col2']);
 const ROLL_LOG_KEYS = new Set([
@@ -2467,6 +2468,10 @@ const ROLL_LOG_KEYS = new Set([
   'isPoolRoll',
   'rolls',
   'difficulty',
+  'specialty',
+  'willpowerUsed',
+  'isSoak',
+  'doubledTensCount',
   'onesCount',
   'canceledOnes',
   'outcome',

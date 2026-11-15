@@ -1,7 +1,8 @@
 import React, { useEffect, useState } from 'react';
-import { RefreshCw } from 'lucide-react';
+import { Check, HardDrive, RefreshCw, AlertTriangle } from 'lucide-react';
 import { AppMode } from '../core/sheetModel';
 import { formatRoomSyncIndicator, RoomSyncIndicatorState } from '../core/roomSync';
+import { PersistenceSnapshot } from '../core/sheetsStore';
 import { AppTranslations } from '../core/i18n';
 
 interface StatusBarProps {
@@ -13,9 +14,18 @@ interface StatusBarProps {
   rollCount: number;
   flashMessage?: string | null;
   roomSyncState: RoomSyncIndicatorState;
+  persistenceState?: PersistenceSnapshot;
   t: AppTranslations['statusBar'];
   onForceRoomSync: () => void;
+  onFlushSave?: () => void;
 }
+
+const DEFAULT_PERSISTENCE_STATE: PersistenceSnapshot = {
+  status: 'idle',
+  lastSavedAtMillis: null,
+  errorMessage: null,
+  pendingCount: 0,
+};
 
 export const StatusBar: React.FC<StatusBarProps> = ({
   mode,
@@ -26,8 +36,10 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   rollCount,
   flashMessage,
   roomSyncState,
+  persistenceState = DEFAULT_PERSISTENCE_STATE,
   t,
   onForceRoomSync,
+  onFlushSave,
 }) => {
   const hasError = errorCount > 0;
   const [nowMillis, setNowMillis] = useState<number>(() => Date.now());
@@ -41,6 +53,22 @@ export const StatusBar: React.FC<StatusBarProps> = ({
   }, [roomSyncState.nextSyncAtMillis, roomSyncState.phase]);
 
   const syncDisplay = formatRoomSyncIndicator(roomSyncState, nowMillis);
+
+  const persistenceLabel =
+    persistenceState.status === 'saving'
+      ? t.persistenceSaving
+      : persistenceState.status === 'saved'
+        ? t.persistenceSaved
+        : persistenceState.status === 'error'
+          ? t.persistenceError
+          : t.persistenceIdle;
+
+  const persistenceTooltip =
+    persistenceState.status === 'error' && persistenceState.errorMessage
+      ? persistenceState.errorMessage
+      : persistenceState.lastSavedAtMillis
+        ? `${persistenceLabel} (${new Date(persistenceState.lastSavedAtMillis).toLocaleTimeString()})`
+        : persistenceLabel;
 
   return (
     <footer
@@ -89,6 +117,41 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         <span>
           {t.logs} {rollCount}
         </span>
+        <span aria-hidden="true">·</span>
+        <button
+          type="button"
+          data-testid="persistence-status-indicator"
+          data-persistence-status={persistenceState.status}
+          onClick={onFlushSave}
+          disabled={!onFlushSave}
+          title={persistenceTooltip}
+          aria-label={t.persistenceAria(persistenceLabel)}
+          className={`inline-flex items-center gap-1.5 px-2 py-0.5 border text-[10px] font-mono-tech font-bold tracking-wide uppercase tabular-nums transition-colors ${
+            onFlushSave ? 'cursor-pointer' : 'cursor-default'
+          } ${
+            persistenceState.status === 'error'
+              ? 'bg-[var(--accent-danger-soft)] border-[var(--accent-danger)] text-[var(--accent-danger)] shadow-[2px_2px_0_var(--border-ink)]'
+              : persistenceState.status === 'saving'
+                ? 'bg-[var(--accent-cream-badge)] border-[var(--border-ink)] text-[var(--accent-wine)] shadow-[2px_2px_0_var(--border-ink)]'
+                : persistenceState.status === 'saved'
+                  ? 'bg-[var(--bg-card)] border-[var(--border-ink)] text-[var(--ink-primary)]'
+                  : 'bg-[var(--bg-card-alt)] border-[var(--border-ink)]/45 text-[var(--ink-secondary)]'
+          }`}
+        >
+          {persistenceState.status === 'error' ? (
+            <AlertTriangle className="w-2.5 h-2.5 shrink-0" aria-hidden="true" />
+          ) : persistenceState.status === 'saved' ? (
+            <Check className="w-2.5 h-2.5 shrink-0 text-[var(--accent-wine)]" aria-hidden="true" />
+          ) : (
+            <HardDrive
+              className={`w-2.5 h-2.5 shrink-0 ${
+                persistenceState.status === 'saving' ? 'animate-pulse text-[var(--accent-wine)]' : ''
+              }`}
+              aria-hidden="true"
+            />
+          )}
+          <span>{persistenceLabel}</span>
+        </button>
         <span aria-hidden="true">·</span>
         <button
           type="button"
