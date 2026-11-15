@@ -79,6 +79,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
     val rulesQuery by vm.rulesQuery.collectAsState()
     val indexedBooks by vm.indexedBooks.collectAsState()
     val indexProgress by vm.indexProgress.collectAsState()
+    val scannedPdfAlert by vm.scannedPdfAlert.collectAsState()
     val localRuleHits by vm.localRuleHits.collectAsState()
     val localSearchElapsedMs by vm.localSearchElapsedMs.collectAsState()
 
@@ -330,6 +331,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             rulesResult = rulesResult,
             indexedBooks = indexedBooks,
             indexProgress = indexProgress,
+            scannedPdfAlert = scannedPdfAlert,
             localRuleHits = localRuleHits,
             localSearchElapsedMs = localSearchElapsedMs,
             onSwitchMode = { vm.openSideSheet(it) },
@@ -339,6 +341,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             onSearchRules = { q, forceOnline -> vm.searchRules(q, forceOnline) },
             onPickPdf = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
             onDeleteBook = vm::deleteIndexedBook,
+            onDismissScannedPdfAlert = vm::dismissScannedPdfAlert,
             onDismissIndexError = vm::dismissIndexError,
             onDismiss = vm::closeSideSheet
         )

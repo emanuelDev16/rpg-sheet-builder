@@ -13,6 +13,8 @@ import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.data.Fts5QuerySanitizer
+import com.gridsheet.app.data.PdfTextLayerDetector
+import com.gridsheet.app.data.ScannedPdfWithoutOcrException
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.jsonObject
@@ -251,5 +253,55 @@ class CoreEngineTest {
             listOf("Teste de " to false, "frenesi" to true, " em combate." to false),
             segments
         )
+    }
+
+    @Test
+    fun failFastDetectorAbortsOnPage10ForScannedPdfWithoutOcrAndReturnsNoPages() {
+        var pagesVisited = 0
+        val noisyPages = (1..15).map { pageNum -> "Pg $pageNum / 15" }
+
+        var thrown: ScannedPdfWithoutOcrException? = null
+        val persistedPages = mutableListOf<com.gridsheet.app.data.local.RulePageFtsEntity>()
+        try {
+            val extracted = PdfTextLayerDetector.extractPagesWithFailFast(
+                bookId = "scanned_15p",
+                bookTitle = "Manual Escaneado",
+                systemId = "WOD",
+                totalPages = noisyPages.size,
+                readPageRawText = { pageNum ->
+                    pagesVisited += 1
+                    noisyPages[pageNum - 1]
+                }
+            )
+            persistedPages.addAll(extracted)
+        } catch (err: ScannedPdfWithoutOcrException) {
+            thrown = err
+        }
+
+        assertTrue(thrown != null)
+        assertEquals(ScannedPdfWithoutOcrException.CODE, thrown?.code)
+        assertEquals(10, thrown?.sampledPages)
+        assertEquals(15, thrown?.totalPages)
+        assertEquals(10, pagesVisited)
+        assertTrue(persistedPages.isEmpty())
+    }
+
+    @Test
+    fun failFastDetectorContinuesBeyondPage10WhenTextLayerIsPresent() {
+        var pagesVisited = 0
+        val extracted = PdfTextLayerDetector.extractPagesWithFailFast(
+            bookId = "valid_15p",
+            bookTitle = "Manual OCR",
+            systemId = "WOD",
+            totalPages = 15,
+            readPageRawText = { pageNum ->
+                pagesVisited += 1
+                if (pageNum < 10) "" else "Chapter $pageNum: Combat rules, initiative order, and damage resolution mechanics."
+            }
+        )
+
+        assertEquals(15, pagesVisited)
+        assertEquals(6, extracted.size)
+        assertEquals(10, extracted.first().pageNumber)
     }
 }

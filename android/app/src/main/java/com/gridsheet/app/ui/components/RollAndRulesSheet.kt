@@ -29,6 +29,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.outlined.DeleteOutline
 import androidx.compose.material.icons.outlined.MenuBook
 import androidx.compose.material.icons.outlined.UploadFile
+import androidx.compose.material.icons.outlined.WarningAmber
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
@@ -85,6 +86,7 @@ fun RollAndRulesBottomSheet(
     rulesResult: RulesSearchResponse?,
     indexedBooks: List<IndexedBookEntity>,
     indexProgress: IndexProgress?,
+    scannedPdfAlert: IndexProgress.ScannedNoOcr?,
     localRuleHits: List<FtsRuleHitRow>,
     localSearchElapsedMs: Long?,
     onSwitchMode: (SideSheetMode) -> Unit,
@@ -94,6 +96,7 @@ fun RollAndRulesBottomSheet(
     onSearchRules: (String, Boolean) -> Unit,
     onPickPdf: () -> Unit,
     onDeleteBook: (String) -> Unit,
+    onDismissScannedPdfAlert: () -> Unit,
     onDismissIndexError: () -> Unit,
     onDismiss: () -> Unit
 ) {
@@ -106,8 +109,8 @@ fun RollAndRulesBottomSheet(
         diceExpr = quickDice.getOrElse(1) { quickDice.first() }
     }
 
-    LaunchedEffect(indexProgress) {
-        if (indexProgress != null) {
+    LaunchedEffect(indexProgress, scannedPdfAlert) {
+        if (indexProgress != null || scannedPdfAlert != null) {
             libraryExpanded = true
         }
     }
@@ -196,6 +199,7 @@ fun RollAndRulesBottomSheet(
                     rulesResult = rulesResult,
                     indexedBooks = indexedBooks,
                     indexProgress = indexProgress,
+                    scannedPdfAlert = scannedPdfAlert,
                     localRuleHits = localRuleHits,
                     localSearchElapsedMs = localSearchElapsedMs,
                     libraryExpanded = libraryExpanded,
@@ -204,6 +208,7 @@ fun RollAndRulesBottomSheet(
                     onSearchRules = onSearchRules,
                     onPickPdf = onPickPdf,
                     onDeleteBook = onDeleteBook,
+                    onDismissScannedPdfAlert = onDismissScannedPdfAlert,
                     onDismissIndexError = onDismissIndexError,
                     onOpenExternalUri = { uri ->
                         runCatching {
@@ -346,6 +351,7 @@ private fun RulesModeContent(
     rulesResult: RulesSearchResponse?,
     indexedBooks: List<IndexedBookEntity>,
     indexProgress: IndexProgress?,
+    scannedPdfAlert: IndexProgress.ScannedNoOcr?,
     localRuleHits: List<FtsRuleHitRow>,
     localSearchElapsedMs: Long?,
     libraryExpanded: Boolean,
@@ -354,6 +360,7 @@ private fun RulesModeContent(
     onSearchRules: (String, Boolean) -> Unit,
     onPickPdf: () -> Unit,
     onDeleteBook: (String) -> Unit,
+    onDismissScannedPdfAlert: () -> Unit,
     onDismissIndexError: () -> Unit,
     onOpenExternalUri: (String) -> Unit
 ) {
@@ -374,15 +381,17 @@ private fun RulesModeContent(
         color = CyberColors.AccentWine
     )
 
-    if (libraryExpanded || indexedBooks.isEmpty()) {
+    if (libraryExpanded || indexedBooks.isEmpty() || scannedPdfAlert != null) {
         PdfLibraryCard(
             indexedBooks = indexedBooks,
             indexProgress = indexProgress,
+            scannedPdfAlert = scannedPdfAlert,
             isIndexing = isIndexing,
             expanded = libraryExpanded,
             onToggleExpand = onToggleLibrary,
             onPickPdf = onPickPdf,
             onDeleteBook = onDeleteBook,
+            onDismissScannedPdfAlert = onDismissScannedPdfAlert,
             onDismissError = onDismissIndexError
         )
     }
@@ -612,11 +621,13 @@ private fun RulesModeContent(
 private fun PdfLibraryCard(
     indexedBooks: List<IndexedBookEntity>,
     indexProgress: IndexProgress?,
+    scannedPdfAlert: IndexProgress.ScannedNoOcr?,
     isIndexing: Boolean,
     expanded: Boolean,
     onToggleExpand: () -> Unit,
     onPickPdf: () -> Unit,
     onDeleteBook: (String) -> Unit,
+    onDismissScannedPdfAlert: () -> Unit,
     onDismissError: () -> Unit
 ) {
     Surface(
@@ -667,6 +678,71 @@ private fun PdfLibraryCard(
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
                             color = if (isIndexing) CyberColors.InkMuted else CyberColors.InkInverse
+                        )
+                    }
+                }
+            }
+
+            if (scannedPdfAlert != null) {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    color = CyberColors.AccentDangerSoft,
+                    border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Outlined.WarningAmber,
+                                    contentDescription = "PDF sem OCR",
+                                    tint = CyberColors.AccentDanger,
+                                    modifier = Modifier.size(18.dp)
+                                )
+                                Text(
+                                    text = "// PDF ESCANEADO (SEM OCR)",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 14.sp,
+                                    fontWeight = FontWeight.Black,
+                                    color = CyberColors.AccentDanger
+                                )
+                            }
+                            Text(
+                                text = "FECHAR",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = CyberColors.InkPrimary,
+                                modifier = Modifier
+                                    .border(1.dp, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.SmallRadius))
+                                    .background(CyberColors.BgCard, RoundedCornerShape(CyberDimens.SmallRadius))
+                                    .clickable(onClick = onDismissScannedPdfAlert)
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            )
+                        }
+                        Text(
+                            text = "O arquivo \"${scannedPdfAlert.bookTitle}\" contém apenas imagens nas primeiras ${scannedPdfAlert.sampledPages} páginas (de ${scannedPdfAlert.totalPages}).",
+                            fontSize = 14.sp,
+                            lineHeight = 19.sp,
+                            fontWeight = FontWeight.SemiBold,
+                            color = CyberColors.InkPrimary
+                        )
+                        Text(
+                            text = "Aplique OCR antes de importar novamente (ex.: OCRmyPDF, PDF24 ou Adobe Acrobat).",
+                            fontSize = 14.sp,
+                            lineHeight = 19.sp,
+                            color = CyberColors.InkSecondary
                         )
                     }
                 }

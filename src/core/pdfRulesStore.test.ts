@@ -3,8 +3,11 @@ import {
   buildPageDocId,
   createIndexedDbStorageBackend,
   createInMemoryStorageBackend,
+  extractPdfPagesWithFailFast,
   PdfRulesStore,
   sanitizeExtractedPdfText,
+  SCANNED_PDF_NO_OCR_CODE,
+  ScannedPdfNoOcrError,
   type BookMetadata,
 } from './pdfRulesStore';
 
@@ -345,5 +348,66 @@ describe('pdfRulesStore', () => {
     expect(hits).toHaveLength(1);
     expect(hits[0].page).toBe(113);
     expect(elapsedMs).toBeLessThan(20);
+  });
+
+  it('aborts fail-fast on page 10 for a 15-page scanned PDF without OCR and persists nothing', async () => {
+    const mockIdb = createMockIdbFactory();
+    const store = new PdfRulesStore(createIndexedDbStorageBackend(mockIdb));
+
+    let pagesVisited = 0;
+    const noisyPages = Array.from({ length: 15 }, (_, idx) => {
+      const pageNum = idx + 1;
+      // Noise under 30 non-whitespace chars per page (< 40 chars threshold)
+      return `Pg ${pageNum} / 15`;
+    });
+
+    let caughtError: unknown = null;
+    try {
+      await extractPdfPagesWithFailFast({
+        totalPages: noisyPages.length,
+        readPageText: (pageNumber) => {
+          pagesVisited += 1;
+          return noisyPages[pageNumber - 1] ?? '';
+        },
+      });
+    } catch (err) {
+      caughtError = err;
+    }
+
+    expect(caughtError).toBeInstanceOf(ScannedPdfNoOcrError);
+    const scannedErr = caughtError as ScannedPdfNoOcrError;
+    expect(scannedErr.code).toBe(SCANNED_PDF_NO_OCR_CODE);
+    expect(scannedErr.sampledPages).toBe(10);
+    expect(scannedErr.totalPages).toBe(15);
+    expect(pagesVisited).toBe(10);
+
+    // Direct store.indexBook guard also rejects without persisting metadata or MiniSearch docs
+    await expect(
+      store.indexBook({
+        bookId: 'scanned_15p',
+        bookTitle: 'Manual Escaneado',
+        systemId: 'wod',
+        totalPages: 15,
+        pages: noisyPages.map((content, idx) => ({ page: idx + 1, content })),
+      }),
+    ).rejects.toThrow(ScannedPdfNoOcrError);
+
+    expect(await store.listBooks()).toHaveLength(0);
+    expect(store.getIndexedDocumentCount()).toBe(0);
+  });
+
+  it('continues indexing beyond page 10 when page 10 contains a real text layer (>= 40 chars)', async () => {
+    let pagesVisited = 0;
+    const pages = await extractPdfPagesWithFailFast({
+      totalPages: 15,
+      readPageText: (pageNumber) => {
+        pagesVisited += 1;
+        if (pageNumber < 10) return '';
+        return `Chapter ${pageNumber}: Combat rules, initiative order, and damage resolution mechanics.`;
+      },
+    });
+
+    expect(pagesVisited).toBe(15);
+    expect(pages).toHaveLength(15);
   });
 });

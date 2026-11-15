@@ -21,6 +21,21 @@ import kotlinx.coroutines.flow.flowOn
 import java.util.Locale
 import java.util.UUID
 
+class ScannedPdfWithoutOcrException(
+    val bookTitle: String,
+    val sampledPages: Int,
+    val totalPages: Int,
+    val totalExtractedChars: Int,
+    message: String =
+        "PDF escaneado detectado (sem OCR). As primeiras $sampledPages páginas de \"$bookTitle\" contêm apenas imagens sem camada de texto. Aplique OCR (ex.: OCRmyPDF, PDF24 ou Adobe Acrobat) antes de importar novamente."
+) : IllegalStateException(message) {
+    val code: String = CODE
+
+    companion object {
+        const val CODE = "SCANNED_PDF_NO_OCR"
+    }
+}
+
 sealed class IndexProgress {
     data class Extracting(
         val bookId: String,
@@ -40,9 +55,93 @@ sealed class IndexProgress {
         val indexedPagesCount: Int
     ) : IndexProgress()
 
+    data class ScannedNoOcr(
+        val bookTitle: String,
+        val sampledPages: Int,
+        val totalPages: Int,
+        val message: String
+    ) : IndexProgress()
+
     data class Error(
         val message: String
     ) : IndexProgress()
+}
+
+object PdfTextLayerDetector {
+    const val SAMPLE_MAX_PAGES = 10
+    const val MIN_AVG_CHARS_PER_PAGE = 30.0
+    const val MIN_CHARS_FOR_TEXT_PAGE = 40
+
+    fun countNonWhitespaceChars(text: String): Int {
+        var count = 0
+        for (ch in text) {
+            if (!ch.isWhitespace()) count++
+        }
+        return count
+    }
+
+    inline fun extractPagesWithFailFast(
+        bookId: String,
+        bookTitle: String,
+        systemId: String,
+        totalPages: Int,
+        readPageRawText: (pageNumber: Int) -> String,
+        onPageExtracted: (currentPage: Int, totalPages: Int) -> Unit = { _, _ -> }
+    ): List<RulePageFtsEntity> {
+        if (totalPages <= 0) {
+            throw ScannedPdfWithoutOcrException(
+                bookTitle = bookTitle,
+                sampledPages = 0,
+                totalPages = 0,
+                totalExtractedChars = 0,
+                message = "O PDF selecionado não possui páginas legíveis."
+            )
+        }
+
+        val sampleLimit = minOf(totalPages, SAMPLE_MAX_PAGES)
+        var totalExtractedChars = 0
+        var pagesWithText = 0
+        val extractedPages = mutableListOf<RulePageFtsEntity>()
+
+        for (page in 1..totalPages) {
+            val cleanText = Fts5QuerySanitizer.sanitizeExtractedText(readPageRawText(page))
+            val cleanLength = countNonWhitespaceChars(cleanText)
+
+            if (page <= sampleLimit) {
+                totalExtractedChars += cleanLength
+                if (cleanLength >= MIN_CHARS_FOR_TEXT_PAGE) {
+                    pagesWithText += 1
+                }
+            }
+
+            if (cleanText.isNotBlank()) {
+                extractedPages.add(
+                    RulePageFtsEntity(
+                        bookId = bookId,
+                        systemId = systemId,
+                        pageNumber = page,
+                        content = cleanText
+                    )
+                )
+            }
+
+            onPageExtracted(page, totalPages)
+
+            if (page == sampleLimit) {
+                val avgChars = totalExtractedChars.toDouble() / sampleLimit.toDouble()
+                if (avgChars < MIN_AVG_CHARS_PER_PAGE && pagesWithText == 0) {
+                    throw ScannedPdfWithoutOcrException(
+                        bookTitle = bookTitle,
+                        sampledPages = sampleLimit,
+                        totalPages = totalPages,
+                        totalExtractedChars = totalExtractedChars
+                    )
+                }
+            }
+        }
+
+        return extractedPages
+    }
 }
 
 object Fts5QuerySanitizer {
@@ -153,10 +252,9 @@ class PdfRulesIndexer(
             )
         )
 
-        val extractedPages = mutableListOf<RulePageFtsEntity>()
         var totalPages = 0
 
-        appContext.contentResolver.openInputStream(uri)?.use { inputStream ->
+        val extractedPages = appContext.contentResolver.openInputStream(uri)?.use { inputStream ->
             PDDocument.load(inputStream).use { document ->
                 if (document.isEncrypted) {
                     throw IllegalStateException("PDF protegido por senha não pode ser indexado offline.")
@@ -170,36 +268,38 @@ class PdfRulesIndexer(
                     sortByPosition = true
                 }
 
-                for (page in 1..totalPages) {
-                    currentCoroutineContext().ensureActive()
-                    stripper.startPage = page
-                    stripper.endPage = page
-                    val rawText = stripper.getText(document)
-                    val cleanText = Fts5QuerySanitizer.sanitizeExtractedText(rawText)
-                    if (cleanText.isNotBlank()) {
-                        extractedPages.add(
-                            RulePageFtsEntity(
+                PdfTextLayerDetector.extractPagesWithFailFast(
+                    bookId = bookId,
+                    bookTitle = bookTitle,
+                    systemId = systemId,
+                    totalPages = totalPages,
+                    readPageRawText = { page ->
+                        currentCoroutineContext().ensureActive()
+                        stripper.startPage = page
+                        stripper.endPage = page
+                        stripper.getText(document)
+                    },
+                    onPageExtracted = { page, total ->
+                        emit(
+                            IndexProgress.Extracting(
                                 bookId = bookId,
-                                systemId = systemId,
-                                pageNumber = page,
-                                content = cleanText
+                                bookTitle = bookTitle,
+                                currentPage = page,
+                                totalPages = total
                             )
                         )
                     }
-                    emit(
-                        IndexProgress.Extracting(
-                            bookId = bookId,
-                            bookTitle = bookTitle,
-                            currentPage = page,
-                            totalPages = totalPages
-                        )
-                    )
-                }
+                )
             }
         } ?: throw IllegalStateException("Não foi possível abrir o arquivo PDF selecionado.")
 
         if (extractedPages.isEmpty()) {
-            throw IllegalStateException("Nenhum texto selecionável encontrado no PDF (arquivo escaneado sem OCR?).")
+            throw ScannedPdfWithoutOcrException(
+                bookTitle = bookTitle,
+                sampledPages = minOf(totalPages, PdfTextLayerDetector.SAMPLE_MAX_PAGES),
+                totalPages = totalPages,
+                totalExtractedChars = 0
+            )
         }
 
         emit(
@@ -227,7 +327,17 @@ class PdfRulesIndexer(
         )
     }.catch { err ->
         if (err is CancellationException) throw err
-        emit(IndexProgress.Error(err.message ?: "Falha ao indexar o arquivo PDF selecionado."))
+        when (err) {
+            is ScannedPdfWithoutOcrException -> emit(
+                IndexProgress.ScannedNoOcr(
+                    bookTitle = err.bookTitle,
+                    sampledPages = err.sampledPages,
+                    totalPages = err.totalPages,
+                    message = err.message ?: "PDF escaneado sem OCR."
+                )
+            )
+            else -> emit(IndexProgress.Error(err.message ?: "Falha ao indexar o arquivo PDF selecionado."))
+        }
     }.flowOn(Dispatchers.IO)
 
     private fun resolveBookTitle(context: Context, uri: Uri): String {

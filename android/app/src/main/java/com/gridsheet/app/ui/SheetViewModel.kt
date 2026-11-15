@@ -107,6 +107,9 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     private val _indexProgress = MutableStateFlow<IndexProgress?>(null)
     val indexProgress: StateFlow<IndexProgress?> = _indexProgress.asStateFlow()
 
+    private val _scannedPdfAlert = MutableStateFlow<IndexProgress.ScannedNoOcr?>(null)
+    val scannedPdfAlert: StateFlow<IndexProgress.ScannedNoOcr?> = _scannedPdfAlert.asStateFlow()
+
     private val _localRuleHits = MutableStateFlow<List<FtsRuleHitRow>>(emptyList())
     val localRuleHits: StateFlow<List<FtsRuleHitRow>> = _localRuleHits.asStateFlow()
 
@@ -459,6 +462,7 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     fun importPdfRulebook(uri: Uri, targetSystemId: SystemId = _workspace.value.activeSystemId) {
         indexingJob?.cancel()
+        _scannedPdfAlert.value = null
         indexingJob = viewModelScope.launch {
             repo.indexPdfRulebook(uri, targetSystemId).collect { progress ->
                 when (progress) {
@@ -468,11 +472,17 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
                     }
                     is IndexProgress.Completed -> {
                         _indexProgress.value = null
+                        _scannedPdfAlert.value = null
                         _statusMessage.value =
                             "PDF INDEXADO: ${progress.book.title} (${progress.indexedPagesCount} PÁGS)"
                         if (_rulesQuery.value.trim().length >= 2) {
                             runLocalFts5Search(_rulesQuery.value, _workspace.value.activeSystemId)
                         }
+                    }
+                    is IndexProgress.ScannedNoOcr -> {
+                        _indexProgress.value = null
+                        _scannedPdfAlert.value = progress
+                        _statusMessage.value = "PDF ESCANEADO (SEM OCR): ${progress.bookTitle}"
                     }
                     is IndexProgress.Error -> {
                         _indexProgress.value = progress
@@ -483,10 +493,15 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         }
     }
 
+    fun dismissScannedPdfAlert() {
+        _scannedPdfAlert.value = null
+    }
+
     fun dismissIndexError() {
         if (_indexProgress.value is IndexProgress.Error) {
             _indexProgress.value = null
         }
+        _scannedPdfAlert.value = null
     }
 
     fun deleteIndexedBook(bookId: String) {
