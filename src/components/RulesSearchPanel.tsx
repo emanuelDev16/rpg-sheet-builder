@@ -18,12 +18,14 @@ import {
   indexPdfBook,
   listIndexedBooks,
   type LocalRuleSearchHit,
+  type OcrLanguage,
   removeIndexedBook,
   SCANNED_PDF_NO_OCR_CODE,
   ScannedPdfNoOcrError,
   searchLocalRules,
 } from '../core/pdfRulesStore';
 import type {
+  OcrProgressStage,
   PdfIndexWorkerRequest,
   PdfIndexWorkerResponse,
 } from '../workers/pdfIndexer.worker';
@@ -38,6 +40,9 @@ interface IndexingProgressState {
   bookTitle: string;
   page: number;
   totalPages: number;
+  mode: 'text' | 'ocr';
+  stage?: OcrProgressStage;
+  currentPdfPage?: number;
 }
 
 interface LocalSearchMeta {
@@ -92,11 +97,16 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
   const [indexingProgress, setIndexingProgress] = useState<IndexingProgressState | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
   const [scannedPdfAlert, setScannedPdfAlert] = useState<{
+    bookId: string;
     bookTitle: string;
+    systemId: string;
     sampledPages: number;
     totalPages: number;
     message: string;
   } | null>(null);
+  const [ocrLang, setOcrLang] = useState<OcrLanguage>('por');
+  const [ocrStartPage, setOcrStartPage] = useState<string>('');
+  const [ocrEndPage, setOcrEndPage] = useState<string>('');
 
   const [localHits, setLocalHits] = useState<LocalRuleSearchHit[]>([]);
   const [localMeta, setLocalMeta] = useState<LocalSearchMeta | null>(null);
@@ -104,6 +114,8 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeWorkerRef = useRef<Worker | null>(null);
+  const activeJobIdRef = useRef<string | null>(null);
+  const retainedScannedFileRef = useRef<File | null>(null);
   const searchSeqRef = useRef(0);
   const queryRef = useRef(query);
   queryRef.current = query;
@@ -246,6 +258,144 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
     fileInputRef.current?.click();
   };
 
+  const terminateActiveWorker = useCallback(() => {
+    activeJobIdRef.current = null;
+    if (activeWorkerRef.current) {
+      activeWorkerRef.current.terminate();
+      activeWorkerRef.current = null;
+    }
+  }, []);
+
+  const attachWorkerListeners = useCallback(
+    (
+      worker: Worker,
+      context: {
+        jobId: string;
+        bookId: string;
+        bookTitle: string;
+        systemId: string;
+        mode: 'text' | 'ocr';
+      },
+    ) => {
+      worker.onmessage = async (event: MessageEvent<PdfIndexWorkerResponse>) => {
+        const msg = event.data;
+        if (!msg || msg.jobId !== context.jobId) return;
+
+        if (msg.type === 'progress') {
+          setIndexingProgress({
+            bookTitle: context.bookTitle,
+            page: msg.page,
+            totalPages: msg.totalPages,
+            mode: 'text',
+          });
+          return;
+        }
+
+        if (msg.type === 'OCR_PROGRESS') {
+          setIndexingProgress({
+            bookTitle: context.bookTitle,
+            page: msg.page,
+            totalPages: msg.totalPages,
+            mode: 'ocr',
+            stage: msg.stage,
+            currentPdfPage: msg.currentPdfPage,
+          });
+          return;
+        }
+
+        if (msg.type === 'aborted') {
+          setIndexingProgress(null);
+          if (activeWorkerRef.current === worker) {
+            terminateActiveWorker();
+          }
+          return;
+        }
+
+        if (msg.type === 'ERROR_NO_TEXT_LAYER' && msg.code === SCANNED_PDF_NO_OCR_CODE) {
+          setPdfError(null);
+          setScannedPdfAlert({
+            bookId: context.bookId,
+            bookTitle: context.bookTitle,
+            systemId: context.systemId,
+            sampledPages: msg.sampledPages,
+            totalPages: msg.totalPages,
+            message: msg.message,
+          });
+          setOcrStartPage('');
+          setOcrEndPage('');
+          setIndexingProgress(null);
+          if (activeWorkerRef.current === worker) {
+            terminateActiveWorker();
+          }
+          return;
+        }
+
+        if (msg.type === 'error') {
+          setPdfError(msg.error);
+          setIndexingProgress(null);
+          if (activeWorkerRef.current === worker) {
+            terminateActiveWorker();
+          }
+          return;
+        }
+
+        if (msg.type === 'complete') {
+          try {
+            await indexPdfBook({
+              bookId: msg.bookId,
+              bookTitle: msg.bookTitle,
+              systemId: msg.systemId,
+              pages: msg.pages,
+              totalPages: msg.totalPages,
+              skipTextLayerCheck: Boolean(msg.isOcr),
+            });
+            retainedScannedFileRef.current = null;
+            setScannedPdfAlert(null);
+            await refreshBooks();
+            setBooksOpen(true);
+
+            const currentQuery = queryRef.current.trim();
+            if (currentQuery.length >= 2) {
+              await executeLocalSearch(currentQuery);
+            }
+          } catch (persistErr) {
+            if (persistErr instanceof ScannedPdfNoOcrError) {
+              setPdfError(null);
+              setScannedPdfAlert({
+                bookId: context.bookId,
+                bookTitle: context.bookTitle,
+                systemId: context.systemId,
+                sampledPages: persistErr.sampledPages,
+                totalPages: persistErr.totalPages,
+                message: persistErr.message,
+              });
+            } else {
+              setPdfError(
+                persistErr instanceof Error
+                  ? `Falha ao persistir índice local: ${persistErr.message}`
+                  : 'Falha ao salvar índice local no IndexedDB.',
+              );
+            }
+          } finally {
+            setIndexingProgress(null);
+            if (activeWorkerRef.current === worker) {
+              terminateActiveWorker();
+            }
+          }
+        }
+      };
+
+      worker.onerror = (errEvent) => {
+        setPdfError(errEvent.message || 'Erro inesperado no Web Worker de indexação PDF.');
+        setIndexingProgress(null);
+        if (activeWorkerRef.current === worker) {
+          terminateActiveWorker();
+        }
+      };
+    },
+    [executeLocalSearch, refreshBooks, terminateActiveWorker],
+  );
+
   const handleFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     e.target.value = '';
@@ -260,6 +410,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
 
     setPdfError(null);
     setScannedPdfAlert(null);
+    retainedScannedFileRef.current = file;
 
     const bookTitle = file.name.replace(/\.pdf$/i, '').trim() || 'Livro de Regras';
     const bookId = `pdf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
@@ -270,107 +421,27 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
       bookTitle,
       page: 0,
       totalPages: 0,
+      mode: 'text',
     });
 
     try {
       const buffer = await file.arrayBuffer();
 
-      activeWorkerRef.current?.terminate();
+      terminateActiveWorker();
       const worker = new Worker(
         new URL('../workers/pdfIndexer.worker.ts', import.meta.url),
         { type: 'module' },
       );
       activeWorkerRef.current = worker;
+      activeJobIdRef.current = jobId;
 
-      worker.onmessage = async (event: MessageEvent<PdfIndexWorkerResponse>) => {
-        const msg = event.data;
-        if (!msg || msg.jobId !== jobId) return;
-
-        if (msg.type === 'progress') {
-          setIndexingProgress({
-            bookTitle,
-            page: msg.page,
-            totalPages: msg.totalPages,
-          });
-          return;
-        }
-
-        if (msg.type === 'ERROR_NO_TEXT_LAYER' && msg.code === SCANNED_PDF_NO_OCR_CODE) {
-          setPdfError(null);
-          setScannedPdfAlert({
-            bookTitle,
-            sampledPages: msg.sampledPages,
-            totalPages: msg.totalPages,
-            message: msg.message,
-          });
-          setIndexingProgress(null);
-          worker.terminate();
-          if (activeWorkerRef.current === worker) {
-            activeWorkerRef.current = null;
-          }
-          return;
-        }
-
-        if (msg.type === 'error') {
-          setPdfError(msg.error);
-          setIndexingProgress(null);
-          worker.terminate();
-          if (activeWorkerRef.current === worker) {
-            activeWorkerRef.current = null;
-          }
-          return;
-        }
-
-        if (msg.type === 'complete') {
-          try {
-            await indexPdfBook({
-              bookId: msg.bookId,
-              bookTitle: msg.bookTitle,
-              systemId: msg.systemId,
-              pages: msg.pages,
-              totalPages: msg.totalPages,
-            });
-            await refreshBooks();
-            setBooksOpen(true);
-
-            const currentQuery = queryRef.current.trim();
-            if (currentQuery.length >= 2) {
-              await executeLocalSearch(currentQuery);
-            }
-          } catch (persistErr) {
-            if (persistErr instanceof ScannedPdfNoOcrError) {
-              setPdfError(null);
-              setScannedPdfAlert({
-                bookTitle,
-                sampledPages: persistErr.sampledPages,
-                totalPages: persistErr.totalPages,
-                message: persistErr.message,
-              });
-            } else {
-              setPdfError(
-                persistErr instanceof Error
-                  ? `Falha ao persistir índice local: ${persistErr.message}`
-                  : 'Falha ao salvar índice local no IndexedDB.',
-              );
-            }
-          } finally {
-            setIndexingProgress(null);
-            worker.terminate();
-            if (activeWorkerRef.current === worker) {
-              activeWorkerRef.current = null;
-            }
-          }
-        }
-      };
-
-      worker.onerror = (errEvent) => {
-        setPdfError(errEvent.message || 'Erro inesperado no Web Worker de indexação PDF.');
-        setIndexingProgress(null);
-        worker.terminate();
-        if (activeWorkerRef.current === worker) {
-          activeWorkerRef.current = null;
-        }
-      };
+      attachWorkerListeners(worker, {
+        jobId,
+        bookId,
+        bookTitle,
+        systemId: targetSystemId,
+        mode: 'text',
+      });
 
       const request: PdfIndexWorkerRequest = {
         type: 'extract',
@@ -389,6 +460,108 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
       );
       setIndexingProgress(null);
     }
+  };
+
+  const handleStartOcrFallback = async () => {
+    const file = retainedScannedFileRef.current;
+    if (!file || !scannedPdfAlert) {
+      setPdfError('Arquivo PDF não está mais retido em memória. Selecione o PDF novamente.');
+      return;
+    }
+
+    const parsedStart = ocrStartPage.trim() ? Number.parseInt(ocrStartPage.trim(), 10) : undefined;
+    const parsedEnd = ocrEndPage.trim() ? Number.parseInt(ocrEndPage.trim(), 10) : undefined;
+    const startPage =
+      typeof parsedStart === 'number' && Number.isFinite(parsedStart) && parsedStart >= 1
+        ? parsedStart
+        : undefined;
+    const endPage =
+      typeof parsedEnd === 'number' && Number.isFinite(parsedEnd) && parsedEnd >= 1
+        ? parsedEnd
+        : undefined;
+
+    if (startPage !== undefined && endPage !== undefined && startPage > endPage) {
+      setPdfError('A página inicial do OCR não pode ser maior que a página final.');
+      return;
+    }
+
+    setPdfError(null);
+    const { bookId, bookTitle, systemId: targetSystemId, totalPages } = scannedPdfAlert;
+    const jobId = `ocr_${Date.now().toString(36)}`;
+
+    const effectiveStart = startPage ?? 1;
+    const effectiveEnd = endPage ? Math.min(totalPages, endPage) : totalPages;
+    const expectedRangeTotal = Math.max(1, effectiveEnd - effectiveStart + 1);
+
+    setScannedPdfAlert(null);
+    setIndexingProgress({
+      bookTitle,
+      page: 0,
+      totalPages: expectedRangeTotal,
+      mode: 'ocr',
+      stage: 'loading-engine',
+    });
+
+    try {
+      const buffer = await file.arrayBuffer();
+
+      terminateActiveWorker();
+      const worker = new Worker(
+        new URL('../workers/pdfIndexer.worker.ts', import.meta.url),
+        { type: 'module' },
+      );
+      activeWorkerRef.current = worker;
+      activeJobIdRef.current = jobId;
+
+      attachWorkerListeners(worker, {
+        jobId,
+        bookId,
+        bookTitle,
+        systemId: targetSystemId,
+        mode: 'ocr',
+      });
+
+      const request: PdfIndexWorkerRequest = {
+        type: 'START_OCR_INDEXING',
+        payload: {
+          buffer,
+          bookTitle,
+          systemId: targetSystemId,
+          lang: ocrLang,
+          startPage,
+          endPage,
+          jobId,
+          bookId,
+        },
+      };
+      worker.postMessage(request, [buffer]);
+    } catch (err) {
+      setPdfError(
+        err instanceof Error
+          ? `Não foi possível iniciar OCR local: ${err.message}`
+          : 'Erro ao iniciar o pipeline de OCR local.',
+      );
+      setIndexingProgress(null);
+    }
+  };
+
+  const handleAbortOcr = () => {
+    const worker = activeWorkerRef.current;
+    const jobId = activeJobIdRef.current;
+    if (worker) {
+      const abortReq: PdfIndexWorkerRequest = {
+        type: 'ABORT_INDEXING',
+        jobId: jobId ?? undefined,
+      };
+      worker.postMessage(abortReq);
+      // Safety termination in case Tesseract is mid-WASM call
+      window.setTimeout(() => {
+        if (activeWorkerRef.current === worker) {
+          terminateActiveWorker();
+        }
+      }, 250);
+    }
+    setIndexingProgress(null);
   };
 
   const handleConfirmRemoveBook = async (bookId: string) => {
@@ -588,16 +761,20 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               aria-valuemin={0}
               aria-valuemax={Math.max(1, indexingProgress.totalPages)}
               aria-valuenow={indexingProgress.page}
-              className="p-2.5 border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card)] shadow-[2px_2px_0_#0B0B0B] flex flex-col gap-1.5"
+              className="p-2.5 border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--bg-card)] shadow-[2px_2px_0_#0B0B0B] flex flex-col gap-1.5"
             >
               <div className="flex items-center justify-between gap-2 font-mono-tech text-[10px] font-bold">
                 <span className="truncate text-[var(--accent-wine)]">
                   {indexingProgress.bookTitle}
                 </span>
                 <span className="shrink-0 tabular-nums text-[var(--ink-primary)] uppercase">
-                  {indexingProgress.totalPages > 0
-                    ? `INDEXANDO PÁG. ${indexingProgress.page} / ${indexingProgress.totalPages}`
-                    : 'INDEXANDO PÁG. 0 / ...'}
+                  {indexingProgress.mode === 'ocr'
+                    ? indexingProgress.totalPages > 0
+                      ? `OCR PÁG. ${indexingProgress.page} / ${indexingProgress.totalPages}`
+                      : 'OCR PÁG. 0 / ...'
+                    : indexingProgress.totalPages > 0
+                      ? `INDEXANDO PÁG. ${indexingProgress.page} / ${indexingProgress.totalPages}`
+                      : 'INDEXANDO PÁG. 0 / ...'}
                 </span>
               </div>
               <div className="w-full h-2.5 bg-[var(--bg-header-strip)] border-[1.5px] border-[var(--border-ink)] rounded-[2px] overflow-hidden">
@@ -606,6 +783,23 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                   style={{ width: `${progressPercent}%`, backgroundColor: '#5B0F18' }}
                 />
               </div>
+              {indexingProgress.mode === 'ocr' && (
+                <div className="flex items-center justify-between gap-2 pt-1">
+                  <span className="font-mono-tech text-[10px] text-[var(--ink-secondary)] leading-tight">
+                    {indexingProgress.stage === 'loading-engine'
+                      ? 'Carregando motor OCR offline (pode levar alguns segundos)...'
+                      : 'Processamento local (~2–5s/pág.). Tempo estimado varia por página.'}
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="cancel-ocr-button"
+                    onClick={handleAbortOcr}
+                    className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase text-[var(--accent-danger)] border-[var(--border-ink)] shrink-0 cursor-pointer"
+                  >
+                    CANCELAR OCR
+                  </button>
+                </div>
+              )}
             </div>
           )}
 
@@ -613,7 +807,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
             <div
               role="alert"
               data-testid="scanned-pdf-alert"
-              className="p-3 border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--accent-danger-soft)] shadow-[3px_3px_0_#0B0B0B] flex flex-col gap-2"
+              className="p-3 border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--accent-danger-soft)] shadow-[3px_3px_0_#0B0B0B] flex flex-col gap-2.5"
             >
               <div className="flex items-start justify-between gap-2">
                 <div className="flex items-center gap-1.5 text-[var(--accent-danger)] font-mono-tech text-xs font-black uppercase tracking-tight">
@@ -623,7 +817,10 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 <button
                   type="button"
                   aria-label="Fechar alerta de PDF sem OCR"
-                  onClick={() => setScannedPdfAlert(null)}
+                  onClick={() => {
+                    retainedScannedFileRef.current = null;
+                    setScannedPdfAlert(null);
+                  }}
                   className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center shrink-0 cursor-pointer"
                 >
                   <X className="w-4 h-4" aria-hidden="true" />
@@ -637,13 +834,78 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                 contém apenas imagens sem camada de texto nas primeiras{' '}
                 {scannedPdfAlert.sampledPages} páginas (de {scannedPdfAlert.totalPages}).
               </p>
-              <p className="text-xs leading-snug text-[var(--ink-secondary)]">
-                Aplique OCR no PDF usando ferramentas como{' '}
-                <strong className="font-bold text-[var(--ink-primary)]">OCRmyPDF</strong>,{' '}
-                <strong className="font-bold text-[var(--ink-primary)]">PDF24</strong> ou{' '}
-                <strong className="font-bold text-[var(--ink-primary)]">Adobe Acrobat</strong>{' '}
-                antes de importar novamente.
-              </p>
+
+              <div className="p-2 border-[1.5px] border-[var(--border-ink)] rounded-[4px] bg-[var(--bg-card)] flex flex-col gap-2">
+                <div className="flex flex-col gap-1">
+                  <label
+                    htmlFor="ocr-lang-select"
+                    className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
+                  >
+                    Idioma do livro (OCR)
+                  </label>
+                  <select
+                    id="ocr-lang-select"
+                    data-testid="ocr-lang-select"
+                    value={ocrLang}
+                    onChange={(e) => setOcrLang(e.target.value as OcrLanguage)}
+                    className="cyber-input min-h-[36px] px-2 py-1 text-[16px] lg:text-[11px] font-bold"
+                  >
+                    <option value="por">Português (por)</option>
+                    <option value="eng">Inglês (eng)</option>
+                    <option value="por+eng">Ambos (por+eng)</option>
+                  </select>
+                </div>
+
+                <div className="grid grid-cols-2 gap-2">
+                  <div className="flex flex-col gap-1">
+                    <label
+                      htmlFor="ocr-start-page"
+                      className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
+                    >
+                      Pág. inicial
+                    </label>
+                    <input
+                      id="ocr-start-page"
+                      data-testid="ocr-start-page-input"
+                      type="number"
+                      min={1}
+                      max={scannedPdfAlert.totalPages}
+                      placeholder="1"
+                      value={ocrStartPage}
+                      onChange={(e) => setOcrStartPage(e.target.value)}
+                      className="cyber-input min-h-[36px] px-2 py-1 text-[16px] lg:text-xs font-semibold tabular-nums"
+                    />
+                  </div>
+                  <div className="flex flex-col gap-1">
+                    <label
+                      htmlFor="ocr-end-page"
+                      className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)]"
+                    >
+                      Pág. final
+                    </label>
+                    <input
+                      id="ocr-end-page"
+                      data-testid="ocr-end-page-input"
+                      type="number"
+                      min={1}
+                      max={scannedPdfAlert.totalPages}
+                      placeholder={String(scannedPdfAlert.totalPages)}
+                      value={ocrEndPage}
+                      onChange={(e) => setOcrEndPage(e.target.value)}
+                      className="cyber-input min-h-[36px] px-2 py-1 text-[16px] lg:text-xs font-semibold tabular-nums"
+                    />
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  data-testid="start-ocr-fallback-button"
+                  onClick={() => void handleStartOcrFallback()}
+                  className="cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center justify-center gap-1.5 cursor-pointer"
+                >
+                  CONVERTER COM OCR (OFFLINE / LENTO)
+                </button>
+              </div>
             </div>
           )}
 

@@ -1,15 +1,22 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   buildPageDocId,
+  computeOcrRenderScale,
   createIndexedDbStorageBackend,
   createInMemoryStorageBackend,
   extractPdfPagesWithFailFast,
+  normalizeOcrPageRange,
   PdfRulesStore,
   sanitizeExtractedPdfText,
   SCANNED_PDF_NO_OCR_CODE,
   ScannedPdfNoOcrError,
   type BookMetadata,
 } from './pdfRulesStore';
+import {
+  runOcrIndexingPipeline,
+  type OcrWorkerLike,
+  type PdfIndexWorkerResponse,
+} from '../workers/pdfIndexer.worker';
 
 /**
  * Minimal spec-compatible IDBFactory mock to exercise real IndexedDB transactions,
@@ -409,5 +416,220 @@ describe('pdfRulesStore', () => {
 
     expect(pagesVisited).toBe(15);
     expect(pages).toHaveLength(15);
+  });
+
+  it('transitions from ERROR_NO_TEXT_LAYER to on-demand OCR pipeline and persists searchable index', async () => {
+    const mockIdb = createMockIdbFactory();
+    const store = new PdfRulesStore(createIndexedDbStorageBackend(mockIdb));
+
+    // 1. Fail-fast detects scanned PDF without text layer
+    await expect(
+      extractPdfPagesWithFailFast({
+        totalPages: 12,
+        readPageText: () => '',
+      }),
+    ).rejects.toThrow(ScannedPdfNoOcrError);
+
+    // 2. User triggers OCR fallback with mocked PDF.js document and Tesseract worker
+    const events: PdfIndexWorkerResponse[] = [];
+    const recognizeMock = vi.fn(async (img: unknown) => {
+      const marker = (img as { pageNum: number }).pageNum;
+      return {
+        data: {
+          text:
+            marker === 2
+              ? 'Com-\nbate Tático: rolar   Iniciativa d20 + Destreza.'
+              : `Página ${marker} arte ilustrativa`,
+        },
+      };
+    });
+    const terminateMock = vi.fn(async () => undefined);
+    const createOcrWorkerMock = vi.fn(async (): Promise<OcrWorkerLike> => ({
+      recognize: recognizeMock,
+      terminate: terminateMock,
+    }));
+
+    const cleanedPages: number[] = [];
+    await runOcrIndexingPipeline(
+      {
+        buffer: new ArrayBuffer(16),
+        bookTitle: 'Manual Escaneado OCR',
+        systemId: 'dnd5e',
+        lang: 'por',
+        jobId: 'ocr_job_1',
+        bookId: 'scanned_ocr_book',
+      },
+      {
+        createOcrWorker: createOcrWorkerMock,
+        postMessage: (msg) => events.push(msg),
+        loadPdfDocument: () => ({
+          promise: Promise.resolve({
+            numPages: 3,
+            getPage: async (pageNum: number) => ({
+              cleanup: () => cleanedPages.push(pageNum),
+              pageNum,
+            }),
+            cleanup: async () => undefined,
+          } as unknown as any),
+          destroy: async () => undefined,
+        }),
+        renderPageToImage: async (page) =>
+          ({ pageNum: (page as unknown as { pageNum: number }).pageNum }) as unknown as Blob,
+      },
+    );
+
+    expect(createOcrWorkerMock).toHaveBeenCalledTimes(1);
+    expect(createOcrWorkerMock).toHaveBeenCalledWith('por');
+    expect(recognizeMock).toHaveBeenCalledTimes(3);
+    expect(terminateMock).toHaveBeenCalledTimes(1);
+    expect(cleanedPages).toEqual([1, 2, 3]);
+
+    const progressEvents = events.filter((e) => e.type === 'OCR_PROGRESS');
+    expect(progressEvents[0]).toMatchObject({
+      type: 'OCR_PROGRESS',
+      stage: 'loading-engine',
+      page: 0,
+      totalPages: 3,
+    });
+    expect(progressEvents[progressEvents.length - 1]).toMatchObject({
+      type: 'OCR_PROGRESS',
+      stage: 'recognizing',
+      page: 3,
+      totalPages: 3,
+    });
+
+    const completeEvent = events.find((e) => e.type === 'complete');
+    expect(completeEvent).toBeDefined();
+    if (completeEvent && completeEvent.type === 'complete') {
+      expect(completeEvent.isOcr).toBe(true);
+      await store.indexBook({
+        bookId: completeEvent.bookId,
+        bookTitle: completeEvent.bookTitle,
+        systemId: completeEvent.systemId,
+        pages: completeEvent.pages,
+        totalPages: completeEvent.totalPages,
+        skipTextLayerCheck: true,
+      });
+    }
+
+    const hits = await store.searchLocalRules('Iniciativa', 'dnd5e', 5);
+    expect(hits).toHaveLength(1);
+    expect(hits[0].page).toBe(2);
+    expect(hits[0].excerpt).toContain('Combate Tático');
+  });
+
+  it('respects startPage..endPage range and caps OCR rasterization scale at 1600px', async () => {
+    expect(normalizeOcrPageRange(50, 12, 15)).toEqual({
+      startPage: 12,
+      endPage: 15,
+      rangeTotal: 4,
+    });
+    expect(normalizeOcrPageRange(20, 0, 999)).toEqual({
+      startPage: 1,
+      endPage: 20,
+      rangeTotal: 20,
+    });
+    expect(computeOcrRenderScale(1000, 1600)).toBeCloseTo(1.6);
+    expect(computeOcrRenderScale(400, 1600)).toBe(2.5);
+
+    const visitedPages: number[] = [];
+    const events: PdfIndexWorkerResponse[] = [];
+
+    await runOcrIndexingPipeline(
+      {
+        buffer: new ArrayBuffer(8),
+        bookTitle: 'Capítulo de Regras',
+        systemId: 'wod',
+        lang: 'por+eng',
+        startPage: 4,
+        endPage: 6,
+        jobId: 'ocr_range_job',
+        bookId: 'range_book',
+      },
+      {
+        createOcrWorker: async () => ({
+          recognize: async (img) => ({
+            data: { text: `Regra da página ${(img as { pageNum: number }).pageNum}` },
+          }),
+          terminate: async () => undefined,
+        }),
+        postMessage: (msg) => events.push(msg),
+        loadPdfDocument: () => ({
+          promise: Promise.resolve({
+            numPages: 10,
+            getPage: async (pageNum: number) => {
+              visitedPages.push(pageNum);
+              return { cleanup: () => undefined, pageNum };
+            },
+            cleanup: async () => undefined,
+          } as unknown as any),
+          destroy: async () => undefined,
+        }),
+        renderPageToImage: async (page) =>
+          ({ pageNum: (page as unknown as { pageNum: number }).pageNum }) as unknown as Blob,
+      },
+    );
+
+    expect(visitedPages).toEqual([4, 5, 6]);
+    const completeEvent = events.find((e) => e.type === 'complete');
+    expect(completeEvent).toBeDefined();
+    if (completeEvent && completeEvent.type === 'complete') {
+      expect(completeEvent.totalPages).toBe(10);
+      expect(completeEvent.pages.map((p) => p.page)).toEqual([4, 5, 6]);
+    }
+  });
+
+  it('aborts OCR cleanly on ABORT_INDEXING without emitting complete or corrupting store', async () => {
+    const mockIdb = createMockIdbFactory();
+    const store = new PdfRulesStore(createIndexedDbStorageBackend(mockIdb));
+
+    let aborted = false;
+    let recognizedCount = 0;
+    const terminateMock = vi.fn(async () => undefined);
+    const events: PdfIndexWorkerResponse[] = [];
+
+    await runOcrIndexingPipeline(
+      {
+        buffer: new ArrayBuffer(8),
+        bookTitle: 'Livro Cancelado',
+        systemId: 'wod',
+        lang: 'eng',
+        startPage: 1,
+        endPage: 10,
+        jobId: 'ocr_abort_job',
+        bookId: 'abort_book',
+      },
+      {
+        shouldAbort: () => aborted,
+        createOcrWorker: async () => ({
+          recognize: async () => {
+            recognizedCount += 1;
+            if (recognizedCount === 2) {
+              aborted = true;
+            }
+            return { data: { text: `Texto página ${recognizedCount}` } };
+          },
+          terminate: terminateMock,
+        }),
+        postMessage: (msg) => events.push(msg),
+        loadPdfDocument: () => ({
+          promise: Promise.resolve({
+            numPages: 10,
+            getPage: async (pageNum: number) => ({ cleanup: () => undefined, pageNum }),
+            cleanup: async () => undefined,
+          } as unknown as any),
+          destroy: async () => undefined,
+        }),
+        renderPageToImage: async (page) =>
+          ({ pageNum: (page as unknown as { pageNum: number }).pageNum }) as unknown as Blob,
+      },
+    );
+
+    expect(recognizedCount).toBe(2);
+    expect(terminateMock).toHaveBeenCalledTimes(1);
+    expect(events.some((e) => e.type === 'aborted')).toBe(true);
+    expect(events.some((e) => e.type === 'complete')).toBe(false);
+    expect(await store.listBooks()).toHaveLength(0);
+    expect(store.getIndexedDocumentCount()).toBe(0);
   });
 });

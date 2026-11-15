@@ -41,12 +41,15 @@ export interface LocalRuleSearchHit {
   highlightParts: LocalRuleHighlightPart[];
 }
 
+export type OcrLanguage = 'por' | 'eng' | 'por+eng';
+
 export interface IndexPdfBookInput {
   bookId?: string;
   bookTitle: string;
   systemId: string;
   pages: ExtractedPdfPage[];
   totalPages?: number;
+  skipTextLayerCheck?: boolean;
 }
 
 export interface PdfRulesStorageBackend {
@@ -193,6 +196,39 @@ export function normalizeRulesTerm(term: string): string {
     .replace(/[\u0300-\u036f]/g, '')
     .toLowerCase()
     .trim();
+}
+
+export function normalizeOcrPageRange(
+  totalPages: number,
+  startPage?: number,
+  endPage?: number,
+): { startPage: number; endPage: number; rangeTotal: number } {
+  const safeTotal = Math.max(1, Math.floor(totalPages));
+  const rawStart =
+    typeof startPage === 'number' && Number.isFinite(startPage)
+      ? Math.floor(startPage)
+      : 1;
+  const rawEnd =
+    typeof endPage === 'number' && Number.isFinite(endPage)
+      ? Math.floor(endPage)
+      : safeTotal;
+
+  const clampedStart = Math.max(1, Math.min(safeTotal, rawStart));
+  const clampedEnd = Math.max(clampedStart, Math.min(safeTotal, rawEnd));
+
+  return {
+    startPage: clampedStart,
+    endPage: clampedEnd,
+    rangeTotal: clampedEnd - clampedStart + 1,
+  };
+}
+
+export function computeOcrRenderScale(viewportWidth: number, maxWidth = 1600): number {
+  if (!Number.isFinite(viewportWidth) || viewportWidth <= 0) {
+    return 1.5;
+  }
+  const safeMaxWidth = Math.max(320, maxWidth);
+  return Math.min(2.5, safeMaxWidth / viewportWidth);
 }
 
 export function sanitizeExtractedPdfText(raw: string): string {
@@ -602,15 +638,17 @@ export class PdfRulesStore {
         const pageNum = Math.max(1, Math.floor(rawPage.page));
         if (pageNum > maxPageNum) maxPageNum = pageNum;
         sampledCount += 1;
-        const check = monitor.recordPage(sampledCount, rawPage.content);
-        if (check.aborted) {
-          throw new ScannedPdfNoOcrError(SCANNED_PDF_NO_OCR_MESSAGE, {
-            sampledPages: check.sampledPages,
-            totalPages: Math.max(maxPageNum, sortedPages.length),
-            totalExtractedChars: check.totalExtractedChars,
-          });
+        if (!input.skipTextLayerCheck) {
+          const check = monitor.recordPage(sampledCount, rawPage.content);
+          if (check.aborted) {
+            throw new ScannedPdfNoOcrError(SCANNED_PDF_NO_OCR_MESSAGE, {
+              sampledPages: check.sampledPages,
+              totalPages: Math.max(maxPageNum, sortedPages.length),
+              totalExtractedChars: check.totalExtractedChars,
+            });
+          }
         }
-        const cleanContent = check.cleanContent;
+        const cleanContent = sanitizeExtractedPdfText(rawPage.content);
         if (!cleanContent) continue;
         charCount += cleanContent.length;
         docs.push({
