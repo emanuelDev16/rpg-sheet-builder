@@ -16,6 +16,8 @@ import com.gridsheet.app.core.SheetEvaluation
 import com.gridsheet.app.core.SheetEvaluator
 import com.gridsheet.app.core.SheetField
 import com.gridsheet.app.core.SheetMutators
+import com.gridsheet.app.core.SheetTransfer
+import com.gridsheet.app.core.SheetTransferException
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.WorkspaceState
@@ -27,6 +29,7 @@ import com.gridsheet.app.data.RulesSearchResponse
 import com.gridsheet.app.data.WorkspaceRepository
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.IndexedBookEntity
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -38,6 +41,7 @@ import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
 import java.util.Locale
@@ -47,6 +51,12 @@ enum class SideSheetMode {
     LOGS,
     RULES
 }
+
+/** Result banner for SAF export/import shown in the sheet management modal. */
+data class TransferFeedback(
+    val success: Boolean,
+    val message: String
+)
 
 class SheetViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = WorkspaceRepository(application)
@@ -128,6 +138,12 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     val offlineSheetCount: StateFlow<Int> = repo.observeOfflineSheetCount()
         .stateIn(viewModelScope, SharingStarted.Eagerly, _workspace.value.sheetsBySystem.size)
+
+    private val _transferBusy = MutableStateFlow(false)
+    val transferBusy: StateFlow<Boolean> = _transferBusy.asStateFlow()
+
+    private val _transferFeedback = MutableStateFlow<TransferFeedback?>(null)
+    val transferFeedback: StateFlow<TransferFeedback?> = _transferFeedback.asStateFlow()
 
     init {
         viewModelScope.launch {
@@ -417,6 +433,114 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     fun exportCurrentJson(): String = repo.exportSheetJson(activeSheet.value)
+
+    /** Suggested SAF file name for the active sheet, e.g. `vampira-agata.json`. */
+    fun suggestedSheetFileName(): String = SheetTransfer.suggestedSheetFileName(activeSheet.value)
+
+    /** Suggested SAF file name for a full backup, e.g. `gridsheet-backup-2026-11-14.json`. */
+    fun suggestedBackupFileName(): String = SheetTransfer.backupFileName()
+
+    fun clearTransferFeedback() {
+        _transferFeedback.value = null
+    }
+
+    /** Called when no SAF document provider can handle the picker intent. */
+    fun reportPickerUnavailable() {
+        reportTransfer(success = false, message = "NENHUM GERENCIADOR DE ARQUIVOS DISPONÍVEL NO DISPOSITIVO")
+    }
+
+    /**
+     * Writes the active sheet ([fullBackup] = false) or every Room sheet ([fullBackup] = true)
+     * to a document picked with `ActivityResultContracts.CreateDocument`. All ContentResolver
+     * I/O and JSON work runs on [Dispatchers.IO].
+     */
+    fun exportToUri(uri: Uri, fullBackup: Boolean) {
+        if (_transferBusy.value) return
+        val snapshot = _workspace.value
+        val active = activeSheet.value
+        val activeId = active.id
+        viewModelScope.launch {
+            _transferBusy.value = true
+            val outcome = runCatching {
+                withContext(Dispatchers.IO) {
+                    val resolver = getApplication<Application>().contentResolver
+                    val stream = runCatching { resolver.openOutputStream(uri, "wt") }.getOrNull()
+                        ?: resolver.openOutputStream(uri)
+                        ?: throw SheetTransferException("Não foi possível abrir o arquivo de destino.")
+                    repo.exportSheetsToStream(
+                        outputStream = stream,
+                        sheetIds = if (fullBackup) null else listOf(activeId),
+                        liveSheets = snapshot.sheetsBySystem.values + active
+                    )
+                }
+            }
+            _transferBusy.value = false
+            outcome.onSuccess { count ->
+                val label = if (fullBackup) "BACKUP EXPORTADO" else "FICHA EXPORTADA"
+                reportTransfer(success = true, message = "$label: $count FICHA(S) SALVA(S) EM .JSON")
+            }.onFailure { err ->
+                reportTransfer(success = false, message = "FALHA AO EXPORTAR: ${readableError(err)}")
+            }
+        }
+    }
+
+    /**
+     * Reads a document picked with `ActivityResultContracts.OpenDocument`, validates it against
+     * schema v2 and persists it in Room. Same-id sheets are cloned unless [overwriteExisting].
+     */
+    fun importFromUri(uri: Uri, overwriteExisting: Boolean) {
+        if (_transferBusy.value) return
+        val base = _workspace.value
+        viewModelScope.launch {
+            _transferBusy.value = true
+            val outcome = runCatching {
+                withContext(Dispatchers.IO) {
+                    val stream = getApplication<Application>().contentResolver.openInputStream(uri)
+                        ?: throw SheetTransferException("Não foi possível abrir o arquivo selecionado.")
+                    repo.importSheetsFromStream(
+                        inputStream = stream,
+                        overwriteExisting = overwriteExisting,
+                        baseWorkspace = base
+                    )
+                }
+            }
+            _transferBusy.value = false
+            outcome.onSuccess { result ->
+                _workspace.value = result.workspace
+                _activeTab.value = TabId.GERAL
+                _xpFilter.value = null
+                viewModelScope.launch {
+                    repo.pushRemoteMirror(result.workspace, System.currentTimeMillis())
+                }
+                val extras = buildList {
+                    if (result.clonedCount > 0) add("${result.clonedCount} CÓPIA(S) COM NOVO ID")
+                    if (result.skippedSameSystemCount > 0) {
+                        add("${result.skippedSameSystemCount} IGNORADA(S) (MESMO SISTEMA)")
+                    }
+                }
+                val suffix = if (extras.isEmpty()) "" else " · " + extras.joinToString(" · ")
+                reportTransfer(
+                    success = true,
+                    message = "IMPORTADO: ${result.importedCount} FICHA(S)$suffix"
+                )
+            }.onFailure { err ->
+                reportTransfer(success = false, message = "FALHA AO IMPORTAR: ${readableError(err)}")
+            }
+        }
+    }
+
+    private fun reportTransfer(success: Boolean, message: String) {
+        _transferFeedback.value = TransferFeedback(success, message)
+        _statusMessage.value = message
+    }
+
+    private fun readableError(err: Throwable): String = when (err) {
+        is SheetTransferException -> err.message ?: "erro desconhecido"
+        is SecurityException -> "permissão negada pelo provedor de arquivos."
+        is java.io.FileNotFoundException -> "arquivo não encontrado ou inacessível."
+        is java.io.IOException -> "erro de leitura/escrita (${err.message ?: "I/O"})."
+        else -> err.message ?: err.javaClass.simpleName
+    }
 
     fun importJson(raw: String): Boolean {
         val parsed = repo.importSheetJson(raw).getOrNull() ?: run {

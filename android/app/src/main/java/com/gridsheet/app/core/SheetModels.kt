@@ -8,7 +8,14 @@ import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
 import kotlinx.serialization.json.intOrNull
+import java.io.ByteArrayOutputStream
+import java.io.InputStream
+import java.io.OutputStream
+import java.io.OutputStreamWriter
+import java.text.Normalizer
 import java.time.Instant
+import java.time.LocalDate
+import java.util.UUID
 import kotlin.math.max
 import kotlin.math.min
 import kotlin.math.roundToInt
@@ -517,12 +524,12 @@ object SheetPayloadValidator {
     private val allowedFieldKinds = setOf(
         "number", "text", "calculated", "resource", "boolean", "roll", "repeatable"
     )
-    private val rootKeys = setOf(
+    val rootKeys = setOf(
         "id", "systemId", "systemName", "systemCode", "characterName",
         "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp"
     )
-    private val cardKeys = setOf("id", "tab", "code", "title", "colSpan", "fields")
-    private val fieldKeys = setOf(
+    val cardKeys = setOf("id", "tab", "code", "title", "colSpan", "fields")
+    val fieldKeys = setOf(
         "id", "key", "label", "kind", "value", "numValue", "textValue", "boolValue",
         "max", "damageTrack", "superficialDamage", "aggravatedDamage",
         "formula", "showPlus", "rollLabel", "rollExpr", "rollDifficulty", "rollMod",
@@ -652,4 +659,245 @@ object SheetPayloadValidator {
             }
         }
     }
+}
+
+
+/**
+ * Versioned export envelope shared with the Web build:
+ * `{ "app": "gridsheet", "schemaVersion": 2, "exportedAt": "<ISO-8601>", "sheets": [...] }`.
+ */
+@Serializable
+data class SheetExportEnvelope(
+    val app: String = SheetTransfer.APP_ID,
+    val schemaVersion: Int = SheetTransfer.SCHEMA_VERSION,
+    val exportedAt: String,
+    val sheets: List<CharacterSheetState>
+)
+
+/** Readable, user-facing failure raised by export/import (rendered in the status bar). */
+class SheetTransferException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+data class SheetIdResolution(
+    val sheets: List<CharacterSheetState>,
+    val clonedCount: Int
+)
+
+/**
+ * Pure (Android-free) export/import pipeline so it can be unit-tested on the JVM:
+ * bounded UTF-8 reads, envelope + legacy single-sheet detection, schema v2 validation,
+ * legacy migration and id-collision cloning.
+ */
+object SheetTransfer {
+    const val APP_ID = "gridsheet"
+    const val SCHEMA_VERSION = 2
+    const val MAX_IMPORT_BYTES = 5 * 1024 * 1024
+    const val MAX_SHEETS_PER_FILE = 50
+    const val COPY_SUFFIX = " (Cópia)"
+
+    private const val MAX_CHARACTER_NAME = 120
+    private const val MAX_ID_LENGTH = 64
+    private val idPattern = Regex("^[a-zA-Z0-9_-]+$")
+    private val envelopeKeys = setOf("app", "schemaVersion", "exportedAt", "sheets")
+    private val dangerousKeys = setOf("__proto__", "constructor", "prototype")
+
+    /** Omits nulls so re-imported payloads never carry `"max": null` (rejected by schema v2). */
+    val transferJson = Json {
+        ignoreUnknownKeys = true
+        encodeDefaults = true
+        explicitNulls = false
+        prettyPrint = true
+    }
+
+    fun encodeEnvelope(
+        sheets: List<CharacterSheetState>,
+        nowIso: String = Instant.now().toString()
+    ): String {
+        if (sheets.isEmpty()) throw SheetTransferException("Nenhuma ficha para exportar.")
+        if (sheets.size > MAX_SHEETS_PER_FILE) {
+            throw SheetTransferException("Máximo de $MAX_SHEETS_PER_FILE fichas por arquivo.")
+        }
+        val normalized = sheets.map { it.copy(systemId = Presets.detectSystemId(it)) }
+        val element = transferJson.encodeToJsonElement(
+            SheetExportEnvelope.serializer(),
+            SheetExportEnvelope(exportedAt = nowIso, sheets = normalized)
+        )
+        // Guarantee the backup is re-importable before anything is written to disk.
+        (element as JsonObject)["sheets"]!!.let { it as JsonArray }.forEachIndexed { idx, sheetElem ->
+            val errors = validateSheetElement(sheetElem)
+            if (errors.isNotEmpty()) {
+                throw SheetTransferException(
+                    "Ficha '${normalized[idx].characterName}' não passa no schema v2: ${errors.take(2).joinToString(" | ")}"
+                )
+            }
+        }
+        return transferJson.encodeToString(JsonElement.serializer(), element)
+    }
+
+    /** Serializes the envelope as UTF-8 and always closes [output], even on failure. */
+    fun writeEnvelope(
+        output: OutputStream,
+        sheets: List<CharacterSheetState>,
+        nowIso: String = Instant.now().toString()
+    ): Int {
+        try {
+            val payload = encodeEnvelope(sheets, nowIso)
+            val writer = OutputStreamWriter(output, Charsets.UTF_8)
+            writer.write(payload)
+            writer.flush()
+            return sheets.size
+        } finally {
+            runCatching { output.close() }
+        }
+    }
+
+    /** Reads at most [maxBytes] bytes (guards against OOM) and always closes [input]. */
+    fun readBoundedUtf8(input: InputStream, maxBytes: Int = MAX_IMPORT_BYTES): String {
+        try {
+            val buffer = ByteArrayOutputStream()
+            val chunk = ByteArray(8 * 1024)
+            var total = 0L
+            while (true) {
+                val read = input.read(chunk)
+                if (read < 0) break
+                total += read
+                if (total > maxBytes) {
+                    throw SheetTransferException(
+                        "Arquivo excede o limite de ${formatBytes(maxBytes)} para importação."
+                    )
+                }
+                buffer.write(chunk, 0, read)
+            }
+            return buffer.toString(Charsets.UTF_8.name()).removePrefix("\uFEFF")
+        } finally {
+            runCatching { input.close() }
+        }
+    }
+
+    /**
+     * Accepts either a versioned envelope (schemaVersion 1..2) or a bare v1/v2 sheet object.
+     * Every sheet is validated against the schema v2 mirror before decoding, then migrated.
+     */
+    fun parseImportPayload(
+        raw: String,
+        deviceId: String = "local-device",
+        nowIso: String = Instant.now().toString()
+    ): List<CharacterSheetState> {
+        if (raw.isBlank()) throw SheetTransferException("Arquivo vazio.")
+        val parsed = runCatching { Json.parseToJsonElement(raw) }.getOrElse {
+            throw SheetTransferException("JSON malformado: não foi possível ler o arquivo.", it)
+        }
+        val root = parsed as? JsonObject
+            ?: throw SheetTransferException("Formato inválido: a raiz do JSON deve ser um objeto.")
+
+        val isEnvelope = root.keys.any { it in envelopeKeys }
+        val sheetElements: List<JsonElement> = if (isEnvelope) extractEnvelopeSheets(root) else listOf(root)
+
+        return sheetElements.mapIndexed { idx, elem ->
+            val label = if (isEnvelope) "Ficha #${idx + 1}" else "Ficha"
+            val errors = validateSheetElement(elem)
+            if (errors.isNotEmpty()) {
+                throw SheetTransferException(
+                    "$label inválida (schema v2): ${errors.take(3).joinToString(" | ")}"
+                )
+            }
+            val decoded = runCatching {
+                transferJson.decodeFromJsonElement(CharacterSheetState.serializer(), elem)
+            }.getOrElse {
+                throw SheetTransferException("$label com estrutura incompatível: campos obrigatórios ausentes.", it)
+            }
+            Presets.migrateLegacyWodSheet(decoded, deviceId, nowIso)
+        }
+    }
+
+    /**
+     * When [overwriteExisting] is false, any sheet whose id already exists (in the database or
+     * earlier in the same batch) receives a fresh UUID and the " (Cópia)" suffix.
+     */
+    fun resolveIdCollisions(
+        imported: List<CharacterSheetState>,
+        existingIds: Set<String>,
+        overwriteExisting: Boolean,
+        idGenerator: () -> String = { UUID.randomUUID().toString() }
+    ): SheetIdResolution {
+        if (overwriteExisting) return SheetIdResolution(imported, 0)
+        val taken = existingIds.toMutableSet()
+        var cloned = 0
+        val resolved = imported.map { sheet ->
+            val result = if (sheet.id in taken) {
+                var newId = idGenerator()
+                var guard = 0
+                while (newId in taken && guard++ < 16) newId = idGenerator()
+                cloned++
+                sheet.copy(id = newId, characterName = withCopySuffix(sheet.characterName))
+            } else {
+                sheet
+            }
+            taken += result.id
+            result
+        }
+        return SheetIdResolution(resolved, cloned)
+    }
+
+    fun withCopySuffix(name: String): String {
+        val base = name.trim().ifEmpty { "Ficha" }
+        return base.take(MAX_CHARACTER_NAME - COPY_SUFFIX.length) + COPY_SUFFIX
+    }
+
+    /** `Vampira Ágata #2` → `vampira-agata-2.json` (ASCII, no path separators). */
+    fun suggestedSheetFileName(sheet: CharacterSheetState): String {
+        val ascii = Normalizer.normalize(sheet.characterName, Normalizer.Form.NFD)
+            .replace(Regex("\\p{M}+"), "")
+        val slug = ascii.lowercase()
+            .replace(Regex("[^a-z0-9]+"), "-")
+            .trim('-')
+            .take(60)
+            .trim('-')
+        return "${slug.ifEmpty { "ficha" }}.json"
+    }
+
+    fun backupFileName(date: LocalDate = LocalDate.now()): String = "gridsheet-backup-$date.json"
+
+    private fun extractEnvelopeSheets(root: JsonObject): List<JsonElement> {
+        for (key in root.keys) {
+            if (key in dangerousKeys) throw SheetTransferException("Envelope contém chave proibida '$key'.")
+            if (key !in envelopeKeys) throw SheetTransferException("Envelope contém propriedade não permitida '$key'.")
+        }
+        val app = (root["app"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        if (app != APP_ID) throw SheetTransferException("Arquivo não pertence ao GridSheet (app='${app ?: "?"}').")
+        val version = (root["schemaVersion"] as? JsonPrimitive)?.takeIf { !it.isString }?.intOrNull
+        if (version == null || version !in 1..SCHEMA_VERSION) {
+            throw SheetTransferException("schemaVersion não suportada: ${root["schemaVersion"] ?: "ausente"}.")
+        }
+        root["exportedAt"]?.let { ts ->
+            if (ts !is JsonPrimitive || !ts.isString) throw SheetTransferException("exportedAt deve ser string ISO-8601.")
+        }
+        val sheets = root["sheets"] as? JsonArray
+            ?: throw SheetTransferException("Envelope sem array 'sheets'.")
+        if (sheets.isEmpty()) throw SheetTransferException("Envelope não contém fichas.")
+        if (sheets.size > MAX_SHEETS_PER_FILE) {
+            throw SheetTransferException("Máximo de $MAX_SHEETS_PER_FILE fichas por arquivo.")
+        }
+        return sheets
+    }
+
+    /** Schema v2 structural validation plus the id/name bounds declared in schema.v2.json. */
+    private fun validateSheetElement(elem: JsonElement): List<String> {
+        val base = SheetPayloadValidator.validateElement(elem)
+        val errors = base.errors.toMutableList()
+        val obj = elem as? JsonObject ?: return errors
+        (obj["id"] as? JsonPrimitive)?.let { idPrim ->
+            if (!idPrim.isString || idPrim.content.length !in 1..MAX_ID_LENGTH || !idPattern.matches(idPrim.content)) {
+                errors.add("$.id: deve casar ^[a-zA-Z0-9_-]+$ (1..$MAX_ID_LENGTH).")
+            }
+        }
+        (obj["characterName"] as? JsonPrimitive)?.let { namePrim ->
+            if (namePrim.isString && namePrim.content.length > MAX_CHARACTER_NAME) {
+                errors.add("$.characterName: máximo de $MAX_CHARACTER_NAME caracteres.")
+            }
+        }
+        return errors
+    }
+
+    private fun formatBytes(bytes: Int): String =
+        if (bytes >= 1024 * 1024 && bytes % (1024 * 1024) == 0) "${bytes / (1024 * 1024)} MB" else "$bytes bytes"
 }

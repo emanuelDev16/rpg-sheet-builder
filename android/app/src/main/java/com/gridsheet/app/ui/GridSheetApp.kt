@@ -1,5 +1,6 @@
 package com.gridsheet.app.ui
 
+import android.content.ActivityNotFoundException
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
@@ -17,6 +18,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
@@ -24,10 +26,14 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
@@ -40,9 +46,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -90,6 +98,21 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             vm.importPdfRulebook(uri)
         }
     }
+    val transferBusy by vm.transferBusy.collectAsState()
+    val transferFeedback by vm.transferFeedback.collectAsState()
+    var overwriteOnImport by rememberSaveable { mutableStateOf(false) }
+
+    // Storage Access Framework launchers: no WRITE/READ_EXTERNAL_STORAGE permission required.
+    // Registered at the root so results survive the modal being recomposed or dismissed.
+    val exportSheetLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) vm.exportToUri(uri, fullBackup = false) }
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) vm.exportToUri(uri, fullBackup = true) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.importFromUri(uri, overwriteOnImport) }
 
     val availableXp = XpSystem.getAvailableXp(sheet.xp)
     val activeSystemId = workspace.activeSystemId
@@ -166,7 +189,10 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onSelect = vm::switchSystem
                         )
                         TopOutlineBtn("NOVA") { vm.createNewBlankSheet() }
-                        TopOutlineBtn("ABRIR") { vm.setSystemModalOpen(true) }
+                        TopOutlineBtn("ABRIR") {
+                            vm.clearTransferFeedback()
+                            vm.setSystemModalOpen(true)
+                        }
                         TopOutlineBtn("ROLAGENS (${sheet.rollLogs.size})") {
                             vm.openSideSheet(SideSheetMode.LOGS)
                         }
@@ -351,10 +377,31 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
         SystemPresetAndJsonDialog(
             activeSystemId = activeSystemId,
             exportedJson = vm.exportCurrentJson(),
+            transferBusy = transferBusy,
+            transferFeedback = transferFeedback,
+            overwriteExisting = overwriteOnImport,
+            onOverwriteChange = { overwriteOnImport = it },
+            onExportSheet = {
+                launchSafely(vm) { exportSheetLauncher.launch(vm.suggestedSheetFileName()) }
+            },
+            onExportBackup = {
+                launchSafely(vm) { exportBackupLauncher.launch(vm.suggestedBackupFileName()) }
+            },
+            onImportFile = {
+                launchSafely(vm) { importLauncher.launch(arrayOf("application/json", "text/plain")) }
+            },
             onLoadPreset = vm::resetActiveSystemPreset,
             onImportJson = vm::importJson,
             onDismiss = { vm.setSystemModalOpen(false) }
         )
+    }
+}
+
+private inline fun launchSafely(vm: SheetViewModel, block: () -> Unit) {
+    try {
+        block()
+    } catch (_: ActivityNotFoundException) {
+        vm.reportPickerUnavailable()
     }
 }
 
@@ -474,6 +521,13 @@ private fun SheetTabButton(label: String, selected: Boolean, onClick: () -> Unit
 private fun SystemPresetAndJsonDialog(
     activeSystemId: SystemId,
     exportedJson: String,
+    transferBusy: Boolean,
+    transferFeedback: TransferFeedback?,
+    overwriteExisting: Boolean,
+    onOverwriteChange: (Boolean) -> Unit,
+    onExportSheet: () -> Unit,
+    onExportBackup: () -> Unit,
+    onImportFile: () -> Unit,
     onLoadPreset: (SystemId) -> Unit,
     onImportJson: (String) -> Boolean,
     onDismiss: () -> Unit
@@ -492,7 +546,10 @@ private fun SystemPresetAndJsonDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Presets.SYSTEM_OPTIONS.forEach { preset ->
                     val isCurrent = preset.id == activeSystemId
                     Row(
@@ -524,6 +581,16 @@ private fun SystemPresetAndJsonDialog(
                     label = { Text("JSON DA FICHA (EXPORTAR / IMPORTAR)", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                     maxLines = 4
                 )
+
+                SheetFileTransferSection(
+                    busy = transferBusy,
+                    feedback = transferFeedback,
+                    overwriteExisting = overwriteExisting,
+                    onOverwriteChange = onOverwriteChange,
+                    onExportSheet = onExportSheet,
+                    onExportBackup = onExportBackup,
+                    onImportFile = onImportFile
+                )
             }
         },
         confirmButton = {
@@ -540,4 +607,124 @@ private fun SystemPresetAndJsonDialog(
             }
         }
     )
+}
+
+
+/** SAF export/import controls (Light Cyber Brutalism, 48dp minimum touch targets). */
+@Composable
+private fun SheetFileTransferSection(
+    busy: Boolean,
+    feedback: TransferFeedback?,
+    overwriteExisting: Boolean,
+    onOverwriteChange: (Boolean) -> Unit,
+    onExportSheet: () -> Unit,
+    onExportBackup: () -> Unit,
+    onImportFile: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+            .border(CyberDimens.BorderStrong, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = if (busy) "// ARQUIVOS .JSON · PROCESSANDO_" else "// ARQUIVOS .JSON · SCHEMA V2",
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Black,
+            fontSize = 10.sp,
+            color = CyberColors.AccentWine
+        )
+        BrutalistActionButton("EXPORTAR FICHA (.JSON)", primary = true, enabled = !busy, onClick = onExportSheet)
+        BrutalistActionButton("BACKUP COMPLETO (.JSON)", primary = true, enabled = !busy, onClick = onExportBackup)
+        BrutalistActionButton("IMPORTAR FICHA / BACKUP (.JSON)", primary = false, enabled = !busy, onClick = onImportFile)
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(
+                    value = overwriteExisting,
+                    enabled = !busy,
+                    role = Role.Checkbox,
+                    onValueChange = onOverwriteChange
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Checkbox(
+                checked = overwriteExisting,
+                onCheckedChange = null,
+                enabled = !busy,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = CyberColors.AccentWine,
+                    uncheckedColor = CyberColors.BorderInk,
+                    checkmarkColor = CyberColors.InkInverse
+                )
+            )
+            Text(
+                text = "SOBRESCREVER FICHAS COM MESMO ID (SENÃO CRIA \"(CÓPIA)\")",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = CyberColors.InkPrimary
+            )
+        }
+
+        if (feedback != null) {
+            val accent = if (feedback.success) CyberColors.AccentWine else CyberColors.AccentDanger
+            val soft = if (feedback.success) CyberColors.AccentWineSoft else CyberColors.AccentDangerSoft
+            Text(
+                text = (if (feedback.success) "> OK_ " else "> ERRO_ ") + feedback.message,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(soft, RoundedCornerShape(CyberDimens.SmallRadius))
+                    .border(CyberDimens.BorderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BrutalistActionButton(
+    label: String,
+    primary: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(CyberDimens.ControlRadius)
+    val bg = when {
+        !enabled -> CyberColors.BgHover
+        primary -> CyberColors.AccentBlack
+        else -> CyberColors.BgCard
+    }
+    val ink = when {
+        !enabled -> CyberColors.InkMuted
+        primary -> CyberColors.InkInverse
+        else -> CyberColors.InkPrimary
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .background(bg, shape)
+            .border(CyberDimens.BorderStrong, CyberColors.BorderInk, shape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = label,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            color = ink
+        )
+    }
 }

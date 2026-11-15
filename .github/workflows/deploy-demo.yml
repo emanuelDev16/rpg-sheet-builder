@@ -30,6 +30,9 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Executar testes unitários (Vitest)
+        run: npx vitest run
+
       - name: Gerar build estático (Vite)
         run: npx vite build --base=/rpg-sheet-builder/
 
@@ -62,6 +65,12 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.10.2'
+
+      - name: Executar testes unitários (JUnit)
+        working-directory: ./android
+        run: |
+          chmod +x ./gradlew
+          ./gradlew testDebugUnitTest --no-daemon
 
       - name: Compilar APK Debug
         working-directory: ./android

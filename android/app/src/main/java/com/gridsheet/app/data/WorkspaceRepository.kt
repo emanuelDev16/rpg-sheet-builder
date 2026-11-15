@@ -6,6 +6,8 @@ import com.gridsheet.app.BuildConfig
 import com.gridsheet.app.core.CharacterSheetState
 import com.gridsheet.app.core.Presets
 import com.gridsheet.app.core.SheetPayloadValidator
+import com.gridsheet.app.core.SheetTransfer
+import com.gridsheet.app.core.SheetTransferException
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.WorkspaceState
 import com.gridsheet.app.data.local.FtsRuleHitRow
@@ -19,7 +21,9 @@ import kotlinx.coroutines.withContext
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
 import java.io.BufferedReader
+import java.io.InputStream
 import java.io.InputStreamReader
+import java.io.OutputStream
 import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
@@ -45,6 +49,14 @@ data class RulesSearchResponse(
 private data class RulesSearchRequest(
     val query: String,
     val systemName: String
+)
+
+data class SheetImportResult(
+    val workspace: WorkspaceState,
+    val importedCount: Int,
+    val clonedCount: Int,
+    val skippedSameSystemCount: Int,
+    val importedNames: List<String>
 )
 
 class WorkspaceRepository(context: Context) {
@@ -217,6 +229,102 @@ class WorkspaceRepository(context: Context) {
 
     fun exportSheetJson(sheet: CharacterSheetState): String =
         json.encodeToString(CharacterSheetState.serializer(), sheet)
+
+    /**
+     * Writes a versioned envelope (`app/schemaVersion/exportedAt/sheets`) as UTF-8 to [outputStream]
+     * and always closes it. `sheetIds == null` exports every sheet stored in [GridSheetDatabase];
+     * otherwise only the matching ids. [liveSheets] (in-memory state) override Room rows of the
+     * same system, so edits not yet flushed to Room are never lost in the file.
+     *
+     * @return number of exported sheets.
+     */
+    suspend fun exportSheetsToStream(
+        outputStream: OutputStream,
+        sheetIds: List<String>?,
+        liveSheets: Collection<CharacterSheetState> = emptyList()
+    ): Int = withContext(Dispatchers.IO) {
+        try {
+            val localDeviceId = getOrCreateDeviceId()
+            val bySystem = LinkedHashMap<SystemId, CharacterSheetState>()
+            for (entity in roomRepository.getAllSheetEntities()) {
+                val sysId = WorkspaceSyncEngine.parseSystemId(entity.systemId) ?: continue
+                val decoded = runCatching {
+                    roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson)
+                }.getOrNull() ?: continue
+                bySystem[sysId] = decoded.copy(systemId = sysId)
+            }
+            for (live in liveSheets) {
+                bySystem[Presets.detectSystemId(live)] = live
+            }
+            val pool = bySystem.values.map { Presets.migrateSheetMetadata(it, localDeviceId) }
+            val selected = if (sheetIds == null) {
+                pool
+            } else {
+                sheetIds.mapNotNull { id -> pool.firstOrNull { it.id == id } }
+            }
+            if (selected.isEmpty()) {
+                throw SheetTransferException("Nenhuma ficha encontrada para exportar.")
+            }
+            SheetTransfer.writeEnvelope(outputStream, selected)
+        } finally {
+            runCatching { outputStream.close() }
+        }
+    }
+
+    /**
+     * Reads at most [maxBytes] from [inputStream] (always closed), validates the payload against
+     * the schema v2 contract (`assets/presets/schema.v2.json`), migrates legacy sheets and persists
+     * them in Room through [SheetDao][com.gridsheet.app.data.local.SheetDao].
+     *
+     * When [overwriteExisting] is false, sheets whose `id` already exists get a new UUID and the
+     * " (Cópia)" suffix. Note: the workspace stores one sheet per [SystemId] (Room PK), so an
+     * imported sheet always occupies its system slot.
+     */
+    suspend fun importSheetsFromStream(
+        inputStream: InputStream,
+        overwriteExisting: Boolean,
+        baseWorkspace: WorkspaceState? = null,
+        maxBytes: Int = SheetTransfer.MAX_IMPORT_BYTES
+    ): SheetImportResult = withContext(Dispatchers.IO) {
+        val localDeviceId = getOrCreateDeviceId()
+        val raw = SheetTransfer.readBoundedUtf8(inputStream, maxBytes)
+        val parsed = SheetTransfer.parseImportPayload(raw, localDeviceId)
+
+        val roomEntities = roomRepository.getAllSheetEntities()
+        val base = baseWorkspace
+            ?: roomRepository.loadWorkspaceFromRoom().first
+            ?: loadWorkspace()
+        val existingIds = buildSet {
+            base.sheetsBySystem.values.forEach { add(it.id) }
+            roomEntities.forEach { entity ->
+                runCatching {
+                    roomRepository.json.decodeFromString(CharacterSheetState.serializer(), entity.sheetJson).id
+                }.getOrNull()?.let { add(it) }
+            }
+        }
+
+        val resolution = SheetTransfer.resolveIdCollisions(parsed, existingIds, overwriteExisting)
+        val importedBySystem = LinkedHashMap<SystemId, CharacterSheetState>()
+        for (sheet in resolution.sheets) {
+            val sysId = Presets.detectSystemId(sheet)
+            importedBySystem[sysId] = sheet.copy(systemId = sysId)
+        }
+        val nextWorkspace = WorkspaceState(
+            activeSystemId = importedBySystem.keys.first(),
+            sheetsBySystem = base.sheetsBySystem + importedBySystem
+        )
+        val now = System.currentTimeMillis()
+        saveToRoom(nextWorkspace, now, isDirty = true)
+        saveWorkspace(nextWorkspace, now)
+
+        SheetImportResult(
+            workspace = nextWorkspace,
+            importedCount = importedBySystem.size,
+            clonedCount = resolution.clonedCount,
+            skippedSameSystemCount = resolution.sheets.size - importedBySystem.size,
+            importedNames = importedBySystem.values.map { it.characterName }
+        )
+    }
 
     fun importSheetJson(rawJson: String): Result<CharacterSheetState> = runCatching {
         val validation = SheetPayloadValidator.validateRawJson(rawJson)

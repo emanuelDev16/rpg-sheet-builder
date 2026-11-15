@@ -8,6 +8,8 @@ import com.gridsheet.app.core.SheetEvaluator
 import com.gridsheet.app.core.SheetField
 import com.gridsheet.app.core.SheetMutators
 import com.gridsheet.app.core.SheetPayloadValidator
+import com.gridsheet.app.core.SheetTransfer
+import com.gridsheet.app.core.SheetTransferException
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
@@ -17,11 +19,17 @@ import com.gridsheet.app.data.PdfTextLayerDetector
 import com.gridsheet.app.data.ScannedPdfWithoutOcrException
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
+import org.junit.Assert.fail
 import org.junit.Test
+import java.io.ByteArrayInputStream
+import java.io.ByteArrayOutputStream
 import java.io.File
 
 class CoreEngineTest {
@@ -303,5 +311,209 @@ class CoreEngineTest {
         assertEquals(15, pagesVisited)
         assertEquals(6, extracted.size)
         assertEquals(10, extracted.first().pageNumber)
+    }
+
+    // ---------------------------------------------------------------------------------------
+    // SAF export / import (envelope v2)
+    // ---------------------------------------------------------------------------------------
+
+    private class CloseTrackingOutputStream : ByteArrayOutputStream() {
+        var closed = false
+        override fun close() {
+            closed = true
+            super.close()
+        }
+    }
+
+    private class CloseTrackingInputStream(bytes: ByteArray) : ByteArrayInputStream(bytes) {
+        var closed = false
+        override fun close() {
+            closed = true
+            super.close()
+        }
+    }
+
+    private val fixedNow = "2026-11-14T23:00:00Z"
+
+    private fun allPresets() = SystemId.values().map { Presets.createPresetBySystemId(it) }
+
+    @Test
+    fun envelopeV2RoundTripsAllPresetsAndClosesStream() {
+        val originals = allPresets()
+        val out = CloseTrackingOutputStream()
+        val written = SheetTransfer.writeEnvelope(out, originals, fixedNow)
+
+        assertEquals(originals.size, written)
+        assertTrue("OutputStream deve ser fechado após exportação", out.closed)
+
+        val raw = out.toByteArray().toString(Charsets.UTF_8)
+        val root = Json.parseToJsonElement(raw).jsonObject
+        assertEquals(setOf("app", "schemaVersion", "exportedAt", "sheets"), root.keys)
+        assertEquals("gridsheet", root["app"]!!.jsonPrimitive.content)
+        assertEquals(2, root["schemaVersion"]!!.jsonPrimitive.int)
+        assertEquals(fixedNow, root["exportedAt"]!!.jsonPrimitive.content)
+        assertEquals(originals.size, root["sheets"]!!.jsonArray.size)
+        assertFalse("Nulls não devem ser serializados (schema v2 rejeita max:null)", raw.contains(": null"))
+
+        val input = CloseTrackingInputStream(out.toByteArray())
+        val imported = SheetTransfer.parseImportPayload(
+            SheetTransfer.readBoundedUtf8(input),
+            deviceId = "device-test",
+            nowIso = fixedNow
+        )
+        assertTrue("InputStream deve ser fechado após importação", input.closed)
+
+        val expected = originals.map {
+            Presets.migrateLegacyWodSheet(it.copy(systemId = Presets.detectSystemId(it)), "device-test", fixedNow)
+        }
+        assertEquals(expected, imported)
+    }
+
+    @Test
+    fun legacySingleSheetJsonIsAcceptedAndMigrated() {
+        // v1-style payload: bare sheet object, no id / systemId / revision / updatedAt.
+        val legacy = """
+            {"systemName":"WORLD OF DARKNESS","systemCode":"//WOD","characterName":"Ágata",
+             "cards":[{"id":"card_combate","tab":"geral","code":"//C","title":"HEALTH · WILLPOWER · BLOOD","colSpan":1,
+               "fields":[{"id":"f_blood_pool","key":"blood_pool","label":"BLOOD","kind":"resource","numValue":3,"max":10}]}]}
+        """.trimIndent()
+
+        val sheets = SheetTransfer.parseImportPayload(legacy, deviceId = "device-test", nowIso = fixedNow)
+        assertEquals(1, sheets.size)
+        val sheet = sheets.single()
+        assertEquals(SystemId.WOD, sheet.systemId)
+        assertEquals("sheet_wod", sheet.id)
+        assertEquals(1, sheet.revision)
+        assertEquals(fixedNow, sheet.updatedAt)
+        assertEquals("device-test", sheet.deviceId)
+        val combat = sheet.cards.single()
+        assertEquals("HEALTH · WILLPOWER · HUNGER", combat.title)
+        assertEquals("f_hunger", combat.fields.single().id)
+
+        // Envelope declaring schemaVersion 1 is also accepted.
+        val v1Envelope = """{"app":"gridsheet","schemaVersion":1,"sheets":[$legacy]}"""
+        assertEquals(1, SheetTransfer.parseImportPayload(v1Envelope, nowIso = fixedNow).size)
+    }
+
+    @Test
+    fun malformedOrInvalidPayloadsAreRejectedWithReadableErrors() {
+        fun rejectMessage(raw: String): String {
+            try {
+                SheetTransfer.parseImportPayload(raw, nowIso = fixedNow)
+            } catch (e: SheetTransferException) {
+                return e.message.orEmpty()
+            }
+            fail("Payload deveria ser rejeitado: $raw")
+            error("unreachable")
+        }
+
+        assertTrue(rejectMessage("""{"app":"gridsheet","sheets":[""").contains("JSON malformado"))
+        assertTrue(rejectMessage("   ").contains("vazio"))
+        assertTrue(rejectMessage("""[1,2,3]""").contains("raiz"))
+        assertTrue(rejectMessage("""{"app":"outro","schemaVersion":2,"sheets":[]}""").contains("GridSheet"))
+        assertTrue(rejectMessage("""{"app":"gridsheet","schemaVersion":3,"sheets":[]}""").contains("schemaVersion"))
+        assertTrue(rejectMessage("""{"app":"gridsheet","schemaVersion":2,"sheets":[]}""").contains("não contém"))
+        assertTrue(
+            rejectMessage("""{"app":"gridsheet","schemaVersion":2,"sheets":[],"__proto__":{}}""").contains("__proto__")
+        )
+
+        val validSheet = SheetTransfer.transferJson.encodeToString(
+            com.gridsheet.app.core.CharacterSheetState.serializer(),
+            Presets.createBlankSheet().copy(systemId = SystemId.BLANK)
+        )
+        val injected = validSheet.replaceFirst("{", """{"isAdmin":true,""")
+        val msg = rejectMessage("""{"app":"gridsheet","schemaVersion":2,"sheets":[$validSheet,$injected]}""")
+        assertTrue(msg, msg.contains("Ficha #2") && msg.contains("isAdmin"))
+
+        val badId = validSheet.replaceFirst("\"id\": \"sheet_blank\"", "\"id\": \"../../etc\"")
+        assertTrue(rejectMessage(badId).contains("$.id"))
+
+        val tooMany = (1..51).joinToString(",") { validSheet }
+        assertTrue(rejectMessage("""{"app":"gridsheet","schemaVersion":2,"sheets":[$tooMany]}""").contains("Máximo"))
+    }
+
+    @Test
+    fun payloadAboveSizeLimitIsRejectedBeforeParsing() {
+        val small = CloseTrackingInputStream(ByteArray(2048) { ' '.code.toByte() })
+        try {
+            SheetTransfer.readBoundedUtf8(small, maxBytes = 1024)
+            fail("Leitura acima do limite deveria falhar")
+        } catch (e: SheetTransferException) {
+            assertTrue(e.message!!.contains("limite"))
+        }
+        assertTrue("Stream deve ser fechado mesmo em falha", small.closed)
+
+        val oversize = ByteArrayInputStream(ByteArray(SheetTransfer.MAX_IMPORT_BYTES + 1) { ' '.code.toByte() })
+        try {
+            SheetTransfer.readBoundedUtf8(oversize)
+            fail("Arquivo > 5 MB deveria ser rejeitado")
+        } catch (e: SheetTransferException) {
+            assertTrue(e.message!!.contains("5 MB"))
+        }
+
+        // Exactly at the limit is accepted; UTF-8 BOM is stripped.
+        val bom = byteArrayOf(0xEF.toByte(), 0xBB.toByte(), 0xBF.toByte())
+        val atLimit = bom + "{}".toByteArray()
+        assertEquals("{}", SheetTransfer.readBoundedUtf8(ByteArrayInputStream(atLimit), maxBytes = atLimit.size))
+    }
+
+    @Test
+    fun existingIdIsClonedWithNewUuidAndCopySuffixUnlessOverwriting() {
+        val wod = Presets.createWorldOfDarknessSheet()
+        val dnd = Presets.createDnd5ePreset()
+        val existingIds = setOf(wod.id)
+        val generated = ArrayDeque(listOf(wod.id, "11111111-2222-3333-4444-555555555555", "aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee"))
+
+        val res = SheetTransfer.resolveIdCollisions(
+            imported = listOf(wod, dnd, wod),
+            existingIds = existingIds,
+            overwriteExisting = false,
+            idGenerator = { generated.removeFirst() }
+        )
+        assertEquals(2, res.clonedCount)
+        val (clonedWod, keptDnd, secondClone) = res.sheets
+        // Generator collision with an existing id is retried.
+        assertEquals("11111111-2222-3333-4444-555555555555", clonedWod.id)
+        assertEquals("${wod.characterName} (Cópia)", clonedWod.characterName)
+        assertEquals(wod.cards, clonedWod.cards)
+        assertEquals(dnd, keptDnd)
+        // Duplicate within the same batch is also cloned.
+        assertEquals("aaaaaaaa-bbbb-cccc-dddd-eeeeeeeeeeee", secondClone.id)
+
+        // Default generator yields a schema-compatible UUID.
+        val uuidRes = SheetTransfer.resolveIdCollisions(listOf(wod), existingIds, overwriteExisting = false)
+        assertTrue(Regex("^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$").matches(uuidRes.sheets.single().id))
+
+        val overwrite = SheetTransfer.resolveIdCollisions(listOf(wod), existingIds, overwriteExisting = true)
+        assertEquals(0, overwrite.clonedCount)
+        assertEquals(wod, overwrite.sheets.single())
+
+        // Name stays within schema maxLength 120.
+        val longName = SheetTransfer.withCopySuffix("X".repeat(200))
+        assertEquals(120, longName.length)
+        assertTrue(longName.endsWith(" (Cópia)"))
+    }
+
+    @Test
+    fun exportFileNamesAreSanitized() {
+        val sheet = Presets.createBlankSheet().copy(characterName = "  Vampira Ágata / #2: <Noite>  ")
+        assertEquals("vampira-agata-2-noite.json", SheetTransfer.suggestedSheetFileName(sheet))
+        assertEquals("ficha.json", SheetTransfer.suggestedSheetFileName(sheet.copy(characterName = "???")))
+        assertEquals(
+            "gridsheet-backup-2026-11-14.json",
+            SheetTransfer.backupFileName(java.time.LocalDate.of(2026, 11, 14))
+        )
+    }
+
+    @Test
+    fun validatorKeySetsMatchSharedSchemaV2() {
+        val schemaFile = listOf(File("../shared/presets/schema.v2.json"), File("shared/presets/schema.v2.json"))
+            .firstOrNull { it.exists() }
+        assertTrue("schema.v2.json deve existir", schemaFile != null)
+        val schema = Json.parseToJsonElement(schemaFile!!.readText()).jsonObject
+        val defs = schema["\$defs"]!!.jsonObject
+        assertEquals(schema["properties"]!!.jsonObject.keys, SheetPayloadValidator.rootKeys)
+        assertEquals(defs["BentoCard"]!!.jsonObject["properties"]!!.jsonObject.keys, SheetPayloadValidator.cardKeys)
+        assertEquals(defs["SheetField"]!!.jsonObject["properties"]!!.jsonObject.keys, SheetPayloadValidator.fieldKeys)
     }
 }
