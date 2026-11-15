@@ -1,13 +1,35 @@
 import React, { useEffect, useRef, useState } from 'react';
-import { X, Download, Copy, Check, Upload, Printer, BookmarkPlus, Trash2 } from 'lucide-react';
+import {
+  X,
+  Download,
+  Copy,
+  Check,
+  Upload,
+  Printer,
+  BookmarkPlus,
+  Trash2,
+  RotateCcw,
+  ShieldCheck,
+  ChevronDown,
+  ChevronRight,
+} from 'lucide-react';
 import {
   CharacterSheetState,
   NewSheetIdentityInput,
+  parseAndValidateImportPayload,
+  Sheet,
   SYSTEM_OPTIONS,
   SystemId,
-  validateSheetPayload,
 } from '../core/sheetModel';
-import { CustomSheetTemplate } from '../core/sheetsStore';
+import {
+  createWorkspaceSnapshot,
+  CustomSheetTemplate,
+  listWorkspaceSnapshots,
+  resolveSheetRecordId,
+  restoreWorkspaceSnapshot,
+  WorkspaceSnapshotMetadata,
+  WorkspaceSnapshotReason,
+} from '../core/sheetsStore';
 import { AppTranslations, getTranslations } from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 
@@ -15,12 +37,20 @@ interface SheetModalProps {
   mode: 'new' | 'open' | 'save' | null;
   sheet: CharacterSheetState;
   activeSystemId: SystemId;
+  workspaceSheets?: CharacterSheetState[];
   customTemplates?: CustomSheetTemplate[];
   t?: AppTranslations['modal'];
   onClose: () => void;
   onCreateNewSheet: (systemId: SystemId, identity?: NewSheetIdentityInput) => void;
   onLoadPreset: (presetId: SystemId) => void;
-  onImportJson: (nextSheet: CharacterSheetState) => void;
+  onImportJson?: (nextSheet: CharacterSheetState) => void;
+  onImportSheets?: (sheets: CharacterSheetState[], mode: 'overwrite' | 'keep') => void | Promise<void>;
+  onRestoreSnapshot?: (snapshotId: string) => Promise<Sheet[]>;
+  onCreateSnapshot?: (
+    sheets: Sheet[],
+    reason: WorkspaceSnapshotReason,
+  ) => Promise<WorkspaceSnapshotMetadata>;
+  onListSnapshots?: () => Promise<WorkspaceSnapshotMetadata[]>;
   onSaveLocal: () => void | Promise<void>;
   onPrintPdf: () => void;
   onFlushSave?: () => void | Promise<void>;
@@ -35,12 +65,17 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   mode,
   sheet,
   activeSystemId,
+  workspaceSheets,
   customTemplates = [],
   t = DEFAULT_MODAL_T,
   onClose,
   onCreateNewSheet,
   onLoadPreset,
   onImportJson,
+  onImportSheets,
+  onRestoreSnapshot,
+  onCreateSnapshot,
+  onListSnapshots,
   onSaveLocal,
   onPrintPdf,
   onFlushSave,
@@ -49,6 +84,15 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   onDeleteCustomTemplate,
 }) => {
   const [importError, setImportError] = useState<string | null>(null);
+  const [importSuccess, setImportSuccess] = useState<{
+    count: number;
+    snapshotId: string | null;
+  } | null>(null);
+  const [importMode, setImportMode] = useState<'overwrite' | 'keep'>('overwrite');
+  const [isImporting, setIsImporting] = useState(false);
+  const [snapshots, setSnapshots] = useState<WorkspaceSnapshotMetadata[]>([]);
+  const [snapshotsExpanded, setSnapshotsExpanded] = useState(false);
+  const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<SystemId>(activeSystemId);
   const [charName, setCharName] = useState('');
@@ -60,6 +104,16 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const onCloseRef = useRef(onClose);
   onCloseRef.current = onClose;
 
+  const refreshSnapshots = async () => {
+    try {
+      const listFn = onListSnapshots ?? listWorkspaceSnapshots;
+      const items = await listFn();
+      setSnapshots(items);
+    } catch {
+      // Ignore snapshot listing errors
+    }
+  };
+
   useEffect(() => {
     if (mode === 'new') {
       setSelectedSystem(activeSystemId);
@@ -67,6 +121,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       setSecondaryTrait('');
     } else if (mode === 'save') {
       setTemplateName(sheet.characterName || '');
+    } else if (mode === 'open') {
+      setImportError(null);
+      setImportSuccess(null);
+      void refreshSnapshots();
     }
   }, [mode, activeSystemId, sheet.characterName]);
 
@@ -109,27 +167,82 @@ export const SheetModal: React.FC<SheetModalProps> = ({
     URL.revokeObjectURL(url);
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    const reader = new FileReader();
-    reader.onload = () => {
-      try {
-        const parsed: unknown = JSON.parse(String(reader.result));
-        const validation = validateSheetPayload(parsed);
-        if (!validation.valid) {
-          const preview = validation.errors.slice(0, 3).join(' | ');
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList);
+    e.target.value = '';
+
+    setIsImporting(true);
+    setImportError(null);
+    setImportSuccess(null);
+
+    try {
+      const contents = await Promise.all(files.map((file) => file.text()));
+      const importedSheets: CharacterSheetState[] = [];
+
+      for (const rawText of contents) {
+        const result = parseAndValidateImportPayload(rawText);
+        if (!result.valid) {
+          const preview = result.errors.slice(0, 3).join(' | ');
           setImportError(`Arquivo JSON rejeitado pelo schema v2.0: ${preview}`);
           return;
         }
-        setImportError(null);
-        onImportJson(parsed as CharacterSheetState);
-        onClose();
-      } catch {
-        setImportError('Não foi possível ler o arquivo JSON selecionado.');
+        importedSheets.push(...result.sheets);
       }
-    };
-    reader.readAsText(file);
+
+      const currentSheets =
+        workspaceSheets && workspaceSheets.length > 0 ? workspaceSheets : [sheet];
+      const existingIds = new Set(currentSheets.map((item) => resolveSheetRecordId(item)));
+      const hasCollision = importedSheets.some((imp) =>
+        existingIds.has(resolveSheetRecordId(imp)),
+      );
+
+      let createdSnapshotId: string | null = null;
+      if (importMode === 'overwrite' && hasCollision) {
+        const createSnap = onCreateSnapshot ?? createWorkspaceSnapshot;
+        const snapshotMeta = await createSnap(currentSheets, 'pre-import-overwrite');
+        createdSnapshotId = snapshotMeta.snapshotId;
+        await refreshSnapshots();
+      }
+
+      if (onImportSheets) {
+        await onImportSheets(importedSheets, importMode);
+      } else if (onImportJson) {
+        for (const imported of importedSheets) {
+          onImportJson(imported);
+        }
+      }
+
+      if (createdSnapshotId) {
+        setImportSuccess({
+          count: importedSheets.length,
+          snapshotId: createdSnapshotId,
+        });
+      } else {
+        onClose();
+      }
+    } catch {
+      setImportError('Não foi possível ler o arquivo JSON selecionado.');
+    } finally {
+      setIsImporting(false);
+    }
+  };
+
+  const handleRestoreSnapshot = async (snapshotId: string) => {
+    setRestoringSnapshotId(snapshotId);
+    setImportError(null);
+    try {
+      const restoreFn = onRestoreSnapshot ?? restoreWorkspaceSnapshot;
+      await restoreFn(snapshotId);
+      setImportSuccess(null);
+      await refreshSnapshots();
+      onClose();
+    } catch {
+      setImportError('Não foi possível restaurar o snapshot selecionado.');
+    } finally {
+      setRestoringSnapshotId(null);
+    }
   };
 
   const handleCopyQss = async () => {
@@ -427,28 +540,142 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 </div>
               )}
 
-              <div className="pt-2 border-t border-[var(--border-subtle)] flex items-center justify-between gap-2">
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".json,application/json"
-                  onChange={handleFileChange}
-                  className="hidden"
-                />
-                <button
-                  type="button"
-                  onClick={() => fileInputRef.current?.click()}
-                  className="cyber-roll-btn px-3 py-2 text-xs font-bold uppercase inline-flex items-center gap-2 cursor-pointer"
-                >
-                  <Upload className="w-3.5 h-3.5" aria-hidden="true" />
-                  <span>{t.importBtn}</span>
-                </button>
+              <div className="pt-2 border-t border-[var(--border-subtle)] flex flex-col gap-2">
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="inline-flex items-center gap-1" role="group" aria-label="Modo de importação">
+                    <button
+                      type="button"
+                      onClick={() => setImportMode('overwrite')}
+                      className={`cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase cursor-pointer ${
+                        importMode === 'overwrite'
+                          ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)] text-[var(--accent-wine)]'
+                          : 'text-[var(--ink-secondary)]'
+                      }`}
+                    >
+                      Substituir / Sobrescrever
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setImportMode('keep')}
+                      className={`cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase cursor-pointer ${
+                        importMode === 'keep'
+                          ? 'bg-[var(--accent-cream-badge)] border-[var(--accent-wine)] text-[var(--accent-wine)]'
+                          : 'text-[var(--ink-secondary)]'
+                      }`}
+                    >
+                      Manter existentes
+                    </button>
+                  </div>
+
+                  <input
+                    ref={fileInputRef}
+                    type="file"
+                    accept=".json,application/json"
+                    multiple
+                    onChange={(e) => void handleFileChange(e)}
+                    className="hidden"
+                  />
+                  <button
+                    type="button"
+                    disabled={isImporting}
+                    onClick={() => fileInputRef.current?.click()}
+                    className="cyber-roll-btn min-h-[36px] px-3 py-2 text-xs font-bold uppercase inline-flex items-center gap-2 cursor-pointer disabled:opacity-60"
+                  >
+                    <Upload className="w-3.5 h-3.5" aria-hidden="true" />
+                    <span>{t.importBtn}</span>
+                  </button>
+                </div>
+
+                {importSuccess && importSuccess.snapshotId && (
+                  <div
+                    role="status"
+                    data-testid="import-snapshot-banner"
+                    className="border-2 border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2.5 py-2 flex flex-wrap items-center justify-between gap-2"
+                  >
+                    <div className="flex items-center gap-1.5 min-w-0">
+                      <ShieldCheck
+                        className="w-4 h-4 text-[var(--accent-wine)] shrink-0"
+                        aria-hidden="true"
+                      />
+                      <span className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)]">
+                        Snapshot de segurança salvo antes da sobrescrita
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      data-testid="undo-import-btn"
+                      disabled={restoringSnapshotId === importSuccess.snapshotId}
+                      onClick={() => void handleRestoreSnapshot(importSuccess.snapshotId!)}
+                      className="cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)] border-[var(--accent-wine)] inline-flex items-center gap-1.5 cursor-pointer shrink-0"
+                    >
+                      <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                      <span>DESFAZER IMPORTAÇÃO</span>
+                    </button>
+                  </div>
+                )}
+
                 {importError && (
                   <div
                     role="alert"
                     className="font-mono-tech text-[11px] font-bold text-[var(--accent-danger)] border-2 border-[var(--accent-danger)] bg-[var(--bg-card)] px-2.5 py-1.5"
                   >
                     {importError}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2 border-t border-[var(--border-subtle)] pb-[max(4px,env(safe-area-inset-bottom,0px))] flex flex-col gap-2">
+                <button
+                  type="button"
+                  aria-expanded={snapshotsExpanded}
+                  data-testid="snapshots-toggle-btn"
+                  onClick={() => setSnapshotsExpanded((prev) => !prev)}
+                  className="cyber-btn-outline min-h-[36px] px-2.5 py-1.5 w-full flex items-center justify-between gap-2 text-left cursor-pointer"
+                >
+                  <span className="font-mono-tech text-[11px] font-bold uppercase tracking-wider text-[var(--ink-primary)]">
+                    // SNAPSHOTS_DE_SEGURANÇA ({snapshots.length})
+                  </span>
+                  {snapshotsExpanded ? (
+                    <ChevronDown className="w-3.5 h-3.5 text-[var(--ink-muted)] shrink-0" aria-hidden="true" />
+                  ) : (
+                    <ChevronRight className="w-3.5 h-3.5 text-[var(--ink-muted)] shrink-0" aria-hidden="true" />
+                  )}
+                </button>
+
+                {snapshotsExpanded && (
+                  <div className="flex flex-col gap-1.5">
+                    {snapshots.length === 0 ? (
+                      <div className="font-mono-tech text-[11px] text-[var(--ink-muted)] px-1 py-1">
+                        Nenhum snapshot de segurança salvo.
+                      </div>
+                    ) : (
+                      snapshots.map((snap) => (
+                        <div
+                          key={snap.snapshotId}
+                          data-testid={`snapshot-item-${snap.snapshotId}`}
+                          className="border-2 border-[var(--border-ink)] bg-[var(--bg-card-alt)] px-2.5 py-1.5 flex items-center justify-between gap-2"
+                        >
+                          <div className="min-w-0">
+                            <div className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] truncate">
+                              {new Date(snap.createdAt).toLocaleString('pt-BR')}
+                            </div>
+                            <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
+                              {snap.sheetCount} {snap.sheetCount === 1 ? 'ficha' : 'fichas'} ·{' '}
+                              {snap.reason === 'pre-import-overwrite' ? 'PRE-IMPORT' : 'MANUAL'}
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            disabled={restoringSnapshotId === snap.snapshotId}
+                            onClick={() => void handleRestoreSnapshot(snap.snapshotId)}
+                            className="cyber-btn-outline min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-bold uppercase text-[var(--accent-wine)] inline-flex items-center gap-1 cursor-pointer shrink-0"
+                          >
+                            <RotateCcw className="w-3 h-3" aria-hidden="true" />
+                            <span>RESTAURAR</span>
+                          </button>
+                        </div>
+                      ))
+                    )}
                   </div>
                 )}
               </div>

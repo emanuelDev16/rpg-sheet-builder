@@ -3,6 +3,7 @@ import {
   createDefaultSheet,
   detectSystemId,
   migrateLegacyWodSheet,
+  type Sheet,
   type SystemId,
   touchSheetMetadata,
   validateSheetPayload,
@@ -10,11 +11,14 @@ import {
 } from './sheetModel.ts';
 
 export const SHEETS_DB_NAME = 'gridsheet-workspace-db';
-export const SHEETS_DB_VERSION = 1;
+export const SHEETS_DB_VERSION = 2;
 
 export const SHEETS_STORE_NAME = 'sheets';
 export const CUSTOM_TEMPLATES_STORE_NAME = 'customTemplates';
 export const SHEETS_META_STORE_NAME = 'metadata';
+export const SNAPSHOTS_STORE_NAME = 'snapshots';
+
+export const MAX_WORKSPACE_SNAPSHOTS = 5;
 
 export const LEGACY_WOD_STORAGE_KEY = 'grid_sheet_wod_v1';
 export const WORKSPACE_STORAGE_KEY = 'grid_sheet_workspace_v2';
@@ -34,6 +38,23 @@ export interface PersistenceSnapshot {
   lastSavedAtMillis: number | null;
   errorMessage: string | null;
   pendingCount: number;
+}
+
+export type WorkspaceSnapshotReason = 'pre-import-overwrite' | 'manual';
+
+export interface WorkspaceSnapshotRecord {
+  snapshotId: string;
+  createdAt: number;
+  reason: WorkspaceSnapshotReason;
+  sheetCount: number;
+  sheets: Sheet[];
+}
+
+export interface WorkspaceSnapshotMetadata {
+  snapshotId: string;
+  createdAt: number;
+  reason: WorkspaceSnapshotReason;
+  sheetCount: number;
 }
 
 export interface CustomSheetTemplate {
@@ -209,7 +230,8 @@ function createInMemorySheetsDb() {
   const sheets = new Map<string, CharacterSheetState>();
   const customTemplates = new Map<string, CustomSheetTemplate>();
   const metadata = new Map<string, MetadataRecord>();
-  return { sheets, customTemplates, metadata };
+  const snapshots = new Map<string, WorkspaceSnapshotRecord>();
+  return { sheets, customTemplates, metadata, snapshots };
 }
 
 export class SheetsStore {
@@ -219,6 +241,7 @@ export class SheetsStore {
   private dbPromise: Promise<IDBDatabase> | null = null;
   private openedDb: IDBDatabase | null = null;
   private initPromise: Promise<InitSheetsStoreResult> | null = null;
+  private lastSnapshotCreatedAt = 0;
   private readonly memory = createInMemorySheetsDb();
 
   constructor(options: SheetsStoreOptions = {}) {
@@ -262,6 +285,12 @@ export class SheetsStore {
         }
         if (!db.objectStoreNames.contains(SHEETS_META_STORE_NAME)) {
           db.createObjectStore(SHEETS_META_STORE_NAME, { keyPath: 'key' });
+        }
+        if (!db.objectStoreNames.contains(SNAPSHOTS_STORE_NAME)) {
+          const snapshotsStore = db.createObjectStore(SNAPSHOTS_STORE_NAME, {
+            keyPath: 'snapshotId',
+          });
+          snapshotsStore.createIndex('createdAt', 'createdAt', { unique: false });
         }
       };
       request.onsuccess = () => {
@@ -838,6 +867,161 @@ export class SheetsStore {
     };
   }
 
+  async createWorkspaceSnapshot(
+    sheets: Sheet[],
+    reason: WorkspaceSnapshotReason = 'manual',
+  ): Promise<WorkspaceSnapshotMetadata> {
+    const clonedSheets = structuredClone(sheets).map((s) =>
+      normalizeSheetForStorage(s, this.storage),
+    );
+    const createdAt = Math.max(Date.now(), this.lastSnapshotCreatedAt + 1);
+    this.lastSnapshotCreatedAt = createdAt;
+    const snapshotId = `snap_${createdAt.toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
+    const record: WorkspaceSnapshotRecord = {
+      snapshotId,
+      createdAt,
+      reason,
+      sheetCount: clonedSheets.length,
+      sheets: clonedSheets,
+    };
+
+    const db = await this.getDbOrNull();
+    if (!db) {
+      this.memory.snapshots.set(snapshotId, record);
+      const sorted = Array.from(this.memory.snapshots.values()).sort(
+        (a, b) => b.createdAt - a.createdAt,
+      );
+      for (const stale of sorted.slice(MAX_WORKSPACE_SNAPSHOTS)) {
+        this.memory.snapshots.delete(stale.snapshotId);
+      }
+      return {
+        snapshotId: record.snapshotId,
+        createdAt: record.createdAt,
+        reason: record.reason,
+        sheetCount: record.sheetCount,
+      };
+    }
+
+    const tx = db.transaction(SNAPSHOTS_STORE_NAME, 'readwrite');
+    const txDone = awaitIdbTransaction(tx);
+    const store = tx.objectStore(SNAPSHOTS_STORE_NAME);
+    store.put(record);
+    const allRecords = await promisifyIdbRequest<WorkspaceSnapshotRecord[]>(store.getAll());
+    const sorted = [...(Array.isArray(allRecords) ? allRecords : [])].sort(
+      (a, b) => b.createdAt - a.createdAt,
+    );
+    for (const stale of sorted.slice(MAX_WORKSPACE_SNAPSHOTS)) {
+      store.delete(stale.snapshotId);
+    }
+    await txDone;
+
+    return {
+      snapshotId: record.snapshotId,
+      createdAt: record.createdAt,
+      reason: record.reason,
+      sheetCount: record.sheetCount,
+    };
+  }
+
+  async listWorkspaceSnapshots(): Promise<WorkspaceSnapshotMetadata[]> {
+    const db = await this.getDbOrNull();
+    let records: WorkspaceSnapshotRecord[];
+    if (!db) {
+      records = Array.from(this.memory.snapshots.values());
+    } else {
+      const tx = db.transaction(SNAPSHOTS_STORE_NAME, 'readonly');
+      const txDone = awaitIdbTransaction(tx);
+      records = await promisifyIdbRequest<WorkspaceSnapshotRecord[]>(
+        tx.objectStore(SNAPSHOTS_STORE_NAME).getAll(),
+      );
+      await txDone;
+    }
+    return [...(Array.isArray(records) ? records : [])]
+      .sort((a, b) => b.createdAt - a.createdAt)
+      .map(({ snapshotId, createdAt, reason, sheetCount }) => ({
+        snapshotId,
+        createdAt,
+        reason,
+        sheetCount,
+      }));
+  }
+
+  async restoreWorkspaceSnapshot(snapshotId: string): Promise<Sheet[]> {
+    const cleanId = snapshotId.trim();
+    if (!cleanId) {
+      throw new Error('ID de snapshot inválido.');
+    }
+
+    const db = await this.getDbOrNull();
+    let record: WorkspaceSnapshotRecord | undefined;
+    if (!db) {
+      record = this.memory.snapshots.get(cleanId);
+    } else {
+      const readTx = db.transaction(SNAPSHOTS_STORE_NAME, 'readonly');
+      const readDone = awaitIdbTransaction(readTx);
+      record = await promisifyIdbRequest<WorkspaceSnapshotRecord | undefined>(
+        readTx.objectStore(SNAPSHOTS_STORE_NAME).get(cleanId),
+      );
+      await readDone;
+    }
+
+    if (!record) {
+      throw new Error(`Snapshot "${cleanId}" não encontrado.`);
+    }
+
+    const restoredSheets = structuredClone(record.sheets).map((s) =>
+      normalizeSheetForStorage(s, this.storage),
+    );
+    const firstActiveId = restoredSheets[0]?.id ?? null;
+    const firstActiveSystem = restoredSheets[0] ? detectSystemId(restoredSheets[0]) : null;
+    const nowIso = new Date().toISOString();
+
+    if (!db) {
+      this.memory.sheets.clear();
+      for (const s of restoredSheets) {
+        this.memory.sheets.set(s.id!, s);
+      }
+      this.memory.metadata.set(ACTIVE_SHEET_ID_KEY, {
+        key: ACTIVE_SHEET_ID_KEY,
+        value: firstActiveId,
+        updatedAt: nowIso,
+      });
+      if (firstActiveSystem) {
+        this.memory.metadata.set(ACTIVE_SYSTEM_ID_KEY, {
+          key: ACTIVE_SYSTEM_ID_KEY,
+          value: firstActiveSystem,
+          updatedAt: nowIso,
+        });
+      }
+      return restoredSheets;
+    }
+
+    const tx = db.transaction([SHEETS_STORE_NAME, SHEETS_META_STORE_NAME], 'readwrite');
+    const txDone = awaitIdbTransaction(tx);
+    const sheetsStore = tx.objectStore(SHEETS_STORE_NAME);
+    const metaStore = tx.objectStore(SHEETS_META_STORE_NAME);
+
+    sheetsStore.clear();
+    for (const s of restoredSheets) {
+      sheetsStore.put(s);
+    }
+    metaStore.put({
+      key: ACTIVE_SHEET_ID_KEY,
+      value: firstActiveId,
+      updatedAt: nowIso,
+    });
+    if (firstActiveSystem) {
+      metaStore.put({
+        key: ACTIVE_SYSTEM_ID_KEY,
+        value: firstActiveSystem,
+        updatedAt: nowIso,
+      });
+    }
+    await txDone;
+
+    return restoredSheets;
+  }
+
   close(): void {
     if (this.openedDb) {
       this.openedDb.close();
@@ -1110,4 +1294,19 @@ export function saveCustomTemplate(input: {
 
 export function deleteCustomTemplate(templateId: string): Promise<void> {
   return getDefaultSheetsStore().deleteCustomTemplate(templateId);
+}
+
+export function createWorkspaceSnapshot(
+  sheets: Sheet[],
+  reason: WorkspaceSnapshotReason = 'manual',
+): Promise<WorkspaceSnapshotMetadata> {
+  return getDefaultSheetsStore().createWorkspaceSnapshot(sheets, reason);
+}
+
+export function listWorkspaceSnapshots(): Promise<WorkspaceSnapshotMetadata[]> {
+  return getDefaultSheetsStore().listWorkspaceSnapshots();
+}
+
+export function restoreWorkspaceSnapshot(snapshotId: string): Promise<Sheet[]> {
+  return getDefaultSheetsStore().restoreWorkspaceSnapshot(snapshotId);
 }

@@ -2724,6 +2724,102 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
   return { valid: errors.length === 0, errors };
 }
 
+export interface ParsedImportPayloadResult {
+  valid: boolean;
+  sheets: CharacterSheetState[];
+  errors: string[];
+}
+
+export function parseAndValidateImportPayload(rawText: string): ParsedImportPayloadResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {
+      valid: false,
+      sheets: [],
+      errors: ['Não foi possível ler o arquivo JSON selecionado.'],
+    };
+  }
+
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: ['O arquivo JSON contém uma lista vazia de fichas.'],
+      };
+    }
+    const validSheets: CharacterSheetState[] = [];
+    for (let i = 0; i < parsed.length; i += 1) {
+      const validation = validateSheetPayload(parsed[i]);
+      if (!validation.valid) {
+        return {
+          valid: false,
+          sheets: [],
+          errors: validation.errors.map((err) => `[#${i + 1}] ${err}`),
+        };
+      }
+      validSheets.push(parsed[i] as CharacterSheetState);
+    }
+    return { valid: true, sheets: validSheets, errors: [] };
+  }
+
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    'sheets' in parsed &&
+    Array.isArray((parsed as { sheets: unknown }).sheets)
+  ) {
+    const bundle = parsed as Record<string, unknown>;
+    for (const key of Object.getOwnPropertyNames(bundle)) {
+      if (DANGEROUS_OBJECT_KEYS.has(key)) {
+        return {
+          valid: false,
+          sheets: [],
+          errors: [`$.${key}: chave proibida (risco de Prototype Pollution).`],
+        };
+      }
+    }
+    const bundleSheets = bundle.sheets as unknown[];
+    if (bundleSheets.length === 0) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: ['O pacote JSON não contém nenhuma ficha.'],
+      };
+    }
+    const validSheets: CharacterSheetState[] = [];
+    for (let i = 0; i < bundleSheets.length; i += 1) {
+      const validation = validateSheetPayload(bundleSheets[i]);
+      if (!validation.valid) {
+        return {
+          valid: false,
+          sheets: [],
+          errors: validation.errors.map((err) => `[#${i + 1}] ${err}`),
+        };
+      }
+      validSheets.push(bundleSheets[i] as CharacterSheetState);
+    }
+    return { valid: true, sheets: validSheets, errors: [] };
+  }
+
+  const validation = validateSheetPayload(parsed);
+  if (!validation.valid) {
+    return {
+      valid: false,
+      sheets: [],
+      errors: validation.errors,
+    };
+  }
+  return {
+    valid: true,
+    sheets: [parsed as CharacterSheetState],
+    errors: [],
+  };
+}
+
 export function fromCanonicalSheet(
   canonical: CanonicalSheet,
   baseSheet?: CharacterSheetState,

@@ -1388,6 +1388,9 @@ export default function App() {
         mode={modalMode}
         sheet={sheet}
         activeSystemId={activeSystemId}
+        workspaceSheets={Object.values(workspace.sheetsBySystem).filter(
+          (item): item is CharacterSheetState => Boolean(item),
+        )}
         customTemplates={customTemplates}
         t={t.modal}
         onClose={() => setModalMode(null)}
@@ -1395,6 +1398,69 @@ export default function App() {
         onLoadPreset={handleLoadPreset}
         onPrintPdf={handlePrintPdf}
         onFlushSave={flushLocalPersistence}
+        onCreateSnapshot={(sheetsToSnap, reason) =>
+          sheetsStoreRef.current.createWorkspaceSnapshot(sheetsToSnap, reason)
+        }
+        onListSnapshots={() => sheetsStoreRef.current.listWorkspaceSnapshots()}
+        onImportSheets={async (importedSheets, importMode) => {
+          await flushLocalPersistence();
+          const nextMap: Partial<Record<SystemId, CharacterSheetState>> = {
+            ...workspaceRef.current.sheetsBySystem,
+          };
+          let lastSystemId: SystemId = workspaceRef.current.activeSystemId;
+
+          for (const rawNext of importedSheets) {
+            const normalized = withSafeXpState(rawNext);
+            const nextSys = detectSystemId(normalized);
+            const baseId = resolveSheetRecordId(normalized);
+            const hasExisting = Boolean(nextMap[nextSys]);
+            const resolvedId =
+              importMode === 'keep' && hasExisting
+                ? `${baseId}_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`
+                : baseId;
+            const sheetToPersist: CharacterSheetState = {
+              ...normalized,
+              id: resolvedId,
+            };
+            await sheetsStoreRef.current.saveSheet(sheetToPersist);
+            if (importMode === 'overwrite' || !hasExisting) {
+              nextMap[nextSys] = sheetToPersist;
+            }
+            lastSystemId = nextSys;
+          }
+
+          setWorkspace({
+            activeSystemId: lastSystemId,
+            sheetsBySystem: nextMap,
+          });
+          setSearchQuery('');
+          triggerFlash('// STATUS: JSON IMPORTADO COM SUCESSO');
+        }}
+        onRestoreSnapshot={async (snapshotId) => {
+          debouncedSaverRef.current?.cancelPending();
+          const restored = await sheetsStoreRef.current.restoreWorkspaceSnapshot(snapshotId);
+          const restoredMap: Partial<Record<SystemId, CharacterSheetState>> = {};
+          for (const item of restored) {
+            const normalized = withSafeXpState(item);
+            const sysId = detectSystemId(normalized);
+            if (!restoredMap[sysId]) {
+              restoredMap[sysId] = normalized;
+            }
+          }
+          const nextActiveSys = restoredMap[workspaceRef.current.activeSystemId]
+            ? workspaceRef.current.activeSystemId
+            : (Object.keys(restoredMap)[0] as SystemId | undefined) ?? 'wod';
+          if (!restoredMap[nextActiveSys]) {
+            restoredMap[nextActiveSys] = createDefaultSheet();
+          }
+          setWorkspace({
+            activeSystemId: nextActiveSys,
+            sheetsBySystem: restoredMap,
+          });
+          setSearchQuery('');
+          triggerFlash('// STATUS: SNAPSHOT RESTAURADO COM SUCESSO');
+          return restored;
+        }}
         onImportJson={(next) => {
           void flushLocalPersistence();
           const normalized = withSafeXpState(next);

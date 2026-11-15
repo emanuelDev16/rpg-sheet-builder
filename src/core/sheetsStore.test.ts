@@ -5,7 +5,9 @@ import {
   createDebouncedSheetSaver,
   LEGACY_BACKUP_V1_KEY,
   LEGACY_WOD_STORAGE_KEY,
+  MAX_WORKSPACE_SNAPSHOTS,
   MIGRATION_V1_DONE_KEY,
+  SHEETS_DB_VERSION,
   SHEETS_META_STORE_NAME,
   SheetsStore,
   WORKSPACE_STORAGE_KEY,
@@ -14,6 +16,7 @@ import {
   type CharacterSheetState,
   createNewSheetForSystem,
   createPresetBySystemId,
+  parseAndValidateImportPayload,
   type WorkspaceState,
 } from './sheetModel';
 
@@ -59,7 +62,7 @@ async function readMetadataRaw(
   key: string,
 ): Promise<{ key: string; value: unknown } | undefined> {
   return new Promise((resolve, reject) => {
-    const req = idbFactory.open(dbName, 1);
+    const req = idbFactory.open(dbName, SHEETS_DB_VERSION);
     req.onsuccess = () => {
       const db = req.result;
       const tx = db.transaction(SHEETS_META_STORE_NAME, 'readonly');
@@ -308,6 +311,163 @@ describe('SheetsStore IndexedDB persistence', () => {
     expect(saveSpy).toHaveBeenCalledTimes(2);
     expect(statuses).toContain('saving');
     expect(statuses).toContain('saved');
+
+    store.close();
+  });
+});
+
+describe('Workspace safety snapshots', () => {
+  it('creates a deep-cloned pre-import-overwrite snapshot and restores previous sheets intact', async () => {
+    const { store } = createIsolatedStore();
+    await store.initSheetsStore();
+
+    const originalWod: CharacterSheetState = {
+      ...createNewSheetForSystem('wod', { characterName: 'Original Julian' }),
+      id: 'sheet_wod',
+    };
+    const originalDnd: CharacterSheetState = {
+      ...createNewSheetForSystem('dnd5e', { characterName: 'Original Lyra' }),
+      id: 'sheet_dnd5e',
+    };
+
+    await store.saveSheet(originalWod);
+    await store.saveSheet(originalDnd);
+
+    // Create pre-import-overwrite snapshot
+    const snapMeta = await store.createWorkspaceSnapshot(
+      [originalWod, originalDnd],
+      'pre-import-overwrite',
+    );
+    expect(snapMeta.reason).toBe('pre-import-overwrite');
+    expect(snapMeta.sheetCount).toBe(2);
+
+    // Mutate live object and overwrite IndexedDB with new sheet
+    originalWod.characterName = 'MUTATED IN MEMORY';
+    const overwrittenWod: CharacterSheetState = {
+      ...createNewSheetForSystem('wod', { characterName: 'Imported Overwrite' }),
+      id: 'sheet_wod',
+    };
+    await store.saveSheet(overwrittenWod);
+    expect((await store.getSheet('sheet_wod'))?.characterName).toBe('IMPORTED OVERWRITE');
+
+    // Restore snapshot and verify intact state
+    const restored = await store.restoreWorkspaceSnapshot(snapMeta.snapshotId);
+    expect(restored).toHaveLength(2);
+    expect((await store.getSheet('sheet_wod'))?.characterName).toBe('ORIGINAL JULIAN');
+    expect((await store.getSheet('sheet_dnd5e'))?.characterName).toBe('ORIGINAL LYRA');
+
+    store.close();
+  });
+
+  it('rotates snapshots FIFO keeping at most 5 most recent and discarding the 6th oldest', async () => {
+    const { store } = createIsolatedStore();
+    await store.initSheetsStore();
+
+    const createdIds: string[] = [];
+    for (let i = 1; i <= MAX_WORKSPACE_SNAPSHOTS + 1; i += 1) {
+      const sheet: CharacterSheetState = {
+        ...createNewSheetForSystem('wod', { characterName: `Char ${i}` }),
+        id: `sheet_${i}`,
+      };
+      const meta = await store.createWorkspaceSnapshot([sheet], 'manual');
+      createdIds.push(meta.snapshotId);
+    }
+
+    const listed = await store.listWorkspaceSnapshots();
+    expect(listed).toHaveLength(MAX_WORKSPACE_SNAPSHOTS);
+    // Ordered newest to oldest; oldest (createdIds[0]) must be evicted
+    expect(listed.map((s) => s.snapshotId)).toEqual(
+      createdIds.slice(1).reverse(),
+    );
+    expect(listed.some((s) => s.snapshotId === createdIds[0])).toBe(false);
+
+    // Attempting to restore evicted snapshot rejects cleanly
+    await expect(store.restoreWorkspaceSnapshot(createdIds[0])).rejects.toThrow();
+
+    store.close();
+  });
+
+  it('does not create a snapshot when import payload fails parseAndValidateImportPayload', async () => {
+    const { store } = createIsolatedStore();
+    await store.initSheetsStore();
+
+    const existing: CharacterSheetState = {
+      ...createNewSheetForSystem('wod', { characterName: 'Safe Sheet' }),
+      id: 'sheet_wod',
+    };
+    await store.saveSheet(existing);
+
+    const invalidInputs = [
+      '{not_valid_json',
+      JSON.stringify({ systemName: 'X' }),
+      JSON.stringify([]),
+      '[{"systemName":"X","systemCode":"/X","characterName":"Y","cards":[],"__proto__":{"polluted":true}}]',
+    ];
+
+    for (const raw of invalidInputs) {
+      const parsed = parseAndValidateImportPayload(raw);
+      expect(parsed.valid).toBe(false);
+      expect(parsed.sheets).toHaveLength(0);
+      if (parsed.valid) {
+        await store.createWorkspaceSnapshot([existing], 'pre-import-overwrite');
+      }
+    }
+
+    expect(await store.listWorkspaceSnapshots()).toHaveLength(0);
+
+    // Valid batch payload passes validation
+    const validBatch = parseAndValidateImportPayload(JSON.stringify([existing]));
+    expect(validBatch.valid).toBe(true);
+    expect(validBatch.sheets).toHaveLength(1);
+
+    store.close();
+  });
+
+  it('safely upgrades an existing v1 IndexedDB database to v2 without losing sheets or customTemplates', async () => {
+    const idbFactory = new IDBFactory();
+    const dbName = 'upgrade-v1-to-v2-db';
+    const existingSheet: CharacterSheetState = {
+      ...createPresetBySystemId('wod'),
+      id: 'sheet_wod_v1',
+      characterName: 'V1 SURVIVOR',
+    };
+
+    // Seed a v1 database manually
+    await new Promise<void>((resolve, reject) => {
+      const req = idbFactory.open(dbName, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        const sheetsStore = db.createObjectStore('sheets', { keyPath: 'id' });
+        sheetsStore.createIndex('id', 'id', { unique: true });
+        sheetsStore.createIndex('systemId', 'systemId', { unique: false });
+        sheetsStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+        const tplStore = db.createObjectStore('customTemplates', { keyPath: 'id' });
+        tplStore.createIndex('systemId', 'systemId', { unique: false });
+        tplStore.createIndex('updatedAt', 'updatedAt', { unique: false });
+        db.createObjectStore('metadata', { keyPath: 'key' });
+      };
+      req.onsuccess = () => {
+        const db = req.result;
+        const tx = db.transaction(['sheets', 'metadata'], 'readwrite');
+        tx.objectStore('sheets').put(existingSheet);
+        tx.objectStore('metadata').put({ key: MIGRATION_V1_DONE_KEY, value: true });
+        tx.oncomplete = () => {
+          db.close();
+          resolve();
+        };
+        tx.onerror = () => reject(tx.error);
+      };
+      req.onerror = () => reject(req.error);
+    });
+
+    const store = new SheetsStore({ idbFactory, dbName });
+    await store.initSheetsStore();
+
+    const loaded = await store.getSheet('sheet_wod_v1');
+    expect(loaded?.characterName).toBe('V1 SURVIVOR');
+
+    const snap = await store.createWorkspaceSnapshot([loaded!], 'manual');
+    expect((await store.listWorkspaceSnapshots())[0].snapshotId).toBe(snap.snapshotId);
 
     store.close();
   });
