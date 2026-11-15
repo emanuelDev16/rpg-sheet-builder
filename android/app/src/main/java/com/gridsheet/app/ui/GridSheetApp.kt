@@ -1,5 +1,9 @@
 package com.gridsheet.app.ui
 
+import android.content.ActivityNotFoundException
+import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -7,29 +11,48 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.GridItemSpan
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.CheckboxDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -38,9 +61,11 @@ import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -48,13 +73,24 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gridsheet.app.core.AppMode
+import com.gridsheet.app.core.PresetSummary
 import com.gridsheet.app.core.Presets
+import com.gridsheet.app.core.SheetMetadata
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
+import com.gridsheet.app.ui.components.ActiveSessionHeroCard
 import com.gridsheet.app.ui.components.BentoCardView
+import com.gridsheet.app.ui.components.BrutalistSectionHeader
+import com.gridsheet.app.ui.components.BrutalistTagBadge
+import com.gridsheet.app.ui.components.CharacterLibraryCard
+import com.gridsheet.app.ui.components.CreateCharacterDialog
 import com.gridsheet.app.ui.components.CustomCardBuilderView
 import com.gridsheet.app.ui.components.CyberGridBackground
+import com.gridsheet.app.ui.components.DashedCustomSheetCard
+import com.gridsheet.app.ui.components.DeleteCharacterConfirmDialog
+import com.gridsheet.app.ui.components.PortabilityAndRulesCard
+import com.gridsheet.app.ui.components.PresetSystemCard
 import com.gridsheet.app.ui.components.RollAndRulesBottomSheet
 import com.gridsheet.app.ui.components.XpUpgradeWorkspace
 import com.gridsheet.app.ui.theme.CyberColors
@@ -62,6 +98,7 @@ import com.gridsheet.app.ui.theme.CyberDimens
 
 @Composable
 fun GridSheetApp(vm: SheetViewModel = viewModel()) {
+    val uiState by vm.uiState.collectAsState()
     val workspace by vm.workspace.collectAsState()
     val sheet by vm.activeSheet.collectAsState()
     val evaluation by vm.evaluation.collectAsState()
@@ -74,6 +111,35 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
     val systemModalOpen by vm.systemModalOpen.collectAsState()
     val rulesLoading by vm.rulesLoading.collectAsState()
     val rulesResult by vm.rulesResult.collectAsState()
+    val rulesQuery by vm.rulesQuery.collectAsState()
+    val indexedBooks by vm.indexedBooks.collectAsState()
+    val indexProgress by vm.indexProgress.collectAsState()
+    val scannedPdfAlert by vm.scannedPdfAlert.collectAsState()
+    val localRuleHits by vm.localRuleHits.collectAsState()
+    val localSearchElapsedMs by vm.localSearchElapsedMs.collectAsState()
+
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            vm.importPdfRulebook(uri)
+        }
+    }
+    val transferBusy by vm.transferBusy.collectAsState()
+    val transferFeedback by vm.transferFeedback.collectAsState()
+    var overwriteOnImport by rememberSaveable { mutableStateOf(false) }
+
+    // Storage Access Framework launchers: no WRITE/READ_EXTERNAL_STORAGE permission required.
+    // Registered at the root so results survive the modal being recomposed or dismissed.
+    val exportSheetLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) vm.exportToUri(uri, fullBackup = false) }
+    val exportBackupLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/json")
+    ) { uri -> if (uri != null) vm.exportToUri(uri, fullBackup = true) }
+    val importLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument()
+    ) { uri -> if (uri != null) vm.importFromUri(uri, overwriteOnImport) }
 
     val availableXp = XpSystem.getAvailableXp(sheet.xp)
     val activeSystemId = workspace.activeSystemId
@@ -81,10 +147,49 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
         sheet.cards.filter { it.tab == activeTab }
     }
 
-    CyberGridBackground(
-        modifier = Modifier.windowInsetsPadding(WindowInsets.safeDrawing)
+    BackHandler(
+        enabled = uiState.activeScreen == ActiveScreen.SHEET && !sideSheetOpen && !systemModalOpen
     ) {
-        Column(modifier = Modifier.fillMaxSize()) {
+        vm.navigateToHome()
+    }
+
+    CyberGridBackground(
+        modifier = Modifier.fillMaxSize()
+    ) {
+        if (uiState.activeScreen == ActiveScreen.HOME) {
+            HomeScreen(
+                uiState = uiState,
+                transferBusy = transferBusy,
+                transferFeedback = transferFeedback,
+                overwriteOnImport = overwriteOnImport,
+                onOverwriteChange = { overwriteOnImport = it },
+                onContinueSheet = { sheetId -> vm.navigateToSheet(sheetId) },
+                onOpenSheet = { sheetId -> vm.navigateToSheet(sheetId) },
+                onCreateNewSheet = { systemId, customName ->
+                    vm.createNewSheetFromHome(systemId, customName)
+                },
+                onDuplicateSheet = vm::duplicateSheet,
+                onDeleteSheet = vm::deleteSheet,
+                onSearchQueryChange = vm::setHomeSearchQuery,
+                onSystemFilterSelect = vm::setHomeSystemFilter,
+                onExportBackup = {
+                    vm.clearTransferFeedback()
+                    launchSafely(vm) { exportBackupLauncher.launch(vm.suggestedBackupFileName()) }
+                },
+                onImportJson = {
+                    vm.clearTransferFeedback()
+                    launchSafely(vm) { importLauncher.launch(arrayOf("application/json", "text/plain")) }
+                },
+                modifier = Modifier
+                    .fillMaxSize()
+                    .windowInsetsPadding(WindowInsets.safeDrawing)
+            )
+        } else {
+        Column(
+            modifier = Modifier
+                .fillMaxSize()
+                .windowInsetsPadding(WindowInsets.safeDrawing)
+        ) {
             // Top Technical Header Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
@@ -145,12 +250,16 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.spacedBy(6.dp)
                     ) {
+                        TopHomeBtn(onClick = vm::navigateToHome)
                         SystemSwitcherDropdown(
                             activeSystemId = activeSystemId,
                             onSelect = vm::switchSystem
                         )
                         TopOutlineBtn("NOVA") { vm.createNewBlankSheet() }
-                        TopOutlineBtn("ABRIR") { vm.setSystemModalOpen(true) }
+                        TopOutlineBtn("ABRIR") {
+                            vm.clearTransferFeedback()
+                            vm.setSystemModalOpen(true)
+                        }
                         TopOutlineBtn("ROLAGENS (${sheet.rollLogs.size})") {
                             vm.openSideSheet(SideSheetMode.LOGS)
                         }
@@ -210,6 +319,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onFilterChange = vm::setXpFilter,
                             onAwardXp = vm::awardXp,
                             onUpgradeTrait = vm::upgradeTrait,
+                            onToggleDisciplineClan = vm::toggleDisciplineClan,
+                            onSetCustomMultiplier = vm::setTraitCustomMultiplier,
                             onUndoLastUpgrade = vm::undoLastUpgrade
                         )
                     }
@@ -231,6 +342,9 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onRemoveRow = vm::removeRepeatableRow,
                             onUpdateSchema = vm::updateFieldSchema,
                             onAddField = vm::addFieldToCard,
+                            onMoveField = vm::moveFieldInCard,
+                            onCycleRollDifficulty = vm::cycleRollDifficulty,
+                            onToggleRollSpecialty = vm::toggleRollSpecialty,
                             onRemoveField = vm::removeFieldFromCard,
                             onRemoveCard = vm::removeCardFromSheet
                         )
@@ -301,33 +415,68 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                 }
             }
         }
+        }
     }
 
-    if (sideSheetOpen) {
+    if (uiState.activeScreen == ActiveScreen.SHEET && sideSheetOpen) {
         RollAndRulesBottomSheet(
             mode = sideSheetMode,
             systemId = activeSystemId,
             systemName = sheet.systemName,
             quickDice = vm.getQuickDicePresets(activeSystemId),
             logs = sheet.rollLogs,
+            rulesQuery = rulesQuery,
             rulesLoading = rulesLoading,
             rulesResult = rulesResult,
+            indexedBooks = indexedBooks,
+            indexProgress = indexProgress,
+            scannedPdfAlert = scannedPdfAlert,
+            localRuleHits = localRuleHits,
+            localSearchElapsedMs = localSearchElapsedMs,
             onSwitchMode = { vm.openSideSheet(it) },
             onRollExpression = vm::rollExpression,
             onClearLogs = vm::clearRollLogs,
-            onSearchRules = vm::searchRules,
+            onRulesQueryChange = vm::updateRulesQuery,
+            onSearchRules = { q, forceOnline -> vm.searchRules(q, forceOnline) },
+            onPickPdf = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+            onDeleteBook = vm::deleteIndexedBook,
+            onStartOcr = vm::startOcrIndexing,
+            onCancelIndexing = vm::cancelIndexing,
+            onDismissScannedPdfAlert = vm::dismissScannedPdfAlert,
+            onDismissIndexError = vm::dismissIndexError,
             onDismiss = vm::closeSideSheet
         )
     }
 
-    if (systemModalOpen) {
+    if (uiState.activeScreen == ActiveScreen.SHEET && systemModalOpen) {
         SystemPresetAndJsonDialog(
             activeSystemId = activeSystemId,
             exportedJson = vm.exportCurrentJson(),
+            transferBusy = transferBusy,
+            transferFeedback = transferFeedback,
+            overwriteExisting = overwriteOnImport,
+            onOverwriteChange = { overwriteOnImport = it },
+            onExportSheet = {
+                launchSafely(vm) { exportSheetLauncher.launch(vm.suggestedSheetFileName()) }
+            },
+            onExportBackup = {
+                launchSafely(vm) { exportBackupLauncher.launch(vm.suggestedBackupFileName()) }
+            },
+            onImportFile = {
+                launchSafely(vm) { importLauncher.launch(arrayOf("application/json", "text/plain")) }
+            },
             onLoadPreset = vm::resetActiveSystemPreset,
             onImportJson = vm::importJson,
             onDismiss = { vm.setSystemModalOpen(false) }
         )
+    }
+}
+
+private inline fun launchSafely(vm: SheetViewModel, block: () -> Unit) {
+    try {
+        block()
+    } catch (_: ActivityNotFoundException) {
+        vm.reportPickerUnavailable()
     }
 }
 
@@ -377,6 +526,410 @@ private fun SystemSwitcherDropdown(
                     }
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun HomeScreen(
+    uiState: UiState,
+    transferBusy: Boolean,
+    transferFeedback: TransferFeedback?,
+    overwriteOnImport: Boolean,
+    onOverwriteChange: (Boolean) -> Unit,
+    onContinueSheet: (String) -> Unit,
+    onOpenSheet: (String) -> Unit,
+    onCreateNewSheet: (String, String?) -> Unit,
+    onDuplicateSheet: (String) -> Unit,
+    onDeleteSheet: (String) -> Unit,
+    onSearchQueryChange: (String) -> Unit,
+    onSystemFilterSelect: (SystemId?) -> Unit,
+    onExportBackup: () -> Unit,
+    onImportJson: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val latestSheet = uiState.sheets.firstOrNull()
+    val systemPresets = remember(uiState.presets) {
+        uiState.presets.filter { it.systemId != SystemId.BLANK }
+    }
+    val blankPreset = remember(uiState.presets) {
+        uiState.presets.find { it.systemId == SystemId.BLANK } ?: PresetSummary(
+            systemId = SystemId.BLANK,
+            systemName = "CUSTOM BLANK",
+            systemCode = "CUSTOM // BLANK",
+            shortLabel = "CUSTOM",
+            description = "Canvas em branco com criação livre de cards, status e fórmulas.",
+            cardCount = 0,
+            fieldCount = 0,
+            fromAsset = false
+        )
+    }
+    val activeSystems = remember(uiState.sheets) {
+        val presentIds = uiState.sheets.map { it.systemId }.toSet()
+        Presets.SYSTEM_OPTIONS.filter { it.id in presentIds }
+    }
+
+    var creationTarget by remember { mutableStateOf<PresetSummary?>(null) }
+    var deletionTarget by remember { mutableStateOf<SheetMetadata?>(null) }
+
+    BoxWithConstraints(modifier = modifier) {
+        val columns = if (maxWidth >= 600.dp) 2 else 1
+
+        LazyVerticalGrid(
+            columns = GridCells.Fixed(columns),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(14.dp),
+            horizontalArrangement = Arrangement.spacedBy(12.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            item(span = { GridItemSpan(columns) }, key = "home_masthead") {
+                Surface(
+                    modifier = Modifier.fillMaxWidth(),
+                    shape = RoundedCornerShape(CyberDimens.CardRadius),
+                    color = CyberColors.BgCard,
+                    border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+                    shadowElevation = 2.dp
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 14.dp, vertical = 12.dp),
+                        horizontalArrangement = Arrangement.SpaceBetween,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .background(CyberColors.AccentBlack, RoundedCornerShape(4.dp))
+                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            ) {
+                                Text(
+                                    text = "+",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black,
+                                    color = CyberColors.InkInverse,
+                                    fontSize = 14.sp
+                                )
+                            }
+                            Column {
+                                Text(
+                                    text = "GRIDSHEET // TERMINAL",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 15.sp,
+                                    color = CyberColors.InkPrimary
+                                )
+                                Text(
+                                    text = if (uiState.isLoading) "SINCRONIZANDO ROOM..." else "ARMÁRIO DE FICHAS & REGRAS OFFLINE",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.InkMuted
+                                )
+                            }
+                        }
+                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                            BrutalistTagBadge(
+                                text = "${uiState.sheets.size} FICHAS",
+                                containerColor = CyberColors.BgHeaderStrip,
+                                contentColor = CyberColors.InkPrimary
+                            )
+                            BrutalistTagBadge(
+                                text = "PDF: ${uiState.indexedBooksCount}",
+                                containerColor = if (uiState.indexedBooksCount > 0) CyberColors.AccentWineSoft else CyberColors.BgCardAlt,
+                                contentColor = if (uiState.indexedBooksCount > 0) CyberColors.AccentWine else CyberColors.InkSecondary
+                            )
+                        }
+                    }
+                }
+            }
+
+            // Bloco 1: // SESSÃO_ATIVA (Hero Card)
+            item(span = { GridItemSpan(columns) }, key = "home_active_session") {
+                ActiveSessionHeroCard(
+                    latestSheet = latestSheet,
+                    onContinue = onContinueSheet,
+                    onDuplicate = onDuplicateSheet
+                )
+            }
+
+            // Bloco 2: // NOVO_PERSONAGEM
+            item(span = { GridItemSpan(columns) }, key = "home_new_header") {
+                BrutalistSectionHeader(
+                    code = "// NOVO_PERSONAGEM",
+                    title = "Instanciar ficha zerada",
+                    trailingBadge = "${systemPresets.size + 1} MODELOS"
+                )
+            }
+
+            gridItems(
+                items = systemPresets,
+                key = { "preset_${it.systemId.name}" }
+            ) { preset ->
+                PresetSystemCard(
+                    preset = preset,
+                    onClick = { creationTarget = preset }
+                )
+            }
+
+            item(key = "preset_custom_blank") {
+                DashedCustomSheetCard(
+                    onClick = { creationTarget = blankPreset }
+                )
+            }
+
+            // Bloco 3: // MEUS_PERSONAGENS
+            item(span = { GridItemSpan(columns) }, key = "home_library_header") {
+                BrutalistSectionHeader(
+                    code = "// MEUS_PERSONAGENS",
+                    title = "Personagens salvos no Room",
+                    trailingBadge = "${uiState.filteredSheets.size}/${uiState.sheets.size}"
+                )
+            }
+
+            item(span = { GridItemSpan(columns) }, key = "home_library_filters") {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    OutlinedTextField(
+                        value = uiState.searchQuery,
+                        onValueChange = onSearchQueryChange,
+                        singleLine = true,
+                        label = {
+                            Text(
+                                text = "BUSCAR PERSONAGEM POR NOME",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp
+                            )
+                        },
+                        placeholder = {
+                            Text(
+                                text = "EX: JULIAN, LYRA...",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp
+                            )
+                        },
+                        leadingIcon = {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "Buscar",
+                                tint = CyberColors.InkPrimary
+                            )
+                        },
+                        trailingIcon = {
+                            if (uiState.searchQuery.isNotEmpty()) {
+                                IconButton(onClick = { onSearchQueryChange("") }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Close,
+                                        contentDescription = "Limpar busca",
+                                        tint = CyberColors.InkPrimary
+                                    )
+                                }
+                            }
+                        },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedContainerColor = CyberColors.BgCard,
+                            unfocusedContainerColor = CyberColors.BgCard,
+                            focusedBorderColor = CyberColors.AccentWine,
+                            unfocusedBorderColor = CyberColors.BorderInk,
+                            focusedLabelColor = CyberColors.AccentWine,
+                            cursorColor = CyberColors.AccentWine
+                        ),
+                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                        modifier = Modifier.fillMaxWidth()
+                    )
+
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        HomeFilterChip(
+                            label = "TODOS (${uiState.sheets.size})",
+                            selected = uiState.selectedSystemFilter == null,
+                            onClick = { onSystemFilterSelect(null) }
+                        )
+                        activeSystems.forEach { opt ->
+                            val countForSystem = uiState.sheets.count { it.systemId == opt.id }
+                            HomeFilterChip(
+                                label = "${opt.shortLabel} ($countForSystem)",
+                                selected = uiState.selectedSystemFilter == opt.id,
+                                onClick = {
+                                    val next = if (uiState.selectedSystemFilter == opt.id) null else opt.id
+                                    onSystemFilterSelect(next)
+                                }
+                            )
+                        }
+                    }
+                }
+            }
+
+            if (uiState.filteredSheets.isEmpty()) {
+                item(span = { GridItemSpan(columns) }, key = "home_library_empty") {
+                    Surface(
+                        modifier = Modifier.fillMaxWidth(),
+                        shape = RoundedCornerShape(CyberDimens.CardRadius),
+                        color = CyberColors.BgCardAlt,
+                        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                    ) {
+                        Column(
+                            modifier = Modifier.padding(14.dp),
+                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                        ) {
+                            Text(
+                                text = if (uiState.sheets.isEmpty()) {
+                                    "// BIBLIOTECA VAZIA"
+                                } else {
+                                    "// NENHUM RESULTADO PARA O FILTRO"
+                                },
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 12.sp,
+                                color = CyberColors.AccentWine
+                            )
+                            Text(
+                                text = if (uiState.sheets.isEmpty()) {
+                                    "Crie seu primeiro personagem em // NOVO_PERSONAGEM acima ou importe um arquivo .JSON."
+                                } else {
+                                    "Nenhuma ficha corresponde à busca \"${uiState.searchQuery}\" e sistema selecionado."
+                                },
+                                fontSize = 12.sp,
+                                color = CyberColors.InkSecondary
+                            )
+                        }
+                    }
+                }
+            } else {
+                gridItems(
+                    items = uiState.filteredSheets,
+                    key = { "sheet_${it.id}" }
+                ) { item ->
+                    CharacterLibraryCard(
+                        sheet = item,
+                        isLatest = latestSheet?.id == item.id,
+                        onOpen = { onOpenSheet(item.id) },
+                        onDuplicate = { onDuplicateSheet(item.id) },
+                        onDeleteRequest = { deletionTarget = item }
+                    )
+                }
+            }
+
+            // Bloco 4: // PORTABILIDADE_&_REGRAS
+            item(span = { GridItemSpan(columns) }, key = "home_portability_header") {
+                BrutalistSectionHeader(
+                    code = "// PORTABILIDADE_&_REGRAS",
+                    title = "Backup JSON Schema V2 & Grimório",
+                    trailingBadge = "PDF INDEXADOS: ${uiState.indexedBooksCount}"
+                )
+            }
+
+            item(span = { GridItemSpan(columns) }, key = "home_portability_card") {
+                PortabilityAndRulesCard(
+                    indexedBooksCount = uiState.indexedBooksCount,
+                    sheetCount = uiState.sheets.size,
+                    transferBusy = transferBusy,
+                    transferFeedbackMessage = transferFeedback?.message,
+                    transferFeedbackIsError = transferFeedback?.success == false,
+                    overwriteExisting = overwriteOnImport,
+                    onOverwriteChange = onOverwriteChange,
+                    onExportBackup = onExportBackup,
+                    onImportJson = onImportJson
+                )
+            }
+
+            item(span = { GridItemSpan(columns) }, key = "home_bottom_spacer") {
+                Spacer(modifier = Modifier.height(12.dp))
+            }
+        }
+    }
+
+    creationTarget?.let { target ->
+        CreateCharacterDialog(
+            systemLabel = target.shortLabel,
+            systemCode = target.systemCode,
+            description = target.description,
+            isCustomBlank = target.systemId == SystemId.BLANK,
+            onDismiss = { creationTarget = null },
+            onConfirm = { customName ->
+                creationTarget = null
+                onCreateNewSheet(target.systemId.name, customName)
+            }
+        )
+    }
+
+    deletionTarget?.let { target ->
+        DeleteCharacterConfirmDialog(
+            sheet = target,
+            onDismiss = { deletionTarget = null },
+            onConfirm = {
+                deletionTarget = null
+                onDeleteSheet(target.id)
+            }
+        )
+    }
+}
+
+@Composable
+private fun HomeFilterChip(
+    label: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    FilterChip(
+        selected = selected,
+        onClick = onClick,
+        label = {
+            Text(
+                text = label,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black
+            )
+        },
+        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+        colors = FilterChipDefaults.filterChipColors(
+            containerColor = CyberColors.BgCard,
+            labelColor = CyberColors.InkPrimary,
+            selectedContainerColor = CyberColors.AccentWine,
+            selectedLabelColor = CyberColors.InkInverse
+        ),
+        border = FilterChipDefaults.filterChipBorder(
+            enabled = true,
+            selected = selected,
+            borderColor = CyberColors.BorderInk,
+            selectedBorderColor = CyberColors.BorderInk,
+            borderWidth = CyberDimens.BorderWidth,
+            selectedBorderWidth = CyberDimens.BorderStrong
+        ),
+        modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+    )
+}
+
+@Composable
+private fun TopHomeBtn(onClick: () -> Unit) {
+    Surface(
+        modifier = Modifier
+            .defaultMinSize(minWidth = CyberDimens.MinTouchTarget, minHeight = CyberDimens.MinTouchTarget)
+            .clickable(role = Role.Button, onClick = onClick),
+        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+        color = CyberColors.BgHeaderStrip,
+        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
+        ) {
+            Text(
+                text = "// INÍCIO",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 11.sp,
+                fontWeight = FontWeight.Black,
+                color = CyberColors.AccentWine
+            )
         }
     }
 }
@@ -447,6 +1000,13 @@ private fun SheetTabButton(label: String, selected: Boolean, onClick: () -> Unit
 private fun SystemPresetAndJsonDialog(
     activeSystemId: SystemId,
     exportedJson: String,
+    transferBusy: Boolean,
+    transferFeedback: TransferFeedback?,
+    overwriteExisting: Boolean,
+    onOverwriteChange: (Boolean) -> Unit,
+    onExportSheet: () -> Unit,
+    onExportBackup: () -> Unit,
+    onImportFile: () -> Unit,
     onLoadPreset: (SystemId) -> Unit,
     onImportJson: (String) -> Boolean,
     onDismiss: () -> Unit
@@ -465,7 +1025,10 @@ private fun SystemPresetAndJsonDialog(
             )
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(
+                modifier = Modifier.verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
                 Presets.SYSTEM_OPTIONS.forEach { preset ->
                     val isCurrent = preset.id == activeSystemId
                     Row(
@@ -497,6 +1060,16 @@ private fun SystemPresetAndJsonDialog(
                     label = { Text("JSON DA FICHA (EXPORTAR / IMPORTAR)", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                     maxLines = 4
                 )
+
+                SheetFileTransferSection(
+                    busy = transferBusy,
+                    feedback = transferFeedback,
+                    overwriteExisting = overwriteExisting,
+                    onOverwriteChange = onOverwriteChange,
+                    onExportSheet = onExportSheet,
+                    onExportBackup = onExportBackup,
+                    onImportFile = onImportFile
+                )
             }
         },
         confirmButton = {
@@ -513,4 +1086,124 @@ private fun SystemPresetAndJsonDialog(
             }
         }
     )
+}
+
+
+/** SAF export/import controls (Light Cyber Brutalism, 48dp minimum touch targets). */
+@Composable
+private fun SheetFileTransferSection(
+    busy: Boolean,
+    feedback: TransferFeedback?,
+    overwriteExisting: Boolean,
+    onOverwriteChange: (Boolean) -> Unit,
+    onExportSheet: () -> Unit,
+    onExportBackup: () -> Unit,
+    onImportFile: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxWidth()
+            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+            .border(CyberDimens.BorderStrong, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+            .padding(10.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp)
+    ) {
+        Text(
+            text = if (busy) "// ARQUIVOS .JSON · PROCESSANDO_" else "// ARQUIVOS .JSON · SCHEMA V2",
+            fontFamily = FontFamily.Monospace,
+            fontWeight = FontWeight.Black,
+            fontSize = 10.sp,
+            color = CyberColors.AccentWine
+        )
+        BrutalistActionButton("EXPORTAR FICHA (.JSON)", primary = true, enabled = !busy, onClick = onExportSheet)
+        BrutalistActionButton("BACKUP COMPLETO (.JSON)", primary = true, enabled = !busy, onClick = onExportBackup)
+        BrutalistActionButton("IMPORTAR FICHA / BACKUP (.JSON)", primary = false, enabled = !busy, onClick = onImportFile)
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(min = 48.dp)
+                .toggleable(
+                    value = overwriteExisting,
+                    enabled = !busy,
+                    role = Role.Checkbox,
+                    onValueChange = onOverwriteChange
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp)
+        ) {
+            Checkbox(
+                checked = overwriteExisting,
+                onCheckedChange = null,
+                enabled = !busy,
+                colors = CheckboxDefaults.colors(
+                    checkedColor = CyberColors.AccentWine,
+                    uncheckedColor = CyberColors.BorderInk,
+                    checkmarkColor = CyberColors.InkInverse
+                )
+            )
+            Text(
+                text = "SOBRESCREVER FICHAS COM MESMO ID (SENÃO CRIA \"(CÓPIA)\")",
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = CyberColors.InkPrimary
+            )
+        }
+
+        if (feedback != null) {
+            val accent = if (feedback.success) CyberColors.AccentWine else CyberColors.AccentDanger
+            val soft = if (feedback.success) CyberColors.AccentWineSoft else CyberColors.AccentDangerSoft
+            Text(
+                text = (if (feedback.success) "> OK_ " else "> ERRO_ ") + feedback.message,
+                fontFamily = FontFamily.Monospace,
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Bold,
+                color = accent,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(soft, RoundedCornerShape(CyberDimens.SmallRadius))
+                    .border(CyberDimens.BorderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
+                    .padding(horizontal = 8.dp, vertical = 6.dp)
+            )
+        }
+    }
+}
+
+@Composable
+private fun BrutalistActionButton(
+    label: String,
+    primary: Boolean,
+    enabled: Boolean,
+    onClick: () -> Unit
+) {
+    val shape = RoundedCornerShape(CyberDimens.ControlRadius)
+    val bg = when {
+        !enabled -> CyberColors.BgHover
+        primary -> CyberColors.AccentBlack
+        else -> CyberColors.BgCard
+    }
+    val ink = when {
+        !enabled -> CyberColors.InkMuted
+        primary -> CyberColors.InkInverse
+        else -> CyberColors.InkPrimary
+    }
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .heightIn(min = 48.dp)
+            .background(bg, shape)
+            .border(CyberDimens.BorderStrong, CyberColors.BorderInk, shape)
+            .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        contentAlignment = Alignment.CenterStart
+    ) {
+        Text(
+            text = label,
+            fontFamily = FontFamily.Monospace,
+            fontSize = 11.sp,
+            fontWeight = FontWeight.Black,
+            color = ink
+        )
+    }
 }

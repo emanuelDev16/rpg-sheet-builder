@@ -179,7 +179,7 @@ export interface RollLogEntry {
   isPoolRoll?: boolean;
 }
 
-export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline';
+export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
 
 export interface XpLedgerEntry {
   id: string;
@@ -1366,13 +1366,17 @@ export function createGenericD20Preset(): CharacterSheetState {
   };
 }
 
-export function createBlankSheet(): CharacterSheetState {
+export function createBlankSheet(localeOptions?: {
+  newCharacterName?: string;
+  customSystemName?: string;
+  customSystemCode?: string;
+}): CharacterSheetState {
   return {
     id: 'sheet_blank',
     systemId: 'blank',
-    systemName: 'SISTEMA CUSTOMIZADO',
-    systemCode: '/SYS: SISTEMA CUSTOMIZADO',
-    characterName: 'NOVO PERSONAGEM',
+    systemName: localeOptions?.customSystemName ?? 'SISTEMA CUSTOMIZADO',
+    systemCode: localeOptions?.customSystemCode ?? '/SYS: SISTEMA CUSTOMIZADO',
+    characterName: localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM',
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
@@ -2020,16 +2024,94 @@ export function updateFieldSchema(
   });
 }
 
+function buildUniqueFieldKey(existingKeys: Set<string>, rawKey: string): string {
+  const base = rawKey.trim() || 'field';
+  if (!existingKeys.has(base)) return base;
+  let suffix = 2;
+  while (existingKeys.has(`${base}_${suffix}`)) {
+    suffix += 1;
+  }
+  return `${base}_${suffix}`;
+}
+
+export function reorderFieldInCard(
+  fields: SheetField[],
+  fieldId: string,
+  direction: 'up' | 'down',
+): SheetField[] {
+  const idx = fields.findIndex((f) => f.id === fieldId);
+  if (idx === -1) return fields;
+  const targetIdx = direction === 'up' ? idx - 1 : idx + 1;
+  if (targetIdx < 0 || targetIdx >= fields.length) return fields;
+  const next = [...fields];
+  const [moved] = next.splice(idx, 1);
+  next.splice(targetIdx, 0, moved);
+  return next;
+}
+
 export function addFieldToCard(
   sheet: CharacterSheetState,
   cardId: string,
   newField: SheetField,
 ): CharacterSheetState {
+  const sysId = detectSystemId(sheet);
+
   return touchSheetMetadata({
     ...sheet,
-    cards: sheet.cards.map((card) =>
-      card.id === cardId ? { ...card, fields: [...card.fields, newField] } : card,
-    ),
+    cards: sheet.cards.map((card) => {
+      if (card.id !== cardId) return card;
+
+      const existingKeys = new Set(card.fields.map((f) => f.key));
+      let normalizedField: SheetField = { ...newField };
+
+      if (normalizedField.kind === 'roll') {
+        const clampedDiff = Math.max(
+          2,
+          Math.min(10, Math.round(normalizedField.rollDifficulty ?? 6)),
+        );
+        const matchingNumericField = card.fields.find(
+          (f) => f.kind === 'number' && f.key === normalizedField.key,
+        );
+        const cardSig = `${card.code} ${card.title}`.toUpperCase();
+        const isD10RollCard =
+          sysId === 'wod' ||
+          /SKILL|PERICIA|PERÍCIA|HABILIDAD|ABILIT|DISCIPLIN|PODER|POWER|ARCANO|POOL|D10/.test(
+            cardSig,
+          );
+
+        const nextKey = matchingNumericField
+          ? buildUniqueFieldKey(existingKeys, `roll_${matchingNumericField.key}`)
+          : buildUniqueFieldKey(existingKeys, normalizedField.key);
+
+        let nextExpr = normalizedField.rollExpr ?? '2d6';
+        if (nextExpr.trim() === '2d6') {
+          if (matchingNumericField) {
+            nextExpr = `pool(${matchingNumericField.key}, ${clampedDiff})`;
+          } else if (isD10RollCard) {
+            nextExpr = `pool(1, ${clampedDiff})`;
+          }
+        }
+
+        normalizedField = {
+          ...normalizedField,
+          key: nextKey,
+          rollExpr: nextExpr,
+          rollDifficulty: clampedDiff,
+          rollSpecialty: Boolean(normalizedField.rollSpecialty ?? false),
+          rollMod:
+            typeof normalizedField.rollMod === 'number' && Number.isFinite(normalizedField.rollMod)
+              ? Math.round(normalizedField.rollMod)
+              : 0,
+        };
+      } else {
+        normalizedField = {
+          ...normalizedField,
+          key: buildUniqueFieldKey(existingKeys, normalizedField.key),
+        };
+      }
+
+      return { ...card, fields: [...card.fields, normalizedField] };
+    }),
   });
 }
 
@@ -2061,7 +2143,7 @@ export function addCardToSheet(
 export function updateCardSchema(
   sheet: CharacterSheetState,
   cardId: string,
-  patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'tab'>>,
+  patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'tab' | 'fields'>>,
 ): CharacterSheetState {
   return touchSheetMetadata({
     ...sheet,
@@ -2141,6 +2223,11 @@ const DND_ABILITY_KEYS = new Set([
 export interface NewSheetIdentityInput {
   characterName?: string;
   secondaryTrait?: string;
+  localeOptions?: {
+    newCharacterName?: string;
+    customSystemName?: string;
+    customSystemCode?: string;
+  };
 }
 
 export function createNewSheetForSystem(
@@ -2151,9 +2238,10 @@ export function createNewSheetForSystem(
   const resolvedId: SystemId = validIds.includes(systemId) ? systemId : 'blank';
   const customCharName = identity?.characterName?.trim() ?? '';
   const customSecondaryTrait = identity?.secondaryTrait?.trim() ?? '';
+  const defaultNewName = identity?.localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM';
 
   if (resolvedId === 'blank') {
-    const blank = createBlankSheet();
+    const blank = createBlankSheet(identity?.localeOptions);
     return customCharName
       ? { ...blank, characterName: customCharName.toUpperCase() }
       : blank;
@@ -2163,7 +2251,7 @@ export function createNewSheetForSystem(
   return {
     ...preset,
     systemId: resolvedId,
-    characterName: customCharName ? customCharName.toUpperCase() : 'NOVO PERSONAGEM',
+    characterName: customCharName ? customCharName.toUpperCase() : defaultNewName,
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
@@ -2410,7 +2498,7 @@ const ALLOWED_FIELD_KINDS = new Set([
   'roll',
   'repeatable',
 ]);
-const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline']);
+const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline', 'virtue']);
 
 const ROOT_SHEET_KEYS = new Set([
   'id',
@@ -2453,6 +2541,7 @@ const FIELD_KEYS = new Set([
   'col2Type',
   'rows',
   'hint',
+  'placeholder',
 ]);
 const ROW_KEYS = new Set(['id', 'col1', 'col2']);
 const ROLL_LOG_KEYS = new Set([
@@ -2467,6 +2556,10 @@ const ROLL_LOG_KEYS = new Set([
   'isPoolRoll',
   'rolls',
   'difficulty',
+  'specialty',
+  'willpowerUsed',
+  'isSoak',
+  'doubledTensCount',
   'onesCount',
   'canceledOnes',
   'outcome',
@@ -2717,6 +2810,102 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
   }
 
   return { valid: errors.length === 0, errors };
+}
+
+export interface ParsedImportPayloadResult {
+  valid: boolean;
+  sheets: CharacterSheetState[];
+  errors: string[];
+}
+
+export function parseAndValidateImportPayload(rawText: string): ParsedImportPayloadResult {
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(rawText);
+  } catch {
+    return {
+      valid: false,
+      sheets: [],
+      errors: ['Não foi possível ler o arquivo JSON selecionado.'],
+    };
+  }
+
+  if (Array.isArray(parsed)) {
+    if (parsed.length === 0) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: ['O arquivo JSON contém uma lista vazia de fichas.'],
+      };
+    }
+    const validSheets: CharacterSheetState[] = [];
+    for (let i = 0; i < parsed.length; i += 1) {
+      const validation = validateSheetPayload(parsed[i]);
+      if (!validation.valid) {
+        return {
+          valid: false,
+          sheets: [],
+          errors: validation.errors.map((err) => `[#${i + 1}] ${err}`),
+        };
+      }
+      validSheets.push(parsed[i] as CharacterSheetState);
+    }
+    return { valid: true, sheets: validSheets, errors: [] };
+  }
+
+  if (
+    parsed &&
+    typeof parsed === 'object' &&
+    !Array.isArray(parsed) &&
+    'sheets' in parsed &&
+    Array.isArray((parsed as { sheets: unknown }).sheets)
+  ) {
+    const bundle = parsed as Record<string, unknown>;
+    for (const key of Object.getOwnPropertyNames(bundle)) {
+      if (DANGEROUS_OBJECT_KEYS.has(key)) {
+        return {
+          valid: false,
+          sheets: [],
+          errors: [`$.${key}: chave proibida (risco de Prototype Pollution).`],
+        };
+      }
+    }
+    const bundleSheets = bundle.sheets as unknown[];
+    if (bundleSheets.length === 0) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: ['O pacote JSON não contém nenhuma ficha.'],
+      };
+    }
+    const validSheets: CharacterSheetState[] = [];
+    for (let i = 0; i < bundleSheets.length; i += 1) {
+      const validation = validateSheetPayload(bundleSheets[i]);
+      if (!validation.valid) {
+        return {
+          valid: false,
+          sheets: [],
+          errors: validation.errors.map((err) => `[#${i + 1}] ${err}`),
+        };
+      }
+      validSheets.push(bundleSheets[i] as CharacterSheetState);
+    }
+    return { valid: true, sheets: validSheets, errors: [] };
+  }
+
+  const validation = validateSheetPayload(parsed);
+  if (!validation.valid) {
+    return {
+      valid: false,
+      sheets: [],
+      errors: validation.errors,
+    };
+  }
+  return {
+    valid: true,
+    sheets: [parsed as CharacterSheetState],
+    errors: [],
+  };
 }
 
 export function fromCanonicalSheet(

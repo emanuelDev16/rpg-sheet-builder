@@ -1,52 +1,177 @@
 @import "tailwindcss";
 
 /* ============================================================================
-   CYBER-BRUTALISM EDITORIAL — VARIÁVEIS DE DESIGN (:root)
-   Paleta: Burgundy Wine (#5B0F18) + Soft Cream (#F8F1E7) + Deep Black (#0B0B0B)
-   Organizadas de forma limpa para conversão direta para PySide6 (QSS)
+   GRIDSHEET — MULTI-THEME DESIGN TOKENS (light | dark | eink)
+   Controlado por data-theme no elemento <html>
    ============================================================================ */
-:root {
-  /* --- Superfícies (Soft Cream) --- */
-  --bg-canvas: #F8F1E7;
+:root,
+[data-theme="light"] {
+  color-scheme: light;
+
+  /* --- Tokens Semânticos Base (Light Cyber Brutalism) --- */
+  --bg-base: #F8F1E7;
+  --bg-card: #FFFDF9;
+  --bg-strip: #EFE3D2;
+  --bg-input: #FFFFFF;
+  --text-primary: #0B0B0B;
+  --text-secondary: #4A433D;
+  --border-color: #0B0B0B;
+  --border-width: 2px;
+  --radius-card: 4px;
+  --radius-pill: 4px;
+  --shadow-card: 4px 4px 0px #0B0B0B;
+  --shadow-btn: 2px 2px 0px #0B0B0B;
+  --accent-primary: #5B0F18;
+  --accent-hover: #7A1622;
+  --accent-contrast: #FFFDF9;
+
+  /* --- Tokens Estendidos / Aliases de Componentes --- */
+  --bg-canvas: var(--bg-base);
   --bg-grid-line: rgba(11, 11, 11, 0.075);
   --bg-grid-cross: #5B0F18;
-  --bg-card: #FFFDF9;
   --bg-card-alt: #F3E9DB;
-  --bg-header-strip: #EFE3D2;
-  --bg-input: #F8F1E7;
+  --bg-header-strip: var(--bg-strip);
   --bg-hover: #EAE0D0;
 
-  /* --- Bordas e Estrutura (Deep Black) --- */
-  --border-ink: #0B0B0B;
+  --border-ink: var(--border-color);
   --border-subtle: #DFD2C0;
-  --border-width: 1.5px;
-  --border-width-strong: 2px;
-  --radius-card: 10px;
-  --radius-control: 6px;
-  --radius-sm: 4px;
+  --border-width-strong: var(--border-width);
+  --radius-control: var(--radius-pill);
+  --radius-sm: var(--radius-pill);
 
-  /* --- Tipografia --- */
   --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', monospace;
   --font-ui: 'DM Sans', system-ui, -apple-system, sans-serif;
 
-  /* --- Cores de Tinta & Destaque --- */
-  --ink-primary: #0B0B0B;
-  --ink-secondary: #3D332D;
+  --ink-primary: var(--text-primary);
+  --ink-secondary: var(--text-secondary);
   --ink-muted: #574D45;
-  --ink-inverse: #F8F1E7;
+  --ink-inverse: var(--accent-contrast);
 
   --accent-black: #0B0B0B;
-  --accent-wine: #5B0F18;
-  --accent-wine-hover: #731621;
+  --accent-wine: var(--accent-primary);
+  --accent-wine-hover: var(--accent-hover);
   --accent-wine-soft: #E9D7D6;
   --accent-cream-badge: #EFE3D2;
   --accent-danger: #B91C1C;
   --accent-danger-soft: #FEE2E2;
+  --accent-danger-contrast: #FFFDF9;
 
-  /* --- Sombras Brutalistas --- */
-  --shadow-card: 0 2px 0 rgba(11, 11, 11, 0.09);
-  --shadow-btn: 2px 2px 0 #0B0B0B;
+  --overlay-backdrop: rgba(11, 11, 11, 0.55);
+  --focus-ring-shadow: 0 0 0 2px rgba(91, 15, 24, 0.22);
+  --shadow-modal: 6px 6px 0px #0B0B0B;
+  --shadow-drawer: -6px 0px 0px #0B0B0B;
+  --seg-border: rgba(91, 15, 24, 0.28);
+}
+
+[data-theme="dark"] {
+  color-scheme: dark;
+
+  /* --- Tokens Semânticos Base (Dark Cyber Brutalism) --- */
+  --bg-base: #12100E;
+  --bg-card: #1C1916;
+  --bg-strip: #28231E;
+  --bg-input: #141210;
+  --text-primary: #F4EFE8;
+  --text-secondary: #B5ACA2;
+  --border-color: #EDE6DC;
+  --border-width: 2px;
+  --radius-card: 4px;
+  --radius-pill: 4px;
+  --shadow-card: 4px 4px 0px #000000;
+  --shadow-btn: 2px 2px 0px #000000;
+  --accent-primary: #D94858;
+  --accent-hover: #E86170;
+  --accent-contrast: #12100E;
+
+  /* --- Tokens Estendidos / Aliases de Componentes --- */
+  --bg-canvas: var(--bg-base);
+  --bg-grid-line: rgba(237, 230, 220, 0.06);
+  --bg-grid-cross: #D94858;
+  --bg-card-alt: #24201C;
+  --bg-header-strip: var(--bg-strip);
+  --bg-hover: #322C26;
+
+  --border-ink: var(--border-color);
+  --border-subtle: #3D352E;
+  --border-width-strong: var(--border-width);
+  --radius-control: var(--radius-pill);
+  --radius-sm: var(--radius-pill);
+
+  --ink-primary: var(--text-primary);
+  --ink-secondary: var(--text-secondary);
+  --ink-muted: #A69D93;
+  --ink-inverse: var(--accent-contrast);
+
+  --accent-black: #EDE6DC;
+  --accent-wine: var(--accent-primary);
+  --accent-wine-hover: var(--accent-hover);
+  --accent-wine-soft: #3A191D;
+  --accent-cream-badge: #241E1B;
+  --accent-danger: #F87171;
+  --accent-danger-soft: #3B1417;
+  --accent-danger-contrast: #12100E;
+
+  --overlay-backdrop: rgba(0, 0, 0, 0.72);
+  --focus-ring-shadow: 0 0 0 2px rgba(217, 72, 88, 0.35);
+  --shadow-modal: 6px 6px 0px #000000;
+  --shadow-drawer: -6px 0px 0px #000000;
+  --seg-border: rgba(217, 72, 88, 0.45);
+}
+
+[data-theme="eink"] {
+  color-scheme: light;
+
+  /* --- Tokens Semânticos Base (E-Ink Paper Display) --- */
+  --bg-base: #E6E6E6;
+  --bg-card: #F8F8F8;
+  --bg-strip: #DCDCDC;
+  --bg-input: #FFFFFF;
+  --text-primary: #1A1A1A;
+  --text-secondary: #4D4D4D;
+  --border-color: #1A1A1A;
+  --border-width: 2px;
+  --radius-card: 16px;
+  --radius-pill: 9999px;
+  --shadow-card: none;
+  --shadow-btn: none;
+  --accent-primary: #1A1A1A;
+  --accent-hover: #333333;
+  --accent-contrast: #F8F8F8;
+
+  /* --- Tokens Estendidos / Aliases de Componentes --- */
+  --bg-canvas: var(--bg-base);
+  --bg-grid-line: rgba(26, 26, 26, 0.08);
+  --bg-grid-cross: #1A1A1A;
+  --bg-card-alt: #EFEFEF;
+  --bg-header-strip: var(--bg-strip);
+  --bg-hover: #CFCFCF;
+
+  --border-ink: var(--border-color);
+  --border-subtle: #B8B8B8;
+  --border-width-strong: var(--border-width);
+  --radius-control: var(--radius-pill);
+  --radius-sm: var(--radius-pill);
+
+  --ink-primary: var(--text-primary);
+  --ink-secondary: var(--text-secondary);
+  --ink-muted: #4D4D4D;
+  --ink-inverse: var(--accent-contrast);
+
+  --accent-black: #1A1A1A;
+  --accent-wine: var(--accent-primary);
+  --accent-wine-hover: var(--accent-hover);
+  --accent-wine-soft: #DCDCDC;
+  --accent-cream-badge: #EAEAEA;
+  --accent-danger: #1A1A1A;
+  --accent-danger-soft: #DCDCDC;
+  --accent-danger-contrast: #F8F8F8;
+
+  --overlay-backdrop: rgba(26, 26, 26, 0.45);
+  --focus-ring-shadow: 0 0 0 2px rgba(26, 26, 26, 0.28);
+  --shadow-modal: none;
+  --shadow-drawer: none;
+  --seg-border: rgba(26, 26, 26, 0.35);
 }
 
 * {
@@ -64,16 +189,24 @@ body,
 
 body {
   font-family: var(--font-ui);
-  color: var(--ink-primary);
-  background-color: var(--bg-canvas);
+  color: var(--text-primary);
+  background-color: var(--bg-base);
   -webkit-font-smoothing: antialiased;
 }
 
 /* Grade técnica com linhas sutis e pequenas cruzes de registro (+) nos cruzamentos */
 .cyber-grid-canvas {
-  background-color: var(--bg-canvas);
+  background-color: var(--bg-base);
   background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M36 0H0v36' fill='none' stroke='%230B0B0B' stroke-opacity='0.075' stroke-width='1'/%3E%3Cpath d='M0 0h4M0 0v4M36 0h-4M0 36v-4' stroke='%235B0F18' stroke-opacity='0.35' stroke-width='1'/%3E%3C/svg%3E");
   background-size: 36px 36px;
+}
+
+[data-theme="dark"] .cyber-grid-canvas {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M36 0H0v36' fill='none' stroke='%23EDE6DC' stroke-opacity='0.065' stroke-width='1'/%3E%3Cpath d='M0 0h4M0 0v4M36 0h-4M0 36v-4' stroke='%23D94858' stroke-opacity='0.35' stroke-width='1'/%3E%3C/svg%3E");
+}
+
+[data-theme="eink"] .cyber-grid-canvas {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='36' height='36' viewBox='0 0 36 36'%3E%3Cpath d='M36 0H0v36' fill='none' stroke='%231A1A1A' stroke-opacity='0.085' stroke-width='1'/%3E%3Cpath d='M0 0h4M0 0v4M36 0h-4M0 36v-4' stroke='%231A1A1A' stroke-opacity='0.28' stroke-width='1'/%3E%3C/svg%3E");
 }
 
 .font-display {
@@ -88,7 +221,7 @@ body {
 /* Cartão Bento Brutalista */
 .bento-card {
   background-color: var(--bg-card);
-  border: var(--border-width-strong) solid var(--border-ink);
+  border: var(--border-width) solid var(--border-color);
   border-radius: var(--radius-card);
   box-shadow: var(--shadow-card);
   overflow: hidden;
@@ -102,8 +235,8 @@ body {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 14px;
-  background-color: var(--bg-header-strip);
-  border-bottom: var(--border-width) solid var(--border-ink);
+  background-color: var(--bg-strip);
+  border-bottom: var(--border-width) solid var(--border-color);
 }
 
 /* Inputs técnicos */
@@ -111,26 +244,35 @@ body {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   background-color: var(--bg-input);
-  color: var(--ink-primary);
-  border: var(--border-width) solid var(--border-ink);
-  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-pill);
   transition: border-color 140ms ease, background-color 140ms ease, box-shadow 140ms ease;
+}
+
+textarea.cyber-input {
+  border-radius: var(--radius-card);
 }
 
 .cyber-input:focus {
   outline: none;
-  border-color: var(--accent-wine);
+  border-color: var(--accent-primary);
   background-color: var(--bg-card);
-  box-shadow: 0 0 0 2px rgba(91, 15, 24, 0.22);
+  box-shadow: var(--focus-ring-shadow);
 }
 
-/* Botões compactos com borda escura */
+.cyber-input:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+/* Botões compactos com borda contrastada */
 .cyber-btn-outline {
   font-family: var(--font-mono);
   background-color: var(--bg-card);
-  color: var(--ink-primary);
-  border: var(--border-width) solid var(--border-ink);
-  border-radius: var(--radius-control);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-pill);
   transition: background-color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
 }
 
@@ -145,26 +287,31 @@ body {
   box-shadow: none;
 }
 
+button:focus-visible,
+select:focus-visible,
 .cyber-btn-outline:focus-visible,
 .cyber-roll-btn:focus-visible,
-.cyber-tab-btn:focus-visible {
-  outline: 2px solid var(--accent-wine);
+.cyber-tab-btn:focus-visible,
+.theme-selector-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
   outline-offset: 2px;
 }
 
-/* Botão de Rolagem Brutalista Preto */
+/* Botão de Rolagem / Ação Primária Brutalista */
 .cyber-roll-btn {
   font-family: var(--font-mono);
   background-color: var(--accent-black);
-  color: var(--ink-inverse);
-  border: var(--border-width-strong) solid var(--accent-black);
-  border-radius: var(--radius-control);
+  color: var(--accent-contrast);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-btn);
   transition: background-color 140ms ease, border-color 140ms ease, transform 100ms ease;
 }
 
 .cyber-roll-btn:hover {
-  background-color: var(--accent-wine);
-  border-color: var(--border-ink);
+  background-color: var(--accent-hover);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
   transform: translateY(-1px);
 }
 
@@ -177,9 +324,13 @@ body {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
   background-color: var(--accent-cream-badge);
-  color: var(--accent-wine);
-  border: var(--border-width) dashed var(--accent-wine);
-  border-radius: var(--radius-control);
+  color: var(--accent-primary);
+  border: var(--border-width) dashed var(--accent-primary);
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="dark"] .cyber-calc-box {
+  color: var(--accent-hover);
 }
 
 .cyber-calc-box.is-error {
@@ -201,42 +352,120 @@ body {
   height: 14px;
   border-radius: 2px;
   background-color: var(--accent-wine-soft);
-  border: 1px solid rgba(91, 15, 24, 0.28);
+  border: 1px solid var(--seg-border);
   transition: background-color 120ms ease, transform 120ms ease;
 }
 
 .seg-block.is-filled {
-  background-color: var(--accent-wine);
-  border-color: var(--accent-wine);
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
 }
 
 .seg-block.is-superficial {
   background-image: repeating-linear-gradient(
     -45deg,
-    var(--accent-wine) 0px,
-    var(--accent-wine) 2px,
+    var(--accent-primary) 0px,
+    var(--accent-primary) 2px,
     var(--accent-cream-badge) 2px,
     var(--accent-cream-badge) 6px
   );
-  border-color: var(--accent-wine);
-  color: var(--accent-wine);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
 }
 
 .seg-block.is-aggravated {
   background-color: var(--accent-black);
   border-color: var(--accent-black);
-  color: var(--ink-inverse);
+  color: var(--accent-contrast);
 }
 
 /* Tag inclinada na barra inferior */
 .cyber-slant-pill {
-  background-color: var(--accent-wine);
-  color: var(--ink-inverse);
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
   clip-path: polygon(10px 0, 100% 0, calc(100% - 10px) 100%, 0 100%);
 }
 
 /* ============================================================================
-   MODO IMPRESSÃO / EXPORTAÇÃO PDF (LIGHT CYBER-BRUTALISM · BENTO GRID)
+   MODO E-INK PAPER DISPLAY: Zero animações, escala de cinza, inversão binária
+   ============================================================================ */
+[data-theme="eink"] *,
+[data-theme="eink"] *::before,
+[data-theme="eink"] *::after {
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme="eink"] svg,
+[data-theme="eink"] img,
+[data-theme="eink"] mark {
+  filter: grayscale(100%);
+}
+
+[data-theme="eink"] .cyber-btn-outline:hover,
+[data-theme="eink"] .cyber-roll-btn:hover {
+  transform: none;
+  box-shadow: none;
+}
+
+[data-theme="eink"] .seg-block {
+  border-radius: 9999px;
+}
+
+[data-theme="eink"] .cyber-slant-pill {
+  clip-path: none;
+  border-radius: var(--radius-pill);
+}
+
+/* Seleção ativa: creme/vinho em light/dark, inversão binária pura (#1A1A1A / #F8F8F8) em E-Ink */
+.cyber-active-tint {
+  background-color: var(--accent-cream-badge);
+  border-color: var(--accent-primary);
+  color: var(--accent-primary);
+}
+
+.cyber-active-tint .cyber-active-title {
+  color: var(--accent-primary);
+}
+
+.cyber-active-tint .cyber-active-muted {
+  color: var(--text-secondary);
+}
+
+[data-theme="eink"] .cyber-active-tint {
+  background-color: var(--accent-primary);
+  border-color: var(--accent-primary);
+  color: var(--accent-contrast);
+}
+
+[data-theme="eink"] .cyber-active-tint:hover {
+  background-color: var(--accent-hover);
+  color: var(--accent-contrast);
+}
+
+[data-theme="eink"] .cyber-active-tint .cyber-active-title,
+[data-theme="eink"] .cyber-active-tint .cyber-active-muted,
+[data-theme="eink"] .cyber-active-tint svg {
+  color: var(--accent-contrast);
+}
+
+[data-theme="eink"] .cyber-active-tint .cyber-active-badge {
+  background-color: var(--accent-contrast);
+  color: var(--accent-primary);
+  border-color: var(--accent-contrast);
+}
+
+[data-theme="eink"] .cyber-active-tint .cyber-radio-ring {
+  border-color: var(--accent-contrast);
+  background-color: var(--accent-contrast);
+}
+
+[data-theme="eink"] .cyber-active-tint .cyber-radio-dot {
+  background-color: var(--accent-primary);
+}
+
+/* ============================================================================
+   MODO IMPRESSÃO / EXPORTAÇÃO PDF
    ============================================================================ */
 @page {
   size: A4 portrait;
@@ -255,7 +484,7 @@ body {
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
-    background-color: var(--bg-canvas) !important;
+    background-color: var(--bg-base) !important;
   }
 
   .print-shell {
@@ -269,7 +498,7 @@ body {
     overflow: visible !important;
     height: auto !important;
     padding: 0 !important;
-    background-color: var(--bg-canvas) !important;
+    background-color: var(--bg-base) !important;
   }
 
   .bento-print-grid {
@@ -491,5 +720,3 @@ body {
     grid-column: span 2 / span 2;
   }
 }
-
-

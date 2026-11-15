@@ -1,7 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { RollLogEntry, SystemId } from '../core/sheetModel';
-import { AppTranslations } from '../core/i18n';
+import { AppLanguage, AppTranslations } from '../core/i18n';
 import { RulesSearchPanel } from './RulesSearchPanel';
 
 export type SidebarTab = 'logs' | 'rules';
@@ -10,6 +10,7 @@ interface RollLogSidebarProps {
   logs: RollLogEntry[];
   systemId: SystemId;
   systemName: string;
+  language?: AppLanguage;
   t: AppTranslations['sidebar'];
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
@@ -34,6 +35,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   logs,
   systemId,
   systemName,
+  language = 'pt-BR',
   t,
   onQuickRoll,
   onClearLogs,
@@ -85,17 +87,17 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   const renderPanelContent = (showMobileClose: boolean) => (
     <>
       {/* Seletor superior do painel lateral */}
-      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] shrink-0">
+      <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-strip)] border-b-[length:var(--border-width)] border-[var(--border-color)] shrink-0">
         <div role="tablist" aria-label={t.ariaAside} className="flex items-center gap-1.5 flex-1 min-w-0">
           <button
             type="button"
             role="tab"
             aria-selected={sidebarTab === 'logs'}
             onClick={() => setSidebarTab('logs')}
-            className={`font-mono-tech mobile-touch-input px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap cursor-pointer transition-colors ${
+            className={`font-mono-tech mobile-touch-input px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] whitespace-nowrap cursor-pointer transition-colors ${
               sidebarTab === 'logs'
-                ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)]'
-                : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+                ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)]'
+                : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
             {t.rollLogsTab}
@@ -105,10 +107,10 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
             role="tab"
             aria-selected={sidebarTab === 'rules'}
             onClick={() => setSidebarTab('rules')}
-            className={`font-mono-tech mobile-touch-input px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[4px] border border-[var(--border-ink)] whitespace-nowrap cursor-pointer transition-colors ${
+            className={`font-mono-tech mobile-touch-input px-2.5 py-1 text-[10px] font-bold tracking-wider uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] whitespace-nowrap cursor-pointer transition-colors ${
               sidebarTab === 'rules'
-                ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)]'
-                : 'bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)]'
+                ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]'
+                : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
             {t.rulesTab}
@@ -122,7 +124,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
               onClick={onClearLogs}
               aria-label={t.clearLogsAria}
               title={t.clearLogsAria}
-              className="mobile-touch-stepper p-1.5 rounded-[4px] text-[var(--ink-muted)] hover:text-[var(--accent-danger)] hover:bg-[var(--accent-danger-soft)] transition-colors cursor-pointer shrink-0 flex items-center justify-center"
+              className="mobile-touch-stepper p-1.5 rounded-[var(--radius-pill)] text-[var(--ink-muted)] hover:text-[var(--accent-danger)] hover:bg-[var(--accent-danger-soft)] transition-colors cursor-pointer shrink-0 flex items-center justify-center"
             >
               <Trash2 className="w-3.5 h-3.5" aria-hidden="true" />
             </button>
@@ -133,9 +135,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
               ref={mobileCloseBtnRef}
               type="button"
               data-testid="mobile-drawer-close"
-              aria-label="Fechar painel"
+              aria-label={t.t('sidebar.closePanelAria')}
               onClick={onCloseMobile}
-              className="cyber-btn-outline mobile-touch-stepper w-8 h-8 flex items-center justify-center cursor-pointer"
+              className="cyber-btn-outline mobile-touch-stepper min-h-[36px] min-w-[36px] w-8 h-8 flex items-center justify-center cursor-pointer"
             >
               <X className="w-4 h-4" aria-hidden="true" />
             </button>
@@ -144,7 +146,12 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
       </div>
 
       {sidebarTab === 'rules' ? (
-        <RulesSearchPanel systemId={systemId} systemName={systemName} t={t} />
+        <RulesSearchPanel
+          systemId={systemId}
+          systemName={systemName}
+          language={language}
+          t={t}
+        />
       ) : (
         <>
           {/* Rolagem rápida manual */}
@@ -159,13 +166,15 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 value={customExpr}
                 onChange={(e) => setCustomExpr(e.target.value)}
                 placeholder={
-                  systemId === 'wod' ? 'ex: 5d10@6 ou pool(wits+occult,6)' : 'ex: 1d20 + mod_str + prof'
+                  systemId === 'wod'
+                    ? t.t('sidebar.quickExprPlaceholderWod')
+                    : t.t('sidebar.quickExprPlaceholderDefault')
                 }
-                className="cyber-input mobile-touch-input flex-1 min-w-0 px-2 py-1 text-xs font-semibold"
+                className="cyber-input mobile-touch-input min-h-[36px] flex-1 min-w-0 px-2 py-1 text-xs font-semibold"
               />
               <button
                 type="submit"
-                className="cyber-roll-btn mobile-touch-input px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
+                className="cyber-roll-btn mobile-touch-input min-h-[36px] px-2.5 py-1 text-[11px] font-bold uppercase shrink-0 cursor-pointer"
               >
                 {t.rollBtn}
               </button>
@@ -176,7 +185,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                   key={die}
                   type="button"
                   onClick={() => onQuickRoll(die)}
-                  className="cyber-btn-outline flex-1 min-w-[54px] py-1 text-[10px] font-bold uppercase cursor-pointer"
+                  className="cyber-btn-outline min-h-[36px] flex-1 min-w-[54px] py-1 text-[10px] font-bold uppercase cursor-pointer"
                 >
                   {die}
                 </button>
@@ -187,7 +196,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
           {/* Lista de resultados */}
           <div className="p-3 flex flex-col gap-2.5 overflow-y-auto flex-1">
             {logs.length === 0 ? (
-              <div className="p-4 border-[1.5px] border-dashed border-[var(--border-ink)]/40 rounded-[var(--radius-control)] text-center">
+              <div className="p-4 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/40 rounded-[var(--radius-card)] text-center">
                 <p className="font-mono-tech text-[11px] text-[var(--ink-muted)]">
                   {t.emptyLogs}
                 </p>
@@ -204,8 +213,8 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                   <article
                     key={entry.id}
                     data-testid={idx === 0 ? 'latest-roll-log-entry' : undefined}
-                    className={`p-3 rounded-[var(--radius-control)] border-[1.5px] border-[var(--border-ink)] transition-colors ${
-                      idx === 0 ? 'bg-[var(--bg-card)] shadow-[2px_2px_0_#5B0F18]' : 'bg-[var(--bg-card-alt)]'
+                    className={`p-3 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] transition-colors ${
+                      idx === 0 ? 'bg-[var(--bg-card)] shadow-[var(--shadow-btn)]' : 'bg-[var(--bg-card-alt)]'
                     }`}
                   >
                     <div className="flex items-center justify-between gap-2 mb-1">
@@ -227,39 +236,43 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         </span>
                         {entry.isPoolRoll && poolOutcome !== 'botch' && (
                           <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                            {entry.isSoak ? 'SOAKED' : entry.total === 1 ? 'SUC' : 'SUCS'}
+                            {entry.isSoak
+                              ? t.t('sidebar.roll.soaked')
+                              : entry.total === 1
+                                ? t.t('sidebar.roll.sucSingular')
+                                : t.t('sidebar.roll.sucPlural')}
                           </span>
                         )}
                       </div>
 
                       {entry.isPoolRoll ? (
                         poolOutcome === 'botch' ? (
-                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px] uppercase">
-                            BOTCH!
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase">
+                            {t.t('sidebar.roll.botch')}
                           </span>
                         ) : poolOutcome === 'failure' ? (
-                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--ink-secondary)] border border-[var(--border-ink)] rounded-[3px] uppercase">
-                            FAILURE
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--text-secondary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase">
+                            {t.t('sidebar.roll.failure')}
                           </span>
                         ) : entry.isCritical ? (
-                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase">
-                            EXCEPTIONAL
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase">
+                            {t.t('sidebar.roll.exceptional')}
                           </span>
                         ) : (
-                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px] uppercase">
-                            SUCCESS
+                          <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase">
+                            {t.t('sidebar.roll.success')}
                           </span>
                         )
                       ) : (
                         <>
                           {entry.isCritical && (
-                            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-wine)] text-[var(--ink-inverse)] border border-[var(--border-ink)] rounded-[3px]">
-                              CRÍTICO 20
+                            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)]">
+                              {t.t('sidebar.roll.crit20')}
                             </span>
                           )}
                           {entry.isFumble && (
-                            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[3px]">
-                              FALHA 1
+                            <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)]">
+                              {t.t('sidebar.roll.fumble1')}
                             </span>
                           )}
                         </>
@@ -267,7 +280,10 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                     </div>
 
                     {entry.isPoolRoll && entry.rolls && entry.rolls.length > 0 && (
-                      <div className="flex flex-wrap items-center gap-1 my-1.5" aria-label="Dice results">
+                      <div
+                        className="flex flex-wrap items-center gap-1 my-1.5"
+                        aria-label={t.t('sidebar.diceResultsAria')}
+                      >
                         {entry.rolls.map((dieVal, dIdx) => {
                           const isDoubledTen = Boolean(entry.specialty) && dieVal === 10;
                           const isSuccessDie = dieVal >= diffThreshold;
@@ -275,14 +291,14 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                           return (
                             <span
                               key={dIdx}
-                              className={`font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 rounded-[3px] border tabular-nums leading-none ${
+                              className={`font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 rounded-[var(--radius-pill)] border tabular-nums leading-none ${
                                 isDoubledTen
-                                  ? 'bg-[var(--accent-wine)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
+                                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
                                   : isSuccessDie
-                                    ? 'bg-[var(--accent-black)] text-[var(--ink-inverse)] border-[var(--border-ink)]'
+                                    ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)] border-[var(--border-color)]'
                                     : isOne
                                       ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
-                                      : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-ink)]/40'
+                                      : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-color)]/40'
                               }`}
                             >
                               {isDoubledTen ? '10×2' : dieVal}
@@ -299,30 +315,94 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         {entry.willpowerUsed && (
                           <span
                             data-testid="roll-log-wp-chip"
-                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[3px] uppercase"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase"
                           >
-                            +1 WILLPOWER
+                            {t.t('sidebar.roll.wpChip')}
                           </span>
                         )}
                         {(entry.doubledTensCount ?? 0) > 0 && (
-                          <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--bg-header-strip)] text-[var(--accent-wine)] border border-[var(--border-ink)]/60 rounded-[3px] uppercase">
-                            SPEC 10s×2 ({entry.doubledTensCount})
+                          <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--accent-wine)] border border-[var(--border-color)]/60 rounded-[var(--radius-pill)] uppercase">
+                            {t.t('sidebar.roll.specChip', { count: entry.doubledTensCount ?? 0 })}
                           </span>
                         )}
                         {(entry.canceledOnes ?? 0) > 0 && (
-                          <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)]/60 rounded-[3px] uppercase">
-                            -{entry.canceledOnes} CANCELED BY 1s
+                          <span className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)]/60 rounded-[var(--radius-pill)] uppercase">
+                            {t.t('sidebar.roll.canceledOnesChip', { count: entry.canceledOnes ?? 0 })}
                           </span>
                         )}
                       </div>
                     )}
 
-                    <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
-                      {entry.breakdown}
-                    </div>
-                    <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
-                      {entry.formula}
-                    </div>
+                    {(() => {
+                      if (!entry.isPoolRoll || !entry.rolls || entry.rolls.length === 0) {
+                        return (
+                          <>
+                            <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
+                              {entry.breakdown}
+                            </div>
+                            <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
+                              {entry.formula}
+                            </div>
+                          </>
+                        );
+                      }
+
+                      const detailParts: string[] = [];
+                      if ((entry.doubledTensCount ?? 0) > 0) {
+                        detailParts.push(
+                          t.t('sidebar.roll.specChip', { count: entry.doubledTensCount ?? 0 }),
+                        );
+                      }
+                      if ((entry.canceledOnes ?? 0) > 0) {
+                        detailParts.push(
+                          t.t('sidebar.roll.canceledOnesChip', { count: entry.canceledOnes ?? 0 }),
+                        );
+                      }
+                      if (entry.willpowerUsed) {
+                        detailParts.push(t.t('sidebar.roll.wpChip'));
+                      }
+                      const detailSuffix =
+                        detailParts.length > 0 ? ` (${detailParts.join(' · ')})` : '';
+
+                      const statusText =
+                        poolOutcome === 'botch'
+                          ? t.t('sidebar.roll.botch')
+                          : poolOutcome === 'failure'
+                            ? `${
+                                entry.isSoak
+                                  ? `0 ${t.t('sidebar.roll.soaked')}`
+                                  : `0 ${t.t('sidebar.roll.sucPlural')}`
+                              } · ${t.t('sidebar.roll.failure')}`
+                            : entry.isSoak
+                              ? `${entry.total} ${t.t('sidebar.roll.soaked')}`
+                              : `${entry.total} ${
+                                  entry.total === 1
+                                    ? t.t('sidebar.roll.sucSingular')
+                                    : t.t('sidebar.roll.sucPlural')
+                                }`;
+
+                      const localizedBreakdown = `${entry.rolls.length}d10[${entry.rolls.join(', ')}] ≥${diffThreshold}${detailSuffix} → ${statusText}`;
+                      const extraFormulaTags = [
+                        entry.specialty ? t.t('cards.pool.specShort') : null,
+                        entry.willpowerUsed ? t.t('cards.pool.wpBadge') : null,
+                        entry.isSoak ? t.t('sidebar.roll.soaked') : null,
+                      ].filter(Boolean);
+                      const localizedFormula =
+                        extraFormulaTags.length > 0
+                          ? `${entry.rolls.length}d10 (${t.t('cards.pool.diff')} ${diffThreshold} · ${extraFormulaTags.join(' · ')})`
+                          : `${entry.rolls.length}d10 (${t.t('cards.pool.diff')} ${diffThreshold})`;
+
+                      return (
+                        <>
+                          <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
+                            {localizedBreakdown}
+                          </div>
+                          <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
+                            {localizedFormula}
+                          </div>
+                        </>
+                      );
+                    })()}
                   </article>
                 );
               })
@@ -338,7 +418,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
       {/* Desktop fixed right-hand sidebar (lg: 1024px+) */}
       <aside
         aria-label={t.ariaAside}
-        className="no-print print:hidden hidden lg:flex lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-l-2 border-[var(--border-ink)] flex-col min-h-0"
+        className="no-print print:hidden hidden lg:flex lg:w-[290px] shrink-0 bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] flex-col min-h-0"
       >
         {renderPanelContent(false)}
       </aside>
@@ -346,7 +426,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
       {/* Mobile slide-over drawer (< 1024px) */}
       {isMobileOpen && (
         <div
-          className="no-print print:hidden fixed inset-0 z-40 lg:hidden flex justify-end bg-[#0B0B0B]/55"
+          className="no-print print:hidden fixed inset-0 z-40 lg:hidden flex justify-end bg-[var(--overlay-backdrop)]"
           role="presentation"
           onClick={(e) => {
             if (e.target === e.currentTarget) {
@@ -359,7 +439,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
             aria-modal="true"
             aria-label={t.ariaAside}
             data-testid="mobile-sidebar-drawer"
-            className="mobile-drawer-panel w-[min(92vw,360px)] bg-[var(--bg-card)] border-l-2 border-[var(--border-ink)] shadow-[-6px_0_0_#0B0B0B] flex flex-col min-h-0"
+            className="mobile-drawer-panel w-[min(92vw,360px)] bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] shadow-[var(--shadow-drawer)] flex flex-col min-h-0"
           >
             {renderPanelContent(true)}
           </aside>

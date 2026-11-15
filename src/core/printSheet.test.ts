@@ -10,23 +10,27 @@ import { createDnd5ePreset, createWorldOfDarknessSheet } from './sheetModel';
 
 test('getTabLabelsForSystem and getActiveTabSectionLabel match system and active tab', () => {
   assert.deepEqual(getTabLabelsForSystem('wod'), {
-    tab1: '/01 ATTRIBUTES & COMBAT',
-    tab2: '/02 DISCIPLINES & NOTES',
-    tab3: '/03 XP & UPGRADES',
+    tab1: '/01 ATRIBUTOS & COMBATE',
+    tab2: '/02 DISCIPLINAS & NOTAS',
+    tab3: '/03 XP & MELHORIAS',
   });
-  assert.equal(getActiveTabSectionLabel('dnd5e', 'magias'), '/02 SPELLS & NOTES');
+  assert.equal(getActiveTabSectionLabel('dnd5e', 'magias'), '/02 MAGIAS & NOTAS');
+  assert.equal(getActiveTabSectionLabel('dnd5e', 'magias', 'en'), '/02 SPELLS & NOTES');
   assert.equal(getActiveTabSectionLabel('blank', 'geral'), '/01 FICHA PRINCIPAL');
-  assert.equal(getActiveTabSectionLabel('wod', 'xp'), '/03 XP & UPGRADES');
+  assert.equal(getActiveTabSectionLabel('wod', 'xp'), '/03 XP & MELHORIAS');
 });
 
 test('buildPrintDocumentTitle produces a clean OS-safe PDF filename title', () => {
   const wod = createWorldOfDarknessSheet();
   const title = buildPrintDocumentTitle(wod, 'geral');
-  assert.equal(title, 'GRID_SHEET-JULIAN_CROSS_NEONATE_VENTRUE-01_ATTRIBUTES_COMBAT');
+  assert.equal(title, 'GRID_SHEET-JULIAN_CROSS_NEONATE_VENTRUE-01_ATRIBUTOS_COMBATE');
+
+  const titleEn = buildPrintDocumentTitle(wod, 'geral', 'en');
+  assert.equal(titleEn, 'GRID_SHEET-JULIAN_CROSS_NEONATE_VENTRUE-01_ATTRIBUTES_COMBAT');
 
   const dnd = createDnd5ePreset();
   const xpTitle = buildPrintDocumentTitle(dnd, 'xp');
-  assert.equal(xpTitle, 'GRID_SHEET-LYRA_VANCE_ELDRITCH_KNIGHT_LV_5-03_XP_UPGRADES');
+  assert.equal(xpTitle, 'GRID_SHEET-LYRA_VANCE_ELDRITCH_KNIGHT_LV_5-03_XP_MELHORIAS');
 });
 
 test('printActiveSheetView sets PDF title, invokes print, and restores previous title on afterprint', () => {
@@ -54,10 +58,14 @@ test('printActiveSheetView sets PDF title, invokes print, and restores previous 
   const result = printActiveSheetView(wod, 'magias', { doc: mockDoc, win: mockWin });
   assert.equal(result.ok, true);
   assert.equal(printed, true);
-  assert.equal(titleDuringPrint, 'GRID_SHEET-JULIAN_CROSS_NEONATE_VENTRUE-02_DISCIPLINES_NOTES');
+  assert.equal(titleDuringPrint, 'GRID_SHEET-JULIAN_CROSS_NEONATE_VENTRUE-02_DISCIPLINAS_NOTAS');
   assert.equal(mockDoc.title, titleDuringPrint);
 
   // Simulate browser afterprint event
   for (const cb of listeners['afterprint'] || []) cb();
   assert.equal(mockDoc.title, 'GRID//SHEET');
+
+  const enResult = printActiveSheetView(wod, 'magias', { doc: mockDoc, win: mockWin, lang: 'en' });
+  assert.equal(enResult.ok, true);
+  assert.equal(enResult.documentTitle, 'GRID_SHEET-JULIAN_CROSS_NEONATE_VENTRUE-02_DISCIPLINES_NOTES');
 });

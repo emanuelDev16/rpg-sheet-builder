@@ -1,5 +1,5 @@
 import { type CharacterSheetState, detectSystemId, type SystemId, type TabId } from './sheetModel.ts';
-import { type AppLanguage, getLocalizedTabLabels } from './i18n.ts';
+import { type AppLanguage, createTranslator, getLocalizedTabLabels } from './i18n.ts';
 
 export function getTabLabelsForSystem(
   systemId: SystemId,
@@ -31,9 +31,13 @@ function sanitizeFilenameSegment(raw: string, fallback: string): string {
   return cleaned || fallback;
 }
 
-export function buildPrintDocumentTitle(sheet: CharacterSheetState, activeTab: TabId): string {
+export function buildPrintDocumentTitle(
+  sheet: CharacterSheetState,
+  activeTab: TabId,
+  lang: AppLanguage = 'pt-BR',
+): string {
   const systemId = detectSystemId(sheet);
-  const sectionLabel = getActiveTabSectionLabel(systemId, activeTab);
+  const sectionLabel = getActiveTabSectionLabel(systemId, activeTab, lang);
   const charSegment = sanitizeFilenameSegment(sheet.characterName, 'CHARACTER');
   const sectionSegment = sanitizeFilenameSegment(sectionLabel, 'SHEET');
   return `GRID_SHEET-${charSegment}-${sectionSegment}`;
@@ -60,17 +64,20 @@ export function printActiveSheetView(
     win?: PrintWindowLike;
     onBeforePrint?: () => void;
     onAfterPrint?: () => void;
+    lang?: AppLanguage;
   } = {},
 ): PrintExecutionResult {
+  const lang = options.lang ?? 'pt-BR';
+  const t = createTranslator(lang);
   const doc = options.doc ?? (typeof document !== 'undefined' ? document : undefined);
   const win = options.win ?? (typeof window !== 'undefined' ? window : undefined);
-  const nextTitle = buildPrintDocumentTitle(sheet, activeTab);
+  const nextTitle = buildPrintDocumentTitle(sheet, activeTab, lang);
 
   if (!win || typeof win.print !== 'function') {
     return {
       ok: false,
       documentTitle: nextTitle,
-      error: 'Impressão PDF indisponível neste ambiente.',
+      error: t('print.unavailable'),
     };
   }
 
@@ -110,7 +117,7 @@ export function printActiveSheetView(
     return {
       ok: false,
       documentTitle: nextTitle,
-      error: err instanceof Error ? err.message : 'Falha ao iniciar impressão PDF.',
+      error: err instanceof Error ? err.message : t('print.initFailed'),
     };
   }
 }

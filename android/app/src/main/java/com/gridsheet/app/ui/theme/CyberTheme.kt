@@ -42,6 +42,7 @@ object CyberDimens {
     val CardRadius = 10.dp
     val ControlRadius = 6.dp
     val SmallRadius = 4.dp
+    val MinTouchTarget = 48.dp
 }
 
 private val LightColorScheme = lightColorScheme(

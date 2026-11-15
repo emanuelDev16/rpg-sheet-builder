@@ -9,6 +9,17 @@
     <meta property="og:description" content="Protótipo de aplicativo desktop para fichas agnósticas de RPG de mesa com identidade visual Light Cyber-Brutalism e Bento Grid modular." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <script>
+      (function () {
+        try {
+          var t = (localStorage.getItem('gridsheet_theme') || '').trim().toLowerCase();
+          document.documentElement.dataset.theme =
+            t === 'dark' || t === 'eink' || t === 'light' ? t : 'light';
+        } catch (e) {
+          document.documentElement.dataset.theme = 'light';
+        }
+      })();
+    </script>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
