@@ -8,3 +8,9 @@ coverage/
 !.env.example
 .data/
 
+# Android build & generated artifacts
+android/.gradle/
+android/build/
+android/app/build/
+android/app/src/main/assets/presets/
+
