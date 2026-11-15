@@ -17,6 +17,7 @@ import com.gridsheet.app.core.SheetTransferException
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.WorkspaceState
+import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.data.Fts5QuerySanitizer
@@ -1212,5 +1213,52 @@ class CoreEngineTest {
         val undone = XpSystem.undoLastUpgrade(boughtWp.sheet)
         assertTrue(undone.ok)
         assertEquals(14, XpSystem.getAvailableXp(undone.sheet.xp))
+    }
+
+    @Test
+    fun xpRulePresetV20VsV5VsCustomCostsAndWillpowerBlocking() {
+        // Attribute 2 -> 3: V20 = 2 * 4 = 8 XP; V5 = 3 * 5 = 15 XP
+        assertEquals(8, XpSystem.calculateUpgradeCost(2, XpUpgradeCategory.ATTRIBUTE, XpRulePreset.STORYTELLER_V20)?.first)
+        assertEquals(15, XpSystem.calculateUpgradeCost(2, XpUpgradeCategory.ATTRIBUTE, XpRulePreset.VAMPIRE_V5)?.first)
+
+        // Skill 0 -> 1: V20 = 3 XP; V5 = 1 * 3 = 3 XP
+        assertEquals(3, XpSystem.calculateUpgradeCost(0, XpUpgradeCategory.SKILL, XpRulePreset.STORYTELLER_V20)?.first)
+        assertEquals(3, XpSystem.calculateUpgradeCost(0, XpUpgradeCategory.SKILL, XpRulePreset.VAMPIRE_V5)?.first)
+
+        // Clan Discipline 0 -> 1: V20 = 10 XP; V5 = 1 * 5 = 5 XP
+        assertEquals(10, XpSystem.calculateUpgradeCost(0, XpUpgradeCategory.DISCIPLINE, XpRulePreset.STORYTELLER_V20)?.first)
+        assertEquals(5, XpSystem.calculateUpgradeCost(0, XpUpgradeCategory.DISCIPLINE, XpRulePreset.VAMPIRE_V5)?.first)
+
+        // Willpower & Humanity return null in V5
+        assertEquals(null, XpSystem.calculateUpgradeCost(6, XpUpgradeCategory.VIRTUE, XpRulePreset.VAMPIRE_V5, isWillpower = true))
+        assertEquals(null, XpSystem.calculateUpgradeCost(7, XpUpgradeCategory.VIRTUE, XpRulePreset.VAMPIRE_V5, isHumanity = true))
+
+        // Custom preset with customOverride and new-level base
+        assertEquals(
+            18,
+            XpSystem.calculateUpgradeCost(
+                currentLevel = 2,
+                category = XpUpgradeCategory.ATTRIBUTE,
+                preset = XpRulePreset.CUSTOM,
+                customOverride = 6,
+                useNewLevelBase = true
+            )?.first
+        )
+
+        // Sheet-level preset persistence & Willpower upgrade block in V5
+        var wod = Presets.createWorldOfDarknessSheet()
+        assertEquals(XpRulePreset.STORYTELLER_V20, wod.xp.xpRulePreset)
+
+        wod = XpSystem.setXpRulePreset(wod, XpRulePreset.VAMPIRE_V5)
+        assertEquals(XpRulePreset.VAMPIRE_V5, wod.xp.xpRulePreset)
+
+        val v5Traits = XpSystem.extractAllTraits(wod).associateBy { it.fieldId }
+        assertTrue(v5Traits["f_willpower"]?.isBlockedByRule == true)
+        assertFalse(v5Traits["f_willpower"]?.isPossible ?: true)
+        assertTrue(v5Traits["f_humanity"]?.isBlockedByRule == true)
+
+        val blockedWp = XpSystem.upgradeTraitWithXp(wod, "f_willpower", "19:30", "xp_v5_wp")
+        assertFalse(blockedWp.ok)
+        assertTrue(blockedWp.error?.contains("V5") == true)
     }
 }

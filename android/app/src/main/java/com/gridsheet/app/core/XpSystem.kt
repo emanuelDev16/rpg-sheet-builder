@@ -19,7 +19,10 @@ data class UpgradableTrait(
     val isPossible: Boolean,
     val isOutOfClan: Boolean = false,
     val customMultiplier: Int? = null,
-    val isWillpower: Boolean = false
+    val isWillpower: Boolean = false,
+    val isHumanity: Boolean = false,
+    val isBlockedByRule: Boolean = false,
+    val blockedReason: String? = null
 )
 
 data class XpMutationResult(
@@ -56,6 +59,8 @@ object XpSystem {
 
     private val WILLPOWER_KEYS = setOf("willpower", "forca_de_vontade")
 
+    private val HUMANITY_KEYS = setOf("humanity", "humanidade", "path", "trilha", "road")
+
     private val VIRTUE_TEN_CAP_KEYS = setOf(
         "willpower", "forca_de_vontade", "humanity", "humanidade", "path", "trilha", "road"
     )
@@ -74,7 +79,9 @@ object XpSystem {
             spent = spent,
             ledger = xp?.ledger.orEmpty(),
             outOfClanFieldIds = xp?.outOfClanFieldIds.orEmpty(),
-            customMultipliers = xp?.customMultipliers.orEmpty()
+            customMultipliers = xp?.customMultipliers.orEmpty(),
+            xpRulePreset = xp?.xpRulePreset ?: XpRulePreset.STORYTELLER_V20,
+            customUseNewLevelBase = xp?.customUseNewLevelBase ?: false
         )
     }
 
@@ -125,23 +132,49 @@ object XpSystem {
         return sig.contains("DARKNESS") || sig.contains("STORYTELLER") || sig.contains("VAMPIRE")
     }
 
+    fun setXpRulePreset(sheet: CharacterSheetState, preset: XpRulePreset): CharacterSheetState {
+        val norm = normalizeXpState(sheet.xp)
+        return SheetMutators.touchMetadata(
+            sheet.copy(xp = norm.copy(xpRulePreset = preset))
+        )
+    }
+
+    fun setCustomUseNewLevelBase(sheet: CharacterSheetState, useNewLevelBase: Boolean): CharacterSheetState {
+        val norm = normalizeXpState(sheet.xp)
+        return SheetMutators.touchMetadata(
+            sheet.copy(xp = norm.copy(customUseNewLevelBase = useNewLevelBase))
+        )
+    }
+
     fun calculateUpgradeCost(
+        currentLevel: Int,
         category: XpUpgradeCategory,
-        currentValue: Int,
-        useD20Scale: Boolean = false,
+        preset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
+        customOverride: Int? = null,
         isOutOfClan: Boolean = false,
         isWillpower: Boolean = false,
-        customMultiplier: Int? = null
-    ): Pair<Int, String> {
-        val rating = max(0, currentValue)
-        if (customMultiplier != null && customMultiplier > 0) {
-            return if (rating == 0) {
-                customMultiplier to "NEW ($customMultiplier XP · MANUAL)"
+        isHumanity: Boolean = false,
+        useNewLevelBase: Boolean = false,
+        useD20Scale: Boolean = false
+    ): Pair<Int, String>? {
+        val rating = max(0, currentLevel)
+        val nextLevel = rating + 1
+
+        if (preset == XpRulePreset.VAMPIRE_V5 && (isWillpower || isHumanity)) {
+            return null
+        }
+
+        if (customOverride != null && customOverride > 0) {
+            return if (preset == XpRulePreset.VAMPIRE_V5 || (preset == XpRulePreset.CUSTOM && useNewLevelBase)) {
+                (nextLevel * customOverride) to "$nextLevel × $customOverride (MANUAL)"
+            } else if (rating == 0) {
+                customOverride to "NEW ($customOverride XP · MANUAL)"
             } else {
-                (rating * customMultiplier) to "$rating × $customMultiplier (MANUAL)"
+                (rating * customOverride) to "$rating × $customOverride (MANUAL)"
             }
         }
-        if (useD20Scale) {
+
+        if (useD20Scale && preset != XpRulePreset.CUSTOM) {
             return when (category) {
                 XpUpgradeCategory.ATTRIBUTE ->
                     if (rating == 0) 100 to "NEW (100 XP)" else (rating * 100) to "$rating × 100"
@@ -153,32 +186,74 @@ object XpSystem {
                     if (rating == 0) 50 to "NEW (50 XP)" else (rating * 50) to "$rating × 50"
             }
         }
-        return when (category) {
-            XpUpgradeCategory.ATTRIBUTE ->
-                if (rating == 0) 4 to "NEW (4 XP)" else (rating * 4) to "$rating × 4"
-            XpUpgradeCategory.SKILL ->
-                if (rating == 0) 3 to "NEW (3 XP)" else (rating * 2) to "$rating × 2"
-            XpUpgradeCategory.DISCIPLINE ->
-                when {
-                    rating == 0 -> 10 to "NEW (10 XP)"
-                    isOutOfClan -> (rating * 7) to "$rating × 7 (FORA)"
-                    else -> (rating * 5) to "$rating × 5 (CLÃ)"
+
+        return when (preset) {
+            XpRulePreset.VAMPIRE_V5 -> when (category) {
+                XpUpgradeCategory.ATTRIBUTE -> (nextLevel * 5) to "$nextLevel × 5 (V5)"
+                XpUpgradeCategory.SKILL -> (nextLevel * 3) to "$nextLevel × 3 (V5)"
+                XpUpgradeCategory.DISCIPLINE ->
+                    if (isOutOfClan) (nextLevel * 7) to "$nextLevel × 7 (V5 FORA)"
+                    else (nextLevel * 5) to "$nextLevel × 5 (V5 CLÃ)"
+                XpUpgradeCategory.VIRTUE -> (nextLevel * 3) to "$nextLevel × 3 (V5)"
+            }
+            XpRulePreset.CUSTOM -> {
+                val base = if (useNewLevelBase) nextLevel else rating
+                val baseTag = if (useNewLevelBase) "NOVO" else "ATUAL"
+                when (category) {
+                    XpUpgradeCategory.ATTRIBUTE ->
+                        if (base == 0) 4 to "NEW (4 XP)" else (base * 4) to "$base × 4 ($baseTag)"
+                    XpUpgradeCategory.SKILL ->
+                        if (base == 0) 3 to "NEW (3 XP)" else (base * 2) to "$base × 2 ($baseTag)"
+                    XpUpgradeCategory.DISCIPLINE ->
+                        when {
+                            base == 0 -> 10 to "NEW (10 XP)"
+                            isOutOfClan -> (base * 7) to "$base × 7 (FORA · $baseTag)"
+                            else -> (base * 5) to "$base × 5 (CLÃ · $baseTag)"
+                        }
+                    XpUpgradeCategory.VIRTUE ->
+                        if (isWillpower) {
+                            if (base == 0) 1 to "NEW (1 XP)" else (base * 1) to "$base × 1 (WP · $baseTag)"
+                        } else {
+                            if (base == 0) 2 to "NEW (2 XP)" else (base * 2) to "$base × 2 ($baseTag)"
+                        }
                 }
-            XpUpgradeCategory.VIRTUE ->
-                if (isWillpower) {
-                    if (rating == 0) 1 to "NEW (1 XP)" else (rating * 1) to "$rating × 1 (WP)"
-                } else {
-                    if (rating == 0) 2 to "NEW (2 XP)" else (rating * 2) to "$rating × 2"
-                }
+            }
+            XpRulePreset.STORYTELLER_V20 -> when (category) {
+                XpUpgradeCategory.ATTRIBUTE ->
+                    if (rating == 0) 4 to "NEW (4 XP)" else (rating * 4) to "$rating × 4"
+                XpUpgradeCategory.SKILL ->
+                    if (rating == 0) 3 to "NEW (3 XP)" else (rating * 2) to "$rating × 2"
+                XpUpgradeCategory.DISCIPLINE ->
+                    when {
+                        rating == 0 -> 10 to "NEW (10 XP)"
+                        isOutOfClan -> (rating * 7) to "$rating × 7 (FORA)"
+                        else -> (rating * 5) to "$rating × 5 (CLÃ)"
+                    }
+                XpUpgradeCategory.VIRTUE ->
+                    if (isWillpower) {
+                        if (rating == 0) 1 to "NEW (1 XP)" else (rating * 1) to "$rating × 1 (WP)"
+                    } else {
+                        if (rating == 0) 2 to "NEW (2 XP)" else (rating * 2) to "$rating × 2"
+                    }
+            }
         }
     }
 
-    fun getCostRulesSummary(sheet: CharacterSheetState): List<String> =
-        if (isWodSystem(sheet)) {
-            listOf("ATTR ×4", "SKILL ×2 (3 EM 0)", "CLÃ ×5 / FORA ×7 (10 EM 0)", "VIRT ×2", "WP ×1")
-        } else {
-            listOf("ABILITY CUR×100", "SKILL CUR×50 (50 EM 0)", "CAP 20/10")
+    fun getCostRulesSummary(sheet: CharacterSheetState): List<String> {
+        val norm = normalizeXpState(sheet.xp)
+        return when {
+            norm.xpRulePreset == XpRulePreset.VAMPIRE_V5 ->
+                listOf("ATTR NOVO×5", "PERÍCIA NOVO×3", "CLÃ NOVO×5 / FORA NOVO×7", "VANTAGENS NOVO×3", "WP/HUM: EM JOGO")
+            norm.xpRulePreset == XpRulePreset.CUSTOM -> {
+                val baseLabel = if (norm.customUseNewLevelBase) "NOVO NÍVEL" else "NÍVEL ATUAL"
+                listOf("BASE: $baseLabel", "MULTIPLICADORES EDITÁVEIS")
+            }
+            isWodSystem(sheet) ->
+                listOf("ATTR ×4", "SKILL ×2 (3 EM 0)", "CLÃ ×5 / FORA ×7 (10 EM 0)", "VIRT ×2", "WP ×1")
+            else ->
+                listOf("ABILITY CUR×100", "SKILL CUR×50 (50 EM 0)", "CAP 20/10")
         }
+    }
 
     fun getTraitMaxCap(
         sheet: CharacterSheetState,
@@ -234,16 +309,24 @@ object XpSystem {
                 val isMaxed = currentValue >= maxCap
                 val isOutOfClan = category == XpUpgradeCategory.DISCIPLINE && field.id in normXp.outOfClanFieldIds
                 val isWillpower = category == XpUpgradeCategory.VIRTUE && cleanKey in WILLPOWER_KEYS
+                val isHumanity = category == XpUpgradeCategory.VIRTUE && cleanKey in HUMANITY_KEYS
                 val customMult = normXp.customMultipliers[field.id]
-                val (cost, formulaLabel) = calculateUpgradeCost(
+                val costResult = calculateUpgradeCost(
+                    currentLevel = currentValue,
                     category = category,
-                    currentValue = currentValue,
-                    useD20Scale = useD20Scale,
+                    preset = normXp.xpRulePreset,
+                    customOverride = customMult,
                     isOutOfClan = isOutOfClan,
                     isWillpower = isWillpower,
-                    customMultiplier = customMult
+                    isHumanity = isHumanity,
+                    useNewLevelBase = normXp.customUseNewLevelBase,
+                    useD20Scale = useD20Scale
                 )
-                val isAffordable = cost <= availableXp
+                val isBlockedByRule = costResult == null
+                val blockedReason = if (isBlockedByRule) "Gerenciado em jogo no V5" else null
+                val cost = costResult?.first ?: 0
+                val formulaLabel = costResult?.second ?: "GERENCIADO EM JOGO NO V5"
+                val isAffordable = !isBlockedByRule && cost <= availableXp
 
                 traits.add(
                     UpgradableTrait(
@@ -258,10 +341,13 @@ object XpSystem {
                         formulaLabel = formulaLabel,
                         isMaxed = isMaxed,
                         isAffordable = isAffordable,
-                        isPossible = !isMaxed && isAffordable,
+                        isPossible = !isMaxed && !isBlockedByRule && isAffordable,
                         isOutOfClan = isOutOfClan,
                         customMultiplier = customMult,
-                        isWillpower = isWillpower
+                        isWillpower = isWillpower,
+                        isHumanity = isHumanity,
+                        isBlockedByRule = isBlockedByRule,
+                        blockedReason = blockedReason
                     )
                 )
             }
@@ -284,7 +370,7 @@ object XpSystem {
     }
 
     fun getCheapestBlockedUpgrade(sheet: CharacterSheetState): UpgradableTrait? =
-        extractAllTraits(sheet).filter { !it.isMaxed }.minByOrNull { it.cost }
+        extractAllTraits(sheet).filter { !it.isMaxed && !it.isBlockedByRule }.minByOrNull { it.cost }
 
     fun awardXp(
         sheet: CharacterSheetState,
@@ -339,6 +425,10 @@ object XpSystem {
     ): XpMutationResult {
         val trait = extractAllTraits(sheet).find { it.fieldId == fieldId }
             ?: return XpMutationResult(false, sheet, error = "Atributo, perícia ou disciplina não encontrado na ficha.")
+
+        if (trait.isBlockedByRule) {
+            return XpMutationResult(false, sheet, error = trait.blockedReason ?: "${trait.label} não pode ser evoluído com XP neste preset.")
+        }
 
         if (trait.isMaxed) {
             return XpMutationResult(false, sheet, error = "${trait.label} já está no limite máximo (${trait.maxCap}).")

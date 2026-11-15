@@ -61,6 +61,13 @@ enum class XpUpgradeCategory {
     @SerialName("virtue") VIRTUE
 }
 
+@Serializable
+enum class XpRulePreset {
+    @SerialName("storyteller_v20") STORYTELLER_V20,
+    @SerialName("vampire_v5") VAMPIRE_V5,
+    @SerialName("custom") CUSTOM
+}
+
 data class SystemOption(
     val id: SystemId,
     val label: String,
@@ -211,7 +218,9 @@ data class XpState(
     val spent: Int = 0,
     val ledger: List<XpLedgerEntry> = emptyList(),
     val outOfClanFieldIds: Set<String> = emptySet(),
-    val customMultipliers: Map<String, Int> = emptyMap()
+    val customMultipliers: Map<String, Int> = emptyMap(),
+    val xpRulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
+    val customUseNewLevelBase: Boolean = false
 )
 
 @Serializable

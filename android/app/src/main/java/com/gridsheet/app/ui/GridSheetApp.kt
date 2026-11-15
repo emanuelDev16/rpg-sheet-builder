@@ -321,6 +321,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             onUpgradeTrait = vm::upgradeTrait,
                             onToggleDisciplineClan = vm::toggleDisciplineClan,
                             onSetCustomMultiplier = vm::setTraitCustomMultiplier,
+                            onSelectRulePreset = vm::setXpRulePreset,
+                            onToggleCustomBase = vm::setCustomUseNewLevelBase,
                             onUndoLastUpgrade = vm::undoLastUpgrade
                         )
                     }

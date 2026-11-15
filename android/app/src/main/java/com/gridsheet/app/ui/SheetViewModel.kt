@@ -24,6 +24,7 @@ import com.gridsheet.app.core.SheetTransferException
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.WorkspaceState
+import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.data.Fts5QuerySanitizer
@@ -835,6 +836,20 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setTraitCustomMultiplier(fieldId: String, multiplier: Int?) {
         controller.updateActiveSheet { XpSystem.setCustomMultiplier(it, fieldId, multiplier) }
+    }
+
+    fun setXpRulePreset(preset: XpRulePreset) {
+        controller.updateActiveSheet { XpSystem.setXpRulePreset(it, preset) }
+        val label = when (preset) {
+            XpRulePreset.STORYTELLER_V20 -> "V20 CLÁSSICO"
+            XpRulePreset.VAMPIRE_V5 -> "VAMPIRO V5"
+            XpRulePreset.CUSTOM -> "CUSTOM"
+        }
+        controller.setStatusMessage("REGRA DE XP: $label")
+    }
+
+    fun setCustomUseNewLevelBase(useNewLevelBase: Boolean) {
+        controller.updateActiveSheet { XpSystem.setCustomUseNewLevelBase(it, useNewLevelBase) }
     }
 
     fun undoLastUpgrade() {

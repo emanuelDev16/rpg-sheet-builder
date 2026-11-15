@@ -43,6 +43,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gridsheet.app.core.CharacterSheetState
 import com.gridsheet.app.core.UpgradableTrait
+import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
 import com.gridsheet.app.ui.theme.CyberColors
@@ -57,6 +58,8 @@ fun XpUpgradeWorkspace(
     onUpgradeTrait: (String) -> Unit,
     onToggleDisciplineClan: (String) -> Unit,
     onSetCustomMultiplier: (String, Int?) -> Unit,
+    onSelectRulePreset: (XpRulePreset) -> Unit,
+    onToggleCustomBase: (Boolean) -> Unit,
     onUndoLastUpgrade: () -> Unit
 ) {
     val xp = XpSystem.normalizeXpState(sheet.xp)
@@ -137,6 +140,92 @@ fun XpUpgradeWorkspace(
                         XpMetricBox("AVAILABLE XP", "$availableXp", CyberColors.AccentWine, Modifier.weight(1f))
                         XpMetricBox("TOTAL EARNED", "${xp.totalEarned}", CyberColors.InkPrimary, Modifier.weight(1f))
                         XpMetricBox("TOTAL SPENT", "${xp.spent}", CyberColors.InkSecondary, Modifier.weight(1f))
+                    }
+
+                    // Segmented XP Rule Preset Selector
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(CyberDimens.ControlRadius))
+                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius)),
+                            horizontalArrangement = Arrangement.spacedBy(0.dp)
+                        ) {
+                            listOf(
+                                XpRulePreset.STORYTELLER_V20 to "V20 CLÁSSICO",
+                                XpRulePreset.VAMPIRE_V5 to "VAMPIRO V5",
+                                XpRulePreset.CUSTOM to "CUSTOM"
+                            ).forEach { (preset, label) ->
+                                val selected = xp.xpRulePreset == preset
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                        .background(if (selected) CyberColors.AccentBlack else CyberColors.BgCard)
+                                        .clickable { onSelectRulePreset(preset) }
+                                        .padding(horizontal = 6.dp, vertical = 10.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary
+                                    )
+                                }
+                            }
+                        }
+
+                        val formulaBadgeText = when (xp.xpRulePreset) {
+                            XpRulePreset.STORYTELLER_V20 -> "FÓRMULA V20: ATUAL × MULT"
+                            XpRulePreset.VAMPIRE_V5 -> "FÓRMULA V5: NOVO NÍVEL × MULT"
+                            XpRulePreset.CUSTOM ->
+                                "FÓRMULA CUSTOM: ${if (xp.customUseNewLevelBase) "NOVO NÍVEL" else "ATUAL"} × MULT"
+                        }
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .background(CyberColors.AccentCreamBadge, RoundedCornerShape(CyberDimens.SmallRadius))
+                                    .border(1.dp, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.SmallRadius))
+                                    .padding(horizontal = 8.dp, vertical = 5.dp)
+                            ) {
+                                Text(
+                                    text = formulaBadgeText,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = CyberColors.InkPrimary
+                                )
+                            }
+                            if (xp.xpRulePreset == XpRulePreset.CUSTOM) {
+                                Surface(
+                                    modifier = Modifier
+                                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                        .clickable { onToggleCustomBase(!xp.customUseNewLevelBase) },
+                                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                                    color = CyberColors.BgCard,
+                                    border = BorderStroke(1.dp, CyberColors.BorderInk)
+                                ) {
+                                    Box(
+                                        modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                        contentAlignment = Alignment.Center
+                                    ) {
+                                        Text(
+                                            text = if (xp.customUseNewLevelBase) "BASE: NOVO" else "BASE: ATUAL",
+                                            fontFamily = FontFamily.Monospace,
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Bold,
+                                            color = CyberColors.AccentWine
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
 
                     val pct = if (xp.totalEarned > 0) ((xp.spent.toFloat() / xp.totalEarned) * 100).toInt().coerceIn(0, 100) else 0
@@ -375,22 +464,27 @@ fun XpUpgradeWorkspace(
                                         ) {
                                             Column(modifier = Modifier.weight(1f).padding(end = 8.dp)) {
                                                 Text(
-                                                    text = "${trait.category.name} · ${trait.formulaLabel}",
+                                                    text = if (trait.isBlockedByRule) {
+                                                        "${trait.category.name} · ${trait.blockedReason ?: "Gerenciado em jogo no V5"}"
+                                                    } else {
+                                                        "${trait.category.name} · ${trait.formulaLabel}"
+                                                    },
                                                     fontFamily = FontFamily.Monospace,
                                                     fontSize = 10.sp,
-                                                    color = CyberColors.AccentWine,
+                                                    color = if (trait.isBlockedByRule) CyberColors.InkMuted else CyberColors.AccentWine,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
-                                                    text = if (trait.isMaxed) {
-                                                        "${trait.label}  ${trait.currentValue} (MAX)"
+                                                    text = if (trait.isMaxed || trait.isBlockedByRule) {
+                                                        if (trait.isBlockedByRule) "${trait.label}  ${trait.currentValue} (EM JOGO)"
+                                                        else "${trait.label}  ${trait.currentValue} (MAX)"
                                                     } else {
                                                         "${trait.label}  ${trait.currentValue} → ${trait.nextValue}"
                                                     },
                                                     fontFamily = FontFamily.Monospace,
                                                     fontSize = 13.sp,
                                                     fontWeight = FontWeight.Black,
-                                                    color = CyberColors.InkPrimary
+                                                    color = if (trait.isBlockedByRule) CyberColors.InkMuted else CyberColors.InkPrimary
                                                 )
                                             }
                                             Button(
@@ -406,6 +500,7 @@ fun XpUpgradeWorkspace(
                                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                                             ) {
                                                 val btnText = when {
+                                                    trait.isBlockedByRule -> "V5: EM JOGO"
                                                     trait.isMaxed -> "MAX (${trait.maxCap})"
                                                     !trait.isAffordable -> "FALTA XP · ${trait.cost}"
                                                     else -> "UPGRADE · ${trait.cost} XP ↗"
@@ -419,52 +514,54 @@ fun XpUpgradeWorkspace(
                                             }
                                         }
 
-                                        Row(
-                                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            if (trait.category == XpUpgradeCategory.DISCIPLINE && isWod) {
+                                        if (!trait.isBlockedByRule) {
+                                            Row(
+                                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                                verticalAlignment = Alignment.CenterVertically
+                                            ) {
+                                                if (trait.category == XpUpgradeCategory.DISCIPLINE && isWod) {
+                                                    Surface(
+                                                        modifier = Modifier
+                                                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                                            .clickable { onToggleDisciplineClan(trait.fieldId) },
+                                                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                                                        color = if (trait.isOutOfClan) CyberColors.AccentWineSoft else CyberColors.BgCard,
+                                                        border = BorderStroke(1.dp, if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.BorderInk)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
+                                                            contentAlignment = Alignment.Center
+                                                        ) {
+                                                            Text(
+                                                                text = if (trait.isOutOfClan) "FORA DE CLÃ (×7)" else "CLÃ (×5)",
+                                                                fontFamily = FontFamily.Monospace,
+                                                                fontSize = 10.sp,
+                                                                fontWeight = FontWeight.Bold,
+                                                                color = if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.InkPrimary
+                                                            )
+                                                        }
+                                                    }
+                                                }
                                                 Surface(
                                                     modifier = Modifier
                                                         .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
-                                                        .clickable { onToggleDisciplineClan(trait.fieldId) },
+                                                        .clickable { multiplierTarget = trait },
                                                     shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                                    color = if (trait.isOutOfClan) CyberColors.AccentWineSoft else CyberColors.BgCard,
-                                                    border = BorderStroke(1.dp, if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.BorderInk)
+                                                    color = if (trait.customMultiplier != null) CyberColors.AccentCreamBadge else CyberColors.BgCard,
+                                                    border = BorderStroke(1.dp, CyberColors.BorderInk)
                                                 ) {
                                                     Box(
                                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Text(
-                                                            text = if (trait.isOutOfClan) "FORA DE CLÃ (×7)" else "CLÃ (×5)",
+                                                            text = if (trait.customMultiplier != null) "MULT: ×${trait.customMultiplier}" else "MULT: AUTO",
                                                             fontFamily = FontFamily.Monospace,
                                                             fontSize = 10.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.InkPrimary
+                                                            color = CyberColors.InkPrimary
                                                         )
                                                     }
-                                                }
-                                            }
-                                            Surface(
-                                                modifier = Modifier
-                                                    .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
-                                                    .clickable { multiplierTarget = trait },
-                                                shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                                color = if (trait.customMultiplier != null) CyberColors.AccentCreamBadge else CyberColors.BgCard,
-                                                border = BorderStroke(1.dp, CyberColors.BorderInk)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
-                                                    contentAlignment = Alignment.Center
-                                                ) {
-                                                    Text(
-                                                        text = if (trait.customMultiplier != null) "MULT: ×${trait.customMultiplier}" else "MULT: AUTO",
-                                                        fontFamily = FontFamily.Monospace,
-                                                        fontSize = 10.sp,
-                                                        fontWeight = FontWeight.Bold,
-                                                        color = CyberColors.InkPrimary
-                                                    )
                                                 }
                                             }
                                         }
