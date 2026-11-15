@@ -212,6 +212,11 @@ export interface AppTranslations {
     accessGranted: string;
     schemaUnlocked: string;
     roomSyncedFlash: string;
+    persistenceIdle: string;
+    persistenceSaving: string;
+    persistenceSaved: string;
+    persistenceError: string;
+    persistenceAria: (statusLabel: string) => string;
   };
   modal: {
     newTitle: string;
@@ -348,6 +353,11 @@ const PT_BR: AppTranslations = {
     accessGranted: '> ACCESS GRANTED_',
     schemaUnlocked: '> SCHEMA_UNLOCKED_',
     roomSyncedFlash: '// ROOM DB: SINCRONIZADO AGORA',
+    persistenceIdle: 'IDB: PRONTO',
+    persistenceSaving: 'IDB: SALVANDO...',
+    persistenceSaved: 'IDB: SALVO',
+    persistenceError: 'IDB: ERRO',
+    persistenceAria: (statusLabel) => `Persistência local IndexedDB: ${statusLabel}`,
   },
   modal: {
     newTitle: 'CRIAR NOVA FICHA',
@@ -372,7 +382,7 @@ const PT_BR: AppTranslations = {
     importBtn: 'SELECIONAR ARQUIVO JSON',
     printPdfTitle: 'IMPRIMIR / SALVAR PDF (FICHA ATIVA)',
     printPdfDesc: 'Gera PDF estilizado em Light Cyber-Brutalism mantendo o Bento Grid atual',
-    saveLocalTitle: 'SALVAR NO NAVEGADOR (LOCALSTORAGE)',
+    saveLocalTitle: 'SALVAR NO NAVEGADOR (INDEXEDDB)',
     saveLocalDesc: 'Persiste a ficha e alterações de esquema imediatamente neste dispositivo',
     downloadJsonTitle: 'BAIXAR FICHA (.JSON)',
     downloadJsonDesc: 'Exporta dados, fórmulas e histórico de rolagens',
@@ -484,6 +494,11 @@ const EN: AppTranslations = {
     accessGranted: '> ACCESS GRANTED_',
     schemaUnlocked: '> SCHEMA_UNLOCKED_',
     roomSyncedFlash: '// ROOM DB: SYNCED NOW',
+    persistenceIdle: 'IDB: READY',
+    persistenceSaving: 'IDB: SAVING...',
+    persistenceSaved: 'IDB: SAVED',
+    persistenceError: 'IDB: ERROR',
+    persistenceAria: (statusLabel) => `Local IndexedDB persistence: ${statusLabel}`,
   },
   modal: {
     newTitle: 'CREATE NEW SHEET',
@@ -508,7 +523,7 @@ const EN: AppTranslations = {
     importBtn: 'SELECT JSON FILE',
     printPdfTitle: 'PRINT / SAVE PDF (ACTIVE VIEW)',
     printPdfDesc: 'Generates styled Light Cyber-Brutalism PDF preserving the Bento Grid layout',
-    saveLocalTitle: 'SAVE IN BROWSER (LOCALSTORAGE)',
+    saveLocalTitle: 'SAVE IN BROWSER (INDEXEDDB)',
     saveLocalDesc: 'Persists the sheet and schema changes immediately on this device',
     downloadJsonTitle: 'DOWNLOAD SHEET (.JSON)',
     downloadJsonDesc: 'Exports data, formulas, and roll history',
@@ -620,6 +635,11 @@ const ES: AppTranslations = {
     accessGranted: '> ACCESS GRANTED_',
     schemaUnlocked: '> SCHEMA_UNLOCKED_',
     roomSyncedFlash: '// ROOM DB: SINCRONIZADO AHORA',
+    persistenceIdle: 'IDB: LISTO',
+    persistenceSaving: 'IDB: GUARDANDO...',
+    persistenceSaved: 'IDB: GUARDADO',
+    persistenceError: 'IDB: ERROR',
+    persistenceAria: (statusLabel) => `Persistencia local IndexedDB: ${statusLabel}`,
   },
   modal: {
     newTitle: 'CREAR NUEVA HOJA',
@@ -644,7 +664,7 @@ const ES: AppTranslations = {
     importBtn: 'SELECCIONAR ARCHIVO JSON',
     printPdfTitle: 'IMPRIMIR / GUARDAR PDF (HOJA ACTIVA)',
     printPdfDesc: 'Genera PDF estilizado en Light Cyber-Brutalism manteniendo el Bento Grid actual',
-    saveLocalTitle: 'GUARDAR EN EL NAVEGADOR (LOCALSTORAGE)',
+    saveLocalTitle: 'GUARDAR EN EL NAVEGADOR (INDEXEDDB)',
     saveLocalDesc: 'Guarda la hoja y los cambios de esquema inmediatamente en este dispositivo',
     downloadJsonTitle: 'DESCARGAR HOJA (.JSON)',
     downloadJsonDesc: 'Exporta datos, fórmulas e historial de tiradas',
