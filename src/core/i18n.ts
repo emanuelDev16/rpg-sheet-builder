@@ -529,6 +529,7 @@ const PT_BR_DICT = {
   'app.roomSyncFailed': 'Falha na sincronização Room.',
   'app.roomPeriodicFailed': 'Falha na verificação periódica Room.',
   'app.idbInitFailed': 'Falha ao inicializar IndexedDB.',
+  'app.loadingWorkspace': 'Carregando fichas e banco local...',
 
   // Print & Pure HTML Export
   'print.unavailable': 'Impressão PDF indisponível neste ambiente.',
@@ -1030,6 +1031,7 @@ export const EN: TranslationDictionary = {
   'app.roomSyncFailed': 'Room synchronization failed.',
   'app.roomPeriodicFailed': 'Periodic Room check failed.',
   'app.idbInitFailed': 'Failed to initialize IndexedDB.',
+  'app.loadingWorkspace': 'Loading character sheets and local database...',
 
   // Print & Pure HTML Export
   'print.unavailable': 'PDF printing is unavailable in this environment.',
@@ -1526,6 +1528,7 @@ export const ES: TranslationDictionary = {
   'app.roomSyncFailed': 'Fallo en la sincronización Room.',
   'app.roomPeriodicFailed': 'Fallo en la verificación periódica Room.',
   'app.idbInitFailed': 'Error al inicializar IndexedDB.',
+  'app.loadingWorkspace': 'Cargando fichas y base local...',
 
   // Print & Pure HTML Export
   'print.unavailable': 'La impresión PDF no está disponible en este entorno.',

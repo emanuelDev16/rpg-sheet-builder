@@ -1,7 +1,9 @@
 import React, { useMemo, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import { ArrowUpRight, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
 import { CharacterSheetState, XpUpgradeCategory } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { AnimatedCounter } from './AnimatedCounter';
 import {
   extractAllTraits,
   getAvailableXp,
@@ -146,6 +148,10 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const [editingCostFieldId, setEditingCostFieldId] = useState<string | null>(null);
   const [customCostDraft, setCustomCostDraft] = useState('');
   const [pricingVersion, setPricingVersion] = useState(0);
+  const prefersReducedMotion = useReducedMotion();
+  const isEinkTheme =
+    typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
+  const shouldReduceMotion = Boolean(prefersReducedMotion || isEinkTheme);
 
   const ext = LOCALIZED_XP_EXTRAS[language] ?? LOCALIZED_XP_EXTRAS['pt-BR'];
 
@@ -371,7 +377,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 data-testid="xp-available"
                 className="font-display text-4xl font-extrabold leading-none text-[var(--accent-wine)] tabular-nums"
               >
-                {availableXp}
+                <AnimatedCounter value={availableXp} />
               </span>
             </div>
             <div className="p-3 flex flex-col gap-0.5">
@@ -382,7 +388,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 data-testid="xp-earned"
                 className="font-display text-3xl font-extrabold leading-none text-[var(--ink-primary)] tabular-nums"
               >
-                {xpState.totalEarned}
+                <AnimatedCounter value={xpState.totalEarned} />
               </span>
             </div>
             <div className="p-3 flex flex-col gap-0.5">
@@ -393,7 +399,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 data-testid="xp-spent"
                 className="font-display text-3xl font-extrabold leading-none text-[var(--ink-secondary)] tabular-nums"
               >
-                {xpState.spent}
+                <AnimatedCounter value={xpState.spent} />
               </span>
             </div>
           </div>
@@ -403,7 +409,9 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
             <div className="flex items-center justify-between font-mono-tech text-[11px] font-semibold">
               <span className="text-[var(--ink-secondary)] uppercase">{t.allocation}</span>
               <span className="text-[var(--ink-primary)] tabular-nums">
-                {xpState.spent} / {xpState.totalEarned} {t.spentLabel} · {spentPercent}%
+                <AnimatedCounter value={xpState.spent} pulseOnChange={false} /> /{' '}
+                <AnimatedCounter value={xpState.totalEarned} pulseOnChange={false} /> {t.spentLabel} ·{' '}
+                <AnimatedCounter value={spentPercent} pulseOnChange={false} />%
               </span>
             </div>
             <div
@@ -415,8 +423,19 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               aria-valuenow={xpState.spent}
             >
               {Array.from({ length: totalBlocks }).map((_, i) => (
-                <span
+                <motion.span
                   key={i}
+                  initial={false}
+                  animate={{ scale: i < filledBlocks ? 1 : 0.95 }}
+                  transition={
+                    shouldReduceMotion
+                      ? { duration: 0 }
+                      : {
+                          duration: 0.2,
+                          delay: i < filledBlocks ? i * 0.015 : 0,
+                          ease: 'easeOut',
+                        }
+                  }
                   className={`seg-block ${i < filledBlocks ? 'is-filled' : ''}`}
                 />
               ))}

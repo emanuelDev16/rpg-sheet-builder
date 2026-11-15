@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { Suspense, use, useEffect, useMemo, useRef, useState } from 'react';
 import { Dices, X } from 'lucide-react';
 import {
   addCardToSheet,
@@ -9,15 +9,12 @@ import {
   AppMode,
   CharacterSheetState,
   consumeWillpowerForRoll,
-  createBlankSheet,
   createDefaultSheet,
   createNewSheetForSystem,
   createPresetBySystemId,
   detectSystemId,
   evaluateSheet,
   FieldKind,
-  migrateLegacyWodSheet,
-  migrateWorkspaceSheets,
   NewSheetIdentityInput,
   nowIsoUtc,
   removeCardFromSheet,
@@ -43,9 +40,7 @@ import {
   ROOM_EDIT_DEBOUNCE_MS,
   ROOM_PERIODIC_SYNC_INTERVAL_MS,
   ROOM_RETRY_INTERVAL_MS,
-  ROOM_SYNC_META_KEY,
   RoomSyncIndicatorState,
-  RoomSyncLocalMeta,
 } from './core/roomSync';
 import {
   isWodPoolExpression,
@@ -71,12 +66,23 @@ import {
   PersistenceSnapshot,
   resolveSheetRecordId,
   saveCustomTemplate,
+  SheetsStore,
 } from './core/sheetsStore';
+import {
+  createSuspenseResource,
+  HydratedWorkspacePayload,
+  hydrateWorkspaceFromStore,
+  loadInitialWorkspaceBootstrap,
+  SuspenseResource,
+  withSafeXpState,
+  writeRoomSyncLocalMeta,
+} from './core/workspaceHydration';
 import { filterCardsByQuery } from './core/sheetSearch';
 import { TopBar } from './components/TopBar';
 import { TabNav } from './components/TabNav';
 import { SheetSearchBar } from './components/SheetSearchBar';
 import { BentoCard } from './components/BentoCard';
+import { BentoGridSkeleton } from './components/BentoGridSkeleton';
 import { CustomCardBuilder } from './components/CustomCardBuilder';
 import { RollLogSidebar } from './components/RollLogSidebar';
 import { StatusBar } from './components/StatusBar';
@@ -95,104 +101,9 @@ import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
   getAvailableXp,
-  normalizeXpState,
   undoLastUpgrade,
   upgradeTraitWithXp,
 } from './core/xpSystem';
-
-interface InitialWorkspaceBootstrap {
-  workspace: WorkspaceState;
-  hadLocalWorkspace: boolean;
-  updatedAtMillis: number;
-  lastMirroredDigest: string;
-}
-
-function withSafeXpState(parsed: CharacterSheetState): CharacterSheetState {
-  const sysId = detectSystemId(parsed);
-  const migrated = migrateLegacyWodSheet({ ...parsed, systemId: sysId });
-  if (migrated.xp) {
-    return { ...migrated, systemId: sysId, xp: normalizeXpState(migrated.xp) };
-  }
-  return {
-    ...migrated,
-    systemId: sysId,
-    xp: {
-      totalEarned: 14,
-      spent: 0,
-      ledger: [
-        {
-          id: 'xp_seed_legacy',
-          timestamp: '22:00',
-          kind: 'award',
-          delta: 14,
-          label: 'CHRONICLE SESSION AWARD',
-        },
-      ],
-    },
-  };
-}
-
-function readRoomSyncLocalMeta(): RoomSyncLocalMeta | null {
-  try {
-    const raw = localStorage.getItem(ROOM_SYNC_META_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw) as Partial<RoomSyncLocalMeta>;
-    if (typeof parsed.updatedAtMillis === 'number' && Number.isFinite(parsed.updatedAtMillis)) {
-      return {
-        updatedAtMillis: parsed.updatedAtMillis,
-        lastMirroredDigest: typeof parsed.lastMirroredDigest === 'string' ? parsed.lastMirroredDigest : '',
-        baseRevisions: parsed.baseRevisions,
-        dirtySystems: parsed.dirtySystems,
-      };
-    }
-  } catch {
-    // Ignore storage errors
-  }
-  return null;
-}
-
-function writeRoomSyncLocalMeta(meta: RoomSyncLocalMeta): void {
-  try {
-    localStorage.setItem(ROOM_SYNC_META_KEY, JSON.stringify(meta));
-  } catch {
-    // Ignore storage errors
-  }
-}
-
-function loadInitialWorkspaceBootstrap(): InitialWorkspaceBootstrap {
-  const existingMeta = readRoomSyncLocalMeta();
-  const now = Date.now();
-
-  try {
-    const bridgeRaw =
-      typeof window !== 'undefined' ? window.AndroidRoomBridge?.loadWorkspace?.() : null;
-    if (bridgeRaw) {
-      const parsed = JSON.parse(bridgeRaw) as WorkspaceState;
-      if (parsed && parsed.activeSystemId && parsed.sheetsBySystem) {
-        const migratedBridge = migrateWorkspaceSheets(parsed);
-        return {
-          workspace: migratedBridge,
-          hadLocalWorkspace: true,
-          updatedAtMillis: now,
-          lastMirroredDigest: computeWorkspaceDigest(migratedBridge),
-        };
-      }
-    }
-  } catch {
-    // Fallback to default seed sheet while IndexedDB loads asynchronously
-  }
-
-  const defaultSheet = createDefaultSheet();
-  return {
-    workspace: {
-      activeSystemId: 'wod',
-      sheetsBySystem: { wod: defaultSheet },
-    },
-    hadLocalWorkspace: false,
-    updatedAtMillis: existingMeta?.updatedAtMillis ?? now,
-    lastMirroredDigest: existingMeta?.lastMirroredDigest ?? '',
-  };
-}
 
 function nowTimeString(): string {
   const d = new Date();
@@ -201,37 +112,27 @@ function nowTimeString(): string {
   return `${hh}:${mm}`;
 }
 
+interface HydratedAppWorkspaceProps {
+  hydrationResource: SuspenseResource<HydratedWorkspacePayload>;
+  sheetsStore: SheetsStore;
+  language: AppLanguage;
+  theme: ThemeMode;
+  onChangeLanguage: (language: AppLanguage) => void;
+  onChangeTheme: (theme: ThemeMode) => void;
+}
+
 export default function App() {
-  const [bootstrap] = useState<InitialWorkspaceBootstrap>(loadInitialWorkspaceBootstrap);
-  const [workspace, setWorkspace] = useState<WorkspaceState>(bootstrap.workspace);
-  const [activeView, setActiveView] = useState<'home' | 'sheet'>('home');
-  const [homeRulesOpen, setHomeRulesOpen] = useState(false);
-  const [persistedSheets, setPersistedSheets] = useState<CharacterSheetState[]>([]);
-  const [activeTab, setActiveTab] = useState<TabId>('geral');
-  const [mode, setMode] = useState<AppMode>('jogo');
   const [language, setLanguage] = useState<AppLanguage>(readStoredLanguage);
   const [theme, setTheme] = useState<ThemeMode>(readStoredTheme);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [modalMode, setModalMode] = useState<'new' | 'open' | 'save' | null>(null);
-  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
-  const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
-  const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
-  const mobileRollToastTimerRef = useRef<number | null>(null);
-  const [flashMessage, setFlashMessage] = useState<string | null>(null);
-  const [customTemplates, setCustomTemplates] = useState<CustomSheetTemplate[]>([]);
-  const [persistenceState, setPersistenceState] = useState<PersistenceSnapshot>({
-    status: 'idle',
-    lastSavedAtMillis: null,
-    errorMessage: null,
-    pendingCount: 0,
+  const [sheetsStore] = useState<SheetsStore>(() => getDefaultSheetsStore());
+  const [hydrationResource] = useState<SuspenseResource<HydratedWorkspacePayload>>(() => {
+    const initialLang = readStoredLanguage();
+    return createSuspenseResource(
+      hydrateWorkspaceFromStore(sheetsStore, loadInitialWorkspaceBootstrap(), {
+        idbInitErrorMessage: getTranslations(initialLang).t('app.idbInitFailed'),
+      }),
+    );
   });
-  const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
-    phase: 'synced',
-    nextSyncAtMillis: Date.now() + ROOM_PERIODIC_SYNC_INTERVAL_MS,
-    lastSyncedAtMillis: bootstrap.lastMirroredDigest ? bootstrap.updatedAtMillis : null,
-  }));
-
-  const t = useMemo(() => getTranslations(language), [language]);
 
   useEffect(() => {
     try {
@@ -250,24 +151,89 @@ export default function App() {
     persistTheme(theme);
   }, [theme]);
 
+  return (
+    <Suspense fallback={<BentoGridSkeleton language={language} />}>
+      <HydratedAppWorkspace
+        hydrationResource={hydrationResource}
+        sheetsStore={sheetsStore}
+        language={language}
+        theme={theme}
+        onChangeLanguage={setLanguage}
+        onChangeTheme={setTheme}
+      />
+    </Suspense>
+  );
+}
+
+function HydratedAppWorkspace({
+  hydrationResource,
+  sheetsStore,
+  language,
+  theme,
+  onChangeLanguage,
+  onChangeTheme,
+}: HydratedAppWorkspaceProps) {
+  const hydrated = use(hydrationResource.promise);
+  const [workspace, setWorkspace] = useState<WorkspaceState>(hydrated.workspace);
+  const [activeView, setActiveView] = useState<'home' | 'sheet'>('home');
+  const [homeRulesOpen, setHomeRulesOpen] = useState(false);
+  const [persistedSheets, setPersistedSheets] = useState<CharacterSheetState[]>(
+    hydrated.persistedSheets,
+  );
+  const [activeTab, setActiveTab] = useState<TabId>('geral');
+  const [mode, setMode] = useState<AppMode>('jogo');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [modalMode, setModalMode] = useState<'new' | 'open' | 'save' | null>(null);
+  const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
+  const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
+  const mobileRollToastTimerRef = useRef<number | null>(null);
+  const [flashMessage, setFlashMessage] = useState<string | null>(null);
+  const [customTemplates, setCustomTemplates] = useState<CustomSheetTemplate[]>(
+    hydrated.customTemplates,
+  );
+  const [persistenceState, setPersistenceState] = useState<PersistenceSnapshot>(() =>
+    hydrated.idbError
+      ? {
+          status: 'error',
+          lastSavedAtMillis: null,
+          errorMessage: hydrated.idbError,
+          pendingCount: 0,
+        }
+      : {
+          status: 'idle',
+          lastSavedAtMillis: null,
+          errorMessage: null,
+          pendingCount: 0,
+        },
+  );
+  const [roomSyncState, setRoomSyncState] = useState<RoomSyncIndicatorState>(() => ({
+    phase: 'synced',
+    nextSyncAtMillis: Date.now() + ROOM_PERIODIC_SYNC_INTERVAL_MS,
+    lastSyncedAtMillis: hydrated.bootstrap.lastMirroredDigest
+      ? hydrated.bootstrap.updatedAtMillis
+      : null,
+  }));
+
+  const t = useMemo(() => getTranslations(language), [language]);
+
   const workspaceRef = useRef(workspace);
   workspaceRef.current = workspace;
   const persistedSheetsRef = useRef<CharacterSheetState[]>(persistedSheets);
   persistedSheetsRef.current = persistedSheets;
-  const updatedAtRef = useRef(bootstrap.updatedAtMillis);
-  const lastMirroredDigestRef = useRef(bootstrap.lastMirroredDigest);
+  const updatedAtRef = useRef(hydrated.bootstrap.updatedAtMillis);
+  const lastMirroredDigestRef = useRef(hydrated.bootstrap.lastMirroredDigest);
   const baseRevisionsRef = useRef<Partial<Record<SystemId, number>>>(
-    readRoomSyncLocalMeta()?.baseRevisions ?? {},
+    hydrated.bootstrap.baseRevisions,
   );
   const dirtySystemsRef = useRef<Partial<Record<SystemId, boolean>>>(
-    readRoomSyncLocalMeta()?.dirtySystems ?? {},
+    hydrated.bootstrap.dirtySystems,
   );
   const hydratedRemoteRef = useRef(false);
-  const hydratedIdbRef = useRef(false);
-  const hadPersistedLocalRef = useRef(bootstrap.hadLocalWorkspace);
-  const editedBeforeIdbHydrationRef = useRef(false);
-  const skipNextIdbScheduleRef = useRef(false);
-  const sheetsStoreRef = useRef(getDefaultSheetsStore());
+  const hadPersistedLocalRef = useRef(hydrated.hadPersistedLocal);
+  const skipNextIdbScheduleRef = useRef(true);
+  const sheetsStoreRef = useRef(sheetsStore);
+  sheetsStoreRef.current = sheetsStore;
   const debouncedSaverRef = useRef<DebouncedSheetSaver | null>(null);
   const editDebounceTimerRef = useRef<number | null>(null);
   const syncRunIdRef = useRef(0);
@@ -331,9 +297,6 @@ export default function App() {
   const setSheet = (
     updater: CharacterSheetState | ((prev: CharacterSheetState) => CharacterSheetState),
   ) => {
-    if (!hydratedIdbRef.current) {
-      editedBeforeIdbHydrationRef.current = true;
-    }
     setWorkspace((prevWs) => {
       const sysId = prevWs.activeSystemId;
       const currentSheet =
@@ -359,9 +322,6 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!hydratedIdbRef.current) {
-      return;
-    }
     if (skipNextIdbScheduleRef.current) {
       skipNextIdbScheduleRef.current = false;
       return;
@@ -453,65 +413,10 @@ export default function App() {
     }
   };
 
-  // Hydrate asynchronously from IndexedDB (including legacy localStorage migration) then reconcile Room mirror
+  // Reconcile Room mirror asynchronously after Suspense IndexedDB hydration completes
   useEffect(() => {
     let cancelled = false;
     (async () => {
-      try {
-        const snapshot = await sheetsStoreRef.current.loadWorkspaceSnapshot(
-          workspaceRef.current,
-        );
-        if (cancelled) return;
-
-        setCustomTemplates(snapshot.customTemplates);
-        const migratedOrPersisted =
-          snapshot.hadPersistedSheets || snapshot.migration.migratedCount > 0;
-        hadPersistedLocalRef.current =
-          hadPersistedLocalRef.current || migratedOrPersisted;
-
-        if (snapshot.hadPersistedSheets && !editedBeforeIdbHydrationRef.current) {
-          const activeSys = snapshot.workspace.activeSystemId;
-          const activeSheet = snapshot.workspace.sheetsBySystem[activeSys];
-          const normalizedWorkspace: WorkspaceState = activeSheet
-            ? {
-                ...snapshot.workspace,
-                sheetsBySystem: {
-                  ...snapshot.workspace.sheetsBySystem,
-                  [activeSys]: withSafeXpState(activeSheet),
-                },
-              }
-            : snapshot.workspace;
-          skipNextIdbScheduleRef.current = true;
-          workspaceRef.current = normalizedWorkspace;
-          setWorkspace(normalizedWorkspace);
-        } else {
-          const currentSys = workspaceRef.current.activeSystemId;
-          const currentSheet =
-            workspaceRef.current.sheetsBySystem[currentSys] ??
-            createPresetBySystemId(currentSys);
-          await debouncedSaverRef.current?.saveNow(currentSheet, {
-            activeSheetId: resolveSheetRecordId(currentSheet),
-            activeSystemId: currentSys,
-          });
-        }
-        const storedList = await sheetsStoreRef.current.listSheets();
-        if (!cancelled) {
-          setPersistedSheets(storedList);
-        }
-      } catch (err) {
-        const message =
-          err instanceof Error ? err.message : t.t('app.idbInitFailed');
-        setPersistenceState((prev) => ({
-          ...prev,
-          status: 'error',
-          errorMessage: message,
-        }));
-      } finally {
-        if (!cancelled) {
-          hydratedIdbRef.current = true;
-        }
-      }
-
       const remoteMirror = await fetchRoomMirrorSnapshot();
       if (cancelled) return;
       hydratedRemoteRef.current = true;
@@ -1310,8 +1215,8 @@ export default function App() {
         }}
         onChangeSystemCode={(systemCode) => setSheet((prev) => ({ ...prev, systemCode }))}
         onSwitchSystem={handleSwitchSystem}
-        onChangeLanguage={setLanguage}
-        onChangeTheme={setTheme}
+        onChangeLanguage={onChangeLanguage}
+        onChangeTheme={onChangeTheme}
         onToggleAudioMute={handleToggleAudioMute}
         onModeChange={setMode}
         onNewSheet={handleNewSheet}
@@ -1329,7 +1234,7 @@ export default function App() {
               systems={homeSystems}
               language={language}
               theme={theme}
-              onChangeTheme={setTheme}
+              onChangeTheme={onChangeTheme}
               onContinueSheet={() => {
                 setHomeRulesOpen(false);
                 setActiveView('sheet');

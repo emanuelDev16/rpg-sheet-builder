@@ -15,6 +15,7 @@ export default defineConfig({
       'src/core/roomSync.test.ts',
       'src/core/sheetModel.test.ts',
       'src/core/sheetSearch.test.ts',
+      'src/core/workspaceHydration.test.ts',
       'src/core/xpSystem.test.ts',
       'src/utils/theme.test.ts',
     ],

@@ -4,6 +4,7 @@ import { AppMode } from '../core/sheetModel';
 import { formatRoomSyncIndicator, RoomSyncIndicatorState } from '../core/roomSync';
 import { PersistenceSnapshot } from '../core/sheetsStore';
 import { AppLanguage, AppTranslations } from '../core/i18n';
+import { AnimatedCounter } from './AnimatedCounter';
 
 interface StatusBarProps {
   mode: AppMode;
@@ -114,7 +115,9 @@ export const StatusBar: React.FC<StatusBarProps> = ({
         <span className="hidden md:inline" aria-hidden="true">
           ·
         </span>
-        <span className="text-[var(--accent-wine)] font-bold tabular-nums">XP: {availableXp}</span>
+        <span className="text-[var(--accent-wine)] font-bold tabular-nums">
+          XP: <AnimatedCounter value={availableXp} />
+        </span>
         <span aria-hidden="true">·</span>
         <span>
           {t.logs} {rollCount}

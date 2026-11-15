@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from 'react';
+import { motion, useReducedMotion } from 'motion/react';
 import {
   ArrowDown,
   ArrowUp,
@@ -19,6 +20,7 @@ import {
 } from '../core/sheetModel';
 import { parseWodPoolExpression, VariableMap } from '../core/formula';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { AnimatedCounter } from './AnimatedCounter';
 
 interface ClampedNumberInputProps {
   value: number;
@@ -368,6 +370,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const isCustomSystem = systemId === 'blank';
   const lang = inferLangFromCardsT(t);
   const ctrlLabels = EDIT_CTRL_LABELS[lang];
+  const prefersReducedMotion = useReducedMotion();
+  const isEinkTheme =
+    typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
+  const shouldReduceMotion = Boolean(prefersReducedMotion || isEinkTheme);
   const shouldShowEditStrip =
     mode === 'edicao' && (onToggleEdit ? Boolean(isEditOpen) : true);
 
@@ -667,7 +673,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] tabular-nums whitespace-nowrap"
               aria-live="polite"
             >
-              {healthy} / {max} {t.healthyRemaining}
+              <AnimatedCounter value={healthy} /> / <AnimatedCounter value={max} pulseOnChange={false} />{' '}
+              {t.healthyRemaining}
             </span>
           </div>
 
@@ -680,9 +687,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             aria-valuenow={healthy}
           >
             {boxes.map((state, idx) => (
-              <div
+              <motion.div
                 key={idx}
                 aria-hidden="true"
+                initial={false}
+                animate={{ scale: state === 'healthy' ? 0.96 : 1 }}
+                transition={
+                  shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }
+                }
                 className={`seg-block h-[18px] flex items-center justify-center font-mono-tech text-[10px] font-extrabold select-none ${
                   state === 'aggravated'
                     ? 'is-aggravated'
@@ -692,7 +704,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 }`}
               >
                 {state === 'aggravated' ? '✕' : state === 'superficial' ? '/' : ''}
-              </div>
+              </motion.div>
             ))}
           </div>
 
@@ -720,7 +732,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   data-testid="health-aggravated-value"
                   className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--ink-primary)]"
                 >
-                  {agg} / {max}
+                  <AnimatedCounter value={agg} /> / <AnimatedCounter value={max} pulseOnChange={false} />
                 </span>
                 <button
                   type="button"
@@ -752,7 +764,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   data-testid="health-superficial-value"
                   className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--accent-wine)]"
                 >
-                  {sup} / {max}
+                  <AnimatedCounter value={sup} /> / <AnimatedCounter value={max} pulseOnChange={false} />
                 </span>
                 <button
                   type="button"
@@ -800,7 +812,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 className="font-mono-tech text-xs font-bold px-2 min-w-[56px] text-center tabular-nums"
                 aria-live="polite"
               >
-                {current} / {max}
+                <AnimatedCounter value={current} /> / <AnimatedCounter value={max} pulseOnChange={false} />
               </span>
               <button
                 type="button"
@@ -816,7 +828,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           {useContinuousBar ? (
             <div
               data-testid={`resource-continuous-bar-${field.id}`}
-              className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer"
+              className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer overflow-hidden"
               role="meter"
               aria-label={field.label}
               aria-valuemin={0}
@@ -829,9 +841,15 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 onChangeValue(field.id, Math.round(ratio * max));
               }}
             >
-              <div
-                className="h-full bg-[var(--accent-primary)] transition-[width] duration-150"
-                style={{ width: `${fillPct}%` }}
+              <motion.div
+                className="h-full bg-[var(--accent-primary)]"
+                initial={false}
+                animate={{ width: `${fillPct}%` }}
+                transition={
+                  shouldReduceMotion
+                    ? { duration: 0 }
+                    : { duration: 0.38, ease: [0.22, 1, 0.36, 1] }
+                }
               />
             </div>
           ) : (
@@ -847,11 +865,16 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               {segments.map((idx) => {
                 const filled = idx < current;
                 return (
-                  <button
+                  <motion.button
                     key={idx}
                     type="button"
                     aria-label={t.t('cards.setResourceAria', { label: field.label, value: idx + 1 })}
                     onClick={() => onChangeValue(field.id, idx + 1 === current ? idx : idx + 1)}
+                    initial={false}
+                    animate={{ scale: filled ? 1 : 0.95 }}
+                    transition={
+                      shouldReduceMotion ? { duration: 0 } : { duration: 0.16, ease: 'easeOut' }
+                    }
                     className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
                   />
                 );
