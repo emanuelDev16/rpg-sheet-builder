@@ -1,5 +1,7 @@
 package com.gridsheet.app.ui
 
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -74,6 +76,20 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
     val systemModalOpen by vm.systemModalOpen.collectAsState()
     val rulesLoading by vm.rulesLoading.collectAsState()
     val rulesResult by vm.rulesResult.collectAsState()
+    val rulesQuery by vm.rulesQuery.collectAsState()
+    val indexedBooks by vm.indexedBooks.collectAsState()
+    val indexProgress by vm.indexProgress.collectAsState()
+    val scannedPdfAlert by vm.scannedPdfAlert.collectAsState()
+    val localRuleHits by vm.localRuleHits.collectAsState()
+    val localSearchElapsedMs by vm.localSearchElapsedMs.collectAsState()
+
+    val pdfPickerLauncher = rememberLauncherForActivityResult(
+        contract = ActivityResultContracts.OpenDocument()
+    ) { uri ->
+        if (uri != null) {
+            vm.importPdfRulebook(uri)
+        }
+    }
 
     val availableXp = XpSystem.getAvailableXp(sheet.xp)
     val activeSystemId = workspace.activeSystemId
@@ -310,12 +326,23 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             systemName = sheet.systemName,
             quickDice = vm.getQuickDicePresets(activeSystemId),
             logs = sheet.rollLogs,
+            rulesQuery = rulesQuery,
             rulesLoading = rulesLoading,
             rulesResult = rulesResult,
+            indexedBooks = indexedBooks,
+            indexProgress = indexProgress,
+            scannedPdfAlert = scannedPdfAlert,
+            localRuleHits = localRuleHits,
+            localSearchElapsedMs = localSearchElapsedMs,
             onSwitchMode = { vm.openSideSheet(it) },
             onRollExpression = vm::rollExpression,
             onClearLogs = vm::clearRollLogs,
-            onSearchRules = vm::searchRules,
+            onRulesQueryChange = vm::updateRulesQuery,
+            onSearchRules = { q, forceOnline -> vm.searchRules(q, forceOnline) },
+            onPickPdf = { pdfPickerLauncher.launch(arrayOf("application/pdf")) },
+            onDeleteBook = vm::deleteIndexedBook,
+            onDismissScannedPdfAlert = vm::dismissScannedPdfAlert,
+            onDismissIndexError = vm::dismissIndexError,
             onDismiss = vm::closeSideSheet
         )
     }

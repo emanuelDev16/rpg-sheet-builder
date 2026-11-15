@@ -1,7 +1,14 @@
 import * as pdfjsLib from 'pdfjs-dist';
 // @ts-expect-error pdfjs-dist ships build/pdf.worker.mjs without an adjacent .d.ts file
 import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs';
-import { sanitizeExtractedPdfText, type ExtractedPdfPage } from '../core/pdfRulesStore';
+import {
+  extractPdfPagesWithFailFast,
+  sanitizeExtractedPdfText,
+  SCANNED_PDF_NO_OCR_CODE,
+  SCANNED_PDF_NO_OCR_MESSAGE,
+  ScannedPdfNoOcrError,
+  type ExtractedPdfPage,
+} from '../core/pdfRulesStore';
 
 export interface PdfIndexWorkerRequest {
   type: 'extract';
@@ -28,6 +35,15 @@ export type PdfIndexWorkerResponse =
       systemId: string;
       totalPages: number;
       pages: ExtractedPdfPage[];
+    }
+  | {
+      type: 'ERROR_NO_TEXT_LAYER';
+      code: typeof SCANNED_PDF_NO_OCR_CODE;
+      jobId: string;
+      bookId: string;
+      sampledPages: number;
+      totalPages: number;
+      message: string;
     }
   | {
       type: 'error';
@@ -79,28 +95,29 @@ async function handleExtractRequest(request: PdfIndexWorkerRequest): Promise<voi
       totalPages,
     } satisfies PdfIndexWorkerResponse);
 
-    const pages: ExtractedPdfPage[] = [];
-
-    for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
-      const pdfPage = await pdfDoc.getPage(pageNumber);
-      try {
-        const textContent = await pdfPage.getTextContent();
-        const content = joinPageTextItems(
-          textContent.items as Array<{ str?: string; hasEOL?: boolean }>,
-        );
-        pages.push({ page: pageNumber, content });
-      } finally {
-        pdfPage.cleanup();
-      }
-
-      self.postMessage({
-        type: 'progress',
-        jobId: request.jobId,
-        bookId: request.bookId,
-        page: pageNumber,
-        totalPages,
-      } satisfies PdfIndexWorkerResponse);
-    }
+    const pages = await extractPdfPagesWithFailFast({
+      totalPages,
+      readPageText: async (pageNumber) => {
+        const pdfPage = await pdfDoc!.getPage(pageNumber);
+        try {
+          const textContent = await pdfPage.getTextContent();
+          return joinPageTextItems(
+            textContent.items as Array<{ str?: string; hasEOL?: boolean }>,
+          );
+        } finally {
+          pdfPage.cleanup();
+        }
+      },
+      onProgress: (pageNumber, pagesTotal) => {
+        self.postMessage({
+          type: 'progress',
+          jobId: request.jobId,
+          bookId: request.bookId,
+          page: pageNumber,
+          totalPages: pagesTotal,
+        } satisfies PdfIndexWorkerResponse);
+      },
+    });
 
     self.postMessage({
       type: 'complete',
@@ -112,6 +129,18 @@ async function handleExtractRequest(request: PdfIndexWorkerRequest): Promise<voi
       pages,
     } satisfies PdfIndexWorkerResponse);
   } catch (err) {
+    if (err instanceof ScannedPdfNoOcrError) {
+      self.postMessage({
+        type: 'ERROR_NO_TEXT_LAYER',
+        code: SCANNED_PDF_NO_OCR_CODE,
+        jobId: request.jobId,
+        bookId: request.bookId,
+        sampledPages: err.sampledPages,
+        totalPages: err.totalPages,
+        message: err.message || SCANNED_PDF_NO_OCR_MESSAGE,
+      } satisfies PdfIndexWorkerResponse);
+      return;
+    }
     const message =
       err instanceof Error
         ? err.message

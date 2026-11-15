@@ -1,5 +1,6 @@
 import React, { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  AlertTriangle,
   BookOpen,
   ChevronDown,
   ChevronUp,
@@ -10,6 +11,7 @@ import {
   Search,
   Sparkles,
   Trash2,
+  X,
 } from 'lucide-react';
 import { GoogleGenAI } from '@google/genai';
 import {
@@ -28,6 +30,8 @@ import {
   listIndexedBooks,
   type LocalRuleSearchHit,
   removeIndexedBook,
+  SCANNED_PDF_NO_OCR_CODE,
+  ScannedPdfNoOcrError,
   searchLocalRules,
 } from '../core/pdfRulesStore';
 import type {
@@ -133,6 +137,12 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
   const [indexedBooks, setIndexedBooks] = useState<BookMetadata[]>([]);
   const [indexingProgress, setIndexingProgress] = useState<IndexingProgressState | null>(null);
   const [pdfError, setPdfError] = useState<string | null>(null);
+  const [scannedPdfAlert, setScannedPdfAlert] = useState<{
+    bookTitle: string;
+    sampledPages: number;
+    totalPages: number;
+    message: string;
+  } | null>(null);
   const [localHits, setLocalHits] = useState<LocalRuleSearchHit[]>([]);
   const [localMeta, setLocalMeta] = useState<LocalSearchMeta | null>(null);
 
@@ -369,6 +379,7 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
     }
 
     setPdfError(null);
+    setScannedPdfAlert(null);
     setPdfManagerOpen(true);
 
     const bookTitle = file.name.replace(/\.pdf$/i, '').trim() || 'Livro de Regras';
@@ -405,6 +416,22 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
           return;
         }
 
+        if (msg.type === 'ERROR_NO_TEXT_LAYER' && msg.code === SCANNED_PDF_NO_OCR_CODE) {
+          setPdfError(null);
+          setScannedPdfAlert({
+            bookTitle,
+            sampledPages: msg.sampledPages,
+            totalPages: msg.totalPages,
+            message: msg.message,
+          });
+          setIndexingProgress(null);
+          worker.terminate();
+          if (activeWorkerRef.current === worker) {
+            activeWorkerRef.current = null;
+          }
+          return;
+        }
+
         if (msg.type === 'error') {
           setPdfError(msg.error);
           setIndexingProgress(null);
@@ -437,11 +464,21 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
               });
             }
           } catch (persistErr) {
-            setPdfError(
-              persistErr instanceof Error
-                ? `Falha ao persistir índice local: ${persistErr.message}`
-                : 'Falha ao salvar índice local no IndexedDB.',
-            );
+            if (persistErr instanceof ScannedPdfNoOcrError) {
+              setPdfError(null);
+              setScannedPdfAlert({
+                bookTitle,
+                sampledPages: persistErr.sampledPages,
+                totalPages: persistErr.totalPages,
+                message: persistErr.message,
+              });
+            } else {
+              setPdfError(
+                persistErr instanceof Error
+                  ? `Falha ao persistir índice local: ${persistErr.message}`
+                  : 'Falha ao salvar índice local no IndexedDB.',
+              );
+            }
           } finally {
             setIndexingProgress(null);
             worker.terminate();
@@ -675,6 +712,44 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
                   style={{ width: `${progressPercent}%` }}
                 />
               </div>
+            </div>
+          )}
+
+          {scannedPdfAlert && (
+            <div
+              role="alert"
+              data-testid="scanned-pdf-alert"
+              className="p-3 border-2 border-[var(--border-ink)] rounded-[var(--radius-control)] bg-[var(--accent-danger-soft)] shadow-[3px_3px_0_var(--border-ink)] flex flex-col gap-2"
+            >
+              <div className="flex items-start justify-between gap-2">
+                <div className="flex items-center gap-1.5 text-[var(--accent-danger)] font-mono-tech text-[14px] font-black uppercase tracking-tight">
+                  <AlertTriangle className="w-4 h-4 shrink-0" aria-hidden="true" />
+                  <span>PDF ESCANEADO (SEM OCR)</span>
+                </div>
+                <button
+                  type="button"
+                  aria-label="Fechar alerta de PDF sem OCR"
+                  onClick={() => setScannedPdfAlert(null)}
+                  className="p-0.5 border border-[var(--border-ink)] rounded-[3px] bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] cursor-pointer shrink-0"
+                >
+                  <X className="w-3.5 h-3.5" aria-hidden="true" />
+                </button>
+              </div>
+              <p className="text-[14px] leading-snug font-semibold text-[var(--ink-primary)]">
+                O arquivo{' '}
+                <span className="font-mono-tech font-bold text-[var(--accent-wine)]">
+                  {scannedPdfAlert.bookTitle}
+                </span>{' '}
+                contém apenas imagens escaneadas sem camada de texto nas primeiras{' '}
+                {scannedPdfAlert.sampledPages} páginas (de {scannedPdfAlert.totalPages}).
+              </p>
+              <p className="text-[14px] leading-snug text-[var(--ink-secondary)]">
+                Aplique OCR no PDF usando ferramentas como{' '}
+                <strong className="font-bold text-[var(--ink-primary)]">OCRmyPDF</strong>,{' '}
+                <strong className="font-bold text-[var(--ink-primary)]">PDF24</strong> ou{' '}
+                <strong className="font-bold text-[var(--ink-primary)]">Adobe Acrobat</strong>{' '}
+                antes de importar novamente.
+              </p>
             </div>
           )}
 

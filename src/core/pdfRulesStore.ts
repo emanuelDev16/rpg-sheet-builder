@@ -64,6 +64,129 @@ const BOOKS_STORE = 'books';
 const META_STORE = 'index_meta';
 const MINISEARCH_KEY = 'minisearch_index';
 
+export const SCANNED_PDF_NO_OCR_CODE = 'SCANNED_PDF_NO_OCR' as const;
+export const SCANNED_PDF_SAMPLE_MAX_PAGES = 10;
+export const SCANNED_PDF_MIN_AVG_CHARS = 30;
+export const SCANNED_PDF_MIN_PAGE_TEXT_CHARS = 40;
+
+export const SCANNED_PDF_NO_OCR_MESSAGE =
+  'PDF escaneado detectado (sem camada de texto / OCR). Este arquivo contém apenas imagens escaneadas. Aplique OCR antes de importar novamente (ex.: OCRmyPDF, PDF24 ou Adobe Acrobat).';
+
+export class ScannedPdfNoOcrError extends Error {
+  readonly code = SCANNED_PDF_NO_OCR_CODE;
+  readonly sampledPages: number;
+  readonly totalPages: number;
+  readonly totalExtractedChars: number;
+
+  constructor(
+    message = SCANNED_PDF_NO_OCR_MESSAGE,
+    details?: {
+      sampledPages?: number;
+      totalPages?: number;
+      totalExtractedChars?: number;
+    },
+  ) {
+    super(message);
+    this.name = 'ScannedPdfNoOcrError';
+    this.sampledPages = details?.sampledPages ?? 0;
+    this.totalPages = details?.totalPages ?? 0;
+    this.totalExtractedChars = details?.totalExtractedChars ?? 0;
+  }
+}
+
+export function countNonWhitespaceChars(text: string): number {
+  if (!text) return 0;
+  return text.replace(/\s+/g, '').length;
+}
+
+export interface PdfTextLayerSampleCheck {
+  aborted: boolean;
+  cleanContent: string;
+  cleanLength: number;
+  sampledPages: number;
+  totalExtractedChars: number;
+  pagesWithText: number;
+}
+
+export function createPdfTextLayerMonitor(totalPages: number) {
+  const safeTotal = Math.max(0, Math.floor(totalPages));
+  const sampleLimit = Math.min(safeTotal, SCANNED_PDF_SAMPLE_MAX_PAGES);
+  let totalExtractedChars = 0;
+  let pagesWithText = 0;
+
+  return {
+    sampleLimit,
+    recordPage(pageNumber: number, rawOrCleanText: string): PdfTextLayerSampleCheck {
+      const cleanContent = sanitizeExtractedPdfText(rawOrCleanText);
+      const cleanLength = countNonWhitespaceChars(cleanContent);
+
+      if (sampleLimit > 0 && pageNumber <= sampleLimit) {
+        totalExtractedChars += cleanLength;
+        if (cleanLength >= SCANNED_PDF_MIN_PAGE_TEXT_CHARS) {
+          pagesWithText += 1;
+        }
+        if (pageNumber === sampleLimit) {
+          const avgChars = totalExtractedChars / sampleLimit;
+          if (avgChars < SCANNED_PDF_MIN_AVG_CHARS && pagesWithText === 0) {
+            return {
+              aborted: true,
+              cleanContent,
+              cleanLength,
+              sampledPages: sampleLimit,
+              totalExtractedChars,
+              pagesWithText,
+            };
+          }
+        }
+      }
+
+      return {
+        aborted: false,
+        cleanContent,
+        cleanLength,
+        sampledPages: Math.min(pageNumber, sampleLimit),
+        totalExtractedChars,
+        pagesWithText,
+      };
+    },
+  };
+}
+
+export async function extractPdfPagesWithFailFast(options: {
+  totalPages: number;
+  readPageText: (pageNumber: number) => Promise<string> | string;
+  onProgress?: (pageNumber: number, totalPages: number) => void;
+}): Promise<ExtractedPdfPage[]> {
+  const { totalPages, readPageText, onProgress } = options;
+  if (totalPages <= 0) {
+    throw new ScannedPdfNoOcrError(SCANNED_PDF_NO_OCR_MESSAGE, {
+      sampledPages: 0,
+      totalPages: 0,
+      totalExtractedChars: 0,
+    });
+  }
+
+  const monitor = createPdfTextLayerMonitor(totalPages);
+  const pages: ExtractedPdfPage[] = [];
+
+  for (let pageNumber = 1; pageNumber <= totalPages; pageNumber += 1) {
+    const rawText = await readPageText(pageNumber);
+    const check = monitor.recordPage(pageNumber, rawText);
+    pages.push({ page: pageNumber, content: check.cleanContent });
+    onProgress?.(pageNumber, totalPages);
+
+    if (check.aborted) {
+      throw new ScannedPdfNoOcrError(SCANNED_PDF_NO_OCR_MESSAGE, {
+        sampledPages: check.sampledPages,
+        totalPages,
+        totalExtractedChars: check.totalExtractedChars,
+      });
+    }
+  }
+
+  return pages;
+}
+
 export function normalizeRulesTerm(term: string): string {
   return term
     .normalize('NFD')
@@ -467,20 +590,27 @@ export class PdfRulesStore {
         input.bookId?.trim() ||
         `pdf_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 7)}`;
 
-      // If re-indexing an existing bookId, discard old pages first
-      const previous = this.booksById.get(bookId);
-      if (previous) {
-        this.discardBookDocs(previous);
-      }
-
       const docs: PdfPageDocument[] = [];
       let charCount = 0;
       let maxPageNum = input.totalPages ?? input.pages.length;
 
-      for (const rawPage of input.pages) {
+      const sortedPages = [...input.pages].sort((a, b) => a.page - b.page);
+      const monitor = createPdfTextLayerMonitor(sortedPages.length);
+      let sampledCount = 0;
+
+      for (const rawPage of sortedPages) {
         const pageNum = Math.max(1, Math.floor(rawPage.page));
         if (pageNum > maxPageNum) maxPageNum = pageNum;
-        const cleanContent = sanitizeExtractedPdfText(rawPage.content);
+        sampledCount += 1;
+        const check = monitor.recordPage(sampledCount, rawPage.content);
+        if (check.aborted) {
+          throw new ScannedPdfNoOcrError(SCANNED_PDF_NO_OCR_MESSAGE, {
+            sampledPages: check.sampledPages,
+            totalPages: Math.max(maxPageNum, sortedPages.length),
+            totalExtractedChars: check.totalExtractedChars,
+          });
+        }
+        const cleanContent = check.cleanContent;
         if (!cleanContent) continue;
         charCount += cleanContent.length;
         docs.push({
@@ -493,9 +623,21 @@ export class PdfRulesStore {
         });
       }
 
-      if (docs.length > 0) {
-        this.miniSearch.addAll(docs);
+      if (docs.length === 0) {
+        throw new ScannedPdfNoOcrError(SCANNED_PDF_NO_OCR_MESSAGE, {
+          sampledPages: monitor.sampleLimit,
+          totalPages: maxPageNum,
+          totalExtractedChars: 0,
+        });
       }
+
+      // If re-indexing an existing bookId, discard old pages only after validation succeeds
+      const previous = this.booksById.get(bookId);
+      if (previous) {
+        this.discardBookDocs(previous);
+      }
+
+      this.miniSearch.addAll(docs);
 
       const metadata: BookMetadata = {
         bookId,
