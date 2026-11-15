@@ -1,11 +1,18 @@
 package com.gridsheet.app.data.local
 
 import android.content.Context
+import android.util.Log
 import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+
+enum class RulePagesStorageMode {
+    FTS5,
+    FTS4,
+    PLAIN
+}
 
 @Database(
     entities = [
@@ -21,8 +28,45 @@ abstract class GridSheetDatabase : RoomDatabase() {
     abstract fun pdfRulesDao(): PdfRulesDao
 
     companion object {
+        private const val TAG = "GridSheetDatabase"
+
         @Volatile
         private var INSTANCE: GridSheetDatabase? = null
+
+        val FTS5_CREATE_SQL: String = """
+            CREATE VIRTUAL TABLE IF NOT EXISTS `rule_pages_fts` USING fts5(
+                `bookId` UNINDEXED,
+                `systemId` UNINDEXED,
+                `pageNumber` UNINDEXED,
+                `content`,
+                tokenize='unicode61'
+            )
+        """.trimIndent()
+
+        val FTS4_CREATE_SQL: String = """
+            CREATE VIRTUAL TABLE IF NOT EXISTS `rule_pages_fts` USING fts4(
+                `bookId`,
+                `systemId`,
+                `pageNumber`,
+                `content`,
+                notindexed=`bookId`,
+                notindexed=`systemId`,
+                notindexed=`pageNumber`,
+                tokenize=unicode61
+            )
+        """.trimIndent()
+
+        val PLAIN_CREATE_SQL: String = """
+            CREATE TABLE IF NOT EXISTS `rule_pages_fts` (
+                `bookId` TEXT NOT NULL,
+                `systemId` TEXT NOT NULL,
+                `pageNumber` INTEGER NOT NULL,
+                `content` TEXT NOT NULL
+            )
+        """.trimIndent()
+
+        const val PLAIN_INDEX_SQL: String =
+            "CREATE INDEX IF NOT EXISTS `idx_rule_pages_fts_book_sys` ON `rule_pages_fts`(`bookId`, `systemId`)"
 
         val MIGRATION_1_2: Migration = object : Migration(1, 2) {
             override fun migrate(db: SupportSQLiteDatabase) {
@@ -53,21 +97,60 @@ abstract class GridSheetDatabase : RoomDatabase() {
                 )
                 """.trimIndent()
             )
-            createFts5VirtualTable(db)
+            ensureRulePagesTable(db)
         }
 
-        private fun createFts5VirtualTable(db: SupportSQLiteDatabase) {
-            db.execSQL(
-                """
-                CREATE VIRTUAL TABLE IF NOT EXISTS `rule_pages_fts` USING fts5(
-                    `bookId` UNINDEXED,
-                    `systemId` UNINDEXED,
-                    `pageNumber` UNINDEXED,
-                    `content`,
-                    tokenize='unicode61'
-                )
-                """.trimIndent()
+        fun detectRulePagesStorageMode(db: SupportSQLiteDatabase): RulePagesStorageMode? {
+            val tableSql = runCatching {
+                db.query(
+                    "SELECT sql FROM sqlite_master WHERE name = 'rule_pages_fts' AND type IN ('table', 'view')"
+                ).use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getString(0)?.lowercase() else null
+                }
+            }.getOrNull() ?: return null
+
+            val readable = runCatching {
+                db.query("SELECT 1 FROM `rule_pages_fts` LIMIT 0").use { }
+            }.isSuccess
+            if (!readable) {
+                runCatching { db.execSQL("DROP TABLE IF EXISTS `rule_pages_fts`") }
+                return null
+            }
+
+            return when {
+                tableSql.contains("using fts5") -> RulePagesStorageMode.FTS5
+                tableSql.contains("using fts4") || tableSql.contains("using fts3") -> RulePagesStorageMode.FTS4
+                else -> RulePagesStorageMode.PLAIN
+            }
+        }
+
+        /**
+         * Stock Android platform SQLite frequently compiles FTS3/FTS4 without SQLITE_ENABLE_FTS5.
+         * Probe FTS5 safely, then fall back to FTS4 (unicode61) and finally a regular table so DB
+         * initialization never crashes on cold start.
+         */
+        fun ensureRulePagesTable(db: SupportSQLiteDatabase): RulePagesStorageMode {
+            detectRulePagesStorageMode(db)?.let { return it }
+
+            val attempts = listOf(
+                RulePagesStorageMode.FTS5 to listOf(FTS5_CREATE_SQL),
+                RulePagesStorageMode.FTS4 to listOf(FTS4_CREATE_SQL),
+                RulePagesStorageMode.PLAIN to listOf(PLAIN_CREATE_SQL, PLAIN_INDEX_SQL)
             )
+            for ((mode, statements) in attempts) {
+                val created = runCatching {
+                    statements.forEach { db.execSQL(it) }
+                    db.query("SELECT 1 FROM `rule_pages_fts` LIMIT 0").use { }
+                }
+                if (created.isSuccess) {
+                    return mode
+                }
+                runCatching { db.execSQL("DROP TABLE IF EXISTS `rule_pages_fts`") }
+                runCatching {
+                    Log.w(TAG, "Rule search mode $mode unavailable on device SQLite: ${created.exceptionOrNull()?.message}")
+                }
+            }
+            return RulePagesStorageMode.PLAIN
         }
 
         fun getInstance(context: Context): GridSheetDatabase {
@@ -81,12 +164,12 @@ abstract class GridSheetDatabase : RoomDatabase() {
                     .addCallback(object : Callback() {
                         override fun onCreate(db: SupportSQLiteDatabase) {
                             super.onCreate(db)
-                            createFts5VirtualTable(db)
+                            runCatching { ensureRulePagesTable(db) }
                         }
 
                         override fun onOpen(db: SupportSQLiteDatabase) {
                             super.onOpen(db)
-                            createFts5VirtualTable(db)
+                            runCatching { ensureRulePagesTable(db) }
                         }
                     })
                     .fallbackToDestructiveMigration()

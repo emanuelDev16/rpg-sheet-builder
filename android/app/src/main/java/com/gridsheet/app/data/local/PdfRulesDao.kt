@@ -38,6 +38,7 @@ abstract class PdfRulesDao(private val db: GridSheetDatabase) {
     ) {
         upsertBook(book)
         val writableDb = db.openHelper.writableDatabase
+        GridSheetDatabase.ensureRulePagesTable(writableDb)
         writableDb.execSQL("DELETE FROM rule_pages_fts WHERE bookId = ?", arrayOf(book.bookId))
         if (pages.isEmpty()) return
 
@@ -60,10 +61,14 @@ abstract class PdfRulesDao(private val db: GridSheetDatabase) {
 
     @Transaction
     open suspend fun deleteBookCascade(bookId: String) {
-        db.openHelper.writableDatabase.execSQL(
-            "DELETE FROM rule_pages_fts WHERE bookId = ?",
-            arrayOf(bookId)
-        )
+        runCatching {
+            val writableDb = db.openHelper.writableDatabase
+            GridSheetDatabase.ensureRulePagesTable(writableDb)
+            writableDb.execSQL(
+                "DELETE FROM rule_pages_fts WHERE bookId = ?",
+                arrayOf(bookId)
+            )
+        }
         deleteBookMetadata(bookId)
     }
 
@@ -72,35 +77,109 @@ abstract class PdfRulesDao(private val db: GridSheetDatabase) {
         systemId: String,
         limit: Int = 15
     ): List<FtsRuleHitRow> {
-        val ftsQuery = Fts5QuerySanitizer.sanitizeQuery(rawQuery)
-        if (ftsQuery.isEmpty()) return emptyList()
+        val mode = GridSheetDatabase.ensureRulePagesTable(db.openHelper.writableDatabase)
+        val built = PdfRuleQueryBuilder.buildSearchQuery(rawQuery, systemId, limit, mode)
+            ?: return emptyList()
+        val query = SimpleSQLiteQuery(built.first, built.second)
+        val rows = runCatching { rawSearchPages(query) }.getOrElse { emptyList() }
+        return Fts5QuerySanitizer.sortHits(rows)
+    }
+}
 
-        val sql = """
-            SELECT
-                rule_pages_fts.bookId AS bookId,
-                COALESCE(b.title, rule_pages_fts.bookId) AS bookTitle,
-                rule_pages_fts.systemId AS systemId,
-                CAST(rule_pages_fts.pageNumber AS INTEGER) AS pageNumber,
-                snippet(
-                    rule_pages_fts,
-                    3,
-                    '${Fts5QuerySanitizer.SNIPPET_START}',
-                    '${Fts5QuerySanitizer.SNIPPET_END}',
-                    '...',
-                    24
-                ) AS snippet,
-                bm25(rule_pages_fts) AS rank
-            FROM rule_pages_fts
-            LEFT JOIN indexed_books AS b ON b.bookId = rule_pages_fts.bookId
-            WHERE rule_pages_fts MATCH ? AND rule_pages_fts.systemId = ?
-            ORDER BY bm25(rule_pages_fts) ASC, CAST(rule_pages_fts.pageNumber AS INTEGER) ASC
-            LIMIT ?
-        """.trimIndent()
+object PdfRuleQueryBuilder {
+    fun buildSearchQuery(
+        rawQuery: String,
+        systemId: String,
+        limit: Int = 15,
+        mode: RulePagesStorageMode
+    ): Pair<String, Array<Any?>>? {
+        val clampedLimit = limit.coerceIn(1, 50)
+        return when (mode) {
+            RulePagesStorageMode.FTS5 -> {
+                val ftsQuery = Fts5QuerySanitizer.sanitizeQuery(rawQuery)
+                if (ftsQuery.isEmpty()) return null
+                val sql = """
+                    SELECT
+                        rule_pages_fts.bookId AS bookId,
+                        COALESCE(b.title, rule_pages_fts.bookId) AS bookTitle,
+                        rule_pages_fts.systemId AS systemId,
+                        CAST(rule_pages_fts.pageNumber AS INTEGER) AS pageNumber,
+                        snippet(
+                            rule_pages_fts,
+                            3,
+                            '${Fts5QuerySanitizer.SNIPPET_START}',
+                            '${Fts5QuerySanitizer.SNIPPET_END}',
+                            '...',
+                            24
+                        ) AS snippet,
+                        bm25(rule_pages_fts) AS rank
+                    FROM rule_pages_fts
+                    LEFT JOIN indexed_books AS b ON b.bookId = rule_pages_fts.bookId
+                    WHERE rule_pages_fts MATCH ? AND rule_pages_fts.systemId = ?
+                    ORDER BY bm25(rule_pages_fts) ASC, CAST(rule_pages_fts.pageNumber AS INTEGER) ASC
+                    LIMIT ?
+                """.trimIndent()
+                sql to arrayOf<Any?>(ftsQuery, systemId, clampedLimit)
+            }
 
-        val query = SimpleSQLiteQuery(
-            sql,
-            arrayOf<Any?>(ftsQuery, systemId, limit.coerceIn(1, 50))
-        )
-        return Fts5QuerySanitizer.sortHits(rawSearchPages(query))
+            RulePagesStorageMode.FTS4 -> {
+                val ftsQuery = Fts5QuerySanitizer.sanitizeFts4Query(rawQuery)
+                if (ftsQuery.isEmpty()) return null
+                // FTS4 snippet() takes (table, start, end, ellipsis, colIdx, tokens).
+                val sql = """
+                    SELECT
+                        rule_pages_fts.bookId AS bookId,
+                        COALESCE(b.title, rule_pages_fts.bookId) AS bookTitle,
+                        rule_pages_fts.systemId AS systemId,
+                        CAST(rule_pages_fts.pageNumber AS INTEGER) AS pageNumber,
+                        snippet(
+                            rule_pages_fts,
+                            '${Fts5QuerySanitizer.SNIPPET_START}',
+                            '${Fts5QuerySanitizer.SNIPPET_END}',
+                            '...',
+                            3,
+                            24
+                        ) AS snippet,
+                        -CAST(length(offsets(rule_pages_fts)) AS REAL) AS rank
+                    FROM rule_pages_fts
+                    LEFT JOIN indexed_books AS b ON b.bookId = rule_pages_fts.bookId
+                    WHERE rule_pages_fts MATCH ? AND rule_pages_fts.systemId = ?
+                    ORDER BY rank ASC, CAST(rule_pages_fts.pageNumber AS INTEGER) ASC
+                    LIMIT ?
+                """.trimIndent()
+                sql to arrayOf<Any?>(ftsQuery, systemId, clampedLimit)
+            }
+
+            RulePagesStorageMode.PLAIN -> {
+                val terms = Fts5QuerySanitizer.sanitizePlainLikeTerms(rawQuery)
+                if (terms.isEmpty()) return null
+                val likeClauses = terms.joinToString(" AND ") {
+                    "lower(rule_pages_fts.content) LIKE ? ESCAPE '\\'"
+                }
+                val args = buildList<Any?> {
+                    add(systemId)
+                    for (term in terms) {
+                        val escaped = term.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
+                        add("%$escaped%")
+                    }
+                    add(clampedLimit)
+                }.toTypedArray()
+                val sql = """
+                    SELECT
+                        rule_pages_fts.bookId AS bookId,
+                        COALESCE(b.title, rule_pages_fts.bookId) AS bookTitle,
+                        rule_pages_fts.systemId AS systemId,
+                        CAST(rule_pages_fts.pageNumber AS INTEGER) AS pageNumber,
+                        substr(rule_pages_fts.content, 1, 220) AS snippet,
+                        0.0 AS rank
+                    FROM rule_pages_fts
+                    LEFT JOIN indexed_books AS b ON b.bookId = rule_pages_fts.bookId
+                    WHERE rule_pages_fts.systemId = ? AND ($likeClauses)
+                    ORDER BY CAST(rule_pages_fts.pageNumber AS INTEGER) ASC
+                    LIMIT ?
+                """.trimIndent()
+                sql to args
+            }
+        }
     }
 }

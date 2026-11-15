@@ -14,10 +14,18 @@ import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
+import androidx.room.Database
 import com.gridsheet.app.data.Fts5QuerySanitizer
 import com.gridsheet.app.data.PdfTextLayerDetector
 import com.gridsheet.app.data.ScannedPdfWithoutOcrException
 import com.gridsheet.app.data.local.FtsRuleHitRow
+import com.gridsheet.app.data.local.GridSheetDatabase
+import com.gridsheet.app.data.local.IndexedBookEntity
+import com.gridsheet.app.data.local.PdfRuleQueryBuilder
+import com.gridsheet.app.data.local.RulePageFtsEntity
+import com.gridsheet.app.data.local.RulePagesStorageMode
+import com.gridsheet.app.data.local.SheetEntity
+import com.gridsheet.app.data.local.WorkspaceMetadataEntity
 import kotlinx.serialization.json.Json
 import kotlinx.serialization.json.int
 import kotlinx.serialization.json.jsonArray
@@ -25,6 +33,7 @@ import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Assert.fail
 import org.junit.Test
@@ -528,5 +537,82 @@ class CoreEngineTest {
         assertEquals(schema["properties"]!!.jsonObject.keys, SheetPayloadValidator.rootKeys)
         assertEquals(defs["BentoCard"]!!.jsonObject["properties"]!!.jsonObject.keys, SheetPayloadValidator.cardKeys)
         assertEquals(defs["SheetField"]!!.jsonObject["properties"]!!.jsonObject.keys, SheetPayloadValidator.fieldKeys)
+    }
+
+    @Test
+    fun presetsV2JsonLoadsAllSystemsSafelyAndFallsBackWhenMalformed() {
+        val bundleFile = resolveSharedPresetFile("presets.v2.json")
+        assertNotNull("presets.v2.json deve existir", bundleFile)
+        val raw = bundleFile!!.readText()
+
+        val loaded = Presets.loadPresetsFromJson(raw, deviceId = "cold-start-device")
+        assertEquals(
+            setOf(SystemId.WOD, SystemId.DND5E, SystemId.CYBERPUNK, SystemId.DEFAULT, SystemId.BLANK),
+            loaded.keys
+        )
+
+        val wod = loaded[SystemId.WOD]!!
+        assertEquals("cold-start-device", wod.deviceId)
+        val wodNameField = wod.cards.flatMap { it.fields }.first { it.id == "f_nome" }
+        assertEquals("Julian Cross", wodNameField.textValue)
+        val wodEval = SheetEvaluator.evaluateSheet(wod)
+        assertEquals("3", wodEval.computedByFieldId["f_blood_potency"]?.formatted)
+
+        val dnd = loaded[SystemId.DND5E]!!
+        val dndGear = dnd.cards.flatMap { it.fields }.first { it.id == "f_equipamentos" }
+        assertEquals("3", dndGear.rows?.firstOrNull()?.col2)
+
+        val withUnknownKeys = raw.replace(
+            "\"version\": \"2.0\"",
+            "\"version\": \"2.0\", \"futureBundleFlag\": true"
+        )
+        assertEquals(5, Presets.loadPresetsFromJson(withUnknownKeys).size)
+
+        assertTrue(Presets.loadPresetsFromJson("{invalid json").isEmpty())
+        val fallbackWs = Presets.createDefaultWorkspace(deviceId = "fallback-device", context = null)
+        assertEquals(SystemId.WOD, fallbackWs.activeSystemId)
+        assertNotNull(fallbackWs.sheetsBySystem[SystemId.WOD])
+    }
+
+    @Test
+    fun databaseMigrationsAndRuleSearchFallbacksAreConsistent() {
+        val annotation = GridSheetDatabase::class.java.getAnnotation(Database::class.java)
+        assertNotNull(annotation)
+        assertEquals(3, annotation!!.version)
+        val entities = annotation.entities.toSet()
+        assertTrue(SheetEntity::class in entities)
+        assertTrue(WorkspaceMetadataEntity::class in entities)
+        assertTrue(IndexedBookEntity::class in entities)
+
+        assertEquals(1, GridSheetDatabase.MIGRATION_1_2.startVersion)
+        assertEquals(2, GridSheetDatabase.MIGRATION_1_2.endVersion)
+        assertEquals(2, GridSheetDatabase.MIGRATION_2_3.startVersion)
+        assertEquals(3, GridSheetDatabase.MIGRATION_2_3.endVersion)
+
+        val samplePage = RulePageFtsEntity(
+            bookId = "book-1",
+            systemId = "WOD",
+            pageNumber = 12,
+            content = "Frenzy test rule"
+        )
+        assertEquals("book-1", samplePage.bookId)
+
+        assertTrue(GridSheetDatabase.FTS5_CREATE_SQL.contains("USING fts5"))
+        assertTrue(GridSheetDatabase.FTS4_CREATE_SQL.contains("USING fts4"))
+        assertTrue(GridSheetDatabase.FTS4_CREATE_SQL.contains("notindexed=`bookId`"))
+        assertTrue(GridSheetDatabase.PLAIN_CREATE_SQL.contains("CREATE TABLE IF NOT EXISTS `rule_pages_fts`"))
+
+        val fts5Query = PdfRuleQueryBuilder.buildSearchQuery("Frenzy! 50%", "WOD", 10, RulePagesStorageMode.FTS5)!!
+        assertTrue(fts5Query.first.contains("bm25(rule_pages_fts)"))
+        assertEquals("\"frenzy\"* \"50\"*", fts5Query.second[0])
+
+        val fts4Query = PdfRuleQueryBuilder.buildSearchQuery("Frenzy! 50%", "WOD", 10, RulePagesStorageMode.FTS4)!!
+        assertTrue(fts4Query.first.contains("offsets(rule_pages_fts)"))
+        assertEquals("frenzy* 50*", fts4Query.second[0])
+
+        val plainQuery = PdfRuleQueryBuilder.buildSearchQuery("100%_test", "WOD", 10, RulePagesStorageMode.PLAIN)!!
+        assertTrue(plainQuery.first.contains("LIKE ? ESCAPE '\\'"))
+        assertEquals("%100%", plainQuery.second[1])
+        assertEquals("%test%", plainQuery.second[2])
     }
 }

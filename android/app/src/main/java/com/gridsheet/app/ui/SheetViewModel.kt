@@ -29,6 +29,7 @@ import com.gridsheet.app.data.RulesSearchResponse
 import com.gridsheet.app.data.WorkspaceRepository
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.IndexedBookEntity
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.Job
@@ -36,6 +37,7 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
@@ -61,7 +63,10 @@ data class TransferFeedback(
 class SheetViewModel(application: Application) : AndroidViewModel(application) {
     private val repo = WorkspaceRepository(application)
 
-    private val _workspace = MutableStateFlow(repo.loadWorkspace())
+    private val _workspace = MutableStateFlow(
+        runCatching { repo.loadWorkspace() }
+            .getOrElse { Presets.createDefaultWorkspace(context = null) }
+    )
     val workspace: StateFlow<WorkspaceState> = _workspace.asStateFlow()
 
     val activeSheet: StateFlow<CharacterSheetState> = _workspace
@@ -130,13 +135,17 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     val indexedBooks: StateFlow<List<IndexedBookEntity>> = _workspace
         .map { it.activeSystemId }
         .distinctUntilChanged()
-        .flatMapLatest { sysId -> repo.observeIndexedBooks(sysId) }
+        .flatMapLatest { sysId ->
+            repo.observeIndexedBooks(sysId).catch { emit(emptyList()) }
+        }
+        .catch { emit(emptyList()) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, emptyList())
 
     private var indexingJob: Job? = null
     private var localSearchJob: Job? = null
 
     val offlineSheetCount: StateFlow<Int> = repo.observeOfflineSheetCount()
+        .catch { emit(_workspace.value.sheetsBySystem.size) }
         .stateIn(viewModelScope, SharingStarted.Eagerly, _workspace.value.sheetsBySystem.size)
 
     private val _transferBusy = MutableStateFlow(false)
@@ -147,11 +156,15 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
 
     init {
         viewModelScope.launch {
-            val reconciled = repo.hydrateAndSyncFromRoom()
-            _workspace.value = reconciled
-            val remoteSynced = repo.syncWithRemoteMirror()
-            if (remoteSynced != null) {
-                _workspace.value = remoteSynced
+            runCatching {
+                val reconciled = repo.hydrateAndSyncFromRoom()
+                _workspace.value = reconciled
+                val remoteSynced = repo.syncWithRemoteMirror()
+                if (remoteSynced != null) {
+                    _workspace.value = remoteSynced
+                }
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
             }
         }
     }
@@ -159,10 +172,14 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     private fun persistWorkspace(nextWs: WorkspaceState) {
         val now = System.currentTimeMillis()
         _workspace.value = nextWs
-        repo.saveWorkspace(nextWs, now)
+        runCatching { repo.saveWorkspace(nextWs, now) }
         viewModelScope.launch {
-            repo.saveToRoom(nextWs, now)
-            repo.pushRemoteMirror(nextWs, now)
+            runCatching {
+                repo.saveToRoom(nextWs, now)
+                repo.pushRemoteMirror(nextWs, now)
+            }.onFailure { err ->
+                if (err is CancellationException) throw err
+            }
         }
     }
 

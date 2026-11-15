@@ -180,6 +180,23 @@ object Fts5QuerySanitizer {
         }
     }
 
+    /**
+     * Converts arbitrary user text into a safe SQLite FTS3/FTS4 MATCH expression.
+     * In SQLite FTS4, `"token"*` does not match prefix tokens; bare lowercase alphanumeric
+     * tokens with trailing `*` (`token*`) match prefixes while avoiding uppercase `AND`/`OR`/`NOT`/`NEAR`.
+     */
+    fun sanitizeFts4Query(rawQuery: String, maxTerms: Int = 10): String {
+        val terms = extractTerms(rawQuery, maxTerms)
+        if (terms.isEmpty()) return ""
+        return terms.joinToString(" ") { token ->
+            val clean = token.replace("\"", "")
+            "$clean*"
+        }
+    }
+
+    fun sanitizePlainLikeTerms(rawQuery: String, maxTerms: Int = 6): List<String> =
+        extractTerms(rawQuery, maxTerms)
+
     fun sanitizeExtractedText(rawText: String): String {
         if (rawText.isEmpty()) return ""
         return rawText

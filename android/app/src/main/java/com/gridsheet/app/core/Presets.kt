@@ -1,8 +1,31 @@
 package com.gridsheet.app.core
 
+import android.content.Context
+import kotlinx.serialization.Serializable
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.JsonArray
+import kotlinx.serialization.json.JsonElement
+import kotlinx.serialization.json.JsonObject
+import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
+import kotlinx.serialization.json.doubleOrNull
 import java.time.Instant
 
+@Serializable
+private data class PresetBundleV2(
+    val version: String = "2.0",
+    val presets: Map<String, JsonElement> = emptyMap()
+)
+
 object Presets {
+    val presetJson = Json {
+        ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
+    }
+
+    @Volatile
+    private var cachedAssetPresets: Map<SystemId, CharacterSheetState> = emptyMap()
     val SYSTEM_OPTIONS = listOf(
         SystemOption(
             id = SystemId.WOD,
@@ -655,11 +678,114 @@ object Presets {
         return if (changed) withMeta.copy(cards = updatedCards) else withMeta
     }
 
-    fun createPresetBySystemId(systemId: SystemId, deviceId: String = "local-device"): CharacterSheetState = when (systemId) {
-        SystemId.WOD -> createWorldOfDarknessSheet(deviceId)
-        SystemId.DND5E -> createDnd5ePreset(deviceId)
-        SystemId.CYBERPUNK -> createCyberpunkPreset(deviceId)
-        SystemId.DEFAULT -> createGenericD20Preset(deviceId)
-        SystemId.BLANK -> createBlankSheet(deviceId)
+    fun createPresetBySystemId(systemId: SystemId, deviceId: String = "local-device"): CharacterSheetState {
+        cachedAssetPresets[systemId]?.let { cached ->
+            return cached.copy(deviceId = deviceId)
+        }
+        return when (systemId) {
+            SystemId.WOD -> createWorldOfDarknessSheet(deviceId)
+            SystemId.DND5E -> createDnd5ePreset(deviceId)
+            SystemId.CYBERPUNK -> createCyberpunkPreset(deviceId)
+            SystemId.DEFAULT -> createGenericD20Preset(deviceId)
+            SystemId.BLANK -> createBlankSheet(deviceId)
+        }
+    }
+
+    fun loadPresetsFromJson(
+        rawJson: String,
+        deviceId: String = "local-device"
+    ): Map<SystemId, CharacterSheetState> = runCatching {
+        val bundle = presetJson.decodeFromString(PresetBundleV2.serializer(), rawJson)
+        val decodedMap = LinkedHashMap<SystemId, CharacterSheetState>()
+        for ((key, rawSheet) in bundle.presets) {
+            val sysId = enumValues<SystemId>().firstOrNull { it.name.equals(key, ignoreCase = true) }
+                ?: continue
+            val normalized = normalizePresetSheetElement(rawSheet)
+            val sheet = runCatching {
+                presetJson.decodeFromJsonElement(CharacterSheetState.serializer(), normalized)
+            }.getOrNull() ?: continue
+            decodedMap[sysId] = migrateLegacyWodSheet(sheet.copy(systemId = sysId), deviceId)
+        }
+        decodedMap
+    }.getOrDefault(emptyMap())
+
+    fun loadPresetsFromAsset(
+        context: Context,
+        deviceId: String = "local-device"
+    ): Map<SystemId, CharacterSheetState> {
+        val loaded = runCatching {
+            context.assets.open("presets/presets.v2.json").bufferedReader(Charsets.UTF_8).use { reader ->
+                loadPresetsFromJson(reader.readText(), deviceId)
+            }
+        }.getOrDefault(emptyMap())
+        if (loaded.isNotEmpty()) {
+            cachedAssetPresets = loaded
+        }
+        return loaded
+    }
+
+    /**
+     * Loads the startup workspace from bundled `assets/presets/presets.v2.json` when available,
+     * and falls back safely to the in-memory Storyteller preset if asset I/O or JSON fails.
+     */
+    fun createDefaultWorkspace(
+        deviceId: String = "local-device",
+        context: Context? = null
+    ): WorkspaceState {
+        val assetPresets = runCatching {
+            if (context != null) loadPresetsFromAsset(context, deviceId) else cachedAssetPresets
+        }.getOrDefault(emptyMap())
+        val initialWod = assetPresets[SystemId.WOD] ?: createWorldOfDarknessSheet(deviceId)
+        return WorkspaceState(
+            activeSystemId = SystemId.WOD,
+            sheetsBySystem = mapOf(SystemId.WOD to initialWod)
+        )
+    }
+
+    /**
+     * Converts v2 web-style preset fields (`"value": 10|"text"|true` and numeric `row.col2`)
+     * into typed Android `SheetField` properties (`numValue`/`textValue`/`boolValue`).
+     */
+    internal fun normalizePresetSheetElement(element: JsonElement): JsonObject {
+        val sheetObj = element as? JsonObject ?: return JsonObject(emptyMap())
+        val rawCards = sheetObj["cards"] as? JsonArray ?: return sheetObj
+        val normalizedCards = JsonArray(rawCards.map { cardElem ->
+            val cardObj = cardElem as? JsonObject ?: return@map cardElem
+            val rawFields = cardObj["fields"] as? JsonArray ?: return@map cardObj
+            val normalizedFields = JsonArray(rawFields.map { fieldElem ->
+                val fieldObj = fieldElem as? JsonObject ?: return@map fieldElem
+                val mutableField = fieldObj.toMutableMap()
+                val rawValue = mutableField["value"] as? JsonPrimitive
+                if (rawValue != null) {
+                    val boolVal = if (!rawValue.isString) rawValue.booleanOrNull else null
+                    val numVal = if (!rawValue.isString) rawValue.doubleOrNull else null
+                    when {
+                        boolVal != null && "boolValue" !in mutableField ->
+                            mutableField["boolValue"] = JsonPrimitive(boolVal)
+                        numVal != null && "numValue" !in mutableField ->
+                            mutableField["numValue"] = JsonPrimitive(numVal)
+                        rawValue.isString && "textValue" !in mutableField ->
+                            mutableField["textValue"] = JsonPrimitive(rawValue.content)
+                    }
+                }
+                val rawRows = mutableField["rows"] as? JsonArray
+                if (rawRows != null) {
+                    mutableField["rows"] = JsonArray(rawRows.map { rowElem ->
+                        val rowObj = rowElem as? JsonObject ?: return@map rowElem
+                        val col2 = rowObj["col2"] as? JsonPrimitive
+                        if (col2 != null && !col2.isString) {
+                            JsonObject(rowObj.toMutableMap().apply {
+                                put("col2", JsonPrimitive(col2.content))
+                            })
+                        } else {
+                            rowObj
+                        }
+                    })
+                }
+                JsonObject(mutableField)
+            })
+            JsonObject(cardObj.toMutableMap().apply { put("fields", normalizedFields) })
+        })
+        return JsonObject(sheetObj.toMutableMap().apply { put("cards", normalizedCards) })
     }
 }

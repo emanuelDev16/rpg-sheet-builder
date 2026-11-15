@@ -59,6 +59,8 @@ class RoomWorkspaceRepository(context: Context) {
 
     val json = Json {
         ignoreUnknownKeys = true
+        isLenient = true
+        coerceInputValues = true
         encodeDefaults = true
         prettyPrint = false
     }
