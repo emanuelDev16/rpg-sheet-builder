@@ -164,13 +164,27 @@ class CoreEngineTest {
         assertEquals(7.0, afterHeal.numValue ?: 0.0, 0.01)
     }
 
+    private fun resolveSharedPresetFile(fileName: String): File? {
+        val candidates = listOf(
+            File("../../shared/presets/$fileName"),
+            File("../shared/presets/$fileName"),
+            File("shared/presets/$fileName"),
+            File("src/main/assets/presets/$fileName")
+        )
+        candidates.firstOrNull { it.exists() }?.let { return it }
+
+        var dir: File? = File(".").canonicalFile
+        repeat(6) {
+            val candidate = dir?.let { File(it, "shared/presets/$fileName") }
+            if (candidate != null && candidate.exists()) return candidate
+            dir = dir?.parentFile
+        }
+        return null
+    }
+
     @Test
     fun presetsV2BundlePassesValidatorAndMalformedPayloadsAreRejected() {
-        val candidates = listOf(
-            File("../shared/presets/presets.v2.json"),
-            File("shared/presets/presets.v2.json")
-        )
-        val bundleFile = candidates.firstOrNull { it.exists() }
+        val bundleFile = resolveSharedPresetFile("presets.v2.json")
         assertTrue("presets.v2.json deve existir para validação", bundleFile != null)
 
         val bundleObj = Json.parseToJsonElement(bundleFile!!.readText()).jsonObject
@@ -507,8 +521,7 @@ class CoreEngineTest {
 
     @Test
     fun validatorKeySetsMatchSharedSchemaV2() {
-        val schemaFile = listOf(File("../shared/presets/schema.v2.json"), File("shared/presets/schema.v2.json"))
-            .firstOrNull { it.exists() }
+        val schemaFile = resolveSharedPresetFile("schema.v2.json")
         assertTrue("schema.v2.json deve existir", schemaFile != null)
         val schema = Json.parseToJsonElement(schemaFile!!.readText()).jsonObject
         val defs = schema["\$defs"]!!.jsonObject

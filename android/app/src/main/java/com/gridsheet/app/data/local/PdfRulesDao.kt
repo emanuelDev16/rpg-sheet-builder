@@ -99,7 +99,7 @@ abstract class PdfRulesDao(private val db: GridSheetDatabase) {
 
         val query = SimpleSQLiteQuery(
             sql,
-            arrayOf(ftsQuery, systemId, limit.coerceIn(1, 50))
+            arrayOf<Any?>(ftsQuery, systemId, limit.coerceIn(1, 50))
         )
         return Fts5QuerySanitizer.sortHits(rawSearchPages(query))
     }
