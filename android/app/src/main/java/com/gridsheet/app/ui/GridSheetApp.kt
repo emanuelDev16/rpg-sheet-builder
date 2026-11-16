@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -65,7 +67,11 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.selected
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
@@ -93,8 +99,10 @@ import com.gridsheet.app.ui.components.PortabilityAndRulesCard
 import com.gridsheet.app.ui.components.PresetSystemCard
 import com.gridsheet.app.ui.components.RollAndRulesBottomSheet
 import com.gridsheet.app.ui.components.XpUpgradeWorkspace
-import com.gridsheet.app.ui.theme.CyberColors
 import com.gridsheet.app.ui.theme.CyberDimens
+import com.gridsheet.app.ui.theme.GridThemeMode
+import com.gridsheet.app.ui.theme.LocalGridTheme
+import com.gridsheet.app.ui.theme.brutalistShadow
 
 @Composable
 fun GridSheetApp(vm: SheetViewModel = viewModel()) {
@@ -117,6 +125,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
     val scannedPdfAlert by vm.scannedPdfAlert.collectAsState()
     val localRuleHits by vm.localRuleHits.collectAsState()
     val localSearchElapsedMs by vm.localSearchElapsedMs.collectAsState()
+    val themeMode by vm.themeMode.collectAsState()
+    val theme = LocalGridTheme.current
 
     val pdfPickerLauncher = rememberLauncherForActivityResult(
         contract = ActivityResultContracts.OpenDocument()
@@ -159,6 +169,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
         if (uiState.activeScreen == ActiveScreen.HOME) {
             HomeScreen(
                 uiState = uiState,
+                themeMode = themeMode,
+                onSelectTheme = vm::setThemeMode,
                 transferBusy = transferBusy,
                 transferFeedback = transferFeedback,
                 overwriteOnImport = overwriteOnImport,
@@ -193,78 +205,114 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             // Top Technical Header Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = CyberColors.BgCard,
-                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                color = theme.bgCard,
+                border = BorderStroke(theme.borderWidth, theme.borderColor)
             ) {
-                Column(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
-                ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.SpaceBetween
+                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                    val isWideHeader = maxWidth >= 600.dp
+                    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+                    Column(
+                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         Row(
+                            modifier = Modifier.fillMaxWidth(),
                             verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp),
-                            modifier = Modifier.weight(1f)
+                            horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .background(CyberColors.AccentBlack, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 7.dp, vertical = 3.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Text("+", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black, color = CyberColors.InkInverse, fontSize = 12.sp)
+                                Box(
+                                    modifier = Modifier
+                                        .background(theme.accentBlack, RoundedCornerShape(CyberDimens.SmallRadius))
+                                        .padding(horizontal = 7.dp, vertical = 3.dp)
+                                ) {
+                                    Text("+", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Black, color = theme.accentContrast, fontSize = 12.sp)
+                                }
+                                Text(
+                                    text = sheet.systemCode,
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 11.sp,
+                                    color = theme.textPrimary,
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis
+                                )
                             }
-                            Text(
-                                text = sheet.systemCode,
-                                fontFamily = FontFamily.Monospace,
-                                fontWeight = FontWeight.Bold,
-                                fontSize = 11.sp,
-                                color = CyberColors.InkPrimary,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
-                            )
+
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                if (isWideHeader) {
+                                    GridThemeSelector(
+                                        activeTheme = themeMode,
+                                        onSelectTheme = vm::setThemeMode
+                                    )
+                                }
+                                // MODO JOGO | MODO EDIÇÃO toggle
+                                Row(
+                                    modifier = Modifier
+                                        .clip(pillShape)
+                                        .border(theme.borderWidth, theme.borderColor, pillShape)
+                                ) {
+                                    ModeSegment("JOGO", mode == AppMode.JOGO, theme.accentBlack, theme.accentContrast) {
+                                        vm.setMode(AppMode.JOGO)
+                                    }
+                                    ModeSegment("EDIÇÃO", mode == AppMode.EDICAO, theme.accentPrimary, theme.accentContrast) {
+                                        vm.setMode(AppMode.EDICAO)
+                                    }
+                                }
+                            }
                         }
 
-                        // MODO JOGO | MODO EDIÇÃO toggle
+                        if (!isWideHeader) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.SpaceBetween
+                            ) {
+                                Text(
+                                    text = "// TEMA",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = theme.textSecondary
+                                )
+                                GridThemeSelector(
+                                    activeTheme = themeMode,
+                                    onSelectTheme = vm::setThemeMode
+                                )
+                            }
+                        }
+
+                        // System Switcher + Action Buttons
                         Row(
                             modifier = Modifier
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .fillMaxWidth()
+                                .horizontalScroll(rememberScrollState()),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp)
                         ) {
-                            ModeSegment("JOGO", mode == AppMode.JOGO, CyberColors.AccentBlack, CyberColors.InkInverse) {
-                                vm.setMode(AppMode.JOGO)
+                            TopHomeBtn(onClick = vm::navigateToHome)
+                            SystemSwitcherDropdown(
+                                activeSystemId = activeSystemId,
+                                onSelect = vm::switchSystem
+                            )
+                            TopOutlineBtn("NOVA") { vm.createNewBlankSheet() }
+                            TopOutlineBtn("ABRIR") {
+                                vm.clearTransferFeedback()
+                                vm.setSystemModalOpen(true)
                             }
-                            ModeSegment("EDIÇÃO", mode == AppMode.EDICAO, CyberColors.AccentWine, CyberColors.InkInverse) {
-                                vm.setMode(AppMode.EDICAO)
+                            TopOutlineBtn("ROLAGENS (${sheet.rollLogs.size})") {
+                                vm.openSideSheet(SideSheetMode.LOGS)
                             }
-                        }
-                    }
-
-                    // System Switcher + Action Buttons
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .horizontalScroll(rememberScrollState()),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        TopHomeBtn(onClick = vm::navigateToHome)
-                        SystemSwitcherDropdown(
-                            activeSystemId = activeSystemId,
-                            onSelect = vm::switchSystem
-                        )
-                        TopOutlineBtn("NOVA") { vm.createNewBlankSheet() }
-                        TopOutlineBtn("ABRIR") {
-                            vm.clearTransferFeedback()
-                            vm.setSystemModalOpen(true)
-                        }
-                        TopOutlineBtn("ROLAGENS (${sheet.rollLogs.size})") {
-                            vm.openSideSheet(SideSheetMode.LOGS)
-                        }
-                        TopOutlineBtn("REGRAS") {
-                            vm.openSideSheet(SideSheetMode.RULES)
+                            TopOutlineBtn("REGRAS") {
+                                vm.openSideSheet(SideSheetMode.RULES)
+                            }
                         }
                     }
                 }
@@ -299,7 +347,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkSecondary
+                    color = theme.textSecondary
                 )
             }
 
@@ -370,8 +418,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             // Bottom Technical Status Bar
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                color = CyberColors.BgCard,
-                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                color = theme.bgCard,
+                border = BorderStroke(theme.borderWidth, theme.borderColor)
             ) {
                 Row(
                     modifier = Modifier
@@ -390,14 +438,17 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = if (evaluation.formulaErrors.isNotEmpty()) CyberColors.AccentDanger else CyberColors.InkPrimary,
+                        color = if (evaluation.formulaErrors.isNotEmpty()) theme.accentDanger else theme.textPrimary,
                         maxLines = 1,
                         overflow = TextOverflow.Ellipsis,
                         modifier = Modifier.weight(1f)
                     )
                     Box(
                         modifier = Modifier
-                            .background(CyberColors.AccentWine, RoundedCornerShape(3.dp))
+                            .background(
+                                theme.accentPrimary,
+                                RoundedCornerShape(if (theme.isEink) theme.pillCornerRadius else 3.dp)
+                            )
                             .padding(horizontal = 8.dp, vertical = 3.dp)
                     ) {
                         Text(
@@ -405,7 +456,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             fontFamily = FontFamily.Monospace,
                             fontSize = 9.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberColors.InkInverse
+                            color = theme.accentContrast
                         )
                     }
                     Spacer(Modifier.width(8.dp))
@@ -414,7 +465,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.AccentWine
+                        color = theme.accentPrimary
                     )
                 }
             }
@@ -485,33 +536,86 @@ private inline fun launchSafely(vm: SheetViewModel, block: () -> Unit) {
 }
 
 @Composable
+private fun GridThemeSelector(
+    activeTheme: GridThemeMode,
+    onSelectTheme: (GridThemeMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    Row(
+        modifier = modifier
+            .height(IntrinsicSize.Min)
+            .clip(pillShape)
+            .background(theme.bgCard)
+            .border(theme.borderWidth, theme.borderColor, pillShape),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        GridThemeMode.entries.forEachIndexed { index, option ->
+            if (index > 0) {
+                Box(
+                    modifier = Modifier
+                        .width(theme.borderWidth)
+                        .fillMaxHeight()
+                        .background(theme.borderColor)
+                )
+            }
+            val isSelected = activeTheme == option
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(
+                        minWidth = CyberDimens.MinTouchTarget,
+                        minHeight = CyberDimens.MinTouchTarget
+                    )
+                    .background(if (isSelected) theme.accentPrimary else theme.bgCard)
+                    .semantics { selected = isSelected }
+                    .clickable(role = Role.RadioButton) { onSelectTheme(option) }
+                    .padding(horizontal = 10.dp, vertical = 8.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = option.label,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = if (isSelected) theme.accentContrast else theme.textPrimary,
+                    maxLines = 1
+                )
+            }
+        }
+    }
+}
+
+@Composable
 private fun SystemSwitcherDropdown(
     activeSystemId: SystemId,
     onSelect: (SystemId) -> Unit
 ) {
     var expanded by remember { mutableStateOf(false) }
     val activeOption = Presets.SYSTEM_OPTIONS.find { it.id == activeSystemId }
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
 
     Box {
         Surface(
             modifier = Modifier.clickable { expanded = true },
-            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-            color = CyberColors.BgCardAlt,
-            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+            shape = pillShape,
+            color = theme.bgCardAlt,
+            border = BorderStroke(theme.borderWidth, theme.borderColor)
         ) {
             Text(
                 text = "SYS: ${activeOption?.shortLabel ?: "WOD"} ▾",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Bold,
-                color = CyberColors.InkPrimary,
+                color = theme.textPrimary,
                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
             )
         }
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = { expanded = false },
-            modifier = Modifier.background(CyberColors.BgCard)
+            modifier = Modifier.background(theme.bgCard)
         ) {
             Presets.SYSTEM_OPTIONS.forEach { option ->
                 DropdownMenuItem(
@@ -521,7 +625,7 @@ private fun SystemSwitcherDropdown(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
                             fontWeight = if (option.id == activeSystemId) FontWeight.Black else FontWeight.Medium,
-                            color = if (option.id == activeSystemId) CyberColors.AccentWine else CyberColors.InkPrimary
+                            color = if (option.id == activeSystemId) theme.accentPrimary else theme.textPrimary
                         )
                     },
                     onClick = {
@@ -537,6 +641,8 @@ private fun SystemSwitcherDropdown(
 @Composable
 private fun HomeScreen(
     uiState: UiState,
+    themeMode: GridThemeMode,
+    onSelectTheme: (GridThemeMode) -> Unit,
     transferBusy: Boolean,
     transferFeedback: TransferFeedback?,
     overwriteOnImport: Boolean,
@@ -552,6 +658,9 @@ private fun HomeScreen(
     onImportJson: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     val latestSheet = uiState.sheets.firstOrNull()
     val systemPresets = remember(uiState.presets) {
         uiState.presets.filter { it.systemId != SystemId.BLANK }
@@ -588,64 +697,89 @@ private fun HomeScreen(
         ) {
             item(span = { GridItemSpan(columns) }, key = "home_masthead") {
                 Surface(
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(CyberDimens.CardRadius),
-                    color = CyberColors.BgCard,
-                    border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
-                    shadowElevation = 2.dp
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
+                    shape = cardShape,
+                    color = theme.bgCard,
+                    border = BorderStroke(theme.borderStrong, theme.borderColor),
+                    shadowElevation = 0.dp
                 ) {
-                    Row(
+                    Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             .padding(horizontal = 14.dp, vertical = 12.dp),
-                        horizontalArrangement = Arrangement.SpaceBetween,
-                        verticalAlignment = Alignment.CenterVertically
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp),
-                            modifier = Modifier.weight(1f)
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
                         ) {
-                            Box(
-                                modifier = Modifier
-                                    .background(CyberColors.AccentBlack, RoundedCornerShape(4.dp))
-                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                                modifier = Modifier.weight(1f)
                             ) {
-                                Text(
-                                    text = "+",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Black,
-                                    color = CyberColors.InkInverse,
-                                    fontSize = 14.sp
-                                )
+                                Box(
+                                    modifier = Modifier
+                                        .background(theme.accentBlack, RoundedCornerShape(CyberDimens.SmallRadius))
+                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                ) {
+                                    Text(
+                                        text = "+",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Black,
+                                        color = theme.accentContrast,
+                                        fontSize = 14.sp
+                                    )
+                                }
+                                Column {
+                                    Text(
+                                        text = "GRIDSHEET // TERMINAL",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 15.sp,
+                                        color = theme.textPrimary
+                                    )
+                                    Text(
+                                        text = if (uiState.isLoading) "SINCRONIZANDO ROOM..." else "ARMÁRIO DE FICHAS & REGRAS OFFLINE",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Bold,
+                                        color = theme.textMuted
+                                    )
+                                }
                             }
-                            Column {
-                                Text(
-                                    text = "GRIDSHEET // TERMINAL",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontWeight = FontWeight.Black,
-                                    fontSize = 15.sp,
-                                    color = CyberColors.InkPrimary
+                            Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                                BrutalistTagBadge(
+                                    text = "${uiState.sheets.size} FICHAS",
+                                    containerColor = theme.bgStrip,
+                                    contentColor = theme.textPrimary
                                 )
-                                Text(
-                                    text = if (uiState.isLoading) "SINCRONIZANDO ROOM..." else "ARMÁRIO DE FICHAS & REGRAS OFFLINE",
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    color = CyberColors.InkMuted
+                                BrutalistTagBadge(
+                                    text = "PDF: ${uiState.indexedBooksCount}",
+                                    containerColor = if (uiState.indexedBooksCount > 0) theme.accentWineSoft else theme.bgCardAlt,
+                                    contentColor = if (uiState.indexedBooksCount > 0) theme.accentPrimary else theme.textSecondary
                                 )
                             }
                         }
-                        Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                            BrutalistTagBadge(
-                                text = "${uiState.sheets.size} FICHAS",
-                                containerColor = CyberColors.BgHeaderStrip,
-                                contentColor = CyberColors.InkPrimary
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "// TEMA VISUAL",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 10.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = theme.textSecondary
                             )
-                            BrutalistTagBadge(
-                                text = "PDF: ${uiState.indexedBooksCount}",
-                                containerColor = if (uiState.indexedBooksCount > 0) CyberColors.AccentWineSoft else CyberColors.BgCardAlt,
-                                contentColor = if (uiState.indexedBooksCount > 0) CyberColors.AccentWine else CyberColors.InkSecondary
+                            GridThemeSelector(
+                                activeTheme = themeMode,
+                                onSelectTheme = onSelectTheme
                             )
                         }
                     }
@@ -719,7 +853,7 @@ private fun HomeScreen(
                             Icon(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "Buscar",
-                                tint = CyberColors.InkPrimary
+                                tint = theme.textPrimary
                             )
                         },
                         trailingIcon = {
@@ -728,20 +862,23 @@ private fun HomeScreen(
                                     Icon(
                                         imageVector = Icons.Default.Close,
                                         contentDescription = "Limpar busca",
-                                        tint = CyberColors.InkPrimary
+                                        tint = theme.textPrimary
                                     )
                                 }
                             }
                         },
                         colors = OutlinedTextFieldDefaults.colors(
-                            focusedContainerColor = CyberColors.BgCard,
-                            unfocusedContainerColor = CyberColors.BgCard,
-                            focusedBorderColor = CyberColors.AccentWine,
-                            unfocusedBorderColor = CyberColors.BorderInk,
-                            focusedLabelColor = CyberColors.AccentWine,
-                            cursorColor = CyberColors.AccentWine
+                            focusedContainerColor = theme.bgCard,
+                            unfocusedContainerColor = theme.bgCard,
+                            focusedTextColor = theme.textPrimary,
+                            unfocusedTextColor = theme.textPrimary,
+                            focusedBorderColor = theme.accentPrimary,
+                            unfocusedBorderColor = theme.borderColor,
+                            focusedLabelColor = theme.accentPrimary,
+                            unfocusedLabelColor = theme.textSecondary,
+                            cursorColor = theme.accentPrimary
                         ),
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                        shape = pillShape,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -776,9 +913,9 @@ private fun HomeScreen(
                 item(span = { GridItemSpan(columns) }, key = "home_library_empty") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.CardRadius),
-                        color = CyberColors.BgCardAlt,
-                        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                        shape = cardShape,
+                        color = theme.bgCardAlt,
+                        border = BorderStroke(theme.borderWidth, theme.borderColor)
                     ) {
                         Column(
                             modifier = Modifier.padding(14.dp),
@@ -793,7 +930,7 @@ private fun HomeScreen(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Black,
                                 fontSize = 12.sp,
-                                color = CyberColors.AccentWine
+                                color = theme.accentPrimary
                             )
                             Text(
                                 text = if (uiState.sheets.isEmpty()) {
@@ -802,7 +939,7 @@ private fun HomeScreen(
                                     "Nenhuma ficha corresponde à busca \"${uiState.searchQuery}\" e sistema selecionado."
                                 },
                                 fontSize = 12.sp,
-                                color = CyberColors.InkSecondary
+                                color = theme.textSecondary
                             )
                         }
                     }
@@ -883,6 +1020,7 @@ private fun HomeFilterChip(
     selected: Boolean,
     onClick: () -> Unit
 ) {
+    val theme = LocalGridTheme.current
     FilterChip(
         selected = selected,
         onClick = onClick,
@@ -894,20 +1032,20 @@ private fun HomeFilterChip(
                 fontWeight = FontWeight.Black
             )
         },
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+        shape = RoundedCornerShape(theme.pillCornerRadius),
         colors = FilterChipDefaults.filterChipColors(
-            containerColor = CyberColors.BgCard,
-            labelColor = CyberColors.InkPrimary,
-            selectedContainerColor = CyberColors.AccentWine,
-            selectedLabelColor = CyberColors.InkInverse
+            containerColor = theme.bgCard,
+            labelColor = theme.textPrimary,
+            selectedContainerColor = theme.accentPrimary,
+            selectedLabelColor = theme.accentContrast
         ),
         border = FilterChipDefaults.filterChipBorder(
             enabled = true,
             selected = selected,
-            borderColor = CyberColors.BorderInk,
-            selectedBorderColor = CyberColors.BorderInk,
-            borderWidth = CyberDimens.BorderWidth,
-            selectedBorderWidth = CyberDimens.BorderStrong
+            borderColor = theme.borderColor,
+            selectedBorderColor = theme.borderColor,
+            borderWidth = theme.borderWidth,
+            selectedBorderWidth = theme.borderStrong
         ),
         modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
     )
@@ -915,13 +1053,14 @@ private fun HomeFilterChip(
 
 @Composable
 private fun TopHomeBtn(onClick: () -> Unit) {
+    val theme = LocalGridTheme.current
     Surface(
         modifier = Modifier
             .defaultMinSize(minWidth = CyberDimens.MinTouchTarget, minHeight = CyberDimens.MinTouchTarget)
             .clickable(role = Role.Button, onClick = onClick),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = CyberColors.BgHeaderStrip,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+        shape = RoundedCornerShape(theme.pillCornerRadius),
+        color = theme.bgStrip,
+        border = BorderStroke(theme.borderStrong, theme.borderColor)
     ) {
         Box(
             contentAlignment = Alignment.Center,
@@ -932,7 +1071,7 @@ private fun TopHomeBtn(onClick: () -> Unit) {
                 fontFamily = FontFamily.Monospace,
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
-                color = CyberColors.AccentWine
+                color = theme.accentPrimary
             )
         }
     }
@@ -940,18 +1079,19 @@ private fun TopHomeBtn(onClick: () -> Unit) {
 
 @Composable
 private fun TopOutlineBtn(label: String, onClick: () -> Unit) {
+    val theme = LocalGridTheme.current
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+        shape = RoundedCornerShape(theme.pillCornerRadius),
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderWidth, theme.borderColor)
     ) {
         Text(
             text = label,
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = CyberColors.InkPrimary,
+            color = theme.textPrimary,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
         )
     }
@@ -961,13 +1101,14 @@ private fun TopOutlineBtn(label: String, onClick: () -> Unit) {
 private fun ModeSegment(
     label: String,
     active: Boolean,
-    activeBg: androidx.compose.ui.graphics.Color,
-    activeInk: androidx.compose.ui.graphics.Color,
+    activeBg: Color,
+    activeInk: Color,
     onClick: () -> Unit
 ) {
+    val theme = LocalGridTheme.current
     Box(
         modifier = Modifier
-            .background(if (active) activeBg else CyberColors.BgCard)
+            .background(if (active) activeBg else theme.bgCard)
             .clickable(onClick = onClick)
             .padding(horizontal = 10.dp, vertical = 6.dp)
     ) {
@@ -976,25 +1117,26 @@ private fun ModeSegment(
             fontFamily = FontFamily.Monospace,
             fontSize = 10.sp,
             fontWeight = FontWeight.Black,
-            color = if (active) activeInk else CyberColors.InkPrimary
+            color = if (active) activeInk else theme.textPrimary
         )
     }
 }
 
 @Composable
 private fun SheetTabButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    val theme = LocalGridTheme.current
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = if (selected) CyberColors.AccentWine else CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+        shape = RoundedCornerShape(theme.pillCornerRadius),
+        color = if (selected) theme.accentPrimary else theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.borderColor)
     ) {
         Text(
             text = label,
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary,
+            color = if (selected) theme.accentContrast else theme.textPrimary,
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
         )
     }
@@ -1016,16 +1158,21 @@ private fun SystemPresetAndJsonDialog(
     onDismiss: () -> Unit
 ) {
     var jsonInput by remember { mutableStateOf(exportedJson) }
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CyberColors.BgCard,
+        containerColor = theme.bgCard,
+        shape = cardShape,
         title = {
             Text(
                 text = "SISTEMAS & JSON",
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
-                fontSize = 14.sp
+                fontSize = 14.sp,
+                color = theme.textPrimary
             )
         },
         text = {
@@ -1035,26 +1182,41 @@ private fun SystemPresetAndJsonDialog(
             ) {
                 Presets.SYSTEM_OPTIONS.forEach { preset ->
                     val isCurrent = preset.id == activeSystemId
+                    val rowBg = when {
+                        isCurrent && theme.isEink -> theme.accentPrimary
+                        isCurrent -> theme.accentWineSoft
+                        else -> theme.bgCardAlt
+                    }
+                    val rowTitleColor = if (isCurrent && theme.isEink) theme.accentContrast else theme.textPrimary
+                    val rowDescColor = if (isCurrent && theme.isEink) theme.accentContrast else theme.textMuted
+                    val rowActionColor = if (isCurrent && theme.isEink) theme.accentContrast else theme.accentPrimary
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(if (isCurrent) CyberColors.AccentWineSoft else CyberColors.BgCardAlt, RoundedCornerShape(6.dp))
-                            .border(1.5.dp, CyberColors.BorderInk, RoundedCornerShape(6.dp))
+                            .background(rowBg, pillShape)
+                            .border(theme.borderWidth, theme.borderColor, pillShape)
                             .clickable { onLoadPreset(preset.id) }
                             .padding(horizontal = 10.dp, vertical = 8.dp),
                         horizontalArrangement = Arrangement.SpaceBetween,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         Column(modifier = Modifier.weight(1f)) {
-                            Text(preset.shortLabel, fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
-                            Text(preset.description, fontSize = 10.sp, color = CyberColors.InkMuted)
+                            Text(
+                                preset.shortLabel,
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = rowTitleColor
+                            )
+                            Text(preset.description, fontSize = 10.sp, color = rowDescColor)
                         }
                         Text(
                             text = if (isCurrent) "REINICIAR ↗" else "CARREGAR ↗",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Black,
-                            color = CyberColors.AccentWine
+                            color = rowActionColor
                         )
                     }
                 }
@@ -1062,7 +1224,19 @@ private fun SystemPresetAndJsonDialog(
                     value = jsonInput,
                     onValueChange = { jsonInput = it },
                     label = { Text("JSON DA FICHA (EXPORTAR / IMPORTAR)", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
-                    maxLines = 4
+                    maxLines = 4,
+                    shape = pillShape,
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedContainerColor = theme.bgInput,
+                        unfocusedContainerColor = theme.bgInput,
+                        focusedTextColor = theme.textPrimary,
+                        unfocusedTextColor = theme.textPrimary,
+                        focusedBorderColor = theme.accentPrimary,
+                        unfocusedBorderColor = theme.borderColor,
+                        focusedLabelColor = theme.accentPrimary,
+                        unfocusedLabelColor = theme.textSecondary,
+                        cursorColor = theme.accentPrimary
+                    )
                 )
 
                 SheetFileTransferSection(
@@ -1079,14 +1253,18 @@ private fun SystemPresetAndJsonDialog(
         confirmButton = {
             Button(
                 onClick = { onImportJson(jsonInput) },
-                colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                shape = pillShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = theme.accentBlack,
+                    contentColor = theme.accentContrast
+                )
             ) {
                 Text("IMPORTAR JSON", fontFamily = FontFamily.Monospace, fontSize = 11.sp)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("FECHAR", fontFamily = FontFamily.Monospace, color = CyberColors.InkMuted)
+                Text("FECHAR", fontFamily = FontFamily.Monospace, color = theme.textMuted)
             }
         }
     )
@@ -1104,11 +1282,13 @@ private fun SheetFileTransferSection(
     onExportBackup: () -> Unit,
     onImportFile: () -> Unit
 ) {
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
     Column(
         modifier = Modifier
             .fillMaxWidth()
-            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-            .border(CyberDimens.BorderStrong, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+            .background(theme.bgCardAlt, cardShape)
+            .border(theme.borderStrong, theme.borderColor, cardShape)
             .padding(10.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
@@ -1117,7 +1297,7 @@ private fun SheetFileTransferSection(
             fontFamily = FontFamily.Monospace,
             fontWeight = FontWeight.Black,
             fontSize = 10.sp,
-            color = CyberColors.AccentWine
+            color = theme.accentPrimary
         )
         BrutalistActionButton("EXPORTAR FICHA (.JSON)", primary = true, enabled = !busy, onClick = onExportSheet)
         BrutalistActionButton("BACKUP COMPLETO (.JSON)", primary = true, enabled = !busy, onClick = onExportBackup)
@@ -1141,9 +1321,9 @@ private fun SheetFileTransferSection(
                 onCheckedChange = null,
                 enabled = !busy,
                 colors = CheckboxDefaults.colors(
-                    checkedColor = CyberColors.AccentWine,
-                    uncheckedColor = CyberColors.BorderInk,
-                    checkmarkColor = CyberColors.InkInverse
+                    checkedColor = theme.accentPrimary,
+                    uncheckedColor = theme.borderColor,
+                    checkmarkColor = theme.accentContrast
                 )
             )
             Text(
@@ -1151,13 +1331,13 @@ private fun SheetFileTransferSection(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             )
         }
 
         if (feedback != null) {
-            val accent = if (feedback.success) CyberColors.AccentWine else CyberColors.AccentDanger
-            val soft = if (feedback.success) CyberColors.AccentWineSoft else CyberColors.AccentDangerSoft
+            val accent = if (feedback.success) theme.accentPrimary else theme.accentDanger
+            val soft = if (feedback.success) theme.accentWineSoft else theme.accentDangerSoft
             Text(
                 text = (if (feedback.success) "> OK_ " else "> ERRO_ ") + feedback.message,
                 fontFamily = FontFamily.Monospace,
@@ -1167,7 +1347,7 @@ private fun SheetFileTransferSection(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(soft, RoundedCornerShape(CyberDimens.SmallRadius))
-                    .border(CyberDimens.BorderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
+                    .border(theme.borderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
                     .padding(horizontal = 8.dp, vertical = 6.dp)
             )
         }
@@ -1181,23 +1361,24 @@ private fun BrutalistActionButton(
     enabled: Boolean,
     onClick: () -> Unit
 ) {
-    val shape = RoundedCornerShape(CyberDimens.ControlRadius)
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.pillCornerRadius)
     val bg = when {
-        !enabled -> CyberColors.BgHover
-        primary -> CyberColors.AccentBlack
-        else -> CyberColors.BgCard
+        !enabled -> theme.bgHover
+        primary -> theme.accentBlack
+        else -> theme.bgCard
     }
     val ink = when {
-        !enabled -> CyberColors.InkMuted
-        primary -> CyberColors.InkInverse
-        else -> CyberColors.InkPrimary
+        !enabled -> theme.textMuted
+        primary -> theme.accentContrast
+        else -> theme.textPrimary
     }
     Box(
         modifier = Modifier
             .fillMaxWidth()
             .heightIn(min = 48.dp)
             .background(bg, shape)
-            .border(CyberDimens.BorderStrong, CyberColors.BorderInk, shape)
+            .border(theme.borderStrong, theme.borderColor, shape)
             .clickable(enabled = enabled, role = Role.Button, onClick = onClick)
             .padding(horizontal = 12.dp, vertical = 10.dp),
         contentAlignment = Alignment.CenterStart

@@ -51,6 +51,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -71,8 +72,8 @@ import com.gridsheet.app.data.RulesSearchResponse
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.IndexedBookEntity
 import com.gridsheet.app.ui.SideSheetMode
-import com.gridsheet.app.ui.theme.CyberColors
 import com.gridsheet.app.ui.theme.CyberDimens
+import com.gridsheet.app.ui.theme.LocalGridTheme
 import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -108,6 +109,8 @@ fun RollAndRulesBottomSheet(
     var diceExpr by remember(systemId) { mutableStateOf(quickDice.getOrElse(1) { quickDice.first() }) }
     var libraryExpanded by remember { mutableStateOf(false) }
     val context = LocalContext.current
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
 
     LaunchedEffect(systemId) {
         diceExpr = quickDice.getOrElse(1) { quickDice.first() }
@@ -122,7 +125,7 @@ fun RollAndRulesBottomSheet(
     ModalBottomSheet(
         onDismissRequest = onDismiss,
         sheetState = sheetState,
-        containerColor = CyberColors.BgCard
+        containerColor = theme.bgCard
     ) {
         Column(
             modifier = Modifier
@@ -150,17 +153,24 @@ fun RollAndRulesBottomSheet(
                             "LIMPAR",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = CyberColors.AccentDanger
+                            color = theme.accentDanger
                         )
                     }
                 } else if (mode == SideSheetMode.RULES) {
+                    val libBg = when {
+                        libraryExpanded && theme.isEink -> theme.accentPrimary
+                        libraryExpanded -> theme.accentWineSoft
+                        else -> theme.bgCardAlt
+                    }
+                    val libFg = if (libraryExpanded && theme.isEink) theme.accentContrast else theme.textPrimary
+                    val libIcon = if (libraryExpanded && theme.isEink) theme.accentContrast else theme.accentPrimary
                     Surface(
                         modifier = Modifier.clickable { libraryExpanded = !libraryExpanded },
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                        color = if (libraryExpanded) CyberColors.AccentWineSoft else CyberColors.BgCardAlt,
+                        shape = pillShape,
+                        color = libBg,
                         border = BorderStroke(
-                            CyberDimens.BorderWidth,
-                            if (libraryExpanded) CyberColors.AccentWine else CyberColors.BorderInk
+                            theme.borderWidth,
+                            if (libraryExpanded) theme.accentPrimary else theme.borderColor
                         )
                     ) {
                         Row(
@@ -171,7 +181,7 @@ fun RollAndRulesBottomSheet(
                             Icon(
                                 imageVector = Icons.AutoMirrored.Outlined.MenuBook,
                                 contentDescription = "Biblioteca PDF",
-                                tint = CyberColors.AccentWine,
+                                tint = libIcon,
                                 modifier = Modifier.size(14.dp)
                             )
                             Text(
@@ -179,7 +189,7 @@ fun RollAndRulesBottomSheet(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
-                                color = CyberColors.InkPrimary
+                                color = libFg
                             )
                         }
                     }
@@ -235,6 +245,10 @@ private fun LogsModeContent(
     logs: List<RollLogEntry>,
     onRollExpression: (String, String) -> Unit
 ) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -244,22 +258,26 @@ private fun LogsModeContent(
             value = diceExpr,
             onValueChange = onDiceExprChange,
             singleLine = true,
+            cursorBrush = SolidColor(theme.accentPrimary),
             textStyle = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Bold,
                 fontSize = 13.sp,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             ),
             modifier = Modifier
                 .weight(1f)
-                .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                .background(theme.bgInput, pillShape)
+                .border(theme.borderWidth, theme.borderColor, pillShape)
                 .padding(horizontal = 10.dp, vertical = 9.dp)
         )
         Button(
             onClick = { onRollExpression("ROLAGEM RÁPIDA", diceExpr) },
-            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-            colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+            shape = pillShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = theme.accentBlack,
+                contentColor = theme.accentContrast
+            )
         ) {
             Text("ROLAR ↗", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 12.sp)
         }
@@ -276,8 +294,8 @@ private fun LogsModeContent(
                     onRollExpression("ROLAGEM $preset", preset)
                 },
                 modifier = Modifier.weight(1f),
-                shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                border = BorderStroke(1.dp, CyberColors.BorderInk),
+                shape = pillShape,
+                border = BorderStroke(1.dp, theme.borderColor),
                 contentPadding = PaddingValues(vertical = 4.dp)
             ) {
                 Text(
@@ -285,7 +303,7 @@ private fun LogsModeContent(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkPrimary
+                    color = theme.textPrimary
                 )
             }
         }
@@ -298,9 +316,9 @@ private fun LogsModeContent(
         items(logs, key = { it.id }) { entry ->
             Surface(
                 modifier = Modifier.fillMaxWidth(),
-                shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                color = CyberColors.BgCardAlt,
-                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                shape = cardShape,
+                color = theme.bgCardAlt,
+                border = BorderStroke(theme.borderWidth, theme.borderColor)
             ) {
                 Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
                     Row(
@@ -312,13 +330,13 @@ private fun LogsModeContent(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         )
                         Text(
                             entry.timestamp,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
-                            color = CyberColors.InkMuted
+                            color = theme.textMuted
                         )
                     }
                     Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
@@ -327,7 +345,7 @@ private fun LogsModeContent(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Black,
                             fontSize = 28.sp,
-                            color = if (entry.isFumble) CyberColors.AccentDanger else CyberColors.AccentWine
+                            color = if (entry.isFumble) theme.accentDanger else theme.accentPrimary
                         )
                         if (entry.isPoolRoll) {
                             Text(
@@ -335,13 +353,13 @@ private fun LogsModeContent(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberColors.InkMuted,
+                                color = theme.textMuted,
                                 modifier = Modifier.padding(bottom = 5.dp)
                             )
                         }
                     }
-                    Text(entry.breakdown, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = CyberColors.InkSecondary)
-                    Text(entry.formula, fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = CyberColors.InkMuted)
+                    Text(entry.breakdown, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = theme.textSecondary)
+                    Text(entry.formula, fontFamily = FontFamily.Monospace, fontSize = 10.sp, color = theme.textMuted)
                 }
             }
         }
@@ -372,6 +390,9 @@ private fun RulesModeContent(
     onDismissIndexError: () -> Unit,
     onOpenExternalUri: (String) -> Unit
 ) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
     val isIndexing = indexProgress is IndexProgress.Extracting ||
         indexProgress is IndexProgress.OcrExtracting ||
         indexProgress is IndexProgress.Persisting
@@ -388,7 +409,7 @@ private fun RulesModeContent(
         fontFamily = FontFamily.Monospace,
         fontSize = 10.sp,
         fontWeight = FontWeight.Bold,
-        color = CyberColors.AccentWine
+        color = theme.accentPrimary
     )
 
     if (libraryExpanded || indexedBooks.isEmpty() || scannedPdfAlert != null) {
@@ -417,12 +438,13 @@ private fun RulesModeContent(
             value = rulesQuery,
             onValueChange = onRulesQueryChange,
             singleLine = true,
+            cursorBrush = SolidColor(theme.accentPrimary),
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
             keyboardActions = KeyboardActions(onSearch = { onSearchRules(rulesQuery, false) }),
             textStyle = TextStyle(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 13.sp,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             ),
             decorationBox = { inner ->
                 Box {
@@ -435,7 +457,7 @@ private fun RulesModeContent(
                             },
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = CyberColors.InkMuted,
+                            color = theme.textMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -445,15 +467,18 @@ private fun RulesModeContent(
             },
             modifier = Modifier
                 .weight(1f)
-                .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                .background(theme.bgInput, pillShape)
+                .border(theme.borderWidth, theme.borderColor, pillShape)
                 .padding(horizontal = 10.dp, vertical = 9.dp)
         )
         Button(
             onClick = { onSearchRules(rulesQuery, false) },
             enabled = !rulesLoading,
-            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-            colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+            shape = pillShape,
+            colors = ButtonDefaults.buttonColors(
+                containerColor = theme.accentBlack,
+                contentColor = theme.accentContrast
+            )
         ) {
             Text("BUSCAR ↗", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 11.sp)
         }
@@ -471,16 +496,16 @@ private fun RulesModeContent(
                     onRulesQueryChange(term)
                     onSearchRules(term, false)
                 },
-                shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                color = CyberColors.BgCardAlt,
-                border = BorderStroke(1.dp, CyberColors.BorderInk)
+                shape = pillShape,
+                color = theme.bgCardAlt,
+                border = BorderStroke(1.dp, theme.borderColor)
             ) {
                 Text(
                     text = term.uppercase(),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkPrimary,
+                    color = theme.textPrimary,
                     modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp)
                 )
             }
@@ -503,16 +528,16 @@ private fun RulesModeContent(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Black,
-                        color = CyberColors.AccentWine
+                        color = theme.accentPrimary
                     )
                     Text(
                         text = "WEB ↗",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.InkSecondary,
+                        color = theme.textSecondary,
                         modifier = Modifier
-                            .border(1.dp, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.SmallRadius))
+                            .border(1.dp, theme.borderColor, pillShape)
                             .clickable(enabled = !rulesLoading) { onSearchRules(rulesQuery, true) }
                             .padding(horizontal = 6.dp, vertical = 2.dp)
                     )
@@ -525,9 +550,9 @@ private fun RulesModeContent(
             item(key = "local_empty_state") {
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                    color = CyberColors.BgCardAlt,
-                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                    shape = cardShape,
+                    color = theme.bgCardAlt,
+                    border = BorderStroke(theme.borderWidth, theme.borderColor)
                 ) {
                     Column(
                         modifier = Modifier.padding(12.dp),
@@ -537,19 +562,19 @@ private fun RulesModeContent(
                             text = "Nenhum trecho encontrado nos manuais locais para \"${rulesQuery.trim()}\".",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = CyberColors.InkSecondary
+                            color = theme.textSecondary
                         )
                         OutlinedButton(
                             onClick = { onSearchRules(rulesQuery, true) },
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            border = BorderStroke(1.dp, CyberColors.BorderInk)
+                            shape = pillShape,
+                            border = BorderStroke(1.dp, theme.borderColor)
                         ) {
                             Text(
                                 text = "BUSCAR ONLINE (GEMINI) ↗",
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
-                                color = CyberColors.AccentWine
+                                color = theme.accentPrimary
                             )
                         }
                     }
@@ -565,7 +590,7 @@ private fun RulesModeContent(
                         .padding(vertical = 16.dp),
                     horizontalArrangement = Arrangement.Center
                 ) {
-                    CircularProgressIndicator(color = CyberColors.AccentWine)
+                    CircularProgressIndicator(color = theme.accentPrimary)
                 }
             }
         } else if (rulesResult != null) {
@@ -573,15 +598,15 @@ private fun RulesModeContent(
                 item(key = "online_error") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                        color = CyberColors.AccentDangerSoft,
-                        border = BorderStroke(1.dp, CyberColors.AccentDanger)
+                        shape = cardShape,
+                        color = theme.accentDangerSoft,
+                        border = BorderStroke(1.dp, theme.accentDanger)
                     ) {
                         Text(
                             text = rulesResult.error,
                             fontFamily = FontFamily.Monospace,
                             fontSize = 12.sp,
-                            color = CyberColors.AccentDanger,
+                            color = theme.accentDanger,
                             modifier = Modifier.padding(12.dp)
                         )
                     }
@@ -590,14 +615,14 @@ private fun RulesModeContent(
                 item(key = "online_answer") {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                        color = CyberColors.BgCardAlt,
-                        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                        shape = cardShape,
+                        color = theme.bgCardAlt,
+                        border = BorderStroke(theme.borderWidth, theme.borderColor)
                     ) {
                         Text(
                             text = rulesResult.answer,
                             fontSize = 13.sp,
-                            color = CyberColors.InkPrimary,
+                            color = theme.textPrimary,
                             modifier = Modifier.padding(12.dp)
                         )
                     }
@@ -607,7 +632,7 @@ private fun RulesModeContent(
                         text = "↗ ${src.title}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        color = CyberColors.AccentWine,
+                        color = theme.accentPrimary,
                         modifier = Modifier
                             .fillMaxWidth()
                             .clickable { onOpenExternalUri(src.uri) }
@@ -622,7 +647,7 @@ private fun RulesModeContent(
                     text = "Importe um manual PDF para consulta instantânea 100% offline via SQLite FTS5, ou pesquise online via Google Search Grounding.",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
         }
@@ -644,11 +669,15 @@ private fun PdfLibraryCard(
     onDismissScannedPdfAlert: () -> Unit,
     onDismissError: () -> Unit
 ) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = CyberColors.BgHeaderStrip,
-        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+        shape = cardShape,
+        color = theme.bgStrip,
+        border = BorderStroke(theme.borderWidth, theme.borderColor)
     ) {
         Column(
             modifier = Modifier.padding(10.dp),
@@ -664,16 +693,16 @@ private fun PdfLibraryCard(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
-                    color = CyberColors.InkPrimary,
+                    color = theme.textPrimary,
                     modifier = Modifier
                         .weight(1f)
                         .clickable { onToggleExpand() }
                 )
                 Surface(
                     modifier = Modifier.clickable(enabled = !isIndexing, onClick = onPickPdf),
-                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                    color = if (isIndexing) CyberColors.BgHover else CyberColors.AccentWine,
-                    border = BorderStroke(1.dp, CyberColors.BorderInk)
+                    shape = pillShape,
+                    color = if (isIndexing) theme.bgHover else theme.accentPrimary,
+                    border = BorderStroke(1.dp, theme.borderColor)
                 ) {
                     Row(
                         modifier = Modifier.padding(horizontal = 8.dp, vertical = 5.dp),
@@ -683,7 +712,7 @@ private fun PdfLibraryCard(
                         Icon(
                             imageVector = Icons.Outlined.UploadFile,
                             contentDescription = "Importar PDF",
-                            tint = if (isIndexing) CyberColors.InkMuted else CyberColors.InkInverse,
+                            tint = if (isIndexing) theme.textMuted else theme.accentContrast,
                             modifier = Modifier.size(13.dp)
                         )
                         Text(
@@ -691,7 +720,7 @@ private fun PdfLibraryCard(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = if (isIndexing) CyberColors.InkMuted else CyberColors.InkInverse
+                            color = if (isIndexing) theme.textMuted else theme.accentContrast
                         )
                     }
                 }
@@ -703,9 +732,9 @@ private fun PdfLibraryCard(
 
                 Surface(
                     modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                    color = CyberColors.AccentDangerSoft,
-                    border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+                    shape = cardShape,
+                    color = theme.accentDangerSoft,
+                    border = BorderStroke(theme.borderStrong, theme.borderColor)
                 ) {
                     Column(
                         modifier = Modifier.padding(12.dp),
@@ -724,7 +753,7 @@ private fun PdfLibraryCard(
                                 Icon(
                                     imageVector = Icons.Outlined.WarningAmber,
                                     contentDescription = "PDF sem OCR",
-                                    tint = CyberColors.AccentDanger,
+                                    tint = theme.accentDanger,
                                     modifier = Modifier.size(18.dp)
                                 )
                                 Text(
@@ -732,16 +761,16 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 14.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = CyberColors.AccentDanger
+                                    color = theme.accentDanger
                                 )
                             }
                             Surface(
                                 modifier = Modifier
                                     .heightIn(min = 48.dp)
                                     .clickable(onClick = onDismissScannedPdfAlert),
-                                shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                color = CyberColors.BgCard,
-                                border = BorderStroke(1.dp, CyberColors.BorderInk)
+                                shape = pillShape,
+                                color = theme.bgCard,
+                                border = BorderStroke(1.dp, theme.borderColor)
                             ) {
                                 Box(
                                     contentAlignment = Alignment.Center,
@@ -752,7 +781,7 @@ private fun PdfLibraryCard(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = CyberColors.InkPrimary
+                                        color = theme.textPrimary
                                     )
                                 }
                             }
@@ -762,7 +791,7 @@ private fun PdfLibraryCard(
                             fontSize = 14.sp,
                             lineHeight = 19.sp,
                             fontWeight = FontWeight.SemiBold,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         )
 
                         Row(
@@ -778,7 +807,7 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                                 BasicTextField(
                                     value = startPageText,
@@ -786,6 +815,7 @@ private fun PdfLibraryCard(
                                         startPageText = next.filter { it.isDigit() }
                                     },
                                     singleLine = true,
+                                    cursorBrush = SolidColor(theme.accentPrimary),
                                     keyboardOptions = KeyboardOptions(
                                         keyboardType = KeyboardType.Number,
                                         imeAction = ImeAction.Next
@@ -794,7 +824,7 @@ private fun PdfLibraryCard(
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = CyberColors.InkPrimary
+                                        color = theme.textPrimary
                                     ),
                                     decorationBox = { inner ->
                                         Box(
@@ -806,7 +836,7 @@ private fun PdfLibraryCard(
                                                     text = "1",
                                                     fontFamily = FontFamily.Monospace,
                                                     fontSize = 14.sp,
-                                                    color = CyberColors.InkMuted
+                                                    color = theme.textMuted
                                                 )
                                             }
                                             inner()
@@ -815,15 +845,8 @@ private fun PdfLibraryCard(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 48.dp)
-                                        .background(
-                                            CyberColors.BgInput,
-                                            RoundedCornerShape(CyberDimens.ControlRadius)
-                                        )
-                                        .border(
-                                            CyberDimens.BorderWidth,
-                                            CyberColors.BorderInk,
-                                            RoundedCornerShape(CyberDimens.ControlRadius)
-                                        )
+                                        .background(theme.bgInput, pillShape)
+                                        .border(theme.borderWidth, theme.borderColor, pillShape)
                                         .padding(horizontal = 10.dp, vertical = 12.dp)
                                 )
                             }
@@ -837,7 +860,7 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                                 BasicTextField(
                                     value = endPageText,
@@ -845,6 +868,7 @@ private fun PdfLibraryCard(
                                         endPageText = next.filter { it.isDigit() }
                                     },
                                     singleLine = true,
+                                    cursorBrush = SolidColor(theme.accentPrimary),
                                     keyboardOptions = KeyboardOptions(
                                         keyboardType = KeyboardType.Number,
                                         imeAction = ImeAction.Done
@@ -853,7 +877,7 @@ private fun PdfLibraryCard(
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 14.sp,
-                                        color = CyberColors.InkPrimary
+                                        color = theme.textPrimary
                                     ),
                                     decorationBox = { inner ->
                                         Box(
@@ -865,7 +889,7 @@ private fun PdfLibraryCard(
                                                     text = "${scannedPdfAlert.totalPages}",
                                                     fontFamily = FontFamily.Monospace,
                                                     fontSize = 14.sp,
-                                                    color = CyberColors.InkMuted
+                                                    color = theme.textMuted
                                                 )
                                             }
                                             inner()
@@ -874,15 +898,8 @@ private fun PdfLibraryCard(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .heightIn(min = 48.dp)
-                                        .background(
-                                            CyberColors.BgInput,
-                                            RoundedCornerShape(CyberDimens.ControlRadius)
-                                        )
-                                        .border(
-                                            CyberDimens.BorderWidth,
-                                            CyberColors.BorderInk,
-                                            RoundedCornerShape(CyberDimens.ControlRadius)
-                                        )
+                                        .background(theme.bgInput, pillShape)
+                                        .border(theme.borderWidth, theme.borderColor, pillShape)
                                         .padding(horizontal = 10.dp, vertical = 12.dp)
                                 )
                             }
@@ -897,12 +914,12 @@ private fun PdfLibraryCard(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .heightIn(min = 48.dp),
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            shape = pillShape,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = CyberColors.AccentWine,
-                                contentColor = CyberColors.InkInverse
+                                containerColor = theme.accentPrimary,
+                                contentColor = theme.accentContrast
                             ),
-                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                            border = BorderStroke(theme.borderWidth, theme.borderColor)
                         ) {
                             Text(
                                 text = "CONVERTER COM OCR (OFFLINE / LENTO)",
@@ -928,9 +945,9 @@ private fun PdfLibraryCard(
 
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                        color = CyberColors.BgCard,
-                        border = BorderStroke(1.dp, CyberColors.BorderInk)
+                        shape = cardShape,
+                        color = theme.bgCard,
+                        border = BorderStroke(1.dp, theme.borderColor)
                     ) {
                         Column(
                             modifier = Modifier.padding(8.dp),
@@ -945,7 +962,7 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.AccentWine,
+                                    color = theme.accentPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
@@ -959,7 +976,7 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                             }
                             LinearProgressIndicator(
@@ -967,8 +984,8 @@ private fun PdfLibraryCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp),
-                                color = CyberColors.AccentWine,
-                                trackColor = CyberColors.AccentWineSoft
+                                color = theme.accentPrimary,
+                                trackColor = theme.accentWineSoft
                             )
                         }
                     }
@@ -986,9 +1003,9 @@ private fun PdfLibraryCard(
 
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                        color = CyberColors.BgCard,
-                        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                        shape = cardShape,
+                        color = theme.bgCard,
+                        border = BorderStroke(theme.borderWidth, theme.borderColor)
                     ) {
                         Column(
                             modifier = Modifier.padding(10.dp),
@@ -1004,7 +1021,7 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.AccentWine,
+                                    color = theme.accentPrimary,
                                     maxLines = 1,
                                     overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f)
@@ -1018,7 +1035,7 @@ private fun PdfLibraryCard(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                             }
                             LinearProgressIndicator(
@@ -1026,8 +1043,8 @@ private fun PdfLibraryCard(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp),
-                                color = CyberColors.AccentWine,
-                                trackColor = CyberColors.AccentWineSoft
+                                color = theme.accentPrimary,
+                                trackColor = theme.accentWineSoft
                             )
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
@@ -1038,14 +1055,14 @@ private fun PdfLibraryCard(
                                     text = "OCR offline via ML Kit (pág. PDF ${indexProgress.currentPdfPage})",
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
-                                    color = CyberColors.InkSecondary,
+                                    color = theme.textSecondary,
                                     modifier = Modifier.weight(1f)
                                 )
                                 OutlinedButton(
                                     onClick = onCancelIndexing,
                                     modifier = Modifier.heightIn(min = 48.dp),
-                                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                                    shape = pillShape,
+                                    border = BorderStroke(theme.borderWidth, theme.borderColor),
                                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 6.dp)
                                 ) {
                                     Text(
@@ -1053,7 +1070,7 @@ private fun PdfLibraryCard(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = CyberColors.AccentDanger
+                                        color = theme.accentDanger
                                     )
                                 }
                             }
@@ -1064,9 +1081,9 @@ private fun PdfLibraryCard(
                 is IndexProgress.Persisting -> {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                        color = CyberColors.BgCard,
-                        border = BorderStroke(1.dp, CyberColors.BorderInk)
+                        shape = cardShape,
+                        color = theme.bgCard,
+                        border = BorderStroke(1.dp, theme.borderColor)
                     ) {
                         Column(
                             modifier = Modifier.padding(8.dp),
@@ -1077,14 +1094,14 @@ private fun PdfLibraryCard(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberColors.AccentWine
+                                color = theme.accentPrimary
                             )
                             LinearProgressIndicator(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .height(6.dp),
-                                color = CyberColors.AccentWine,
-                                trackColor = CyberColors.AccentWineSoft
+                                color = theme.accentPrimary,
+                                trackColor = theme.accentWineSoft
                             )
                         }
                     }
@@ -1093,9 +1110,9 @@ private fun PdfLibraryCard(
                 is IndexProgress.Error -> {
                     Surface(
                         modifier = Modifier.fillMaxWidth(),
-                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                        color = CyberColors.AccentDangerSoft,
-                        border = BorderStroke(1.dp, CyberColors.AccentDanger)
+                        shape = cardShape,
+                        color = theme.accentDangerSoft,
+                        border = BorderStroke(1.dp, theme.accentDanger)
                     ) {
                         Row(
                             modifier = Modifier.padding(8.dp),
@@ -1106,7 +1123,7 @@ private fun PdfLibraryCard(
                                 text = indexProgress.message,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
-                                color = CyberColors.AccentDanger,
+                                color = theme.accentDanger,
                                 modifier = Modifier.weight(1f)
                             )
                             Text(
@@ -1114,7 +1131,7 @@ private fun PdfLibraryCard(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Black,
-                                color = CyberColors.AccentDanger,
+                                color = theme.accentDanger,
                                 modifier = Modifier
                                     .clickable(onClick = onDismissError)
                                     .padding(start = 8.dp)
@@ -1131,9 +1148,9 @@ private fun PdfLibraryCard(
                     indexedBooks.forEach { book ->
                         Surface(
                             modifier = Modifier.fillMaxWidth(),
-                            shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                            color = CyberColors.BgCard,
-                            border = BorderStroke(1.dp, CyberColors.BorderInk)
+                            shape = cardShape,
+                            color = theme.bgCard,
+                            border = BorderStroke(1.dp, theme.borderColor)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 8.dp, vertical = 6.dp),
@@ -1146,7 +1163,7 @@ private fun PdfLibraryCard(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = CyberColors.InkPrimary,
+                                        color = theme.textPrimary,
                                         maxLines = 1,
                                         overflow = TextOverflow.Ellipsis
                                     )
@@ -1154,13 +1171,13 @@ private fun PdfLibraryCard(
                                         text = "${book.pageCount} PÁGINAS · INDEXADO OFFLINE",
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 9.sp,
-                                        color = CyberColors.InkMuted
+                                        color = theme.textMuted
                                     )
                                 }
                                 Icon(
                                     imageVector = Icons.Outlined.DeleteOutline,
                                     contentDescription = "Remover ${book.title}",
-                                    tint = CyberColors.AccentDanger,
+                                    tint = theme.accentDanger,
                                     modifier = Modifier
                                         .size(20.dp)
                                         .clickable { onDeleteBook(book.bookId) }
@@ -1176,7 +1193,13 @@ private fun PdfLibraryCard(
 
 @Composable
 private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
-    val annotatedSnippet = remember(hit.snippet) {
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val highlightBg = if (theme.isEink) theme.accentPrimary else theme.accentWineSoft
+    val highlightFg = if (theme.isEink) theme.accentContrast else theme.accentPrimary
+
+    val annotatedSnippet = remember(hit.snippet, theme.mode) {
         val segments = Fts5QuerySanitizer.parseSnippetSegments(hit.snippet)
         buildAnnotatedString {
             if (segments.isEmpty()) {
@@ -1186,8 +1209,8 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
                     if (highlighted) {
                         withStyle(
                             SpanStyle(
-                                background = CyberColors.AccentWineSoft,
-                                color = CyberColors.AccentWine,
+                                background = highlightBg,
+                                color = highlightFg,
                                 fontWeight = FontWeight.Black
                             )
                         ) {
@@ -1203,9 +1226,9 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
 
     Surface(
         modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = CyberColors.BgCardAlt,
-        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+        shape = cardShape,
+        color = theme.bgCardAlt,
+        border = BorderStroke(theme.borderWidth, theme.borderColor)
     ) {
         Column(
             modifier = Modifier.padding(11.dp),
@@ -1221,7 +1244,7 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
-                    color = CyberColors.InkPrimary,
+                    color = theme.textPrimary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -1229,7 +1252,7 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
                 Spacer(Modifier.size(6.dp))
                 Box(
                     modifier = Modifier
-                        .background(CyberColors.AccentWine, RoundedCornerShape(CyberDimens.SmallRadius))
+                        .background(theme.accentPrimary, pillShape)
                         .padding(horizontal = 6.dp, vertical = 2.dp)
                 ) {
                     Text(
@@ -1237,7 +1260,7 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
                         fontFamily = FontFamily.Monospace,
                         fontSize = 9.sp,
                         fontWeight = FontWeight.Black,
-                        color = CyberColors.InkInverse
+                        color = theme.accentContrast
                     )
                 }
             }
@@ -1245,13 +1268,13 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
                 text = annotatedSnippet,
                 fontSize = 12.sp,
                 lineHeight = 17.sp,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             )
             Text(
                 text = "BM25: ${String.format(Locale.US, "%.2f", hit.rank)}",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 9.sp,
-                color = CyberColors.InkMuted
+                color = theme.textMuted
             )
         }
     }
@@ -1259,18 +1282,20 @@ private fun LocalFtsHitCard(hit: FtsRuleHitRow) {
 
 @Composable
 private fun ModeTabButton(label: String, selected: Boolean, onClick: () -> Unit) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     Surface(
         modifier = Modifier.clickable(onClick = onClick),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = if (selected) CyberColors.AccentBlack else CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+        shape = pillShape,
+        color = if (selected) theme.accentBlack else theme.bgCard,
+        border = BorderStroke(theme.borderWidth, theme.borderColor)
     ) {
         Text(
             text = label,
             fontFamily = FontFamily.Monospace,
             fontSize = 11.sp,
             fontWeight = FontWeight.Bold,
-            color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary,
+            color = if (selected) theme.accentContrast else theme.textPrimary,
             modifier = Modifier.padding(horizontal = 10.dp, vertical = 7.dp)
         )
     }

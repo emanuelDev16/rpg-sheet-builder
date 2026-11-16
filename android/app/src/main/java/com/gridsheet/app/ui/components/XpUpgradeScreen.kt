@@ -26,6 +26,7 @@ import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -48,8 +50,9 @@ import com.gridsheet.app.core.UpgradableTrait
 import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.core.XpUpgradeCategory
-import com.gridsheet.app.ui.theme.CyberColors
 import com.gridsheet.app.ui.theme.CyberDimens
+import com.gridsheet.app.ui.theme.LocalGridTheme
+import com.gridsheet.app.ui.theme.brutalistShadow
 
 @Composable
 fun XpUpgradeWorkspace(
@@ -88,20 +91,38 @@ fun XpUpgradeWorkspace(
     var bgName by remember { mutableStateOf("") }
     var bgCost by remember { mutableStateOf(XpSystem.DEFAULT_BACKGROUND_XP_COST.toString()) }
     val skillTraits = remember(allTraits) { allTraits.filter { it.category == XpUpgradeCategory.SKILL } }
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val blockShape = RoundedCornerShape(if (theme.isEink) theme.pillCornerRadius else 2.dp)
+    val xpTextFieldColors = OutlinedTextFieldDefaults.colors(
+        focusedContainerColor = theme.bgInput,
+        unfocusedContainerColor = theme.bgInput,
+        focusedTextColor = theme.textPrimary,
+        unfocusedTextColor = theme.textPrimary,
+        focusedBorderColor = theme.accentPrimary,
+        unfocusedBorderColor = theme.borderColor,
+        focusedLabelColor = theme.accentPrimary,
+        unfocusedLabelColor = theme.textSecondary,
+        cursorColor = theme.accentPrimary
+    )
 
     Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
         // Card 1: XP Monitor
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(CyberDimens.CardRadius),
-            color = CyberColors.BgCard,
-            border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+            modifier = Modifier
+                .fillMaxWidth()
+                .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
+            shape = cardShape,
+            color = theme.bgCard,
+            border = BorderStroke(theme.borderStrong, theme.borderColor),
+            shadowElevation = 0.dp
         ) {
             Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(CyberColors.BgHeaderStrip)
+                        .background(theme.bgStrip)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
@@ -112,21 +133,21 @@ fun XpUpgradeWorkspace(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberColors.AccentWine
+                            color = theme.accentPrimary
                         )
                         Text(
                             text = "EXPERIENCE MONITOR",
                             fontWeight = FontWeight.Black,
                             fontSize = 15.sp,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         )
                     }
                     if (hasRecentUpgrade) {
                         OutlinedButton(
                             onClick = onUndoLastUpgrade,
                             modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                            shape = pillShape,
+                            border = BorderStroke(theme.borderWidth, theme.borderColor),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 10.dp, vertical = 4.dp)
                         ) {
                             Text(
@@ -134,12 +155,12 @@ fun XpUpgradeWorkspace(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberColors.InkPrimary
+                                color = theme.textPrimary
                             )
                         }
                     }
                 }
-                Box(Modifier.fillMaxWidth().height(CyberDimens.BorderWidth).background(CyberColors.BorderInk))
+                Box(Modifier.fillMaxWidth().height(theme.borderWidth).background(theme.borderColor))
 
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -149,9 +170,9 @@ fun XpUpgradeWorkspace(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        XpMetricBox("AVAILABLE XP", "$availableXp", CyberColors.AccentWine, Modifier.weight(1f))
-                        XpMetricBox("TOTAL EARNED", "${xp.totalEarned}", CyberColors.InkPrimary, Modifier.weight(1f))
-                        XpMetricBox("TOTAL SPENT", "${xp.spent}", CyberColors.InkSecondary, Modifier.weight(1f))
+                        XpMetricBox("AVAILABLE XP", "$availableXp", theme.accentPrimary, Modifier.weight(1f))
+                        XpMetricBox("TOTAL EARNED", "${xp.totalEarned}", theme.textPrimary, Modifier.weight(1f))
+                        XpMetricBox("TOTAL SPENT", "${xp.spent}", theme.textSecondary, Modifier.weight(1f))
                     }
 
                     // Segmented XP Rule Preset Selector
@@ -159,8 +180,8 @@ fun XpUpgradeWorkspace(
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clip(RoundedCornerShape(CyberDimens.ControlRadius))
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius)),
+                                .clip(pillShape)
+                                .border(theme.borderWidth, theme.borderColor, pillShape),
                             horizontalArrangement = Arrangement.spacedBy(0.dp)
                         ) {
                             listOf(
@@ -173,7 +194,7 @@ fun XpUpgradeWorkspace(
                                     modifier = Modifier
                                         .weight(1f)
                                         .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
-                                        .background(if (selected) CyberColors.AccentBlack else CyberColors.BgCard)
+                                        .background(if (selected) theme.accentBlack else theme.bgCard)
                                         .clickable { onSelectRulePreset(preset) }
                                         .padding(horizontal = 6.dp, vertical = 10.dp),
                                     contentAlignment = Alignment.Center
@@ -183,7 +204,7 @@ fun XpUpgradeWorkspace(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 10.sp,
                                         fontWeight = FontWeight.Black,
-                                        color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary
+                                        color = if (selected) theme.accentContrast else theme.textPrimary
                                     )
                                 }
                             }
@@ -202,8 +223,8 @@ fun XpUpgradeWorkspace(
                         ) {
                             Box(
                                 modifier = Modifier
-                                    .background(CyberColors.AccentCreamBadge, RoundedCornerShape(CyberDimens.SmallRadius))
-                                    .border(1.dp, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.SmallRadius))
+                                    .background(theme.accentCreamBadge, pillShape)
+                                    .border(1.dp, theme.borderColor, pillShape)
                                     .padding(horizontal = 8.dp, vertical = 5.dp)
                             ) {
                                 Text(
@@ -211,7 +232,7 @@ fun XpUpgradeWorkspace(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                             }
                             if (xp.xpRulePreset == XpRulePreset.CUSTOM) {
@@ -219,9 +240,9 @@ fun XpUpgradeWorkspace(
                                     modifier = Modifier
                                         .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                                         .clickable { onToggleCustomBase(!xp.customUseNewLevelBase) },
-                                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                    color = CyberColors.BgCard,
-                                    border = BorderStroke(1.dp, CyberColors.BorderInk)
+                                    shape = pillShape,
+                                    color = theme.bgCard,
+                                    border = BorderStroke(1.dp, theme.borderColor)
                                 ) {
                                     Box(
                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -232,7 +253,7 @@ fun XpUpgradeWorkspace(
                                             fontFamily = FontFamily.Monospace,
                                             fontSize = 10.sp,
                                             fontWeight = FontWeight.Bold,
-                                            color = CyberColors.AccentWine
+                                            color = theme.accentPrimary
                                         )
                                     }
                                 }
@@ -247,8 +268,8 @@ fun XpUpgradeWorkspace(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
-                            Text("XP ALLOCATION", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = CyberColors.InkMuted)
-                            Text("${xp.spent} / ${xp.totalEarned} SPENT · $pct%", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = CyberColors.InkPrimary)
+                            Text("XP ALLOCATION", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = theme.textMuted)
+                            Text("${xp.spent} / ${xp.totalEarned} SPENT · $pct%", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
                         }
                         Row(modifier = Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                             for (i in 1..12) {
@@ -257,9 +278,23 @@ fun XpUpgradeWorkspace(
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(12.dp)
-                                        .clip(RoundedCornerShape(2.dp))
-                                        .background(if (filled) CyberColors.AccentWine else CyberColors.AccentWineSoft)
-                                        .border(1.dp, if (filled) CyberColors.AccentWine else CyberColors.AccentWine.copy(alpha = 0.25f), RoundedCornerShape(2.dp))
+                                        .clip(blockShape)
+                                        .background(
+                                            when {
+                                                filled -> theme.accentPrimary
+                                                theme.isEink -> theme.bgCard
+                                                else -> theme.accentWineSoft
+                                            }
+                                        )
+                                        .border(
+                                            1.dp,
+                                            when {
+                                                filled -> theme.accentPrimary
+                                                theme.isEink -> theme.borderColor
+                                                else -> theme.accentPrimary.copy(alpha = 0.25f)
+                                            },
+                                            blockShape
+                                        )
                                 )
                             }
                         }
@@ -274,11 +309,15 @@ fun XpUpgradeWorkspace(
                             OutlinedButton(
                                 onClick = { onAwardXp(delta, if (delta > 0) "SESSION XP AWARD" else "XP ADJUSTMENT") },
                                 modifier = Modifier.weight(1f),
-                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                                shape = pillShape,
+                                border = BorderStroke(theme.borderWidth, theme.borderColor),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = theme.bgCard,
+                                    contentColor = theme.textPrimary
+                                ),
                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 6.dp)
                             ) {
-                                Text(label, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = CyberColors.InkPrimary)
+                                Text(label, fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold, color = theme.textPrimary)
                             }
                         }
                     }
@@ -293,30 +332,32 @@ fun XpUpgradeWorkspace(
                             onValueChange = { customAmount = it },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = CyberColors.InkPrimary),
+                            cursorBrush = SolidColor(theme.accentPrimary),
+                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold, fontSize = 13.sp, color = theme.textPrimary),
                             modifier = Modifier
                                 .width(64.dp)
-                                .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .background(theme.bgInput, pillShape)
+                                .border(theme.borderWidth, theme.borderColor, pillShape)
                                 .padding(horizontal = 8.dp, vertical = 8.dp)
                         )
                         BasicTextField(
                             value = customReason,
                             onValueChange = { customReason = it },
                             singleLine = true,
-                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = CyberColors.InkPrimary),
+                            cursorBrush = SolidColor(theme.accentPrimary),
+                            textStyle = TextStyle(fontFamily = FontFamily.Monospace, fontSize = 12.sp, color = theme.textPrimary),
                             decorationBox = { inner ->
                                 Box {
                                     if (customReason.isEmpty()) {
-                                        Text("Nota (ex: Capítulo 04)", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = CyberColors.InkMuted)
+                                        Text("Nota (ex: Capítulo 04)", fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = theme.textMuted)
                                     }
                                     inner()
                                 }
                             },
                             modifier = Modifier
                                 .weight(1f)
-                                .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .background(theme.bgInput, pillShape)
+                                .border(theme.borderWidth, theme.borderColor, pillShape)
                                 .padding(horizontal = 8.dp, vertical = 8.dp)
                         )
                         Button(
@@ -325,8 +366,11 @@ fun XpUpgradeWorkspace(
                                 onAwardXp(delta, customReason)
                                 customReason = ""
                             },
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack),
+                            shape = pillShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.accentBlack,
+                                contentColor = theme.accentContrast
+                            ),
                             contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                         ) {
                             Text("ADD ↗", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
@@ -335,13 +379,13 @@ fun XpUpgradeWorkspace(
 
                     if (xp.ledger.isNotEmpty()) {
                         Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                            Text("XP LEDGER (${xp.ledger.size})", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = CyberColors.InkMuted)
+                            Text("XP LEDGER (${xp.ledger.size})", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = theme.textMuted)
                             xp.ledger.take(5).forEach { entry ->
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
-                                        .background(CyberColors.BgInput, RoundedCornerShape(4.dp))
-                                        .border(1.dp, CyberColors.BorderSubtle, RoundedCornerShape(4.dp))
+                                        .background(theme.bgInput, RoundedCornerShape(CyberDimens.SmallRadius))
+                                        .border(1.dp, theme.borderSubtle, RoundedCornerShape(CyberDimens.SmallRadius))
                                         .padding(horizontal = 8.dp, vertical = 5.dp),
                                     horizontalArrangement = Arrangement.SpaceBetween
                                 ) {
@@ -349,7 +393,7 @@ fun XpUpgradeWorkspace(
                                         text = "${entry.timestamp}  ${entry.label}",
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,
-                                        color = CyberColors.InkPrimary,
+                                        color = theme.textPrimary,
                                         modifier = Modifier.weight(1f)
                                     )
                                     Text(
@@ -357,7 +401,7 @@ fun XpUpgradeWorkspace(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 11.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = if (entry.delta > 0) CyberColors.AccentWine else CyberColors.InkPrimary
+                                        color = if (entry.delta > 0) theme.accentPrimary else theme.textPrimary
                                     )
                                 }
                             }
@@ -369,33 +413,36 @@ fun XpUpgradeWorkspace(
 
         // Card 2: Possible Upgrades Only
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(CyberDimens.CardRadius),
-            color = CyberColors.BgCard,
-            border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+            modifier = Modifier
+                .fillMaxWidth()
+                .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
+            shape = cardShape,
+            color = theme.bgCard,
+            border = BorderStroke(theme.borderStrong, theme.borderColor),
+            shadowElevation = 0.dp
         ) {
             Column {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(CyberColors.BgHeaderStrip)
+                        .background(theme.bgStrip)
                         .padding(horizontal = 14.dp, vertical = 10.dp),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
-                        Text("//TRAIT_UPGRADES", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = CyberColors.AccentWine)
-                        Text("XP EVOLUTION CATALOG", fontWeight = FontWeight.Black, fontSize = 15.sp, color = CyberColors.InkPrimary)
+                        Text("//TRAIT_UPGRADES", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = theme.accentPrimary)
+                        Text("XP EVOLUTION CATALOG", fontWeight = FontWeight.Black, fontSize = 15.sp, color = theme.textPrimary)
                     }
                     Text(
                         text = "$possibleCount / ${filteredTraits.size} COMPRÁVEIS",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.AccentWine
+                        color = theme.accentPrimary
                     )
                 }
-                Box(Modifier.fillMaxWidth().height(CyberDimens.BorderWidth).background(CyberColors.BorderInk))
+                Box(Modifier.fillMaxWidth().height(theme.borderWidth).background(theme.borderColor))
 
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -405,7 +452,7 @@ fun XpUpgradeWorkspace(
                         text = "REGRAS: ${rulesSummary.joinToString(" · ")} · ORÇAMENTO: $availableXp XP",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
-                        color = CyberColors.InkMuted
+                        color = theme.textMuted
                     )
 
                     Row(
@@ -428,15 +475,15 @@ fun XpUpgradeWorkspace(
                         Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderSubtle, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .background(theme.bgInput, cardShape)
+                                .border(theme.borderWidth, theme.borderSubtle, cardShape)
                                 .padding(14.dp)
                         ) {
                             Text(
                                 text = "Nenhum campo elegível encontrado nesta categoria na ficha atual.",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
-                                color = CyberColors.InkSecondary
+                                color = theme.textSecondary
                             )
                         }
                     } else {
@@ -454,17 +501,17 @@ fun XpUpgradeWorkspace(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Black,
-                                    color = CyberColors.AccentWine
+                                    color = theme.accentPrimary
                                 )
                                 items.forEach { trait ->
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
+                                            .background(theme.bgCardAlt, cardShape)
                                             .border(
-                                                CyberDimens.BorderWidth,
-                                                if (trait.isPossible) CyberColors.BorderInk else CyberColors.BorderSubtle,
-                                                RoundedCornerShape(CyberDimens.ControlRadius)
+                                                theme.borderWidth,
+                                                if (trait.isPossible) theme.borderColor else theme.borderSubtle,
+                                                cardShape
                                             )
                                             .padding(horizontal = 12.dp, vertical = 10.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -483,7 +530,7 @@ fun XpUpgradeWorkspace(
                                                     },
                                                     fontFamily = FontFamily.Monospace,
                                                     fontSize = 10.sp,
-                                                    color = if (trait.isBlockedByRule) CyberColors.InkMuted else CyberColors.AccentWine,
+                                                    color = if (trait.isBlockedByRule) theme.textMuted else theme.accentPrimary,
                                                     fontWeight = FontWeight.Bold
                                                 )
                                                 Text(
@@ -496,18 +543,19 @@ fun XpUpgradeWorkspace(
                                                     fontFamily = FontFamily.Monospace,
                                                     fontSize = 13.sp,
                                                     fontWeight = FontWeight.Black,
-                                                    color = if (trait.isBlockedByRule) CyberColors.InkMuted else CyberColors.InkPrimary
+                                                    color = if (trait.isBlockedByRule) theme.textMuted else theme.textPrimary
                                                 )
                                             }
                                             Button(
                                                 onClick = { onUpgradeTrait(trait.fieldId) },
                                                 enabled = trait.isPossible,
                                                 modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                                                shape = pillShape,
                                                 colors = ButtonDefaults.buttonColors(
-                                                    containerColor = CyberColors.AccentBlack,
-                                                    disabledContainerColor = CyberColors.BgInput,
-                                                    disabledContentColor = CyberColors.InkMuted
+                                                    containerColor = theme.accentBlack,
+                                                    contentColor = theme.accentContrast,
+                                                    disabledContainerColor = theme.bgInput,
+                                                    disabledContentColor = theme.textMuted
                                                 ),
                                                 contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 12.dp, vertical = 8.dp)
                                             ) {
@@ -532,13 +580,23 @@ fun XpUpgradeWorkspace(
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
                                                 if (trait.category == XpUpgradeCategory.DISCIPLINE && isWod) {
+                                                    val clanBg = when {
+                                                        trait.isOutOfClan && theme.isEink -> theme.accentPrimary
+                                                        trait.isOutOfClan -> theme.accentWineSoft
+                                                        else -> theme.bgCard
+                                                    }
+                                                    val clanFg = when {
+                                                        trait.isOutOfClan && theme.isEink -> theme.accentContrast
+                                                        trait.isOutOfClan -> theme.accentPrimary
+                                                        else -> theme.textPrimary
+                                                    }
                                                     Surface(
                                                         modifier = Modifier
                                                             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                                                             .clickable { onToggleDisciplineClan(trait.fieldId) },
-                                                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                                        color = if (trait.isOutOfClan) CyberColors.AccentWineSoft else CyberColors.BgCard,
-                                                        border = BorderStroke(1.dp, if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.BorderInk)
+                                                        shape = pillShape,
+                                                        color = clanBg,
+                                                        border = BorderStroke(1.dp, if (trait.isOutOfClan) theme.accentPrimary else theme.borderColor)
                                                     ) {
                                                         Box(
                                                             modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
@@ -549,29 +607,36 @@ fun XpUpgradeWorkspace(
                                                                 fontFamily = FontFamily.Monospace,
                                                                 fontSize = 10.sp,
                                                                 fontWeight = FontWeight.Bold,
-                                                                color = if (trait.isOutOfClan) CyberColors.AccentWine else CyberColors.InkPrimary
+                                                                color = clanFg
                                                             )
                                                         }
                                                     }
                                                 }
+                                                val hasCustomMult = trait.customMultiplier != null
+                                                val multBg = when {
+                                                    hasCustomMult && theme.isEink -> theme.accentPrimary
+                                                    hasCustomMult -> theme.accentCreamBadge
+                                                    else -> theme.bgCard
+                                                }
+                                                val multFg = if (hasCustomMult && theme.isEink) theme.accentContrast else theme.textPrimary
                                                 Surface(
                                                     modifier = Modifier
                                                         .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                                                         .clickable { multiplierTarget = trait },
-                                                    shape = RoundedCornerShape(CyberDimens.SmallRadius),
-                                                    color = if (trait.customMultiplier != null) CyberColors.AccentCreamBadge else CyberColors.BgCard,
-                                                    border = BorderStroke(1.dp, CyberColors.BorderInk)
+                                                    shape = pillShape,
+                                                    color = multBg,
+                                                    border = BorderStroke(1.dp, theme.borderColor)
                                                 ) {
                                                     Box(
                                                         modifier = Modifier.padding(horizontal = 10.dp, vertical = 8.dp),
                                                         contentAlignment = Alignment.Center
                                                     ) {
                                                         Text(
-                                                            text = if (trait.customMultiplier != null) "MULT: ×${trait.customMultiplier}" else "MULT: AUTO",
+                                                            text = if (hasCustomMult) "MULT: ×${trait.customMultiplier}" else "MULT: AUTO",
                                                             fontFamily = FontFamily.Monospace,
                                                             fontSize = 10.sp,
                                                             fontWeight = FontWeight.Bold,
-                                                            color = CyberColors.InkPrimary
+                                                            color = multFg
                                                         )
                                                     }
                                                 }
@@ -588,16 +653,19 @@ fun XpUpgradeWorkspace(
 
         // Card 3: Specialties & Backgrounds / Advantages
         Surface(
-            modifier = Modifier.fillMaxWidth(),
-            shape = RoundedCornerShape(CyberDimens.CardRadius),
-            color = CyberColors.BgCard,
-            border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk)
+            modifier = Modifier
+                .fillMaxWidth()
+                .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
+            shape = cardShape,
+            color = theme.bgCard,
+            border = BorderStroke(theme.borderStrong, theme.borderColor),
+            shadowElevation = 0.dp
         ) {
             Column {
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(CyberColors.BgHeaderStrip)
+                        .background(theme.bgStrip)
                         .padding(horizontal = 14.dp, vertical = 10.dp)
                 ) {
                     Text(
@@ -605,16 +673,16 @@ fun XpUpgradeWorkspace(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.AccentWine
+                        color = theme.accentPrimary
                     )
                     Text(
                         text = "ESPECIALIZAÇÕES & VANTAGENS",
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
-                        color = CyberColors.InkPrimary
+                        color = theme.textPrimary
                     )
                 }
-                Box(Modifier.fillMaxWidth().height(CyberDimens.BorderWidth).background(CyberColors.BorderInk))
+                Box(Modifier.fillMaxWidth().height(theme.borderWidth).background(theme.borderColor))
 
                 Column(
                     modifier = Modifier.padding(14.dp),
@@ -632,15 +700,19 @@ fun XpUpgradeWorkspace(
                             modifier = Modifier
                                 .weight(1f)
                                 .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                            shape = pillShape,
+                            border = BorderStroke(theme.borderWidth, theme.borderColor),
+                            colors = ButtonDefaults.outlinedButtonColors(
+                                containerColor = if (specOpen && theme.isEink) theme.accentPrimary else theme.bgCard,
+                                contentColor = if (specOpen && theme.isEink) theme.accentContrast else theme.textPrimary
+                            )
                         ) {
                             Text(
                                 text = "+ COMPRAR ESPECIALIZAÇÃO (${XpSystem.SPECIALTY_XP_COST} XP)",
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberColors.InkPrimary
+                                color = if (specOpen && theme.isEink) theme.accentContrast else theme.textPrimary
                             )
                         }
                         Button(
@@ -651,8 +723,11 @@ fun XpUpgradeWorkspace(
                             modifier = Modifier
                                 .weight(1f)
                                 .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                            shape = pillShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.accentBlack,
+                                contentColor = theme.accentContrast
+                            )
                         ) {
                             Text(
                                 text = "+ ADICIONAR ANTECEDENTE / VANTAGEM",
@@ -668,8 +743,8 @@ fun XpUpgradeWorkspace(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .background(theme.bgCardAlt, cardShape)
+                                .border(theme.borderWidth, theme.borderColor, cardShape)
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -678,7 +753,7 @@ fun XpUpgradeWorkspace(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberColors.InkSecondary
+                                color = theme.textSecondary
                             )
                             Box {
                                 OutlinedButton(
@@ -686,8 +761,8 @@ fun XpUpgradeWorkspace(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+                                    shape = pillShape,
+                                    border = BorderStroke(theme.borderWidth, theme.borderColor)
                                 ) {
                                     val prefix = when {
                                         selectedSkill == null -> ""
@@ -700,12 +775,13 @@ fun XpUpgradeWorkspace(
                                         fontFamily = FontFamily.Monospace,
                                         fontSize = 12.sp,
                                         fontWeight = FontWeight.Bold,
-                                        color = CyberColors.InkPrimary
+                                        color = theme.textPrimary
                                     )
                                 }
                                 DropdownMenu(
                                     expanded = specDropdownOpen,
-                                    onDismissRequest = { specDropdownOpen = false }
+                                    onDismissRequest = { specDropdownOpen = false },
+                                    modifier = Modifier.background(theme.bgCard)
                                 ) {
                                     skillTraits.forEach { sk ->
                                         val hint = when {
@@ -718,7 +794,8 @@ fun XpUpgradeWorkspace(
                                                 Text(
                                                     text = "${sk.label} (${sk.currentValue})$hint",
                                                     fontFamily = FontFamily.Monospace,
-                                                    fontSize = 12.sp
+                                                    fontSize = 12.sp,
+                                                    color = theme.textPrimary
                                                 )
                                             },
                                             onClick = {
@@ -734,6 +811,8 @@ fun XpUpgradeWorkspace(
                                 onValueChange = { specFocus = it },
                                 label = { Text("Foco (ex: Armas de Fogo: Precisão)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                                 singleLine = true,
+                                colors = xpTextFieldColors,
+                                shape = pillShape,
                                 modifier = Modifier.fillMaxWidth()
                             )
                             Button(
@@ -747,8 +826,11 @@ fun XpUpgradeWorkspace(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                                shape = pillShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = theme.accentBlack,
+                                    contentColor = theme.accentContrast
+                                )
                             ) {
                                 Text(
                                     text = "CONFIRMAR (${XpSystem.SPECIALTY_XP_COST} XP)",
@@ -764,8 +846,8 @@ fun XpUpgradeWorkspace(
                         Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-                                .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                                .background(theme.bgCardAlt, cardShape)
+                                .border(theme.borderWidth, theme.borderColor, cardShape)
                                 .padding(12.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
@@ -774,7 +856,7 @@ fun XpUpgradeWorkspace(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = CyberColors.InkSecondary
+                                color = theme.textSecondary
                             )
                             Row(
                                 modifier = Modifier.horizontalScroll(rememberScrollState()),
@@ -798,6 +880,8 @@ fun XpUpgradeWorkspace(
                                     onValueChange = { bgName = it },
                                     label = { Text("Nome (ex: Recursos)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                                     singleLine = true,
+                                    colors = xpTextFieldColors,
+                                    shape = pillShape,
                                     modifier = Modifier.weight(2f)
                                 )
                                 OutlinedTextField(
@@ -806,6 +890,8 @@ fun XpUpgradeWorkspace(
                                     label = { Text("XP", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                                     singleLine = true,
                                     keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                                    colors = xpTextFieldColors,
+                                    shape = pillShape,
                                     modifier = Modifier.weight(1f)
                                 )
                             }
@@ -821,8 +907,11 @@ fun XpUpgradeWorkspace(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                                shape = pillShape,
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = theme.accentBlack,
+                                    contentColor = theme.accentContrast
+                                )
                             ) {
                                 Text(
                                     text = "ADICIONAR ($parsedBgCost XP)",
@@ -844,14 +933,15 @@ fun XpUpgradeWorkspace(
         }
         AlertDialog(
             onDismissRequest = { multiplierTarget = null },
-            containerColor = CyberColors.BgCard,
+            containerColor = theme.bgCard,
+            shape = cardShape,
             title = {
                 Text(
                     text = "MULTIPLICADOR MANUAL · ${target.label}",
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Black,
                     fontSize = 13.sp,
-                    color = CyberColors.InkPrimary
+                    color = theme.textPrimary
                 )
             },
             text = {
@@ -860,14 +950,16 @@ fun XpUpgradeWorkspace(
                         text = "Defina um multiplicador manual (custo = nível × multiplicador) para sistemas agnósticos ou regras da casa. Deixe vazio para usar a regra padrão.",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        color = CyberColors.InkSecondary
+                        color = theme.textSecondary
                     )
                     OutlinedTextField(
                         value = multInput,
                         onValueChange = { multInput = it.filter { ch -> ch.isDigit() } },
                         label = { Text("MULTIPLICADOR (ex: 3, 5, 7)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                         singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number)
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        colors = xpTextFieldColors,
+                        shape = pillShape
                     )
                 }
             },
@@ -878,7 +970,11 @@ fun XpUpgradeWorkspace(
                         onSetCustomMultiplier(target.fieldId, parsed)
                         multiplierTarget = null
                     },
-                    colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                    shape = pillShape,
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = theme.accentBlack,
+                        contentColor = theme.accentContrast
+                    )
                 ) {
                     Text("APLICAR", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
                 }
@@ -889,10 +985,10 @@ fun XpUpgradeWorkspace(
                         onSetCustomMultiplier(target.fieldId, null)
                         multiplierTarget = null
                     }) {
-                        Text("PADRÃO", fontFamily = FontFamily.Monospace, color = CyberColors.AccentWine)
+                        Text("PADRÃO", fontFamily = FontFamily.Monospace, color = theme.accentPrimary)
                     }
                     TextButton(onClick = { multiplierTarget = null }) {
-                        Text("FECHAR", fontFamily = FontFamily.Monospace, color = CyberColors.InkMuted)
+                        Text("FECHAR", fontFamily = FontFamily.Monospace, color = theme.textMuted)
                     }
                 }
             }
@@ -902,26 +998,30 @@ fun XpUpgradeWorkspace(
 
 @Composable
 private fun XpMetricBox(label: String, value: String, color: androidx.compose.ui.graphics.Color, modifier: Modifier = Modifier) {
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.cardCornerRadius)
     Column(
         modifier = modifier
-            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-            .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+            .background(theme.bgCardAlt, shape)
+            .border(theme.borderWidth, theme.borderColor, shape)
             .padding(10.dp)
     ) {
-        Text(label, fontFamily = FontFamily.Monospace, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = CyberColors.InkMuted)
+        Text(label, fontFamily = FontFamily.Monospace, fontSize = 9.sp, fontWeight = FontWeight.Bold, color = theme.textMuted)
         Text(value, fontFamily = FontFamily.Monospace, fontSize = 22.sp, fontWeight = FontWeight.Black, color = color)
     }
 }
 
 @Composable
 private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     Surface(
         modifier = Modifier
             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-        color = if (selected) CyberColors.AccentBlack else CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+        shape = pillShape,
+        color = if (selected) theme.accentBlack else theme.bgCard,
+        border = BorderStroke(theme.borderWidth, theme.borderColor)
     ) {
         Box(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp),
@@ -932,7 +1032,7 @@ private fun FilterPill(label: String, selected: Boolean, onClick: () -> Unit) {
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
                 fontWeight = FontWeight.Bold,
-                color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary
+                color = if (selected) theme.accentContrast else theme.textPrimary
             )
         }
     }

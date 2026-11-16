@@ -34,6 +34,7 @@ import com.gridsheet.app.data.SheetRepositoryGateway
 import com.gridsheet.app.data.WorkspaceRepository
 import com.gridsheet.app.data.local.FtsRuleHitRow
 import com.gridsheet.app.data.local.IndexedBookEntity
+import com.gridsheet.app.ui.theme.GridThemeMode
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineDispatcher
 import kotlinx.coroutines.CoroutineScope
@@ -158,6 +159,11 @@ class SheetStateController(
 
     private val _xpFilter = MutableStateFlow<XpUpgradeCategory?>(null)
     val xpFilter: StateFlow<XpUpgradeCategory?> = _xpFilter.asStateFlow()
+
+    private val _themeMode = MutableStateFlow(
+        runCatching { gateway.loadThemeMode() }.getOrDefault(GridThemeMode.LIGHT)
+    )
+    val themeMode: StateFlow<GridThemeMode> = _themeMode.asStateFlow()
 
     init {
         observeSavedSheetsFlow()
@@ -468,6 +474,12 @@ class SheetStateController(
         _statusMessage.value = message
     }
 
+    fun setThemeMode(mode: GridThemeMode) {
+        if (_themeMode.value == mode) return
+        _themeMode.value = mode
+        runCatching { gateway.saveThemeMode(mode) }
+    }
+
     fun applyImportedWorkspace(workspace: WorkspaceState) {
         _workspace.value = workspace
         syncActiveSheetIdFromWorkspace(workspace)
@@ -511,6 +523,7 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     val mode: StateFlow<AppMode> = controller.mode
     val statusMessage: StateFlow<String?> = controller.statusMessage
     val xpFilter: StateFlow<XpUpgradeCategory?> = controller.xpFilter
+    val themeMode: StateFlow<GridThemeMode> = controller.themeMode
 
     private val _sideSheetOpen = MutableStateFlow(false)
     val sideSheetOpen: StateFlow<Boolean> = _sideSheetOpen.asStateFlow()
@@ -602,6 +615,8 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
     fun setMode(mode: AppMode) = controller.setMode(mode)
 
     fun setXpFilter(category: XpUpgradeCategory?) = controller.setXpFilter(category)
+
+    fun setThemeMode(mode: GridThemeMode) = controller.setThemeMode(mode)
 
     fun openSideSheet(mode: SideSheetMode) {
         _sideSheetMode.value = mode

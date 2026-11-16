@@ -35,8 +35,12 @@ import com.gridsheet.app.data.local.RulePagesStorageMode
 import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.SheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.unit.dp
 import com.gridsheet.app.ui.ActiveScreen
 import com.gridsheet.app.ui.SheetStateController
+import com.gridsheet.app.ui.theme.GridThemeMode
+import com.gridsheet.app.ui.theme.themeTokensFor
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -748,6 +752,7 @@ class CoreEngineTest {
         private val savedSheetsFlow = MutableStateFlow<List<SheetMetadata>>(emptyList())
         private val booksFlow = MutableStateFlow(initialBooks)
         private var currentWorkspace: WorkspaceState = Presets.createDefaultWorkspace(context = null, deviceId = deviceId)
+        private var persistedThemeKey: String? = null
 
         init {
             val baseMillis = 1_700_000_000_000L
@@ -897,6 +902,15 @@ class CoreEngineTest {
             booksFlow.map { list -> list.filter { it.systemId.equals(systemId.name, ignoreCase = true) } }
 
         override fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>> = booksFlow
+
+        override fun loadThemeMode(): GridThemeMode {
+            if (failWorkspaceLoad) throw IllegalStateException("Simulated theme prefs read error")
+            return GridThemeMode.fromStorageKey(persistedThemeKey)
+        }
+
+        override fun saveThemeMode(mode: GridThemeMode) {
+            persistedThemeKey = mode.storageKey
+        }
     }
 
     @Test
@@ -1331,5 +1345,90 @@ class CoreEngineTest {
         assertTrue(undoBg1.ok)
         assertEquals(14, XpSystem.getAvailableXp(undoBg1.sheet.xp))
         assertFalse(undoBg1.sheet.cards.any { it.id == "card_backgrounds" })
+    }
+
+    @Test
+    fun themeModeTogglesAndPersistsAcrossControllerRestarts() = runBlocking {
+        // 1. Token fidelity against src/index.css
+        val light = themeTokensFor(GridThemeMode.LIGHT)
+        assertEquals(Color(0xFFF8F1E7), light.bgBase)
+        assertEquals(Color(0xFFFFFDF9), light.bgCard)
+        assertEquals(Color(0xFFEFE3D2), light.bgStrip)
+        assertEquals(Color(0xFF0B0B0B), light.borderColor)
+        assertEquals(Color(0xFF5B0F18), light.accentPrimary)
+        assertEquals(4.dp, light.cardCornerRadius)
+        assertEquals(4.dp, light.cardElevationShadow)
+        assertFalse(light.isEink)
+
+        val dark = themeTokensFor(GridThemeMode.DARK)
+        assertEquals(Color(0xFF12100E), dark.bgBase)
+        assertEquals(Color(0xFF1C1916), dark.bgCard)
+        assertEquals(Color(0xFF28231E), dark.bgStrip)
+        assertEquals(Color(0xFFEDE6DC), dark.borderColor)
+        assertEquals(Color(0xFFD94858), dark.accentPrimary)
+        assertEquals(4.dp, dark.cardCornerRadius)
+        assertEquals(4.dp, dark.cardElevationShadow)
+        assertFalse(dark.isEink)
+
+        val eink = themeTokensFor(GridThemeMode.EINK)
+        assertEquals(Color(0xFFE6E6E6), eink.bgBase)
+        assertEquals(Color(0xFFF8F8F8), eink.bgCard)
+        assertEquals(Color(0xFFDCDCDC), eink.bgStrip)
+        assertEquals(Color(0xFF1A1A1A), eink.borderColor)
+        assertEquals(Color(0xFF1A1A1A), eink.accentPrimary)
+        assertEquals(Color(0xFFF8F8F8), eink.accentContrast)
+        assertEquals(16.dp, eink.cardCornerRadius)
+        assertEquals(50.dp, eink.pillCornerRadius)
+        assertEquals(0.dp, eink.cardElevationShadow)
+        assertEquals(2.dp, eink.borderWidth)
+        assertTrue(eink.isEink)
+
+        // 2. Storage key normalization
+        assertEquals(GridThemeMode.LIGHT, GridThemeMode.fromStorageKey(null))
+        assertEquals(GridThemeMode.LIGHT, GridThemeMode.fromStorageKey("unknown"))
+        assertEquals(GridThemeMode.DARK, GridThemeMode.fromStorageKey("dark"))
+        assertEquals(GridThemeMode.EINK, GridThemeMode.fromStorageKey("EINK"))
+
+        // 3. Toggling LIGHT -> DARK -> EINK and restoring across controller restarts
+        val gateway = FakeSheetRepositoryGateway()
+        val scope1 = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller1 = SheetStateController(gateway, scope1, Dispatchers.Unconfined, hydrateOnInit = false)
+            assertEquals(GridThemeMode.LIGHT, controller1.themeMode.value)
+
+            controller1.setThemeMode(GridThemeMode.DARK)
+            assertEquals(GridThemeMode.DARK, controller1.themeMode.value)
+        } finally {
+            scope1.cancel()
+        }
+
+        val scope2 = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller2 = SheetStateController(gateway, scope2, Dispatchers.Unconfined, hydrateOnInit = false)
+            assertEquals(GridThemeMode.DARK, controller2.themeMode.value)
+
+            controller2.setThemeMode(GridThemeMode.EINK)
+            assertEquals(GridThemeMode.EINK, controller2.themeMode.value)
+        } finally {
+            scope2.cancel()
+        }
+
+        val scope3 = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controller3 = SheetStateController(gateway, scope3, Dispatchers.Unconfined, hydrateOnInit = false)
+            assertEquals(GridThemeMode.EINK, controller3.themeMode.value)
+        } finally {
+            scope3.cancel()
+        }
+
+        // 4. Defensive fallback when storage throws
+        val failingGateway = FakeSheetRepositoryGateway(failWorkspaceLoad = true)
+        val failingScope = CoroutineScope(SupervisorJob() + Dispatchers.Unconfined)
+        try {
+            val controllerFail = SheetStateController(failingGateway, failingScope, Dispatchers.Unconfined, hydrateOnInit = false)
+            assertEquals(GridThemeMode.LIGHT, controllerFail.themeMode.value)
+        } finally {
+            failingScope.cancel()
+        }
     }
 }

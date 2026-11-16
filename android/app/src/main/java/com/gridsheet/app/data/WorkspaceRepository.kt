@@ -18,6 +18,7 @@ import com.gridsheet.app.data.local.GridSheetDatabase
 import com.gridsheet.app.data.local.IndexedBookEntity
 import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
+import com.gridsheet.app.ui.theme.GridThemeMode
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
@@ -94,6 +95,8 @@ interface SheetRepositoryGateway {
     suspend fun deleteSheet(sheetId: String): WorkspaceState
     fun observeIndexedBooks(systemId: SystemId): Flow<List<IndexedBookEntity>>
     fun observeAllIndexedBooks(): Flow<List<IndexedBookEntity>>
+    fun loadThemeMode(): GridThemeMode = GridThemeMode.LIGHT
+    fun saveThemeMode(mode: GridThemeMode) {}
 }
 
 object SheetLibraryOps {
@@ -157,6 +160,16 @@ class WorkspaceRepository(context: Context) : SheetRepositoryGateway {
         prefs.edit().putString(DEVICE_ID_KEY, created).apply()
         created
     }.getOrDefault("local-device")
+
+    override fun loadThemeMode(): GridThemeMode = runCatching {
+        GridThemeMode.fromStorageKey(prefs.getString(THEME_MODE_KEY, null))
+    }.getOrDefault(GridThemeMode.LIGHT)
+
+    override fun saveThemeMode(mode: GridThemeMode) {
+        runCatching {
+            prefs.edit().putString(THEME_MODE_KEY, mode.storageKey).apply()
+        }
+    }
 
     override fun loadAvailablePresets(): List<PresetSummary> = runCatching {
         Presets.getAvailablePresets(appContext, getOrCreateDeviceId())
@@ -717,5 +730,6 @@ class WorkspaceRepository(context: Context) : SheetRepositoryGateway {
         private const val WORKSPACE_UPDATED_AT_KEY = "grid_sheet_workspace_updated_at"
         private const val DEVICE_ID_KEY = "grid_sheet_device_id"
         private const val SAVED_SHEETS_INITIALIZED_KEY = "grid_sheet_saved_sheets_seeded_v1"
+        private const val THEME_MODE_KEY = "grid_sheet_theme_mode"
     }
 }

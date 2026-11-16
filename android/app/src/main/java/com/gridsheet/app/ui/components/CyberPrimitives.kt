@@ -1,6 +1,8 @@
 package com.gridsheet.app.ui.components
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -61,6 +63,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.PathEffect
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.TextStyle
@@ -80,27 +83,43 @@ import com.gridsheet.app.core.SheetField
 import com.gridsheet.app.core.SheetMetadata
 import com.gridsheet.app.core.SheetMetadataMapper
 import com.gridsheet.app.core.TabId
-import com.gridsheet.app.ui.theme.CyberColors
 import com.gridsheet.app.ui.theme.CyberDimens
+import com.gridsheet.app.ui.theme.GridThemeTokens
+import com.gridsheet.app.ui.theme.LocalGridTheme
+import com.gridsheet.app.ui.theme.brutalistShadow
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 import kotlin.math.roundToInt
+
+@Composable
+private fun gridTextFieldColors(theme: GridThemeTokens = LocalGridTheme.current) = OutlinedTextFieldDefaults.colors(
+    focusedContainerColor = theme.bgInput,
+    unfocusedContainerColor = theme.bgInput,
+    focusedTextColor = theme.textPrimary,
+    unfocusedTextColor = theme.textPrimary,
+    focusedBorderColor = theme.accentPrimary,
+    unfocusedBorderColor = theme.borderColor,
+    focusedLabelColor = theme.accentPrimary,
+    unfocusedLabelColor = theme.textSecondary,
+    cursorColor = theme.accentPrimary
+)
 
 @Composable
 fun CyberGridBackground(
     modifier: Modifier = Modifier,
     content: @Composable () -> Unit
 ) {
+    val theme = LocalGridTheme.current
     Box(
         modifier = modifier
             .fillMaxSize()
-            .background(CyberColors.BgCanvas)
+            .background(theme.bgBase)
     ) {
         Canvas(modifier = Modifier.fillMaxSize()) {
             val step = 36.dp.toPx()
             val crossHalf = 3.dp.toPx()
-            val lineColor = CyberColors.BorderInk.copy(alpha = 0.075f)
-            val crossColor = CyberColors.AccentWine.copy(alpha = 0.35f)
+            val lineColor = theme.gridLineColor
+            val crossColor = theme.gridCrossColor
 
             var x = 0f
             while (x <= size.width) {
@@ -153,20 +172,25 @@ fun BentoCardView(
 ) {
     var showAddFieldDialog by remember { mutableStateOf(false) }
     var expandedFieldId by remember(card.id, mode) { mutableStateOf<String?>(null) }
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(CyberDimens.CardRadius),
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
-        shadowElevation = 2.dp
+        modifier = Modifier
+            .fillMaxWidth()
+            .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
+        shape = cardShape,
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.borderColor),
+        shadowElevation = 0.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             // Card Header Strip
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(CyberColors.BgHeaderStrip)
+                    .background(theme.bgStrip)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -177,26 +201,26 @@ fun BentoCardView(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.AccentWine
+                        color = theme.accentPrimary
                     )
                     Text(
                         text = card.title,
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
-                        color = CyberColors.InkPrimary
+                        color = theme.textPrimary
                     )
                 }
                 if (mode == AppMode.EDICAO) {
                     Surface(
                         modifier = Modifier.clickable { onRemoveCard(card.id) },
-                        shape = RoundedCornerShape(4.dp),
-                        color = CyberColors.BgCard,
-                        border = BorderStroke(1.dp, CyberColors.BorderInk)
+                        shape = RoundedCornerShape(CyberDimens.SmallRadius),
+                        color = theme.bgCard,
+                        border = BorderStroke(1.dp, theme.borderColor)
                     ) {
                         Icon(
                             imageVector = Icons.Default.Delete,
                             contentDescription = "Remover bloco ${card.title}",
-                            tint = CyberColors.AccentDanger,
+                            tint = theme.accentDanger,
                             modifier = Modifier
                                 .padding(6.dp)
                                 .size(14.dp)
@@ -208,14 +232,14 @@ fun BentoCardView(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(CyberColors.BgCard)
-                                .border(1.dp, CyberColors.BorderInk, RoundedCornerShape(50))
+                                .background(theme.bgCard)
+                                .border(1.dp, theme.borderColor, RoundedCornerShape(50))
                         )
                         Box(
                             modifier = Modifier
                                 .size(8.dp)
                                 .clip(RoundedCornerShape(50))
-                                .background(CyberColors.AccentWine)
+                                .background(theme.accentPrimary)
                         )
                     }
                 }
@@ -223,8 +247,8 @@ fun BentoCardView(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(CyberDimens.BorderWidth)
-                    .background(CyberColors.BorderInk)
+                    .height(theme.borderWidth)
+                    .background(theme.borderColor)
             )
 
             Column(
@@ -239,16 +263,16 @@ fun BentoCardView(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
-                                .clip(RoundedCornerShape(CyberDimens.ControlRadius))
-                                .background(CyberColors.BgCardAlt)
+                                .clip(pillShape)
+                                .background(theme.bgCardAlt)
                                 .drawBehind {
                                     drawRoundRect(
-                                        color = CyberColors.AccentWine,
+                                        color = theme.accentPrimary,
                                         style = Stroke(
-                                            width = CyberDimens.BorderWidth.toPx(),
+                                            width = theme.borderWidth.toPx(),
                                             pathEffect = PathEffect.dashPathEffect(floatArrayOf(12f, 8f), 0f)
                                         ),
-                                        cornerRadius = CornerRadius(CyberDimens.ControlRadius.toPx())
+                                        cornerRadius = CornerRadius(theme.pillCornerRadius.toPx())
                                     )
                                 }
                                 .clickable { showAddFieldDialog = true }
@@ -260,7 +284,7 @@ fun BentoCardView(
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 11.sp,
                                 fontWeight = FontWeight.Black,
-                                color = CyberColors.AccentWine
+                                color = theme.accentPrimary
                             )
                         }
                     } else {
@@ -268,7 +292,7 @@ fun BentoCardView(
                             text = "Bloco vazio.",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
-                            color = CyberColors.InkMuted
+                            color = theme.textMuted
                         )
                     }
                 }
@@ -312,11 +336,11 @@ fun BentoCardView(
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                        shape = pillShape,
+                        border = BorderStroke(theme.borderWidth, theme.borderColor),
                         colors = ButtonDefaults.outlinedButtonColors(
-                            containerColor = CyberColors.BgCardAlt,
-                            contentColor = CyberColors.InkPrimary
+                            containerColor = theme.bgCardAlt,
+                            contentColor = theme.textPrimary
                         )
                     ) {
                         Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -353,19 +377,25 @@ fun CustomCardBuilderView(
 ) {
     var title by remember { mutableStateOf("") }
     var code by remember { mutableStateOf("") }
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val fieldColors = gridTextFieldColors(theme)
 
     Surface(
-        modifier = Modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(CyberDimens.CardRadius),
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.AccentWine),
-        shadowElevation = 2.dp
+        modifier = Modifier
+            .fillMaxWidth()
+            .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
+        shape = cardShape,
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.accentPrimary),
+        shadowElevation = 0.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(CyberColors.BgHeaderStrip)
+                    .background(theme.bgStrip)
                     .padding(horizontal = 14.dp, vertical = 10.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -376,13 +406,13 @@ fun CustomCardBuilderView(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.AccentWine
+                        color = theme.accentPrimary
                     )
                     Text(
                         text = if (isEmptySheet) "CRIAR FICHA DO ZERO" else "ADICIONAR NOVO BLOCO",
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
-                        color = CyberColors.InkPrimary
+                        color = theme.textPrimary
                     )
                 }
                 Text(
@@ -390,14 +420,14 @@ fun CustomCardBuilderView(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.AccentWine
+                    color = theme.accentPrimary
                 )
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(CyberDimens.BorderWidth)
-                    .background(CyberColors.BorderInk)
+                    .height(theme.borderWidth)
+                    .background(theme.borderColor)
             )
             Column(
                 modifier = Modifier
@@ -410,7 +440,7 @@ fun CustomCardBuilderView(
                         text = "Nenhum campo pré-definido foi carregado. Crie seu primeiro bloco (ex: Atributos, Recursos, Perícias) e depois adicione cada campo dentro dele.",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
-                        color = CyberColors.InkSecondary
+                        color = theme.textSecondary
                     )
                 }
                 OutlinedTextField(
@@ -418,6 +448,8 @@ fun CustomCardBuilderView(
                     onValueChange = { title = it },
                     label = { Text("TÍTULO DO BLOCO (ex: ATRIBUTOS)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                     singleLine = true,
+                    colors = fieldColors,
+                    shape = pillShape,
                     modifier = Modifier.fillMaxWidth()
                 )
                 OutlinedTextField(
@@ -425,6 +457,8 @@ fun CustomCardBuilderView(
                     onValueChange = { code = it },
                     label = { Text("TAG TÉCNICA (opcional, ex: //ATRIBUTOS)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
                     singleLine = true,
+                    colors = fieldColors,
+                    shape = pillShape,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Button(
@@ -433,11 +467,13 @@ fun CustomCardBuilderView(
                         title = ""
                         code = ""
                     },
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                    shape = pillShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyberColors.AccentBlack,
-                        contentColor = CyberColors.InkInverse
+                        containerColor = theme.accentBlack,
+                        contentColor = theme.accentContrast
                     )
                 ) {
                     Icon(Icons.Default.Add, contentDescription = null, modifier = Modifier.size(16.dp))
@@ -480,13 +516,18 @@ private fun FieldRenderer(
     onUpdateSchema: (String, (SheetField) -> SheetField) -> Unit,
     onRemoveField: () -> Unit
 ) {
+    val theme = LocalGridTheme.current
+    val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val fieldColors = gridTextFieldColors(theme)
+
     Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
         if (mode == AppMode.EDICAO) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(CyberColors.BgCardAlt, RoundedCornerShape(4.dp))
-                    .border(1.dp, if (isExpanded) CyberColors.AccentWine else CyberColors.BorderSubtle, RoundedCornerShape(4.dp))
+                    .background(theme.bgCardAlt, RoundedCornerShape(CyberDimens.SmallRadius))
+                    .border(1.dp, if (isExpanded) theme.accentPrimary else theme.borderSubtle, RoundedCornerShape(CyberDimens.SmallRadius))
                     .padding(horizontal = 8.dp, vertical = 2.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
@@ -495,7 +536,7 @@ private fun FieldRenderer(
                     text = "${field.key} · ${field.kind.name}",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = CyberColors.InkSecondary,
+                    color = theme.textSecondary,
                     maxLines = 1,
                     overflow = TextOverflow.Ellipsis,
                     modifier = Modifier.weight(1f)
@@ -515,7 +556,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (!isFirst) CyberColors.InkPrimary else CyberColors.InkMuted
+                            color = if (!isFirst) theme.textPrimary else theme.textMuted
                         )
                     }
                     TextButton(
@@ -529,7 +570,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 14.sp,
                             fontWeight = FontWeight.Black,
-                            color = if (!isLast) CyberColors.InkPrimary else CyberColors.InkMuted
+                            color = if (!isLast) theme.textPrimary else theme.textMuted
                         )
                     }
                     TextButton(
@@ -540,7 +581,7 @@ private fun FieldRenderer(
                         Icon(
                             imageVector = Icons.Default.Settings,
                             contentDescription = "Editar ${field.label}",
-                            tint = if (isExpanded) CyberColors.AccentWine else CyberColors.InkPrimary,
+                            tint = if (isExpanded) theme.accentPrimary else theme.textPrimary,
                             modifier = Modifier.size(18.dp)
                         )
                     }
@@ -549,8 +590,8 @@ private fun FieldRenderer(
 
             AnimatedVisibility(
                 visible = isExpanded,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+                enter = if (theme.isEink) EnterTransition.None else expandVertically() + fadeIn(),
+                exit = if (theme.isEink) ExitTransition.None else shrinkVertically() + fadeOut()
             ) {
                 var labelDraft by remember(field.id, field.label) { mutableStateOf(field.label) }
                 var keyDraft by remember(field.id, field.key) { mutableStateOf(field.key) }
@@ -558,8 +599,8 @@ private fun FieldRenderer(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                        .border(1.dp, CyberColors.AccentWine, RoundedCornerShape(CyberDimens.ControlRadius))
+                        .background(theme.bgInput, cardShape)
+                        .border(1.dp, theme.accentPrimary, cardShape)
                         .padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -576,6 +617,8 @@ private fun FieldRenderer(
                         },
                         label = { Text("RÓTULO", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                         singleLine = true,
+                        colors = fieldColors,
+                        shape = pillShape,
                         modifier = Modifier.fillMaxWidth()
                     )
                     OutlinedTextField(
@@ -589,6 +632,8 @@ private fun FieldRenderer(
                         },
                         label = { Text("CHAVE (FÓRMULA)", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                         singleLine = true,
+                        colors = fieldColors,
+                        shape = pillShape,
                         modifier = Modifier.fillMaxWidth()
                     )
 
@@ -602,6 +647,8 @@ private fun FieldRenderer(
                             },
                             label = { Text("FÓRMULA", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                             singleLine = true,
+                            colors = fieldColors,
+                            shape = pillShape,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -616,6 +663,8 @@ private fun FieldRenderer(
                             },
                             label = { Text("EXPRESSÃO DE ROLAGEM", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                             singleLine = true,
+                            colors = fieldColors,
+                            shape = pillShape,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -634,6 +683,8 @@ private fun FieldRenderer(
                             label = { Text("MÁXIMO DO RECURSO", fontFamily = FontFamily.Monospace, fontSize = 10.sp) },
                             singleLine = true,
                             keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                            colors = fieldColors,
+                            shape = pillShape,
                             modifier = Modifier.fillMaxWidth()
                         )
                     }
@@ -646,21 +697,35 @@ private fun FieldRenderer(
                         ) {
                             val diff = (field.rollDifficulty ?: 6).coerceIn(2, 10)
                             val spec = field.rollSpecialty == true
+                            val specBg = when {
+                                spec && theme.isEink -> theme.accentPrimary
+                                spec -> theme.accentWineSoft
+                                else -> theme.bgCard
+                            }
+                            val specFg = when {
+                                spec && theme.isEink -> theme.accentContrast
+                                spec -> theme.accentPrimary
+                                else -> theme.textPrimary
+                            }
                             OutlinedButton(
                                 onClick = onCycleRollDifficulty,
                                 modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                border = BorderStroke(1.dp, CyberColors.BorderInk)
+                                shape = pillShape,
+                                border = BorderStroke(1.dp, theme.borderColor),
+                                colors = ButtonDefaults.outlinedButtonColors(
+                                    containerColor = theme.bgCard,
+                                    contentColor = theme.textPrimary
+                                )
                             ) {
                                 Text("DIFF $diff ↻", fontFamily = FontFamily.Monospace, fontSize = 11.sp, fontWeight = FontWeight.Bold)
                             }
                             OutlinedButton(
                                 onClick = onToggleRollSpecialty,
                                 modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                                shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                                border = BorderStroke(1.dp, if (spec) CyberColors.AccentWine else CyberColors.BorderInk),
+                                shape = pillShape,
+                                border = BorderStroke(1.dp, if (spec) theme.accentPrimary else theme.borderColor),
                                 colors = ButtonDefaults.outlinedButtonColors(
-                                    containerColor = if (spec) CyberColors.AccentWineSoft else CyberColors.BgCard
+                                    containerColor = specBg
                                 )
                             ) {
                                 Text(
@@ -668,7 +733,7 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 11.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (spec) CyberColors.AccentWine else CyberColors.InkPrimary
+                                    color = specFg
                                 )
                             }
                         }
@@ -679,15 +744,15 @@ private fun FieldRenderer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                        border = BorderStroke(1.dp, CyberColors.AccentDanger)
+                        shape = pillShape,
+                        border = BorderStroke(1.dp, theme.accentDanger)
                     ) {
                         Text(
                             text = "REMOVER CAMPO ×",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 11.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberColors.AccentDanger
+                            color = theme.accentDanger
                         )
                     }
                 }
@@ -710,20 +775,23 @@ private fun FieldRenderer(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         fontSize = 12.sp,
-                        color = CyberColors.InkPrimary,
+                        color = theme.textPrimary,
                         modifier = Modifier.weight(1f)
                     )
                     if (field.rollDifficulty != null) {
                         val diff = field.rollDifficulty.coerceIn(2, 10)
-                        val pillText = if (field.rollSpecialty == true) "DIFF $diff · SPEC" else "DIFF $diff"
+                        val hasSpec = field.rollSpecialty == true
+                        val pillText = if (hasSpec) "DIFF $diff · SPEC" else "DIFF $diff"
+                        val pillBg = if (theme.isEink && hasSpec) theme.accentPrimary else theme.accentCreamBadge
+                        val pillFg = if (theme.isEink && hasSpec) theme.accentContrast else theme.accentPrimary
                         Surface(
                             modifier = Modifier
                                 .padding(end = 6.dp)
                                 .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                                 .clickable(onClick = onCycleRollDifficulty),
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            color = CyberColors.AccentCreamBadge,
-                            border = BorderStroke(1.dp, CyberColors.AccentWine)
+                            shape = pillShape,
+                            color = pillBg,
+                            border = BorderStroke(1.dp, theme.accentPrimary)
                         ) {
                             Box(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -734,7 +802,7 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.AccentWine
+                                    color = pillFg
                                 )
                             }
                         }
@@ -747,16 +815,17 @@ private fun FieldRenderer(
                         },
                         singleLine = true,
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        cursorBrush = SolidColor(theme.accentPrimary),
                         textStyle = TextStyle(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 14.sp,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         ),
                         modifier = Modifier
                             .width(86.dp)
-                            .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                            .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                            .background(theme.bgInput, pillShape)
+                            .border(theme.borderWidth, theme.borderColor, pillShape)
                             .padding(horizontal = 10.dp, vertical = 7.dp)
                     )
                 }
@@ -770,7 +839,7 @@ private fun FieldRenderer(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
-                        color = CyberColors.InkSecondary
+                        color = theme.textSecondary
                     )
                     BasicTextField(
                         value = textState,
@@ -778,15 +847,16 @@ private fun FieldRenderer(
                             textState = next
                             onUpdateText(field.id, next)
                         },
+                        cursorBrush = SolidColor(theme.accentPrimary),
                         textStyle = TextStyle(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 13.sp,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(CyberColors.BgInput, RoundedCornerShape(CyberDimens.ControlRadius))
-                            .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                            .background(theme.bgInput, pillShape)
+                            .border(theme.borderWidth, theme.borderColor, pillShape)
                             .padding(horizontal = 10.dp, vertical = 8.dp)
                     )
                 }
@@ -795,8 +865,8 @@ private fun FieldRenderer(
             FieldKind.CALCULATED -> {
                 val info = evaluation.computedByFieldId[field.id]
                 val isError = info != null && !info.ok
-                val dashColor = if (isError) CyberColors.AccentDanger else CyberColors.AccentWine
-                val bgColor = if (isError) CyberColors.AccentDangerSoft else CyberColors.AccentCreamBadge
+                val dashColor = if (isError) theme.accentDanger else theme.accentPrimary
+                val bgColor = if (isError) theme.accentDangerSoft else theme.accentCreamBadge
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -809,13 +879,13 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         )
                         Text(
                             text = "= ${field.formula.orEmpty()}",
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
-                            color = CyberColors.InkMuted,
+                            color = theme.textMuted,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
                         )
@@ -823,15 +893,15 @@ private fun FieldRenderer(
 
                     Box(
                         modifier = Modifier
-                            .background(bgColor, RoundedCornerShape(CyberDimens.ControlRadius))
+                            .background(bgColor, pillShape)
                             .drawBehind {
                                 drawRoundRect(
                                     color = dashColor,
                                     style = Stroke(
-                                        width = CyberDimens.BorderWidth.toPx(),
+                                        width = theme.borderWidth.toPx(),
                                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(8f, 6f), 0f)
                                     ),
-                                    cornerRadius = CornerRadius(CyberDimens.ControlRadius.toPx())
+                                    cornerRadius = CornerRadius(theme.pillCornerRadius.toPx())
                                 )
                             }
                             .padding(horizontal = 12.dp, vertical = 6.dp),
@@ -849,6 +919,7 @@ private fun FieldRenderer(
             }
 
             FieldKind.RESOURCE -> {
+                val blockShape = RoundedCornerShape(if (theme.isEink) theme.pillCornerRadius else 2.dp)
                 if (field.damageTrack == true) {
                     val maxVal = (field.max ?: 7).coerceAtLeast(1)
                     val agg = (field.aggravatedDamage ?: kotlin.math.max(0, maxVal - (field.numValue ?: maxVal.toDouble()).roundToInt())).coerceIn(0, maxVal)
@@ -859,8 +930,8 @@ private fun FieldRenderer(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-                            .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                            .background(theme.bgCardAlt, cardShape)
+                            .border(theme.borderWidth, theme.borderColor, cardShape)
                             .padding(10.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
@@ -879,12 +950,12 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                                 Box(
                                     modifier = Modifier
-                                        .background(CyberColors.AccentCreamBadge, RoundedCornerShape(3.dp))
-                                        .border(1.dp, CyberColors.AccentWine, RoundedCornerShape(3.dp))
+                                        .background(theme.accentCreamBadge, RoundedCornerShape(3.dp))
+                                        .border(1.dp, theme.accentPrimary, RoundedCornerShape(3.dp))
                                         .padding(horizontal = 5.dp, vertical = 2.dp)
                                 ) {
                                     Text(
@@ -892,7 +963,7 @@ private fun FieldRenderer(
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 9.sp,
-                                        color = CyberColors.AccentWine
+                                        color = theme.accentPrimary
                                     )
                                 }
                             }
@@ -901,7 +972,7 @@ private fun FieldRenderer(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = CyberColors.InkPrimary
+                                color = theme.textPrimary
                             )
                         }
 
@@ -916,27 +987,32 @@ private fun FieldRenderer(
                                     else -> "healthy"
                                 }
                                 val bg = when (state) {
-                                    "aggravated" -> CyberColors.AccentBlack
-                                    "superficial" -> CyberColors.AccentWine
-                                    else -> CyberColors.BgCard
+                                    "aggravated" -> theme.accentBlack
+                                    "superficial" -> if (theme.isEink) theme.bgStrip else theme.accentPrimary
+                                    else -> theme.bgCard
                                 }
                                 val borderCol = when (state) {
-                                    "aggravated" -> CyberColors.AccentBlack
-                                    "superficial" -> CyberColors.AccentWine
-                                    else -> CyberColors.BorderInk.copy(alpha = 0.45f)
+                                    "aggravated" -> theme.accentBlack
+                                    "superficial" -> if (theme.isEink) theme.borderColor else theme.accentPrimary
+                                    else -> theme.borderColor.copy(alpha = if (theme.isEink) 1f else 0.45f)
                                 }
                                 val mark = when (state) {
                                     "aggravated" -> "✕"
                                     "superficial" -> "/"
                                     else -> ""
                                 }
+                                val markColor = if (state == "superficial" && theme.isEink) {
+                                    theme.textPrimary
+                                } else {
+                                    theme.accentContrast
+                                }
                                 Box(
                                     modifier = Modifier
                                         .weight(1f)
                                         .height(18.dp)
-                                        .clip(RoundedCornerShape(2.dp))
+                                        .clip(blockShape)
                                         .background(bg)
-                                        .border(1.dp, borderCol, RoundedCornerShape(2.dp)),
+                                        .border(1.dp, borderCol, blockShape),
                                     contentAlignment = Alignment.Center
                                 ) {
                                     if (mark.isNotEmpty()) {
@@ -945,7 +1021,7 @@ private fun FieldRenderer(
                                             fontFamily = FontFamily.Monospace,
                                             fontWeight = FontWeight.Black,
                                             fontSize = 10.sp,
-                                            color = CyberColors.InkInverse
+                                            color = markColor
                                         )
                                     }
                                 }
@@ -956,7 +1032,7 @@ private fun FieldRenderer(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(1.dp)
-                                .background(CyberColors.BorderSubtle)
+                                .background(theme.borderSubtle)
                         )
 
                         Row(
@@ -969,7 +1045,7 @@ private fun FieldRenderer(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
-                                color = CyberColors.InkPrimary,
+                                color = theme.textPrimary,
                                 modifier = Modifier.weight(1f)
                             )
                             Row(
@@ -982,7 +1058,7 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 )
                                 SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "aggravated", +1) }
                             }
@@ -998,7 +1074,7 @@ private fun FieldRenderer(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
-                                color = CyberColors.AccentWine,
+                                color = theme.accentPrimary,
                                 modifier = Modifier.weight(1f)
                             )
                             Row(
@@ -1011,7 +1087,7 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontWeight = FontWeight.Bold,
                                     fontSize = 12.sp,
-                                    color = CyberColors.AccentWine
+                                    color = theme.accentPrimary
                                 )
                                 SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "superficial", +1) }
                             }
@@ -1024,8 +1100,8 @@ private fun FieldRenderer(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .background(CyberColors.BgCardAlt, RoundedCornerShape(CyberDimens.ControlRadius))
-                        .border(1.dp, CyberColors.BorderSubtle, RoundedCornerShape(CyberDimens.ControlRadius))
+                        .background(theme.bgCardAlt, cardShape)
+                        .border(if (theme.isEink) theme.borderWidth else 1.dp, if (theme.isEink) theme.borderColor else theme.borderSubtle, cardShape)
                         .padding(10.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
@@ -1039,7 +1115,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 12.sp,
-                            color = CyberColors.InkPrimary,
+                            color = theme.textPrimary,
                             modifier = Modifier.weight(1f)
                         )
                         Row(
@@ -1052,7 +1128,7 @@ private fun FieldRenderer(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
-                                color = CyberColors.InkPrimary
+                                color = theme.textPrimary
                             )
                             SmallSquareButton(label = "+") { onAdjustResource(field.id, +1) }
                         }
@@ -1071,12 +1147,22 @@ private fun FieldRenderer(
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(14.dp)
-                                    .clip(RoundedCornerShape(2.dp))
-                                    .background(if (filled) CyberColors.AccentWine else CyberColors.AccentWineSoft)
+                                    .clip(blockShape)
+                                    .background(
+                                        when {
+                                            filled -> theme.accentPrimary
+                                            theme.isEink -> theme.bgCard
+                                            else -> theme.accentWineSoft
+                                        }
+                                    )
                                     .border(
                                         1.dp,
-                                        if (filled) CyberColors.AccentWine else CyberColors.AccentWine.copy(alpha = 0.28f),
-                                        RoundedCornerShape(2.dp)
+                                        when {
+                                            filled -> theme.accentPrimary
+                                            theme.isEink -> theme.borderColor
+                                            else -> theme.accentPrimary.copy(alpha = 0.28f)
+                                        },
+                                        blockShape
                                     )
                                     .clickable {
                                         val target = if (displaySegments == maxVal) {
@@ -1095,12 +1181,13 @@ private fun FieldRenderer(
 
             FieldKind.BOOLEAN -> {
                 val checked = field.boolValue == true
+                val inverted = theme.isEink && checked
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .clip(RoundedCornerShape(CyberDimens.ControlRadius))
-                        .background(CyberColors.BgInput)
-                        .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
+                        .clip(pillShape)
+                        .background(if (inverted) theme.accentPrimary else theme.bgInput)
+                        .border(theme.borderWidth, theme.borderColor, pillShape)
                         .clickable { onUpdateBoolean(field.id, !checked) }
                         .padding(horizontal = 10.dp, vertical = 9.dp),
                     verticalAlignment = Alignment.CenterVertically,
@@ -1115,17 +1202,25 @@ private fun FieldRenderer(
                             modifier = Modifier
                                 .size(20.dp)
                                 .background(
-                                    if (checked) CyberColors.AccentWine else CyberColors.BgCard,
-                                    RoundedCornerShape(4.dp)
+                                    when {
+                                        inverted -> theme.accentContrast
+                                        checked -> theme.accentPrimary
+                                        else -> theme.bgCard
+                                    },
+                                    RoundedCornerShape(CyberDimens.SmallRadius)
                                 )
-                                .border(CyberDimens.BorderStrong, CyberColors.BorderInk, RoundedCornerShape(4.dp)),
+                                .border(
+                                    theme.borderStrong,
+                                    if (inverted) theme.accentContrast else theme.borderColor,
+                                    RoundedCornerShape(CyberDimens.SmallRadius)
+                                ),
                             contentAlignment = Alignment.Center
                         ) {
                             if (checked) {
                                 Icon(
                                     imageVector = Icons.Default.Check,
                                     contentDescription = null,
-                                    tint = CyberColors.InkInverse,
+                                    tint = if (inverted) theme.accentPrimary else theme.accentContrast,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
@@ -1136,14 +1231,14 @@ private fun FieldRenderer(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 12.sp,
-                                color = CyberColors.InkPrimary
+                                color = if (inverted) theme.accentContrast else theme.textPrimary
                             )
                             field.hint?.let {
                                 Text(
                                     text = it,
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
-                                    color = CyberColors.InkMuted
+                                    color = if (inverted) theme.accentContrast else theme.textMuted
                                 )
                             }
                         }
@@ -1153,7 +1248,11 @@ private fun FieldRenderer(
                         fontFamily = FontFamily.Monospace,
                         fontWeight = FontWeight.Bold,
                         fontSize = 11.sp,
-                        color = if (checked) CyberColors.AccentWine else CyberColors.InkMuted
+                        color = when {
+                            inverted -> theme.accentContrast
+                            checked -> theme.accentPrimary
+                            else -> theme.textMuted
+                        }
                     )
                 }
             }
@@ -1170,14 +1269,17 @@ private fun FieldRenderer(
                 ) {
                     if (field.rollDifficulty != null) {
                         val diff = field.rollDifficulty.coerceIn(2, 10)
-                        val pillText = if (field.rollSpecialty == true) "DIFF $diff · SPEC" else "DIFF $diff"
+                        val hasSpec = field.rollSpecialty == true
+                        val pillText = if (hasSpec) "DIFF $diff · SPEC" else "DIFF $diff"
+                        val pillBg = if (theme.isEink && hasSpec) theme.accentPrimary else theme.accentCreamBadge
+                        val pillFg = if (theme.isEink && hasSpec) theme.accentContrast else theme.accentPrimary
                         Surface(
                             modifier = Modifier
                                 .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                                 .clickable(onClick = onCycleRollDifficulty),
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
-                            color = CyberColors.AccentCreamBadge,
-                            border = BorderStroke(1.dp, CyberColors.AccentWine)
+                            shape = pillShape,
+                            color = pillBg,
+                            border = BorderStroke(1.dp, theme.accentPrimary)
                         ) {
                             Box(
                                 modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
@@ -1188,7 +1290,7 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.AccentWine
+                                    color = pillFg
                                 )
                             }
                         }
@@ -1198,12 +1300,12 @@ private fun FieldRenderer(
                         modifier = Modifier
                             .weight(1f)
                             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
-                        shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                        shape = pillShape,
                         colors = ButtonDefaults.buttonColors(
-                            containerColor = CyberColors.AccentBlack,
-                            contentColor = CyberColors.InkInverse
+                            containerColor = theme.accentBlack,
+                            contentColor = theme.accentContrast
                         ),
-                        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.AccentBlack)
+                        border = BorderStroke(theme.borderStrong, theme.borderColor)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -1237,13 +1339,13 @@ private fun FieldRenderer(
                 Column(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .border(CyberDimens.BorderWidth, CyberColors.BorderInk, RoundedCornerShape(CyberDimens.ControlRadius))
-                        .clip(RoundedCornerShape(CyberDimens.ControlRadius)),
+                        .border(theme.borderWidth, theme.borderColor, cardShape)
+                        .clip(cardShape),
                 ) {
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(CyberColors.BgHeaderStrip)
+                            .background(theme.bgStrip)
                             .padding(horizontal = 10.dp, vertical = 7.dp),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
@@ -1252,7 +1354,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         )
                         if (field.col2Type == "number") {
                             Text(
@@ -1260,7 +1362,7 @@ private fun FieldRenderer(
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 11.sp,
-                                color = CyberColors.AccentWine
+                                color = theme.accentPrimary
                             )
                         }
                     }
@@ -1268,7 +1370,7 @@ private fun FieldRenderer(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(CyberColors.BgCardAlt)
+                            .background(theme.bgCardAlt)
                             .padding(horizontal = 10.dp, vertical = 5.dp)
                     ) {
                         Text(
@@ -1276,7 +1378,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberColors.InkMuted,
+                            color = theme.textMuted,
                             modifier = Modifier.weight(1.7f)
                         )
                         Text(
@@ -1284,7 +1386,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontSize = 10.sp,
                             fontWeight = FontWeight.Bold,
-                            color = CyberColors.InkMuted,
+                            color = theme.textMuted,
                             modifier = Modifier.weight(1f)
                         )
                         Spacer(Modifier.width(26.dp))
@@ -1297,12 +1399,12 @@ private fun FieldRenderer(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(1.dp)
-                                .background(CyberColors.BorderSubtle)
+                                .background(theme.borderSubtle)
                         )
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .background(CyberColors.BgCard)
+                                .background(theme.bgCard)
                                 .padding(horizontal = 10.dp, vertical = 6.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
@@ -1313,10 +1415,11 @@ private fun FieldRenderer(
                                     onUpdateRow(field.id, row.id, it, null)
                                 },
                                 singleLine = true,
+                                cursorBrush = SolidColor(theme.accentPrimary),
                                 textStyle = TextStyle(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 12.sp,
-                                    color = CyberColors.InkPrimary
+                                    color = theme.textPrimary
                                 ),
                                 modifier = Modifier.weight(1.7f).padding(end = 6.dp)
                             )
@@ -1327,6 +1430,7 @@ private fun FieldRenderer(
                                     onUpdateRow(field.id, row.id, null, it)
                                 },
                                 singleLine = true,
+                                cursorBrush = SolidColor(theme.accentPrimary),
                                 keyboardOptions = KeyboardOptions(
                                     keyboardType = if (field.col2Type == "number") KeyboardType.Decimal else KeyboardType.Text
                                 ),
@@ -1334,21 +1438,21 @@ private fun FieldRenderer(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 12.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = CyberColors.AccentWine
+                                    color = theme.accentPrimary
                                 ),
                                 modifier = Modifier.weight(1f)
                             )
                             Box(
                                 modifier = Modifier
                                     .size(24.dp)
-                                    .clip(RoundedCornerShape(4.dp))
+                                    .clip(RoundedCornerShape(CyberDimens.SmallRadius))
                                     .clickable { onRemoveRow(field.id, row.id) },
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
                                     imageVector = Icons.Default.Close,
                                     contentDescription = "Remover linha",
-                                    tint = CyberColors.InkMuted,
+                                    tint = theme.textMuted,
                                     modifier = Modifier.size(14.dp)
                                 )
                             }
@@ -1359,12 +1463,12 @@ private fun FieldRenderer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(1.dp)
-                            .background(CyberColors.BorderInk)
+                            .background(theme.borderColor)
                     )
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(CyberColors.BgCardAlt)
+                            .background(theme.bgCardAlt)
                             .clickable { onAddRow(field.id) }
                             .padding(vertical = 8.dp),
                         horizontalArrangement = Arrangement.Center,
@@ -1375,7 +1479,7 @@ private fun FieldRenderer(
                             fontFamily = FontFamily.Monospace,
                             fontWeight = FontWeight.Bold,
                             fontSize = 11.sp,
-                            color = CyberColors.InkPrimary
+                            color = theme.textPrimary
                         )
                     }
                 }
@@ -1386,13 +1490,14 @@ private fun FieldRenderer(
 
 @Composable
 private fun SmallSquareButton(label: String, onClick: () -> Unit) {
+    val theme = LocalGridTheme.current
     Surface(
         modifier = Modifier
             .size(26.dp)
             .clickable(onClick = onClick),
-        shape = RoundedCornerShape(CyberDimens.SmallRadius),
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk)
+        shape = RoundedCornerShape(theme.pillCornerRadius),
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderWidth, theme.borderColor)
     ) {
         Box(contentAlignment = Alignment.Center) {
             Text(
@@ -1400,7 +1505,7 @@ private fun SmallSquareButton(label: String, onClick: () -> Unit) {
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
                 fontSize = 13.sp,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             )
         }
     }
@@ -1427,6 +1532,9 @@ private fun AddFieldDialog(
     var expr by remember { mutableStateOf("") }
     var selectedPresetId by remember { mutableStateOf<String?>(null) }
     var isSkillTemplate by remember { mutableStateOf(false) }
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    val fieldColors = gridTextFieldColors(theme)
 
     val presetOptions = remember {
         listOf(
@@ -1451,14 +1559,15 @@ private fun AddFieldDialog(
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CyberColors.BgCard,
+        containerColor = theme.bgCard,
+        shape = RoundedCornerShape(theme.cardCornerRadius),
         title = {
             Text(
                 text = "NOVO CAMPO EM $cardCode",
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
                 fontSize = 14.sp,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             )
         },
         text = {
@@ -1468,7 +1577,7 @@ private fun AddFieldDialog(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.AccentWine
+                    color = theme.accentPrimary
                 )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1487,9 +1596,9 @@ private fun AddFieldDialog(
                                         expr = preset.defaultExpr
                                     }
                                 },
-                            shape = RoundedCornerShape(4.dp),
-                            color = if (selected) CyberColors.AccentBlack else CyberColors.AccentCreamBadge,
-                            border = BorderStroke(1.dp, if (selected) CyberColors.AccentBlack else CyberColors.AccentWine)
+                            shape = pillShape,
+                            color = if (selected) theme.accentBlack else theme.accentCreamBadge,
+                            border = BorderStroke(1.dp, if (selected) theme.accentBlack else theme.accentPrimary)
                         ) {
                             Box(
                                 modifier = Modifier.padding(horizontal = 9.dp, vertical = 8.dp),
@@ -1500,7 +1609,7 @@ private fun AddFieldDialog(
                                     fontFamily = FontFamily.Monospace,
                                     fontSize = 10.sp,
                                     fontWeight = FontWeight.Bold,
-                                    color = if (selected) CyberColors.InkInverse else CyberColors.AccentWine
+                                    color = if (selected) theme.accentContrast else theme.accentPrimary
                                 )
                             }
                         }
@@ -1513,13 +1622,17 @@ private fun AddFieldDialog(
                         key = it.lowercase().replace(Regex("[^a-z0-9]+"), "_").trim('_')
                     },
                     label = { Text("RÓTULO", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
-                    singleLine = true
+                    singleLine = true,
+                    colors = fieldColors,
+                    shape = pillShape
                 )
                 OutlinedTextField(
                     value = key,
                     onValueChange = { key = it },
                     label = { Text("CHAVE (FÓRMULAS)", fontFamily = FontFamily.Monospace, fontSize = 11.sp) },
-                    singleLine = true
+                    singleLine = true,
+                    colors = fieldColors,
+                    shape = pillShape
                 )
                 FlowRow(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -1532,16 +1645,16 @@ private fun AddFieldDialog(
                                 kind = k
                                 if (k != FieldKind.ROLL) isSkillTemplate = false
                             },
-                            shape = RoundedCornerShape(4.dp),
-                            color = if (selected) CyberColors.AccentWine else CyberColors.BgCardAlt,
-                            border = BorderStroke(1.dp, CyberColors.BorderInk)
+                            shape = pillShape,
+                            color = if (selected) theme.accentPrimary else theme.bgCardAlt,
+                            border = BorderStroke(1.dp, theme.borderColor)
                         ) {
                             Text(
                                 text = title,
                                 fontFamily = FontFamily.Monospace,
                                 fontSize = 10.sp,
                                 fontWeight = FontWeight.Bold,
-                                color = if (selected) CyberColors.InkInverse else CyberColors.InkPrimary,
+                                color = if (selected) theme.accentContrast else theme.textPrimary,
                                 modifier = Modifier.padding(horizontal = 7.dp, vertical = 5.dp)
                             )
                         }
@@ -1558,7 +1671,9 @@ private fun AddFieldDialog(
                                 fontSize = 10.sp
                             )
                         },
-                        singleLine = true
+                        singleLine = true,
+                        colors = fieldColors,
+                        shape = pillShape
                     )
                 }
             }
@@ -1566,14 +1681,18 @@ private fun AddFieldDialog(
         confirmButton = {
             Button(
                 onClick = { onConfirm(label, key, kind, expr, isSkillTemplate) },
-                colors = ButtonDefaults.buttonColors(containerColor = CyberColors.AccentBlack)
+                shape = pillShape,
+                colors = ButtonDefaults.buttonColors(
+                    containerColor = theme.accentBlack,
+                    contentColor = theme.accentContrast
+                )
             ) {
                 Text("CRIAR", fontFamily = FontFamily.Monospace, fontWeight = FontWeight.Bold)
             }
         },
         dismissButton = {
             TextButton(onClick = onDismiss) {
-                Text("CANCELAR", fontFamily = FontFamily.Monospace, color = CyberColors.InkMuted)
+                Text("CANCELAR", fontFamily = FontFamily.Monospace, color = theme.textMuted)
             }
         }
     )
@@ -1599,6 +1718,7 @@ fun BrutalistSectionHeader(
     title: String,
     trailingBadge: String? = null
 ) {
+    val theme = LocalGridTheme.current
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -1613,20 +1733,20 @@ fun BrutalistSectionHeader(
                 fontSize = 11.sp,
                 fontWeight = FontWeight.Black,
                 letterSpacing = 1.sp,
-                color = CyberColors.AccentWine
+                color = theme.accentPrimary
             )
             Text(
                 text = title,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             )
         }
         if (!trailingBadge.isNullOrBlank()) {
             BrutalistTagBadge(
                 text = trailingBadge,
-                containerColor = CyberColors.BgCardAlt,
-                contentColor = CyberColors.InkPrimary
+                containerColor = theme.bgCardAlt,
+                contentColor = theme.textPrimary
             )
         }
     }
@@ -1635,12 +1755,13 @@ fun BrutalistSectionHeader(
 @Composable
 fun BrutalistTagBadge(
     text: String,
-    containerColor: Color = CyberColors.AccentWineSoft,
-    contentColor: Color = CyberColors.AccentWine,
-    borderColor: Color = CyberColors.BorderInk
+    containerColor: Color = LocalGridTheme.current.accentWineSoft,
+    contentColor: Color = LocalGridTheme.current.accentPrimary,
+    borderColor: Color = LocalGridTheme.current.borderColor
 ) {
+    val theme = LocalGridTheme.current
     Surface(
-        shape = RoundedCornerShape(CyberDimens.SmallRadius),
+        shape = RoundedCornerShape(theme.pillCornerRadius),
         color = containerColor,
         border = BorderStroke(1.dp, borderColor)
     ) {
@@ -1666,19 +1787,23 @@ fun ActiveSessionHeroCard(
     onDuplicate: (String) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
         shape = shape,
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
-        shadowElevation = 2.dp
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.borderColor),
+        shadowElevation = 0.dp
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .background(CyberColors.BgHeaderStrip)
+                    .background(theme.bgStrip)
                     .padding(horizontal = 12.dp, vertical = 8.dp),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
@@ -1689,19 +1814,19 @@ fun ActiveSessionHeroCard(
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Black,
                     letterSpacing = 1.sp,
-                    color = CyberColors.AccentWine
+                    color = theme.accentPrimary
                 )
                 BrutalistTagBadge(
                     text = latestSheet?.systemCode ?: "WORKSPACE VAZIO",
-                    containerColor = if (latestSheet != null) CyberColors.AccentBlack else CyberColors.BgCard,
-                    contentColor = if (latestSheet != null) CyberColors.InkInverse else CyberColors.InkMuted
+                    containerColor = if (latestSheet != null) theme.accentBlack else theme.bgCard,
+                    contentColor = if (latestSheet != null) theme.accentContrast else theme.textMuted
                 )
             }
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(CyberDimens.BorderStrong)
-                    .background(CyberColors.BorderInk)
+                    .height(theme.borderStrong)
+                    .background(theme.borderColor)
             )
             Column(
                 modifier = Modifier
@@ -1715,7 +1840,7 @@ fun ActiveSessionHeroCard(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
-                        color = CyberColors.InkPrimary,
+                        color = theme.textPrimary,
                         maxLines = 2,
                         overflow = TextOverflow.Ellipsis
                     )
@@ -1724,13 +1849,13 @@ fun ActiveSessionHeroCard(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 11.sp,
                         fontWeight = FontWeight.Bold,
-                        color = CyberColors.InkSecondary
+                        color = theme.textSecondary
                     )
                     Text(
                         text = "ÚLTIMA EDIÇÃO: ${formatSheetTimestamp(latestSheet.updatedAt, latestSheet.updatedAtMillis)}",
                         fontFamily = FontFamily.Monospace,
                         fontSize = 10.sp,
-                        color = CyberColors.InkMuted
+                        color = theme.textMuted
                     )
                     FlowRow(
                         modifier = Modifier.fillMaxWidth(),
@@ -1739,12 +1864,12 @@ fun ActiveSessionHeroCard(
                     ) {
                         Button(
                             onClick = { onContinue(latestSheet.id) },
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            shape = pillShape,
                             colors = ButtonDefaults.buttonColors(
-                                containerColor = CyberColors.AccentWine,
-                                contentColor = CyberColors.InkInverse
+                                containerColor = theme.accentPrimary,
+                                contentColor = theme.accentContrast
                             ),
-                            border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
+                            border = BorderStroke(theme.borderStrong, theme.borderColor),
                             contentPadding = PaddingValues(horizontal = 16.dp, vertical = 10.dp),
                             modifier = Modifier.defaultMinSize(
                                 minWidth = CyberDimens.MinTouchTarget,
@@ -1761,12 +1886,12 @@ fun ActiveSessionHeroCard(
                         }
                         OutlinedButton(
                             onClick = { onDuplicate(latestSheet.id) },
-                            shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                            shape = pillShape,
                             colors = ButtonDefaults.outlinedButtonColors(
-                                containerColor = CyberColors.BgCardAlt,
-                                contentColor = CyberColors.InkPrimary
+                                containerColor = theme.bgCardAlt,
+                                contentColor = theme.textPrimary
                             ),
-                            border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                            border = BorderStroke(theme.borderWidth, theme.borderColor),
                             contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                             modifier = Modifier.defaultMinSize(
                                 minWidth = CyberDimens.MinTouchTarget,
@@ -1787,12 +1912,12 @@ fun ActiveSessionHeroCard(
                         fontFamily = FontFamily.Monospace,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
-                        color = CyberColors.InkPrimary
+                        color = theme.textPrimary
                     )
                     Text(
                         text = "Escolha um sistema em // NOVO_PERSONAGEM abaixo para criar sua primeira ficha zerada, ou importe um backup .JSON em // PORTABILIDADE_&_REGRAS.",
                         fontSize = 12.sp,
-                        color = CyberColors.InkSecondary
+                        color = theme.textSecondary
                     )
                 }
             }
@@ -1806,17 +1931,19 @@ fun PresetSystemCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.cardCornerRadius)
     Surface(
         modifier = modifier
             .fillMaxWidth()
+            .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor)
             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
             .clip(shape)
             .clickable(role = Role.Button, onClick = onClick),
         shape = shape,
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
-        shadowElevation = 2.dp
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.borderColor),
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -1831,15 +1958,15 @@ fun PresetSystemCard(
             ) {
                 BrutalistTagBadge(
                     text = preset.systemCode,
-                    containerColor = CyberColors.AccentWineSoft,
-                    contentColor = CyberColors.AccentWine
+                    containerColor = theme.accentWineSoft,
+                    contentColor = theme.accentPrimary
                 )
                 Text(
                     text = "+ CRIAR →",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
-                    color = CyberColors.AccentWine
+                    color = theme.accentPrimary
                 )
             }
             Text(
@@ -1847,14 +1974,14 @@ fun PresetSystemCard(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Black,
-                color = CyberColors.InkPrimary,
+                color = theme.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
             Text(
                 text = preset.description,
                 fontSize = 11.sp,
-                color = CyberColors.InkSecondary,
+                color = theme.textSecondary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1863,7 +1990,7 @@ fun PresetSystemCard(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 9.sp,
                 fontWeight = FontWeight.Bold,
-                color = CyberColors.InkMuted
+                color = theme.textMuted
             )
         }
     }
@@ -1874,18 +2001,19 @@ fun DashedCustomSheetCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.cardCornerRadius)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
             .clip(shape)
-            .background(CyberColors.BgCardAlt)
+            .background(theme.bgCardAlt)
             .drawBehind {
-                val strokeWidth = CyberDimens.BorderStrong.toPx()
-                val radiusPx = CyberDimens.CardRadius.toPx()
+                val strokeWidth = theme.borderStrong.toPx()
+                val radiusPx = theme.cardCornerRadius.toPx()
                 drawRoundRect(
-                    color = CyberColors.BorderInk,
+                    color = theme.borderColor,
                     style = Stroke(
                         width = strokeWidth,
                         pathEffect = PathEffect.dashPathEffect(floatArrayOf(14f, 9f), 0f)
@@ -1904,15 +2032,15 @@ fun DashedCustomSheetCard(
             ) {
                 BrutalistTagBadge(
                     text = "CUSTOM // BLANK",
-                    containerColor = CyberColors.BgCard,
-                    contentColor = CyberColors.InkPrimary
+                    containerColor = theme.bgCard,
+                    contentColor = theme.textPrimary
                 )
                 Text(
                     text = "+ CRIAR →",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Black,
-                    color = CyberColors.AccentWine
+                    color = theme.accentPrimary
                 )
             }
             Text(
@@ -1920,12 +2048,12 @@ fun DashedCustomSheetCard(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Black,
-                color = CyberColors.InkPrimary
+                color = theme.textPrimary
             )
             Text(
                 text = "Canvas em branco com criação livre de cards, status e fórmulas.",
                 fontSize = 11.sp,
-                color = CyberColors.InkSecondary
+                color = theme.textSecondary
             )
         }
     }
@@ -1941,13 +2069,17 @@ fun CharacterLibraryCard(
     onDeleteRequest: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
         shape = shape,
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
-        shadowElevation = 1.dp
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.borderColor),
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -1968,8 +2100,8 @@ fun CharacterLibraryCard(
                     if (isLatest) {
                         BrutalistTagBadge(
                             text = "RECENTE",
-                            containerColor = CyberColors.AccentBlack,
-                            contentColor = CyberColors.InkInverse
+                            containerColor = theme.accentBlack,
+                            contentColor = theme.accentContrast
                         )
                     }
                 }
@@ -1977,7 +2109,7 @@ fun CharacterLibraryCard(
                     text = formatSheetTimestamp(sheet.updatedAt, sheet.updatedAtMillis),
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
 
@@ -1986,7 +2118,7 @@ fun CharacterLibraryCard(
                 fontFamily = FontFamily.Monospace,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Black,
-                color = CyberColors.InkPrimary,
+                color = theme.textPrimary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -1995,7 +2127,7 @@ fun CharacterLibraryCard(
                 text = "${sheet.systemName} • ${sheet.cardCount} CARDS • ${sheet.rollCount} ROLAGENS • XP ${sheet.availableXp}",
                 fontFamily = FontFamily.Monospace,
                 fontSize = 10.sp,
-                color = CyberColors.InkSecondary,
+                color = theme.textSecondary,
                 maxLines = 1,
                 overflow = TextOverflow.Ellipsis
             )
@@ -2007,12 +2139,12 @@ fun CharacterLibraryCard(
             ) {
                 Button(
                     onClick = onOpen,
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    shape = pillShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyberColors.AccentBlack,
-                        contentColor = CyberColors.InkInverse
+                        containerColor = theme.accentBlack,
+                        contentColor = theme.accentContrast
                     ),
-                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    border = BorderStroke(theme.borderWidth, theme.borderColor),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 8.dp),
                     modifier = Modifier.defaultMinSize(
                         minWidth = CyberDimens.MinTouchTarget,
@@ -2028,12 +2160,12 @@ fun CharacterLibraryCard(
                 }
                 OutlinedButton(
                     onClick = onDuplicate,
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    shape = pillShape,
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = CyberColors.BgCardAlt,
-                        contentColor = CyberColors.InkPrimary
+                        containerColor = theme.bgCardAlt,
+                        contentColor = theme.textPrimary
                     ),
-                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    border = BorderStroke(theme.borderWidth, theme.borderColor),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier.defaultMinSize(
                         minWidth = CyberDimens.MinTouchTarget,
@@ -2049,12 +2181,12 @@ fun CharacterLibraryCard(
                 }
                 OutlinedButton(
                     onClick = onDeleteRequest,
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    shape = pillShape,
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = CyberColors.AccentDangerSoft,
-                        contentColor = CyberColors.AccentDanger
+                        containerColor = theme.accentDangerSoft,
+                        contentColor = theme.accentDanger
                     ),
-                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.AccentDanger),
+                    border = BorderStroke(theme.borderWidth, theme.accentDanger),
                     contentPadding = PaddingValues(horizontal = 12.dp, vertical = 8.dp),
                     modifier = Modifier.defaultMinSize(
                         minWidth = CyberDimens.MinTouchTarget,
@@ -2087,13 +2219,17 @@ fun PortabilityAndRulesCard(
     onImportJson: () -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val shape = RoundedCornerShape(CyberDimens.CardRadius)
+    val theme = LocalGridTheme.current
+    val shape = RoundedCornerShape(theme.cardCornerRadius)
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     Surface(
-        modifier = modifier.fillMaxWidth(),
+        modifier = modifier
+            .fillMaxWidth()
+            .brutalistShadow(theme.cardElevationShadow, theme.cardCornerRadius, theme.shadowColor),
         shape = shape,
-        color = CyberColors.BgCard,
-        border = BorderStroke(CyberDimens.BorderStrong, CyberColors.BorderInk),
-        shadowElevation = 1.dp
+        color = theme.bgCard,
+        border = BorderStroke(theme.borderStrong, theme.borderColor),
+        shadowElevation = 0.dp
     ) {
         Column(
             modifier = Modifier
@@ -2108,22 +2244,22 @@ fun PortabilityAndRulesCard(
             ) {
                 BrutalistTagBadge(
                     text = "LIVROS PDF INDEXADOS: $indexedBooksCount",
-                    containerColor = if (indexedBooksCount > 0) CyberColors.AccentWineSoft else CyberColors.BgCardAlt,
-                    contentColor = if (indexedBooksCount > 0) CyberColors.AccentWine else CyberColors.InkSecondary
+                    containerColor = if (indexedBooksCount > 0) theme.accentWineSoft else theme.bgCardAlt,
+                    contentColor = if (indexedBooksCount > 0) theme.accentPrimary else theme.textSecondary
                 )
                 Text(
                     text = "$sheetCount ${if (sheetCount == 1) "FICHA" else "FICHAS"} NO ROOM",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
 
             Text(
                 text = "Exporte ou restaure todo o seu grimório em formato .JSON Schema V2 (compatível com a versão Web). Os PDFs indexados ficam disponíveis na aba REGRAS dentro de qualquer ficha.",
                 fontSize = 11.sp,
-                color = CyberColors.InkSecondary
+                color = theme.textSecondary
             )
 
             FlowRow(
@@ -2134,14 +2270,14 @@ fun PortabilityAndRulesCard(
                 Button(
                     onClick = onExportBackup,
                     enabled = !transferBusy && sheetCount > 0,
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    shape = pillShape,
                     colors = ButtonDefaults.buttonColors(
-                        containerColor = CyberColors.AccentBlack,
-                        contentColor = CyberColors.InkInverse,
-                        disabledContainerColor = CyberColors.BgHover,
-                        disabledContentColor = CyberColors.InkMuted
+                        containerColor = theme.accentBlack,
+                        contentColor = theme.accentContrast,
+                        disabledContainerColor = theme.bgHover,
+                        disabledContentColor = theme.textMuted
                     ),
-                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    border = BorderStroke(theme.borderWidth, theme.borderColor),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     modifier = Modifier.defaultMinSize(
                         minWidth = CyberDimens.MinTouchTarget,
@@ -2159,13 +2295,13 @@ fun PortabilityAndRulesCard(
                 OutlinedButton(
                     onClick = onImportJson,
                     enabled = !transferBusy,
-                    shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                    shape = pillShape,
                     colors = ButtonDefaults.outlinedButtonColors(
-                        containerColor = CyberColors.BgCardAlt,
-                        contentColor = CyberColors.InkPrimary,
-                        disabledContentColor = CyberColors.InkMuted
+                        containerColor = theme.bgCardAlt,
+                        contentColor = theme.textPrimary,
+                        disabledContentColor = theme.textMuted
                     ),
-                    border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
+                    border = BorderStroke(theme.borderWidth, theme.borderColor),
                     contentPadding = PaddingValues(horizontal = 14.dp, vertical = 10.dp),
                     modifier = Modifier.defaultMinSize(
                         minWidth = CyberDimens.MinTouchTarget,
@@ -2199,9 +2335,9 @@ fun PortabilityAndRulesCard(
                     onCheckedChange = null,
                     enabled = !transferBusy,
                     colors = CheckboxDefaults.colors(
-                        checkedColor = CyberColors.AccentWine,
-                        uncheckedColor = CyberColors.BorderInk,
-                        checkmarkColor = CyberColors.InkInverse
+                        checkedColor = theme.accentPrimary,
+                        uncheckedColor = theme.borderColor,
+                        checkmarkColor = theme.accentContrast
                     )
                 )
                 Text(
@@ -2209,13 +2345,13 @@ fun PortabilityAndRulesCard(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkPrimary
+                    color = theme.textPrimary
                 )
             }
 
             if (!transferFeedbackMessage.isNullOrBlank()) {
-                val accent = if (transferFeedbackIsError) CyberColors.AccentDanger else CyberColors.AccentWine
-                val soft = if (transferFeedbackIsError) CyberColors.AccentDangerSoft else CyberColors.AccentWineSoft
+                val accent = if (transferFeedbackIsError) theme.accentDanger else theme.accentPrimary
+                val soft = if (transferFeedbackIsError) theme.accentDangerSoft else theme.accentWineSoft
                 Text(
                     text = (if (transferFeedbackIsError) "> ERRO_ " else "> OK_ ") + transferFeedbackMessage,
                     fontFamily = FontFamily.Monospace,
@@ -2225,7 +2361,7 @@ fun PortabilityAndRulesCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(soft, RoundedCornerShape(CyberDimens.SmallRadius))
-                        .border(CyberDimens.BorderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
+                        .border(theme.borderWidth, accent, RoundedCornerShape(CyberDimens.SmallRadius))
                         .padding(horizontal = 8.dp, vertical = 6.dp)
                 )
             }
@@ -2243,10 +2379,13 @@ fun CreateCharacterDialog(
     onConfirm: (String?) -> Unit
 ) {
     var characterName by remember { mutableStateOf("") }
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
 
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CyberColors.BgCard,
+        containerColor = theme.bgCard,
+        shape = RoundedCornerShape(theme.cardCornerRadius),
         title = {
             Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 BrutalistTagBadge(text = systemCode)
@@ -2255,7 +2394,7 @@ fun CreateCharacterDialog(
                     fontFamily = FontFamily.Monospace,
                     fontWeight = FontWeight.Black,
                     fontSize = 14.sp,
-                    color = CyberColors.InkPrimary
+                    color = theme.textPrimary
                 )
             }
         },
@@ -2264,7 +2403,7 @@ fun CreateCharacterDialog(
                 Text(
                     text = description,
                     fontSize = 12.sp,
-                    color = CyberColors.InkSecondary
+                    color = theme.textSecondary
                 )
                 OutlinedTextField(
                     value = characterName,
@@ -2284,19 +2423,15 @@ fun CreateCharacterDialog(
                         )
                     },
                     singleLine = true,
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = CyberColors.AccentWine,
-                        unfocusedBorderColor = CyberColors.BorderInk,
-                        focusedLabelColor = CyberColors.AccentWine,
-                        cursorColor = CyberColors.AccentWine
-                    ),
+                    colors = gridTextFieldColors(theme),
+                    shape = pillShape,
                     modifier = Modifier.fillMaxWidth()
                 )
                 Text(
                     text = "Atributos base, rolamentos e XP iniciam zerados sem apagar suas fichas existentes.",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
         },
@@ -2304,11 +2439,11 @@ fun CreateCharacterDialog(
             Button(
                 onClick = { onConfirm(characterName.trim().ifEmpty { null }) },
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = CyberColors.AccentWine,
-                    contentColor = CyberColors.InkInverse
+                    containerColor = theme.accentPrimary,
+                    contentColor = theme.accentContrast
                 ),
-                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
-                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                border = BorderStroke(theme.borderWidth, theme.borderColor),
+                shape = pillShape,
                 modifier = Modifier.defaultMinSize(
                     minWidth = CyberDimens.MinTouchTarget,
                     minHeight = CyberDimens.MinTouchTarget
@@ -2335,7 +2470,7 @@ fun CreateCharacterDialog(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
         }
@@ -2348,16 +2483,20 @@ fun DeleteCharacterConfirmDialog(
     onDismiss: () -> Unit,
     onConfirm: () -> Unit
 ) {
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+
     AlertDialog(
         onDismissRequest = onDismiss,
-        containerColor = CyberColors.BgCard,
+        containerColor = theme.bgCard,
+        shape = RoundedCornerShape(theme.cardCornerRadius),
         title = {
             Text(
                 text = "EXCLUIR FICHA?",
                 fontFamily = FontFamily.Monospace,
                 fontWeight = FontWeight.Black,
                 fontSize = 15.sp,
-                color = CyberColors.AccentDanger
+                color = theme.accentDanger
             )
         },
         text = {
@@ -2365,13 +2504,13 @@ fun DeleteCharacterConfirmDialog(
                 Text(
                     text = "Deseja remover permanentemente \"${sheet.characterName}\" (${sheet.systemCode}) do armazenamento local?",
                     fontSize = 12.sp,
-                    color = CyberColors.InkPrimary
+                    color = theme.textPrimary
                 )
                 Text(
                     text = "Esta ação apaga apenas esta ficha no Room; outras fichas e livros PDF indexados permanecem intactos.",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 10.sp,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
         },
@@ -2379,11 +2518,11 @@ fun DeleteCharacterConfirmDialog(
             Button(
                 onClick = onConfirm,
                 colors = ButtonDefaults.buttonColors(
-                    containerColor = CyberColors.AccentDanger,
-                    contentColor = CyberColors.InkInverse
+                    containerColor = theme.accentDanger,
+                    contentColor = theme.accentContrast
                 ),
-                border = BorderStroke(CyberDimens.BorderWidth, CyberColors.BorderInk),
-                shape = RoundedCornerShape(CyberDimens.ControlRadius),
+                border = BorderStroke(theme.borderWidth, theme.borderColor),
+                shape = pillShape,
                 modifier = Modifier.defaultMinSize(
                     minWidth = CyberDimens.MinTouchTarget,
                     minHeight = CyberDimens.MinTouchTarget
@@ -2410,7 +2549,7 @@ fun DeleteCharacterConfirmDialog(
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     fontWeight = FontWeight.Bold,
-                    color = CyberColors.InkMuted
+                    color = theme.textMuted
                 )
             }
         }

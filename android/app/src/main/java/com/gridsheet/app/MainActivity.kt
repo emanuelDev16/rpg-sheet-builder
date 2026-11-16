@@ -4,7 +4,11 @@ import android.os.Bundle
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
+import androidx.lifecycle.viewmodel.compose.viewModel
 import com.gridsheet.app.ui.GridSheetApp
+import com.gridsheet.app.ui.SheetViewModel
 import com.gridsheet.app.ui.theme.GridSheetTheme
 
 class MainActivity : ComponentActivity() {
@@ -12,8 +16,10 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
         setContent {
-            GridSheetTheme {
-                GridSheetApp()
+            val vm: SheetViewModel = viewModel()
+            val themeMode by vm.themeMode.collectAsState()
+            GridSheetTheme(themeMode = themeMode) {
+                GridSheetApp(vm = vm)
             }
         }
     }
