@@ -18,6 +18,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
@@ -84,7 +85,13 @@ data class GridThemeTokens(
     val accentDanger: Color,
     val accentDangerSoft: Color,
     val gridLineColor: Color,
-    val gridCrossColor: Color
+    val gridCrossColor: Color,
+    val titleFontFamily: FontFamily,
+    val bodyFontFamily: FontFamily,
+    val cardPadding: Dp,
+    val cardHeaderPadding: Dp,
+    val gridGap: Dp,
+    val fieldGap: Dp
 ) {
     val isDark: Boolean get() = mode == GridThemeMode.DARK
 }
@@ -117,7 +124,13 @@ val LightGridThemeTokens = GridThemeTokens(
     accentDanger = Color(0xFFB91C1C),
     accentDangerSoft = Color(0xFFFEE2E2),
     gridLineColor = Color(0xFF0B0B0B).copy(alpha = 0.075f),
-    gridCrossColor = Color(0xFF5B0F18).copy(alpha = 0.35f)
+    gridCrossColor = Color(0xFF5B0F18).copy(alpha = 0.35f),
+    titleFontFamily = FontFamily.SansSerif,
+    bodyFontFamily = FontFamily.SansSerif,
+    cardPadding = 12.dp,
+    cardHeaderPadding = 10.dp,
+    gridGap = 12.dp,
+    fieldGap = 8.dp
 )
 
 val DarkGridThemeTokens = GridThemeTokens(
@@ -148,7 +161,13 @@ val DarkGridThemeTokens = GridThemeTokens(
     accentDanger = Color(0xFFF87171),
     accentDangerSoft = Color(0xFF3B1417),
     gridLineColor = Color(0xFFEDE6DC).copy(alpha = 0.065f),
-    gridCrossColor = Color(0xFFD94858).copy(alpha = 0.35f)
+    gridCrossColor = Color(0xFFD94858).copy(alpha = 0.35f),
+    titleFontFamily = FontFamily.SansSerif,
+    bodyFontFamily = FontFamily.SansSerif,
+    cardPadding = 12.dp,
+    cardHeaderPadding = 10.dp,
+    gridGap = 12.dp,
+    fieldGap = 8.dp
 )
 
 val EinkGridThemeTokens = GridThemeTokens(
@@ -179,7 +198,13 @@ val EinkGridThemeTokens = GridThemeTokens(
     accentDanger = Color(0xFF1A1A1A),
     accentDangerSoft = Color(0xFFDCDCDC),
     gridLineColor = Color(0xFF1A1A1A).copy(alpha = 0.085f),
-    gridCrossColor = Color(0xFF1A1A1A).copy(alpha = 0.28f)
+    gridCrossColor = Color(0xFF1A1A1A).copy(alpha = 0.28f),
+    titleFontFamily = FontFamily.Serif,
+    bodyFontFamily = FontFamily.Serif,
+    cardPadding = 20.dp,
+    cardHeaderPadding = 14.dp,
+    gridGap = 18.dp,
+    fieldGap = 12.dp
 )
 
 fun themeTokensFor(mode: GridThemeMode): GridThemeTokens = when (mode) {
@@ -234,15 +259,15 @@ private object NoIndicationNodeFactory : IndicationNodeFactory {
     override fun hashCode(): Int = System.identityHashCode(this)
 }
 
-private val CyberTypography = Typography(
+private fun typographyFor(tokens: GridThemeTokens) = Typography(
     titleLarge = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = tokens.titleFontFamily,
         fontWeight = FontWeight.Black,
         fontSize = 18.sp,
         letterSpacing = 0.5.sp
     ),
     titleMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = tokens.titleFontFamily,
         fontWeight = FontWeight.ExtraBold,
         fontSize = 15.sp,
         letterSpacing = 0.4.sp
@@ -254,7 +279,7 @@ private val CyberTypography = Typography(
         letterSpacing = 0.6.sp
     ),
     bodyMedium = TextStyle(
-        fontFamily = FontFamily.SansSerif,
+        fontFamily = tokens.bodyFontFamily,
         fontSize = 13.sp
     ),
     bodySmall = TextStyle(
@@ -335,10 +360,12 @@ fun GridSheetTheme(
         }
     }
 
+    val typography = remember(tokens.mode) { typographyFor(tokens) }
+
     CompositionLocalProvider(LocalGridTheme provides tokens) {
         MaterialTheme(
             colorScheme = colorScheme,
-            typography = CyberTypography
+            typography = typography
         ) {
             if (tokens.isEink) {
                 CompositionLocalProvider(LocalIndication provides NoIndicationNodeFactory) {

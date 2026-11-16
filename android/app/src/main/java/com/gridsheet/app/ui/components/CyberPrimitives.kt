@@ -191,7 +191,7 @@ fun BentoCardView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(theme.bgStrip)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -205,6 +205,7 @@ fun BentoCardView(
                     )
                     Text(
                         text = card.title,
+                        fontFamily = theme.titleFontFamily,
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
                         color = theme.textPrimary
@@ -254,8 +255,8 @@ fun BentoCardView(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(theme.cardPadding),
+                verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
             ) {
                 if (card.fields.isEmpty()) {
                     if (mode == AppMode.EDICAO) {
@@ -290,8 +291,8 @@ fun BentoCardView(
                     } else {
                         Text(
                             text = "Bloco vazio.",
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 11.sp,
+                            fontFamily = theme.bodyFontFamily,
+                            fontSize = 12.sp,
                             color = theme.textMuted
                         )
                     }
@@ -396,7 +397,7 @@ fun CustomCardBuilderView(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(theme.bgStrip)
-                    .padding(horizontal = 14.dp, vertical = 10.dp),
+                    .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.SpaceBetween
             ) {
@@ -410,6 +411,7 @@ fun CustomCardBuilderView(
                     )
                     Text(
                         text = if (isEmptySheet) "CRIAR FICHA DO ZERO" else "ADICIONAR NOVO BLOCO",
+                        fontFamily = theme.titleFontFamily,
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
                         color = theme.textPrimary
@@ -432,14 +434,14 @@ fun CustomCardBuilderView(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(theme.cardPadding),
+                verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
             ) {
                 if (isEmptySheet) {
                     Text(
                         text = "Nenhum campo pré-definido foi carregado. Crie seu primeiro bloco (ex: Atributos, Recursos, Perícias) e depois adicione cada campo dentro dele.",
-                        fontFamily = FontFamily.Monospace,
-                        fontSize = 11.sp,
+                        fontFamily = theme.bodyFontFamily,
+                        fontSize = 12.sp,
                         color = theme.textSecondary
                     )
                 }
@@ -521,7 +523,7 @@ private fun FieldRenderer(
     val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     val fieldColors = gridTextFieldColors(theme)
 
-    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(theme.fieldGap)) {
         if (mode == AppMode.EDICAO) {
             Row(
                 modifier = Modifier
@@ -766,17 +768,19 @@ private fun FieldRenderer(
                 var textState by remember(field.id, displayNum) { mutableStateOf(displayNum) }
 
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
                     Text(
                         text = field.label,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = theme.bodyFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 12.sp,
+                        fontSize = if (theme.isEink) 14.sp else 12.sp,
                         color = theme.textPrimary,
-                        modifier = Modifier.weight(1f)
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
                     )
                     if (field.rollDifficulty != null) {
                         val diff = field.rollDifficulty.coerceIn(2, 10)
@@ -824,9 +828,10 @@ private fun FieldRenderer(
                         ),
                         modifier = Modifier
                             .width(86.dp)
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                             .background(theme.bgInput, pillShape)
                             .border(theme.borderWidth, theme.borderColor, pillShape)
-                            .padding(horizontal = 10.dp, vertical = 7.dp)
+                            .padding(horizontal = 10.dp, vertical = 12.dp)
                     )
                 }
             }
@@ -836,9 +841,9 @@ private fun FieldRenderer(
                 Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
                     Text(
                         text = field.label,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = theme.bodyFontFamily,
                         fontWeight = FontWeight.Bold,
-                        fontSize = 11.sp,
+                        fontSize = if (theme.isEink) 13.sp else 11.sp,
                         color = theme.textSecondary
                     )
                     BasicTextField(
@@ -849,15 +854,16 @@ private fun FieldRenderer(
                         },
                         cursorBrush = SolidColor(theme.accentPrimary),
                         textStyle = TextStyle(
-                            fontFamily = FontFamily.Monospace,
-                            fontSize = 13.sp,
+                            fontFamily = theme.bodyFontFamily,
+                            fontSize = if (theme.isEink) 14.sp else 13.sp,
                             color = theme.textPrimary
                         ),
                         modifier = Modifier
                             .fillMaxWidth()
-                            .background(theme.bgInput, pillShape)
-                            .border(theme.borderWidth, theme.borderColor, pillShape)
-                            .padding(horizontal = 10.dp, vertical = 8.dp)
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                            .background(theme.bgInput, cardShape)
+                            .border(theme.borderWidth, theme.borderColor, cardShape)
+                            .padding(horizontal = 12.dp, vertical = 12.dp)
                     )
                 }
             }
@@ -876,9 +882,9 @@ private fun FieldRenderer(
                     Column(modifier = Modifier.weight(1f).padding(end = 10.dp)) {
                         Text(
                             text = field.label,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = theme.bodyFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            fontSize = if (theme.isEink) 14.sp else 12.sp,
                             color = theme.textPrimary
                         )
                         Text(
@@ -932,8 +938,8 @@ private fun FieldRenderer(
                             .fillMaxWidth()
                             .background(theme.bgCardAlt, cardShape)
                             .border(theme.borderWidth, theme.borderColor, cardShape)
-                            .padding(10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                            .padding(theme.cardPadding),
+                        verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -947,9 +953,9 @@ private fun FieldRenderer(
                             ) {
                                 Text(
                                     text = field.label,
-                                    fontFamily = FontFamily.Monospace,
+                                    fontFamily = theme.bodyFontFamily,
                                     fontWeight = FontWeight.Bold,
-                                    fontSize = 12.sp,
+                                    fontSize = if (theme.isEink) 14.sp else 12.sp,
                                     color = theme.textPrimary
                                 )
                                 Box(
@@ -1102,8 +1108,8 @@ private fun FieldRenderer(
                         .fillMaxWidth()
                         .background(theme.bgCardAlt, cardShape)
                         .border(if (theme.isEink) theme.borderWidth else 1.dp, if (theme.isEink) theme.borderColor else theme.borderSubtle, cardShape)
-                        .padding(10.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                        .padding(theme.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -1112,9 +1118,9 @@ private fun FieldRenderer(
                     ) {
                         Text(
                             text = field.label,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = theme.bodyFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 12.sp,
+                            fontSize = if (theme.isEink) 14.sp else 12.sp,
                             color = theme.textPrimary,
                             modifier = Modifier.weight(1f)
                         )
@@ -1185,11 +1191,12 @@ private fun FieldRenderer(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
+                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                         .clip(pillShape)
                         .background(if (inverted) theme.accentPrimary else theme.bgInput)
                         .border(theme.borderWidth, theme.borderColor, pillShape)
                         .clickable { onUpdateBoolean(field.id, !checked) }
-                        .padding(horizontal = 10.dp, vertical = 9.dp),
+                        .padding(horizontal = theme.cardPadding, vertical = 10.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -1228,16 +1235,16 @@ private fun FieldRenderer(
                         Column {
                             Text(
                                 text = field.label,
-                                fontFamily = FontFamily.Monospace,
+                                fontFamily = theme.bodyFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
+                                fontSize = if (theme.isEink) 14.sp else 12.sp,
                                 color = if (inverted) theme.accentContrast else theme.textPrimary
                             )
                             field.hint?.let {
                                 Text(
                                     text = it,
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 10.sp,
+                                    fontFamily = theme.bodyFontFamily,
+                                    fontSize = 11.sp,
                                     color = if (inverted) theme.accentContrast else theme.textMuted
                                 )
                             }
@@ -1313,19 +1320,19 @@ private fun FieldRenderer(
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             Text(
-                                text = "$label · $preview",
-                                fontFamily = FontFamily.Monospace,
+                                text = label,
+                                fontFamily = theme.bodyFontFamily,
                                 fontWeight = FontWeight.Bold,
-                                fontSize = 12.sp,
+                                fontSize = if (theme.isEink) 13.sp else 12.sp,
                                 maxLines = 1,
                                 overflow = TextOverflow.Ellipsis,
-                                modifier = Modifier.weight(1f)
+                                modifier = Modifier.weight(1f).padding(end = 6.dp)
                             )
                             Text(
-                                text = "↗",
+                                text = "$preview ↗",
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Black,
-                                fontSize = 14.sp
+                                fontSize = 12.sp
                             )
                         }
                     }
@@ -1346,14 +1353,14 @@ private fun FieldRenderer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(theme.bgStrip)
-                            .padding(horizontal = 10.dp, vertical = 7.dp),
+                            .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
                             text = field.label,
-                            fontFamily = FontFamily.Monospace,
+                            fontFamily = theme.bodyFontFamily,
                             fontWeight = FontWeight.Bold,
-                            fontSize = 11.sp,
+                            fontSize = if (theme.isEink) 13.sp else 11.sp,
                             color = theme.textPrimary
                         )
                         if (field.col2Type == "number") {
@@ -1371,7 +1378,7 @@ private fun FieldRenderer(
                         modifier = Modifier
                             .fillMaxWidth()
                             .background(theme.bgCardAlt)
-                            .padding(horizontal = 10.dp, vertical = 5.dp)
+                            .padding(horizontal = theme.cardPadding, vertical = 6.dp)
                     ) {
                         Text(
                             text = cols.getOrElse(0) { "ITEM" },
@@ -1405,7 +1412,7 @@ private fun FieldRenderer(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .background(theme.bgCard)
-                                .padding(horizontal = 10.dp, vertical = 6.dp),
+                                .padding(horizontal = theme.cardPadding, vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
                             BasicTextField(
@@ -1417,8 +1424,8 @@ private fun FieldRenderer(
                                 singleLine = true,
                                 cursorBrush = SolidColor(theme.accentPrimary),
                                 textStyle = TextStyle(
-                                    fontFamily = FontFamily.Monospace,
-                                    fontSize = 12.sp,
+                                    fontFamily = theme.bodyFontFamily,
+                                    fontSize = if (theme.isEink) 13.sp else 12.sp,
                                     color = theme.textPrimary
                                 ),
                                 modifier = Modifier.weight(1.7f).padding(end = 6.dp)
@@ -1468,9 +1475,10 @@ private fun FieldRenderer(
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                             .background(theme.bgCardAlt)
                             .clickable { onAddRow(field.id) }
-                            .padding(vertical = 8.dp),
+                            .padding(vertical = 10.dp),
                         horizontalArrangement = Arrangement.Center,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
@@ -1737,6 +1745,7 @@ fun BrutalistSectionHeader(
             )
             Text(
                 text = title,
+                fontFamily = theme.titleFontFamily,
                 fontSize = 14.sp,
                 fontWeight = FontWeight.Bold,
                 color = theme.textPrimary
@@ -1804,7 +1813,7 @@ fun ActiveSessionHeroCard(
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(theme.bgStrip)
-                    .padding(horizontal = 12.dp, vertical = 8.dp),
+                    .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
@@ -1831,13 +1840,13 @@ fun ActiveSessionHeroCard(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(14.dp),
-                verticalArrangement = Arrangement.spacedBy(10.dp)
+                    .padding(theme.cardPadding),
+                verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
             ) {
                 if (latestSheet != null) {
                     Text(
                         text = latestSheet.characterName,
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = theme.titleFontFamily,
                         fontSize = 20.sp,
                         fontWeight = FontWeight.Black,
                         color = theme.textPrimary,
@@ -1909,13 +1918,14 @@ fun ActiveSessionHeroCard(
                 } else {
                     Text(
                         text = "NENHUMA FICHA SALVA NO DISPOSITIVO",
-                        fontFamily = FontFamily.Monospace,
+                        fontFamily = theme.titleFontFamily,
                         fontSize = 14.sp,
                         fontWeight = FontWeight.Black,
                         color = theme.textPrimary
                     )
                     Text(
                         text = "Escolha um sistema em // NOVO_PERSONAGEM abaixo para criar sua primeira ficha zerada, ou importe um backup .JSON em // PORTABILIDADE_&_REGRAS.",
+                        fontFamily = theme.bodyFontFamily,
                         fontSize = 12.sp,
                         color = theme.textSecondary
                     )
@@ -1948,8 +1958,8 @@ fun PresetSystemCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(theme.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -1971,7 +1981,7 @@ fun PresetSystemCard(
             }
             Text(
                 text = preset.shortLabel,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = theme.titleFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Black,
                 color = theme.textPrimary,
@@ -1980,7 +1990,8 @@ fun PresetSystemCard(
             )
             Text(
                 text = preset.description,
-                fontSize = 11.sp,
+                fontFamily = theme.bodyFontFamily,
+                fontSize = 12.sp,
                 color = theme.textSecondary,
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis
@@ -2022,9 +2033,9 @@ fun DashedCustomSheetCard(
                 )
             }
             .clickable(role = Role.Button, onClick = onClick)
-            .padding(14.dp)
+            .padding(theme.cardPadding)
     ) {
-        Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+        Column(verticalArrangement = Arrangement.spacedBy(theme.fieldGap)) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
@@ -2045,14 +2056,15 @@ fun DashedCustomSheetCard(
             }
             Text(
                 text = "FICHA PERSONALIZADA",
-                fontFamily = FontFamily.Monospace,
+                fontFamily = theme.titleFontFamily,
                 fontSize = 15.sp,
                 fontWeight = FontWeight.Black,
                 color = theme.textPrimary
             )
             Text(
                 text = "Canvas em branco com criação livre de cards, status e fórmulas.",
-                fontSize = 11.sp,
+                fontFamily = theme.bodyFontFamily,
+                fontSize = 12.sp,
                 color = theme.textSecondary
             )
         }
@@ -2084,8 +2096,8 @@ fun CharacterLibraryCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(12.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+                .padding(theme.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2115,7 +2127,7 @@ fun CharacterLibraryCard(
 
             Text(
                 text = sheet.characterName,
-                fontFamily = FontFamily.Monospace,
+                fontFamily = theme.titleFontFamily,
                 fontSize = 16.sp,
                 fontWeight = FontWeight.Black,
                 color = theme.textPrimary,
@@ -2234,8 +2246,8 @@ fun PortabilityAndRulesCard(
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(14.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+                .padding(theme.cardPadding),
+            verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
         ) {
             Row(
                 modifier = Modifier.fillMaxWidth(),
@@ -2258,7 +2270,8 @@ fun PortabilityAndRulesCard(
 
             Text(
                 text = "Exporte ou restaure todo o seu grimório em formato .JSON Schema V2 (compatível com a versão Web). Os PDFs indexados ficam disponíveis na aba REGRAS dentro de qualquer ficha.",
-                fontSize = 11.sp,
+                fontFamily = theme.bodyFontFamily,
+                fontSize = 12.sp,
                 color = theme.textSecondary
             )
 
@@ -2391,7 +2404,7 @@ fun CreateCharacterDialog(
                 BrutalistTagBadge(text = systemCode)
                 Text(
                     text = if (isCustomBlank) "NOVA FICHA PERSONALIZADA" else "NOVO PERSONAGEM · $systemLabel",
-                    fontFamily = FontFamily.Monospace,
+                    fontFamily = theme.titleFontFamily,
                     fontWeight = FontWeight.Black,
                     fontSize = 14.sp,
                     color = theme.textPrimary
@@ -2399,9 +2412,10 @@ fun CreateCharacterDialog(
             }
         },
         text = {
-            Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Column(verticalArrangement = Arrangement.spacedBy(theme.fieldGap)) {
                 Text(
                     text = description,
+                    fontFamily = theme.bodyFontFamily,
                     fontSize = 12.sp,
                     color = theme.textSecondary
                 )

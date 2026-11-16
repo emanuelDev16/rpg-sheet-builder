@@ -107,7 +107,7 @@ fun XpUpgradeWorkspace(
         cursorColor = theme.accentPrimary
     )
 
-    Column(verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    Column(verticalArrangement = Arrangement.spacedBy(theme.gridGap)) {
         // Card 1: XP Monitor
         Surface(
             modifier = Modifier
@@ -123,7 +123,7 @@ fun XpUpgradeWorkspace(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(theme.bgStrip)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -137,6 +137,7 @@ fun XpUpgradeWorkspace(
                         )
                         Text(
                             text = "EXPERIENCE MONITOR",
+                            fontFamily = theme.titleFontFamily,
                             fontWeight = FontWeight.Black,
                             fontSize = 15.sp,
                             color = theme.textPrimary
@@ -163,8 +164,8 @@ fun XpUpgradeWorkspace(
                 Box(Modifier.fillMaxWidth().height(theme.borderWidth).background(theme.borderColor))
 
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                    modifier = Modifier.padding(theme.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -426,13 +427,13 @@ fun XpUpgradeWorkspace(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(theme.bgStrip)
-                        .padding(horizontal = 14.dp, vertical = 10.dp),
+                        .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
                     horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     Column {
                         Text("//TRAIT_UPGRADES", fontFamily = FontFamily.Monospace, fontSize = 10.sp, fontWeight = FontWeight.Bold, color = theme.accentPrimary)
-                        Text("XP EVOLUTION CATALOG", fontWeight = FontWeight.Black, fontSize = 15.sp, color = theme.textPrimary)
+                        Text("XP EVOLUTION CATALOG", fontFamily = theme.titleFontFamily, fontWeight = FontWeight.Black, fontSize = 15.sp, color = theme.textPrimary)
                     }
                     Text(
                         text = "$possibleCount / ${filteredTraits.size} COMPRÁVEIS",
@@ -445,8 +446,8 @@ fun XpUpgradeWorkspace(
                 Box(Modifier.fillMaxWidth().height(theme.borderWidth).background(theme.borderColor))
 
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(theme.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                 ) {
                     Text(
                         text = "REGRAS: ${rulesSummary.joinToString(" · ")} · ORÇAMENTO: $availableXp XP",
@@ -477,18 +478,18 @@ fun XpUpgradeWorkspace(
                                 .fillMaxWidth()
                                 .background(theme.bgInput, cardShape)
                                 .border(theme.borderWidth, theme.borderSubtle, cardShape)
-                                .padding(14.dp)
+                                .padding(theme.cardPadding)
                         ) {
                             Text(
                                 text = "Nenhum campo elegível encontrado nesta categoria na ficha atual.",
-                                fontFamily = FontFamily.Monospace,
-                                fontSize = 11.sp,
+                                fontFamily = theme.bodyFontFamily,
+                                fontSize = 12.sp,
                                 color = theme.textSecondary
                             )
                         }
                     } else {
                         val grouped = filteredTraits.groupBy { it.category }
-                        Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Column(verticalArrangement = Arrangement.spacedBy(theme.fieldGap)) {
                             grouped.forEach { (category, items) ->
                                 val catTitle = when (category) {
                                     XpUpgradeCategory.ATTRIBUTE -> if (isWod) "ATRIBUTOS" else "ABILITIES"
@@ -507,14 +508,15 @@ fun XpUpgradeWorkspace(
                                     Column(
                                         modifier = Modifier
                                             .fillMaxWidth()
+                                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
                                             .background(theme.bgCardAlt, cardShape)
                                             .border(
                                                 theme.borderWidth,
                                                 if (trait.isPossible) theme.borderColor else theme.borderSubtle,
                                                 cardShape
                                             )
-                                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                            .padding(horizontal = theme.cardPadding, vertical = theme.fieldGap),
+                                        verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                                     ) {
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -540,7 +542,7 @@ fun XpUpgradeWorkspace(
                                                     } else {
                                                         "${trait.label}  ${trait.currentValue} → ${trait.nextValue}"
                                                     },
-                                                    fontFamily = FontFamily.Monospace,
+                                                    fontFamily = theme.bodyFontFamily,
                                                     fontSize = 13.sp,
                                                     fontWeight = FontWeight.Black,
                                                     color = if (trait.isBlockedByRule) theme.textMuted else theme.textPrimary
@@ -666,7 +668,7 @@ fun XpUpgradeWorkspace(
                     modifier = Modifier
                         .fillMaxWidth()
                         .background(theme.bgStrip)
-                        .padding(horizontal = 14.dp, vertical = 10.dp)
+                        .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding)
                 ) {
                     Text(
                         text = "// ANTECEDENTES_&_VANTAGENS",
@@ -677,6 +679,7 @@ fun XpUpgradeWorkspace(
                     )
                     Text(
                         text = "ESPECIALIZAÇÕES & VANTAGENS",
+                        fontFamily = theme.titleFontFamily,
                         fontWeight = FontWeight.Black,
                         fontSize = 15.sp,
                         color = theme.textPrimary
@@ -685,8 +688,8 @@ fun XpUpgradeWorkspace(
                 Box(Modifier.fillMaxWidth().height(theme.borderWidth).background(theme.borderColor))
 
                 Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(10.dp)
+                    modifier = Modifier.padding(theme.cardPadding),
+                    verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),

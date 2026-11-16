@@ -36,6 +36,7 @@ import com.gridsheet.app.data.local.SavedSheetEntity
 import com.gridsheet.app.data.local.SheetEntity
 import com.gridsheet.app.data.local.WorkspaceMetadataEntity
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.gridsheet.app.ui.ActiveScreen
 import com.gridsheet.app.ui.SheetStateController
@@ -1358,6 +1359,12 @@ class CoreEngineTest {
         assertEquals(Color(0xFF5B0F18), light.accentPrimary)
         assertEquals(4.dp, light.cardCornerRadius)
         assertEquals(4.dp, light.cardElevationShadow)
+        assertEquals(FontFamily.SansSerif, light.titleFontFamily)
+        assertEquals(FontFamily.SansSerif, light.bodyFontFamily)
+        assertEquals(12.dp, light.cardPadding)
+        assertEquals(10.dp, light.cardHeaderPadding)
+        assertEquals(12.dp, light.gridGap)
+        assertEquals(8.dp, light.fieldGap)
         assertFalse(light.isEink)
 
         val dark = themeTokensFor(GridThemeMode.DARK)
@@ -1368,6 +1375,12 @@ class CoreEngineTest {
         assertEquals(Color(0xFFD94858), dark.accentPrimary)
         assertEquals(4.dp, dark.cardCornerRadius)
         assertEquals(4.dp, dark.cardElevationShadow)
+        assertEquals(FontFamily.SansSerif, dark.titleFontFamily)
+        assertEquals(FontFamily.SansSerif, dark.bodyFontFamily)
+        assertEquals(12.dp, dark.cardPadding)
+        assertEquals(10.dp, dark.cardHeaderPadding)
+        assertEquals(12.dp, dark.gridGap)
+        assertEquals(8.dp, dark.fieldGap)
         assertFalse(dark.isEink)
 
         val eink = themeTokensFor(GridThemeMode.EINK)
@@ -1381,6 +1394,12 @@ class CoreEngineTest {
         assertEquals(50.dp, eink.pillCornerRadius)
         assertEquals(0.dp, eink.cardElevationShadow)
         assertEquals(2.dp, eink.borderWidth)
+        assertEquals(FontFamily.Serif, eink.titleFontFamily)
+        assertEquals(FontFamily.Serif, eink.bodyFontFamily)
+        assertEquals(20.dp, eink.cardPadding)
+        assertEquals(14.dp, eink.cardHeaderPadding)
+        assertEquals(18.dp, eink.gridGap)
+        assertEquals(12.dp, eink.fieldGap)
         assertTrue(eink.isEink)
 
         // 2. Storage key normalization

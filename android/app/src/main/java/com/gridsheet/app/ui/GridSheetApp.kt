@@ -212,8 +212,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                     val isWideHeader = maxWidth >= 600.dp
                     val pillShape = RoundedCornerShape(theme.pillCornerRadius)
                     Column(
-                        modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        modifier = Modifier.padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
+                        verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -322,8 +322,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 12.dp, vertical = 10.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                    .padding(horizontal = theme.gridGap, vertical = theme.fieldGap),
+                verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
             ) {
                 val (tab1Label, tab2Label) = when (activeSystemId) {
                     SystemId.WOD -> "/01 ATTRIBUTES & COMBAT" to "/02 DISCIPLINES & NOTES"
@@ -344,8 +344,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
 
                 Text(
                     text = sheet.characterName,
-                    fontFamily = FontFamily.Monospace,
-                    fontSize = 11.sp,
+                    fontFamily = theme.titleFontFamily,
+                    fontSize = 13.sp,
                     fontWeight = FontWeight.Bold,
                     color = theme.textSecondary
                 )
@@ -356,8 +356,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth(),
-                contentPadding = PaddingValues(start = 12.dp, end = 12.dp, bottom = 18.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                contentPadding = PaddingValues(start = theme.gridGap, end = theme.gridGap, bottom = theme.gridGap + 6.dp),
+                verticalArrangement = Arrangement.spacedBy(theme.gridGap)
             ) {
                 if (activeTab == TabId.XP) {
                     item {
@@ -691,9 +691,9 @@ private fun HomeScreen(
         LazyVerticalGrid(
             columns = GridCells.Fixed(columns),
             modifier = Modifier.fillMaxSize(),
-            contentPadding = PaddingValues(14.dp),
-            horizontalArrangement = Arrangement.spacedBy(12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
+            contentPadding = PaddingValues(theme.gridGap),
+            horizontalArrangement = Arrangement.spacedBy(theme.gridGap),
+            verticalArrangement = Arrangement.spacedBy(theme.gridGap)
         ) {
             item(span = { GridItemSpan(columns) }, key = "home_masthead") {
                 Surface(
@@ -708,8 +708,8 @@ private fun HomeScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 14.dp, vertical = 12.dp),
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                            .padding(horizontal = theme.cardPadding, vertical = theme.cardHeaderPadding),
+                        verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -737,7 +737,7 @@ private fun HomeScreen(
                                 Column {
                                     Text(
                                         text = "GRIDSHEET // TERMINAL",
-                                        fontFamily = FontFamily.Monospace,
+                                        fontFamily = theme.titleFontFamily,
                                         fontWeight = FontWeight.Black,
                                         fontSize = 15.sp,
                                         color = theme.textPrimary
@@ -830,7 +830,7 @@ private fun HomeScreen(
             }
 
             item(span = { GridItemSpan(columns) }, key = "home_library_filters") {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                Column(verticalArrangement = Arrangement.spacedBy(theme.fieldGap)) {
                     OutlinedTextField(
                         value = uiState.searchQuery,
                         onValueChange = onSearchQueryChange,
@@ -918,8 +918,8 @@ private fun HomeScreen(
                         border = BorderStroke(theme.borderWidth, theme.borderColor)
                     ) {
                         Column(
-                            modifier = Modifier.padding(14.dp),
-                            verticalArrangement = Arrangement.spacedBy(6.dp)
+                            modifier = Modifier.padding(theme.cardPadding),
+                            verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
                         ) {
                             Text(
                                 text = if (uiState.sheets.isEmpty()) {
@@ -938,6 +938,7 @@ private fun HomeScreen(
                                 } else {
                                     "Nenhuma ficha corresponde à busca \"${uiState.searchQuery}\" e sistema selecionado."
                                 },
+                                fontFamily = theme.bodyFontFamily,
                                 fontSize = 12.sp,
                                 color = theme.textSecondary
                             )
