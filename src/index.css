@@ -42,6 +42,14 @@
   --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', monospace;
   --font-ui: 'DM Sans', system-ui, -apple-system, sans-serif;
+  --font-body: var(--font-ui);
+  --line-height-body: 1.5;
+  --letter-spacing-heading: normal;
+
+  --grid-gap: 16px;
+  --card-padding: 16px;
+  --card-header-padding: 10px 14px;
+  --field-gap: 12px;
 
   --ink-primary: var(--text-primary);
   --ink-secondary: var(--text-secondary);
@@ -167,6 +175,17 @@
   --accent-danger-soft: #DCDCDC;
   --accent-danger-contrast: #F8F8F8;
 
+  --font-display: 'Literata', Georgia, serif;
+  --font-body: 'Literata', Georgia, serif;
+  --font-mono: 'JetBrains Mono', monospace;
+  --line-height-body: 1.6;
+  --letter-spacing-heading: 0.01em;
+
+  --grid-gap: 20px;
+  --card-padding: 20px;
+  --card-header-padding: 12px 18px;
+  --field-gap: 12px;
+
   --overlay-backdrop: rgba(26, 26, 26, 0.45);
   --focus-ring-shadow: 0 0 0 2px rgba(26, 26, 26, 0.28);
   --shadow-modal: none;
@@ -188,7 +207,7 @@ body,
 }
 
 body {
-  font-family: var(--font-ui);
+  font-family: var(--font-body);
   color: var(--text-primary);
   background-color: var(--bg-base);
   -webkit-font-smoothing: antialiased;
@@ -234,7 +253,7 @@ body {
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 10px 14px;
+  padding: var(--card-header-padding);
   background-color: var(--bg-strip);
   border-bottom: var(--border-width) solid var(--border-color);
 }
@@ -719,4 +738,128 @@ select:focus-visible,
   .bento-span-2 {
     grid-column: span 2 / span 2;
   }
+}
+
+/* ============================================================================
+   E-INK PAPER DISPLAY — TIPOGRAFIA LITERATA & RESPIRO AMPLIADO
+   Aplicado estritamente sob [data-theme="eink"] sem alterar light ou dark
+   ============================================================================ */
+@media (max-width: 768px) {
+  [data-theme="eink"] {
+    --card-padding: 16px;
+  }
+}
+
+[data-theme="eink"] body {
+  font-family: var(--font-body);
+  line-height: var(--line-height-body);
+}
+
+[data-theme="eink"] .font-display,
+[data-theme="eink"] h2,
+[data-theme="eink"] h3 {
+  font-family: var(--font-display);
+  letter-spacing: var(--letter-spacing-heading);
+  font-weight: 700;
+}
+
+[data-theme="eink"] .bento-print-grid {
+  gap: var(--grid-gap);
+}
+
+[data-theme="eink"] .bento-card {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+  font-family: var(--font-body);
+  line-height: var(--line-height-body);
+}
+
+[data-theme="eink"] .bento-card-header {
+  box-sizing: border-box;
+  padding: var(--card-header-padding);
+}
+
+[data-theme="eink"] .bento-card-body {
+  box-sizing: border-box;
+  max-width: 100%;
+  overflow-x: hidden;
+  padding: var(--card-padding);
+  row-gap: var(--field-gap);
+  font-family: var(--font-body);
+  line-height: var(--line-height-body);
+}
+
+[data-theme="eink"] .bento-card-body > * {
+  min-width: 0;
+  max-width: 100%;
+}
+
+[data-theme="eink"] .bento-card p,
+[data-theme="eink"] .bento-card label,
+[data-theme="eink"] .bento-card textarea,
+[data-theme="eink"] .bento-card textarea.cyber-input,
+[data-theme="eink"] .bento-card p.cyber-input,
+[data-theme="eink"] .bento-card-body label.font-mono-tech,
+[data-theme="eink"] .bento-card-body .min-w-0 > span.font-mono-tech:first-child,
+[data-theme="eink"] [data-testid^="resource-field-"] > div:first-child > span:first-child,
+[data-theme="eink"] [data-testid^="health-damage-track-"] > div:first-child > div > span:first-child,
+[data-theme="eink"] [data-testid^="health-damage-track-"] .grid span.font-mono-tech:first-child,
+[data-theme="eink"] .bento-card-body button[role="checkbox"] > div > span:last-child,
+[data-theme="eink"] [data-testid^="xp-trait-row-"] span.font-bold.truncate {
+  font-family: var(--font-body);
+  line-height: var(--line-height-body);
+}
+
+[data-theme="eink"] [data-testid^="health-damage-track-"],
+[data-theme="eink"] [data-testid^="xp-trait-row-"] {
+  gap: var(--field-gap);
+}
+
+[data-theme="eink"] [data-testid^="xp-trait-row-"] {
+  padding-top: var(--field-gap);
+  padding-bottom: var(--field-gap);
+}
+
+[data-theme="eink"] [data-testid^="resource-field-"] > div:first-child {
+  margin-bottom: var(--field-gap);
+}
+
+[data-theme="eink"] [data-testid^="health-damage-track-"] .grid {
+  row-gap: var(--field-gap);
+  padding-top: var(--field-gap);
+}
+
+[data-theme="eink"] .seg-meter-track {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 100%;
+  overflow-x: hidden;
+}
+
+[data-theme="eink"] .cyber-roll-btn {
+  box-sizing: border-box;
+  max-width: 100%;
+  min-width: 0;
+}
+
+/* Preserva JetBrains Mono tabular em inputs numéricos, badges de página/sistema e contadores */
+[data-theme="eink"] input[type="number"],
+[data-theme="eink"] .cyber-input[type="number"],
+[data-theme="eink"] .cyber-calc-box,
+[data-theme="eink"] .bento-card-header .font-mono-tech,
+[data-theme="eink"] span.font-mono-tech.tabular-nums,
+[data-theme="eink"] [data-testid="xp-available"],
+[data-theme="eink"] [data-testid="xp-earned"],
+[data-theme="eink"] [data-testid="xp-spent"],
+[data-theme="eink"] [data-testid="latest-roll-total"],
+[data-theme="eink"] [data-testid="mobile-roll-toast-total"],
+[data-theme="eink"] [data-testid="health-healthy-summary"],
+[data-theme="eink"] [data-testid="health-aggravated-value"],
+[data-theme="eink"] [data-testid="health-superficial-value"],
+[data-theme="eink"] [data-testid="willpower-auto-success-badge"],
+[data-theme="eink"] [data-testid="xp-active-formula-badge"],
+[data-theme="eink"] [data-testid^="xp-trait-formula-"] {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
 }
