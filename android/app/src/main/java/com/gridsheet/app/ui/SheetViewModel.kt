@@ -759,7 +759,7 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         rollExpression(label, expr, isSoak = true)
     }
 
-    fun performWillpowerSurge() {
+    fun performWillpowerSurge(entryId: String? = null, selectedNormalIndices: Set<Int>? = null) {
         val sheet = activeSheet.value
         val wpField = sheet.cards.flatMap { it.fields }
             .firstOrNull { it.id == "f_willpower" || it.key.trim().lowercase() == "willpower" }
@@ -768,27 +768,48 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
             controller.setStatusMessage("FORÇA DE VONTADE INSUFICIENTE PARA WILLPOWER SURGE")
             return
         }
-        val last = lastV5RollState
-        if (last == null) {
+        val targetEntry = if (entryId != null) {
+            sheet.rollLogs.firstOrNull { it.id == entryId }
+        } else {
+            null
+        }
+        val baseLabel = targetEntry?.label ?: lastV5RollState?.label
+        val baseNormal = targetEntry?.normalDice ?: lastV5RollState?.normalRolls
+        val baseHunger = targetEntry?.hungerDice ?: lastV5RollState?.hungerRolls
+
+        if (baseLabel == null || baseNormal == null || baseHunger == null) {
             controller.setStatusMessage("FAÇA UMA ROLAGEM V5 ANTES DE USAR WILLPOWER SURGE")
             return
         }
-        if (last.normalRolls.none { it < 6 }) {
-            controller.setStatusMessage("NENHUM DADO NORMAL FALHO PARA REROLAR")
-            return
+        val res = if (selectedNormalIndices != null) {
+            val valid = selectedNormalIndices.filter { it in baseNormal.indices }.take(3).toSet()
+            if (valid.isEmpty()) {
+                controller.setStatusMessage("SELECIONE ATÉ 3 DADOS NORMAIS PARA REROLAR")
+                return
+            }
+            FormulaEngine.rerollV5SelectedNormalDice(baseNormal, baseHunger, valid)
+        } else {
+            if (baseNormal.none { it < 6 }) {
+                controller.setStatusMessage("NENHUM DADO NORMAL FALHO PARA REROLAR")
+                return
+            }
+            FormulaEngine.rerollV5WithWillpower(baseNormal, baseHunger)
         }
-        val res = FormulaEngine.rerollV5WithWillpower(last.normalRolls, last.hungerRolls)
-        lastV5RollState = LastV5RollState(last.label, res.normalRolls, res.hungerRolls)
+        lastV5RollState = LastV5RollState(baseLabel, res.normalDice, res.hungerDice)
         val entry = RollLogEntry(
             id = "roll_${UUID.randomUUID().toString().take(8)}",
             timestamp = currentTimeStamp(),
-            label = "${last.label} · WP SURGE",
+            label = "$baseLabel · WP SURGE",
             total = res.total,
             formula = res.resolvedExpression,
             breakdown = res.breakdown,
             isCritical = res.isCritical,
             isFumble = res.isFumble,
-            isPoolRoll = res.isPoolRoll
+            isPoolRoll = res.isPoolRoll,
+            normalDice = res.normalDice,
+            hungerDice = res.hungerDice,
+            isMessyCritical = res.isMessyCritical,
+            isBestialFailure = res.isBestialFailure
         )
         controller.updateActiveSheet { current ->
             SheetMutators.adjustResourceValue(current, wpField.id, -1)
@@ -906,8 +927,8 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         if (res.isPoolRoll && rulePreset == XpRulePreset.VAMPIRE_V5) {
             lastV5RollState = LastV5RollState(
                 label = label.uppercase(),
-                normalRolls = res.normalRolls,
-                hungerRolls = res.hungerRolls
+                normalRolls = res.normalDice,
+                hungerRolls = res.hungerDice
             )
         }
         val entry = RollLogEntry(
@@ -919,7 +940,11 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
             breakdown = res.breakdown,
             isCritical = res.isCritical,
             isFumble = res.isFumble,
-            isPoolRoll = res.isPoolRoll
+            isPoolRoll = res.isPoolRoll,
+            normalDice = res.normalDice,
+            hungerDice = res.hungerDice,
+            isMessyCritical = res.isMessyCritical,
+            isBestialFailure = res.isBestialFailure
         )
         controller.updateActiveSheet { it.copy(rollLogs = (listOf(entry) + it.rollLogs).take(30)) }
         _sideSheetMode.value = SideSheetMode.LOGS

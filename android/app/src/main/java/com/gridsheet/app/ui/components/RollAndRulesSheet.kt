@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -66,6 +67,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.gridsheet.app.core.RollLogEntry
 import com.gridsheet.app.core.SystemId
+import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.data.Fts5QuerySanitizer
 import com.gridsheet.app.data.IndexProgress
 import com.gridsheet.app.data.RulesSearchResponse
@@ -82,6 +84,7 @@ fun RollAndRulesBottomSheet(
     mode: SideSheetMode,
     systemId: SystemId,
     systemName: String,
+    rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
     quickDice: List<String>,
     logs: List<RollLogEntry>,
     rulesQuery: String,
@@ -94,6 +97,7 @@ fun RollAndRulesBottomSheet(
     localSearchElapsedMs: Long?,
     onSwitchMode: (SideSheetMode) -> Unit,
     onRollExpression: (String, String) -> Unit,
+    onWillpowerSurge: (String, Set<Int>) -> Unit = { _, _ -> },
     onClearLogs: () -> Unit,
     onRulesQueryChange: (String) -> Unit,
     onSearchRules: (String, Boolean) -> Unit,
@@ -202,7 +206,9 @@ fun RollAndRulesBottomSheet(
                     onDiceExprChange = { diceExpr = it },
                     quickDice = quickDice,
                     logs = logs,
-                    onRollExpression = onRollExpression
+                    rulePreset = rulePreset,
+                    onRollExpression = onRollExpression,
+                    onWillpowerSurge = onWillpowerSurge
                 )
             } else {
                 RulesModeContent(
@@ -243,11 +249,15 @@ private fun LogsModeContent(
     onDiceExprChange: (String) -> Unit,
     quickDice: List<String>,
     logs: List<RollLogEntry>,
-    onRollExpression: (String, String) -> Unit
+    rulePreset: XpRulePreset,
+    onRollExpression: (String, String) -> Unit,
+    onWillpowerSurge: (String, Set<Int>) -> Unit
 ) {
     val theme = LocalGridTheme.current
     val pillShape = RoundedCornerShape(theme.pillCornerRadius)
     val cardShape = RoundedCornerShape(theme.cardCornerRadius)
+    var rerollTargetEntryId by remember { mutableStateOf<String?>(null) }
+    var selectedNormalIndices by remember { mutableStateOf<Set<Int>>(emptySet()) }
 
     Row(
         modifier = Modifier.fillMaxWidth(),
@@ -313,14 +323,21 @@ private fun LogsModeContent(
         modifier = Modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(8.dp)
     ) {
-        items(logs, key = { it.id }) { entry ->
+        items(logs.size, key = { idx -> logs[idx].id }) { idx ->
+            val entry = logs[idx]
+            val isLatestV5Pool = idx == 0 &&
+                rulePreset == XpRulePreset.VAMPIRE_V5 &&
+                entry.isPoolRoll &&
+                entry.normalDice.isNotEmpty()
+            val isSelectingThis = rerollTargetEntryId == entry.id
+
             Surface(
                 modifier = Modifier.fillMaxWidth(),
                 shape = cardShape,
                 color = theme.bgCardAlt,
                 border = BorderStroke(theme.borderWidth, theme.borderColor)
             ) {
-                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(3.dp)) {
+                Column(modifier = Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         horizontalArrangement = Arrangement.SpaceBetween
@@ -339,23 +356,131 @@ private fun LogsModeContent(
                             color = theme.textMuted
                         )
                     }
-                    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-                        Text(
-                            text = "${entry.total}",
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Black,
-                            fontSize = 28.sp,
-                            color = if (entry.isFumble) theme.accentDanger else theme.accentPrimary
-                        )
-                        if (entry.isPoolRoll) {
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.SpaceBetween
+                    ) {
+                        Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(6.dp)) {
                             Text(
-                                text = if (entry.isFumble) "BOTCH" else "SUCS",
+                                text = "${entry.total}",
                                 fontFamily = FontFamily.Monospace,
-                                fontSize = 10.sp,
-                                fontWeight = FontWeight.Bold,
-                                color = theme.textMuted,
-                                modifier = Modifier.padding(bottom = 5.dp)
+                                fontWeight = FontWeight.Black,
+                                fontSize = 28.sp,
+                                color = if (entry.isFumble || entry.isBestialFailure) theme.accentDanger else theme.accentPrimary
                             )
+                            if (entry.isPoolRoll) {
+                                Text(
+                                    text = if (entry.isFumble && !entry.isBestialFailure) "BOTCH" else "SUCS",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontSize = 10.sp,
+                                    fontWeight = FontWeight.Bold,
+                                    color = theme.textMuted,
+                                    modifier = Modifier.padding(bottom = 5.dp)
+                                )
+                            }
+                        }
+                        V5OutcomeBadges(
+                            isMessyCritical = entry.isMessyCritical,
+                            isBestialFailure = entry.isBestialFailure,
+                            isCritical = entry.isCritical
+                        )
+                    }
+                    if (entry.normalDice.isNotEmpty() || entry.hungerDice.isNotEmpty()) {
+                        V5DiceChipsRow(
+                            normalDice = entry.normalDice,
+                            hungerDice = entry.hungerDice,
+                            rerollSelectionActive = isSelectingThis,
+                            selectedNormalIndices = if (isSelectingThis) selectedNormalIndices else emptySet(),
+                            onToggleNormalDie = { dieIdx ->
+                                selectedNormalIndices = if (dieIdx in selectedNormalIndices) {
+                                    selectedNormalIndices - dieIdx
+                                } else if (selectedNormalIndices.size < 3) {
+                                    selectedNormalIndices + dieIdx
+                                } else {
+                                    selectedNormalIndices
+                                }
+                            }
+                        )
+                    }
+                    if (isLatestV5Pool) {
+                        if (isSelectingThis) {
+                            Text(
+                                text = "TOQUE EM ATÉ 3 DADOS NORMAIS (DADOS DE FOME BLOQUEADOS)",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = theme.accentPrimary
+                            )
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                Button(
+                                    onClick = {
+                                        onWillpowerSurge(entry.id, selectedNormalIndices)
+                                        rerollTargetEntryId = null
+                                        selectedNormalIndices = emptySet()
+                                    },
+                                    enabled = selectedNormalIndices.isNotEmpty(),
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                    shape = pillShape,
+                                    colors = ButtonDefaults.buttonColors(
+                                        containerColor = theme.accentPrimary,
+                                        contentColor = theme.accentContrast
+                                    ),
+                                    border = BorderStroke(theme.borderWidth, theme.borderColor)
+                                ) {
+                                    Text(
+                                        text = "CONFIRMAR (${selectedNormalIndices.size}/3)",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 11.sp
+                                    )
+                                }
+                                OutlinedButton(
+                                    onClick = {
+                                        rerollTargetEntryId = null
+                                        selectedNormalIndices = emptySet()
+                                    },
+                                    modifier = Modifier.defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                    shape = pillShape,
+                                    border = BorderStroke(theme.borderWidth, theme.borderColor)
+                                ) {
+                                    Text(
+                                        text = "CANCELAR",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 11.sp,
+                                        color = theme.textPrimary
+                                    )
+                                }
+                            }
+                        } else {
+                            OutlinedButton(
+                                onClick = {
+                                    rerollTargetEntryId = entry.id
+                                    selectedNormalIndices = entry.normalDice.indices
+                                        .filter { entry.normalDice[it] < 6 }
+                                        .take(3)
+                                        .toSet()
+                                },
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                shape = pillShape,
+                                border = BorderStroke(theme.borderWidth, theme.borderColor)
+                            ) {
+                                Text(
+                                    text = "REROLL WP (ATÉ 3 NORMAIS)",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 11.sp,
+                                    color = theme.textPrimary
+                                )
+                            }
                         }
                     }
                     Text(entry.breakdown, fontFamily = FontFamily.Monospace, fontSize = 11.sp, color = theme.textSecondary)

@@ -198,7 +198,11 @@ data class RollLogEntry(
     val breakdown: String,
     val isCritical: Boolean = false,
     val isFumble: Boolean = false,
-    val isPoolRoll: Boolean = false
+    val isPoolRoll: Boolean = false,
+    val normalDice: List<Int> = emptyList(),
+    val hungerDice: List<Int> = emptyList(),
+    val isMessyCritical: Boolean = false,
+    val isBestialFailure: Boolean = false
 )
 
 @Serializable

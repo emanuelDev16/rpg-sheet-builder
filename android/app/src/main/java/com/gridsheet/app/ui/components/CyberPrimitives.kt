@@ -3015,3 +3015,176 @@ fun DeleteCharacterConfirmDialog(
         }
     )
 }
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun V5OutcomeBadges(
+    isMessyCritical: Boolean,
+    isBestialFailure: Boolean,
+    isCritical: Boolean,
+    modifier: Modifier = Modifier
+) {
+    if (!isMessyCritical && !isBestialFailure && !isCritical) return
+    val theme = LocalGridTheme.current
+    val pillShape = RoundedCornerShape(theme.pillCornerRadius)
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        if (isMessyCritical) {
+            Box(
+                modifier = Modifier
+                    .background(theme.hungerBg, pillShape)
+                    .border(theme.borderWidth, theme.hungerBorder, pillShape)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "MESSY CRITICAL",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = theme.hungerText
+                )
+            }
+        } else if (isCritical) {
+            Box(
+                modifier = Modifier
+                    .background(theme.accentPrimary, pillShape)
+                    .border(theme.borderWidth, theme.borderColor, pillShape)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "CRITICAL",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = theme.accentContrast
+                )
+            }
+        }
+        if (isBestialFailure) {
+            Box(
+                modifier = Modifier
+                    .background(theme.accentDanger, pillShape)
+                    .border(theme.borderWidth, theme.borderColor, pillShape)
+                    .padding(horizontal = 8.dp, vertical = 3.dp)
+            ) {
+                Text(
+                    text = "BESTIAL FAILURE",
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 10.sp,
+                    fontWeight = FontWeight.Black,
+                    color = theme.accentContrast
+                )
+            }
+        }
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun V5DiceChipsRow(
+    normalDice: List<Int>,
+    hungerDice: List<Int>,
+    rerollSelectionActive: Boolean = false,
+    selectedNormalIndices: Set<Int> = emptySet(),
+    onToggleNormalDie: (Int) -> Unit = {},
+    modifier: Modifier = Modifier
+) {
+    if (normalDice.isEmpty() && hungerDice.isEmpty()) return
+    val theme = LocalGridTheme.current
+    val chipShape = RoundedCornerShape(if (theme.isEink) 6.dp else 4.dp)
+
+    fun formatDieLabel(value: Int): String = when (value) {
+        10 -> "10★"
+        1 -> "1!"
+        else -> "$value"
+    }
+
+    FlowRow(
+        modifier = modifier,
+        horizontalArrangement = Arrangement.spacedBy(5.dp),
+        verticalArrangement = Arrangement.spacedBy(5.dp)
+    ) {
+        normalDice.forEachIndexed { idx, value ->
+            val isSelected = rerollSelectionActive && idx in selectedNormalIndices
+            val isSuccess = value >= 6
+            val isOne = value == 1
+            val bg = when {
+                isSelected -> theme.accentPrimary
+                value == 10 -> theme.accentPrimary
+                isSuccess -> theme.accentBlack
+                isOne -> theme.accentDangerSoft
+                else -> theme.bgCard
+            }
+            val fg = when {
+                isSelected -> theme.accentContrast
+                value == 10 -> theme.accentContrast
+                isSuccess -> theme.accentContrast
+                isOne -> theme.accentDanger
+                else -> theme.textMuted
+            }
+            val borderCol = when {
+                isSelected -> theme.borderColor
+                isOne -> theme.accentDanger
+                isSuccess -> theme.borderColor
+                else -> theme.borderColor.copy(alpha = if (theme.isEink) 1f else 0.45f)
+            }
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 30.dp, minHeight = 28.dp)
+                    .clip(chipShape)
+                    .background(bg)
+                    .border(if (isSelected) theme.borderStrong else 1.dp, borderCol, chipShape)
+                    .then(
+                        if (rerollSelectionActive) {
+                            Modifier.clickable { onToggleNormalDie(idx) }
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = if (isSelected) "↻${formatDieLabel(value)}" else formatDieLabel(value),
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = if (value == 10 || isSuccess || isSelected) FontWeight.Black else FontWeight.Bold,
+                    color = fg
+                )
+            }
+        }
+
+        hungerDice.forEach { value ->
+            val labelText = if (theme.isEink) "H·${formatDieLabel(value)}" else formatDieLabel(value)
+            Box(
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 32.dp, minHeight = 28.dp)
+                    .clip(chipShape)
+                    .background(theme.hungerBg)
+                    .border(theme.borderWidth, theme.hungerBorder, chipShape)
+                    .then(
+                        if (theme.isEink) {
+                            Modifier
+                                .padding(2.dp)
+                                .border(1.dp, Color.White, chipShape)
+                        } else {
+                            Modifier
+                        }
+                    )
+                    .padding(horizontal = 7.dp, vertical = 4.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = labelText,
+                    fontFamily = FontFamily.Monospace,
+                    fontSize = 11.sp,
+                    fontWeight = FontWeight.Black,
+                    color = theme.hungerText
+                )
+            }
+        }
+    }
+}

@@ -26,10 +26,13 @@ data class DiceRollResult(
     val isPoolRoll: Boolean = false,
     val isMessyCritical: Boolean = false,
     val isBestialFailure: Boolean = false,
-    val normalRolls: List<Int> = emptyList(),
-    val hungerRolls: List<Int> = emptyList(),
+    val normalDice: List<Int> = emptyList(),
+    val hungerDice: List<Int> = emptyList(),
     val error: String? = null
-)
+) {
+    val normalRolls: List<Int> get() = normalDice
+    val hungerRolls: List<Int> get() = hungerDice
+}
 
 private sealed interface Token {
     data class Num(val value: Double) : Token
@@ -294,8 +297,29 @@ object FormulaEngine {
             isPoolRoll = true,
             isMessyCritical = isMessyCritical,
             isBestialFailure = isBestialFailure,
-            normalRolls = normalRolls,
-            hungerRolls = hungerRolls
+            normalDice = normalRolls,
+            hungerDice = hungerRolls
+        )
+    }
+
+    fun rerollV5SelectedNormalDice(
+        normalDice: List<Int>,
+        hungerDice: List<Int>,
+        selectedNormalIndices: Set<Int>,
+        rng: () -> Double = { Random.nextDouble() }
+    ): DiceRollResult {
+        val mutableNormal = normalDice.toMutableList()
+        val validIndices = selectedNormalIndices
+            .filter { it in mutableNormal.indices }
+            .distinct()
+            .take(3)
+        for (idx in validIndices) {
+            mutableNormal[idx] = floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
+        }
+        return evaluateV5PoolResult(
+            normalRolls = mutableNormal,
+            hungerRolls = hungerDice,
+            extraTag = " · WP SURGE (${validIndices.size})"
         )
     }
 
@@ -304,19 +328,11 @@ object FormulaEngine {
         hungerRolls: List<Int>,
         rng: () -> Double = { Random.nextDouble() }
     ): DiceRollResult {
-        val mutableNormal = normalRolls.toMutableList()
-        var rerolled = 0
-        for (i in mutableNormal.indices) {
-            if (mutableNormal[i] < 6 && rerolled < 3) {
-                mutableNormal[i] = floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
-                rerolled++
-            }
-        }
-        return evaluateV5PoolResult(
-            normalRolls = mutableNormal,
-            hungerRolls = hungerRolls,
-            extraTag = " · WP SURGE ($rerolled)"
-        )
+        val failedIndices = normalRolls.indices
+            .filter { normalRolls[it] < 6 }
+            .take(3)
+            .toSet()
+        return rerollV5SelectedNormalDice(normalRolls, hungerRolls, failedIndices, rng)
     }
 
     private fun executeWodPool(
@@ -405,7 +421,7 @@ object FormulaEngine {
             isCritical = isExceptional,
             isFumble = isBotch,
             isPoolRoll = true,
-            normalRolls = rolls
+            normalDice = rolls
         )
     }
 

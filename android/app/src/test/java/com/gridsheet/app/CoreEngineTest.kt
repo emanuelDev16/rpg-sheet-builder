@@ -1564,4 +1564,50 @@ class CoreEngineTest {
         assertEquals(3, surged.total)
         assertFalse(surged.isBestialFailure)
     }
+
+    @Test
+    fun v5SelectiveWillpowerRerollOnlyTouchesNormalDiceAndRecalculatesOutcomes() {
+        // Initial roll: normalDice = [2, 10, 4], hungerDice = [10, 1] -> Messy Critical (pair of 10s, one on hunger)
+        val initial = FormulaEngine.evaluateV5PoolResult(
+            normalRolls = listOf(2, 10, 4),
+            hungerRolls = listOf(10, 1)
+        )
+        assertTrue(initial.isMessyCritical)
+        assertFalse(initial.isBestialFailure)
+        assertEquals(listOf(2, 10, 4), initial.normalDice)
+        assertEquals(listOf(10, 1), initial.hungerDice)
+
+        // Attempt to reroll normal index 0, 2 AND out-of-bounds indices (99, -1) that would never touch hungerDice:
+        // Reroll index 0 -> 10, index 2 -> 6 => normalDice = [10, 10, 6], hungerDice unchanged = [10, 1]
+        val rerollRng = ArrayDeque(listOf(0.95, 0.55))
+        val recalculated = FormulaEngine.rerollV5SelectedNormalDice(
+            normalDice = initial.normalDice,
+            hungerDice = initial.hungerDice,
+            selectedNormalIndices = setOf(0, 2, 99, -1)
+        ) { rerollRng.removeFirst() }
+
+        assertEquals(listOf(10, 10, 6), recalculated.normalDice)
+        assertEquals(listOf(10, 1), recalculated.hungerDice) // Hunger dice strictly untouched
+        assertTrue(recalculated.isMessyCritical)
+        assertFalse(recalculated.isBestialFailure)
+        assertEquals(6, recalculated.total) // 4 base successes (>=6: 10,10,6,10) + 2 bonus for 1 pair of 10s (3 tens = 1 pair)
+
+        // Scenario 2: Bestial Failure cleared when selective reroll turns a failed normal die into a success
+        val bestialBase = FormulaEngine.evaluateV5PoolResult(
+            normalRolls = listOf(2, 3),
+            hungerRolls = listOf(1)
+        )
+        assertTrue(bestialBase.isBestialFailure)
+        assertEquals(0, bestialBase.total)
+
+        val clearedBestial = FormulaEngine.rerollV5SelectedNormalDice(
+            normalDice = bestialBase.normalDice,
+            hungerDice = bestialBase.hungerDice,
+            selectedNormalIndices = setOf(0)
+        ) { 0.75 } // 8
+        assertEquals(listOf(8, 3), clearedBestial.normalDice)
+        assertEquals(listOf(1), clearedBestial.hungerDice)
+        assertEquals(1, clearedBestial.total)
+        assertFalse(clearedBestial.isBestialFailure)
+    }
 }

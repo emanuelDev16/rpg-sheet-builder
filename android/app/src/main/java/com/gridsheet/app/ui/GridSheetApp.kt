@@ -99,6 +99,8 @@ import com.gridsheet.app.ui.components.DeleteCharacterConfirmDialog
 import com.gridsheet.app.ui.components.PortabilityAndRulesCard
 import com.gridsheet.app.ui.components.PresetSystemCard
 import com.gridsheet.app.ui.components.RollAndRulesBottomSheet
+import com.gridsheet.app.ui.components.V5DiceChipsRow
+import com.gridsheet.app.ui.components.V5OutcomeBadges
 import com.gridsheet.app.ui.components.XpUpgradeWorkspace
 import com.gridsheet.app.ui.theme.CyberDimens
 import com.gridsheet.app.ui.theme.GridThemeMode
@@ -409,6 +411,57 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             }
 
             // Main Bento Card Feed
+            val latestV5Roll = remember(sheet.rollLogs, isWodSheet, activeRulePreset) {
+                if (isWodSheet && activeRulePreset == XpRulePreset.VAMPIRE_V5) {
+                    sheet.rollLogs.firstOrNull()?.takeIf { it.normalDice.isNotEmpty() || it.hungerDice.isNotEmpty() }
+                } else {
+                    null
+                }
+            }
+            if (latestV5Roll != null && activeTab != TabId.XP) {
+                Surface(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = theme.gridGap)
+                        .padding(bottom = theme.fieldGap)
+                        .clickable { vm.openSideSheet(SideSheetMode.LOGS) },
+                    shape = RoundedCornerShape(theme.cardCornerRadius),
+                    color = theme.bgCardAlt,
+                    border = BorderStroke(theme.borderWidth, theme.borderColor)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(10.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "${latestV5Roll.label} · ${latestV5Roll.total} SUC",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 11.sp,
+                                fontWeight = FontWeight.Black,
+                                color = if (latestV5Roll.isBestialFailure) theme.accentDanger else theme.textPrimary,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis,
+                                modifier = Modifier.weight(1f).padding(end = 8.dp)
+                            )
+                            V5OutcomeBadges(
+                                isMessyCritical = latestV5Roll.isMessyCritical,
+                                isBestialFailure = latestV5Roll.isBestialFailure,
+                                isCritical = latestV5Roll.isCritical
+                            )
+                        }
+                        V5DiceChipsRow(
+                            normalDice = latestV5Roll.normalDice,
+                            hungerDice = latestV5Roll.hungerDice
+                        )
+                    }
+                }
+            }
+
             LazyColumn(
                 modifier = Modifier
                     .weight(1f)
@@ -541,6 +594,7 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             mode = sideSheetMode,
             systemId = activeSystemId,
             systemName = sheet.systemName,
+            rulePreset = activeRulePreset,
             quickDice = vm.getQuickDicePresets(activeSystemId),
             logs = sheet.rollLogs,
             rulesQuery = rulesQuery,
@@ -552,7 +606,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
             localRuleHits = localRuleHits,
             localSearchElapsedMs = localSearchElapsedMs,
             onSwitchMode = { vm.openSideSheet(it) },
-            onRollExpression = vm::rollExpression,
+            onRollExpression = { label, expr -> vm.rollExpression(label, expr) },
+            onWillpowerSurge = { entryId, indices -> vm.performWillpowerSurge(entryId, indices) },
             onClearLogs = vm::clearRollLogs,
             onRulesQueryChange = vm::updateRulesQuery,
             onSearchRules = { q, forceOnline -> vm.searchRules(q, forceOnline) },
