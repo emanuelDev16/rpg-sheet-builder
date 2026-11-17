@@ -14,11 +14,19 @@ import {
 import {
   AppMode,
   ComputedFieldInfo,
+  getV20HealthBreakdown,
+  getV5HealthBreakdown,
   resolveRollPreview,
   SheetField,
   SystemId,
 } from '../core/sheetModel';
-import { parseWodPoolExpression, VariableMap } from '../core/formula';
+import {
+  computeRemainingDamageAfterSoak,
+  parseWodPoolExpression,
+  RulePreset,
+  SoakDamageType,
+  VariableMap,
+} from '../core/formula';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
 import { AnimatedCounter } from './AnimatedCounter';
 
@@ -138,43 +146,67 @@ interface WodPoolRollFieldProps {
   field: SheetField;
   variables: VariableMap;
   defaultDifficulty: number;
+  rulePreset: RulePreset;
+  woundPenalty: number;
+  bloodSurge: boolean;
+  lastSoakTotal?: number | null;
   t: AppTranslations['cards'];
   onRoll: (field: SheetField) => void;
   onUpdateSchema: (fieldId: string, patch: Partial<SheetField>) => void;
 }
 
+const SOAK_TYPES: SoakDamageType[] = ['bashing', 'lethal', 'aggravated'];
+
 const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   field,
   variables,
   defaultDifficulty,
+  rulePreset,
+  woundPenalty,
+  bloodSurge,
+  lastSoakTotal = null,
   t,
   onRoll,
   onUpdateSchema,
 }) => {
   const [optionsOpen, setOptionsOpen] = useState(false);
+  const [rawSoakIncoming, setRawSoakIncoming] = useState(4);
   const lang = inferLangFromCardsT(t);
   const ctrlLabels = EDIT_CTRL_LABELS[lang];
 
-  const clampedDefaultDiff = Math.max(2, Math.min(10, Math.round(defaultDifficulty)));
-  const difficulty = Math.max(
-    2,
-    Math.min(10, Math.round(field.rollDifficulty ?? clampedDefaultDiff)),
-  );
-  const specialty = Boolean(field.rollSpecialty);
+  const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
+  const isV5 = rulePreset === 'vampire-v5';
+  const soakDamageType: SoakDamageType = field.soakDamageType ?? 'lethal';
+
+  const clampedDefaultDiff = isV5 ? 6 : Math.max(2, Math.min(10, Math.round(defaultDifficulty)));
+  const difficulty = isV5
+    ? 6
+    : Math.max(2, Math.min(10, Math.round(field.rollDifficulty ?? clampedDefaultDiff)));
+  const specialty = isV5 ? false : Boolean(field.rollSpecialty);
   const modifier =
     typeof field.rollMod === 'number' && Number.isFinite(field.rollMod)
       ? Math.round(field.rollMod)
       : 0;
 
+  const effectiveWoundPenalty = isSoak ? 0 : woundPenalty;
+
   const previewExpr = resolveRollPreview(field.rollExpr ?? 'pool(1, 6)', variables, {
     difficulty,
     modifier,
     specialty,
+    rulePreset,
+    woundPenalty: effectiveWoundPenalty,
+    isSoak,
+    soakDamageType,
+    bloodSurge,
   });
-  const wpArmed = Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
+  const wpBlocked = isV5 || (isSoak && soakDamageType === 'aggravated');
+  const wpArmed = !wpBlocked && Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
   const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
 
-  const summaryParts = [`${t.t('cards.pool.diff')} ${difficulty}`];
+  const summaryParts = [
+    isV5 && !isSoak ? t.t('cards.pool.v5DiffLocked') : `${t.t('cards.pool.diff')} ${difficulty}`,
+  ];
   if (modifier !== 0) {
     summaryParts.push(`${modifier > 0 ? `+${modifier}` : modifier} ${t.t('cards.pool.mod')}`);
   }
@@ -182,6 +214,12 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
     summaryParts.push(t.t('cards.pool.specShort'));
   }
   const isCustomized = difficulty !== clampedDefaultDiff || modifier !== 0 || specialty;
+
+  const soakTypeLabels: Record<SoakDamageType, string> = {
+    bashing: t.t('cards.vital.soakBashing'),
+    lethal: t.t('cards.vital.soakLethal'),
+    aggravated: t.t('cards.vital.soakAggravated'),
+  };
 
   return (
     <div className="py-0.5">
@@ -194,7 +232,15 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
         <span className="text-left break-words whitespace-normal leading-snug min-w-0">
           {displayLabel}
         </span>
-        <div className="flex items-center gap-1.5 shrink-0">
+        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+          {effectiveWoundPenalty < 0 && (
+            <span
+              data-testid={`roll-wound-badge-${field.id}`}
+              className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase"
+            >
+              {t.t('cards.pool.woundBadge', { penalty: effectiveWoundPenalty })}
+            </span>
+          )}
           {wpArmed && (
             <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)]">
               {t.t('cards.pool.wpBadge')}
@@ -205,6 +251,83 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
           </span>
         </div>
       </button>
+
+      {isSoak && !isV5 && (
+        <div
+          data-testid="v20-soak-type-bar"
+          className="no-print print:hidden mt-1.5 p-2 bg-[var(--bg-card-alt)] border border-[var(--border-ink)]/55 rounded-[var(--radius-card)] flex flex-col gap-1.5"
+        >
+          <div
+            role="radiogroup"
+            aria-label={t.t('cards.vital.soakTypeAria')}
+            className="grid grid-cols-3 gap-1"
+          >
+            {SOAK_TYPES.map((sType) => {
+              const selected = soakDamageType === sType;
+              return (
+                <button
+                  key={sType}
+                  type="button"
+                  role="radio"
+                  aria-checked={selected}
+                  data-testid={`soak-type-${sType}`}
+                  onClick={() => onUpdateSchema(field.id, { soakDamageType: sType })}
+                  className={`font-mono-tech min-h-[36px] sm:min-h-[30px] px-1.5 py-1 text-[9px] sm:text-[10px] font-extrabold uppercase rounded-[var(--radius-pill)] border cursor-pointer transition-colors ${
+                    selected
+                      ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                      : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/55 hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  {soakTypeLabels[sType]}
+                </button>
+              );
+            })}
+          </div>
+          {soakDamageType === 'aggravated' && (
+            <p
+              data-testid="soak-aggravated-hint"
+              className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase"
+            >
+              {t.t('cards.vital.soakAggravatedHint')}
+            </p>
+          )}
+          {soakDamageType === 'bashing' && (
+            <div
+              data-testid="soak-bashing-helper"
+              className="flex flex-wrap items-center justify-between gap-2 pt-0.5"
+            >
+              <span className="font-mono-tech text-[10px] text-[var(--ink-secondary)]">
+                {t.t('cards.vital.soakBashingHint')}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <input
+                  type="number"
+                  min={0}
+                  max={50}
+                  aria-label={t.t('cards.vital.soakCalcInputAria')}
+                  data-testid="soak-bashing-raw-input"
+                  value={rawSoakIncoming}
+                  onChange={(e) =>
+                    setRawSoakIncoming(Math.max(0, Math.min(50, Number(e.target.value) || 0)))
+                  }
+                  className="cyber-input mobile-touch-input w-14 px-1.5 py-0.5 text-[11px] font-bold text-center tabular-nums"
+                />
+                <span
+                  data-testid="soak-bashing-remaining"
+                  className="font-mono-tech text-[10px] font-extrabold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] tabular-nums"
+                >
+                  {t.t('cards.vital.soakCalcLabel')}{' '}
+                  {computeRemainingDamageAfterSoak(
+                    rawSoakIncoming,
+                    lastSoakTotal ?? 0,
+                    'bashing',
+                  )}
+                </span>
+              </div>
+            </div>
+          )}
+        </div>
+      )}
 
       <div className="no-print print:hidden mt-1.5 flex flex-col gap-1.5">
         <div className="flex flex-wrap items-center justify-between gap-1.5">
@@ -222,7 +345,9 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               }`}
             >
               <SlidersHorizontal className="w-3 h-3 shrink-0" aria-hidden="true" />
-              <span>{summaryParts.join(' · ')}</span>
+              <span data-testid={isV5 && !isSoak ? `v5-diff-locked-${field.id}` : undefined}>
+                {summaryParts.join(' · ')}
+              </span>
               <ChevronDown
                 className={`w-3 h-3 shrink-0 transition-transform duration-150 ${
                   optionsOpen ? 'rotate-180' : ''
@@ -231,32 +356,34 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               />
             </button>
 
-            <div className="inline-flex items-center border border-[var(--border-ink)]/55 rounded-[var(--radius-pill)] overflow-hidden bg-[var(--bg-card-alt)]">
-              <button
-                type="button"
-                data-testid={`roll-diff-dec-${field.id}`}
-                aria-label={`${ctrlLabels.diffMinus}: ${field.rollLabel ?? field.label}`}
-                disabled={difficulty <= 2}
-                onClick={() =>
-                  onUpdateSchema(field.id, { rollDifficulty: Math.max(2, difficulty - 1) })
-                }
-                className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Minus className="w-3 h-3" aria-hidden="true" />
-              </button>
-              <button
-                type="button"
-                data-testid={`roll-diff-inc-${field.id}`}
-                aria-label={`${ctrlLabels.diffPlus}: ${field.rollLabel ?? field.label}`}
-                disabled={difficulty >= 10}
-                onClick={() =>
-                  onUpdateSchema(field.id, { rollDifficulty: Math.min(10, difficulty + 1) })
-                }
-                className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center border-l border-[var(--border-ink)]/35 text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
-              >
-                <Plus className="w-3 h-3" aria-hidden="true" />
-              </button>
-            </div>
+            {(!isV5 || isSoak) && (
+              <div className="inline-flex items-center border border-[var(--border-ink)]/55 rounded-[var(--radius-pill)] overflow-hidden bg-[var(--bg-card-alt)]">
+                <button
+                  type="button"
+                  data-testid={`roll-diff-dec-${field.id}`}
+                  aria-label={`${ctrlLabels.diffMinus}: ${field.rollLabel ?? field.label}`}
+                  disabled={difficulty <= 2}
+                  onClick={() =>
+                    onUpdateSchema(field.id, { rollDifficulty: Math.max(2, difficulty - 1) })
+                  }
+                  className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Minus className="w-3 h-3" aria-hidden="true" />
+                </button>
+                <button
+                  type="button"
+                  data-testid={`roll-diff-inc-${field.id}`}
+                  aria-label={`${ctrlLabels.diffPlus}: ${field.rollLabel ?? field.label}`}
+                  disabled={difficulty >= 10}
+                  onClick={() =>
+                    onUpdateSchema(field.id, { rollDifficulty: Math.min(10, difficulty + 1) })
+                  }
+                  className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center border-l border-[var(--border-ink)]/35 text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+                >
+                  <Plus className="w-3 h-3" aria-hidden="true" />
+                </button>
+              </div>
+            )}
           </div>
         </div>
 
@@ -267,17 +394,21 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
             className="px-2 py-1.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)]/75 rounded-[var(--radius-card)] flex flex-wrap items-center justify-between gap-2"
           >
             <div className="flex items-center gap-2.5 flex-wrap">
-              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
-                <span>{t.t('cards.pool.diff')}</span>
-                <ClampedNumberInput
-                  min={2}
-                  max={10}
-                  ariaLabel={t.t('cards.pool.diffAria', { label: field.rollLabel ?? field.label })}
-                  testId={`roll-diff-${field.id}`}
-                  value={difficulty}
-                  onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
-                />
-              </label>
+              {(!isV5 || isSoak) && (
+                <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
+                  <span>{t.t('cards.pool.diff')}</span>
+                  <ClampedNumberInput
+                    min={2}
+                    max={10}
+                    ariaLabel={t.t('cards.pool.diffAria', {
+                      label: field.rollLabel ?? field.label,
+                    })}
+                    testId={`roll-diff-${field.id}`}
+                    value={difficulty}
+                    onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
+                  />
+                </label>
+              )}
 
               <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
                 <span>{t.t('cards.pool.mod')}</span>
@@ -292,18 +423,20 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               </label>
             </div>
 
-            <label className="inline-flex items-center gap-1.5 min-h-[36px] md:min-h-0 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
-              <input
-                type="checkbox"
-                data-testid={`roll-spec-${field.id}`}
-                checked={specialty}
-                onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
-                className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[var(--accent-primary)] cursor-pointer"
-              />
-              <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>
-                {t.t('cards.pool.specialty')}
-              </span>
-            </label>
+            {!isV5 && (
+              <label className="inline-flex items-center gap-1.5 min-h-[36px] md:min-h-0 font-mono-tech text-[10px] font-bold uppercase cursor-pointer select-none text-[var(--ink-primary)]">
+                <input
+                  type="checkbox"
+                  data-testid={`roll-spec-${field.id}`}
+                  checked={specialty}
+                  onChange={(e) => onUpdateSchema(field.id, { rollSpecialty: e.target.checked })}
+                  className="w-4 h-4 md:w-3.5 md:h-3.5 accent-[var(--accent-primary)] cursor-pointer"
+                />
+                <span className={specialty ? 'text-[var(--accent-wine)]' : ''}>
+                  {t.t('cards.pool.specialty')}
+                </span>
+              </label>
+            )}
           </div>
         )}
       </div>
@@ -315,6 +448,11 @@ interface FieldPrimitiveProps {
   field: SheetField;
   mode: AppMode;
   systemId?: SystemId;
+  rulePreset?: RulePreset;
+  woundPenalty?: number;
+  bloodSurge?: boolean;
+  lastSoakTotal?: number | null;
+  canWillpowerSurge?: boolean;
   variables: VariableMap;
   computed?: ComputedFieldInfo;
   totalCargoWeight: number;
@@ -332,6 +470,19 @@ interface FieldPrimitiveProps {
     damageType: 'superficial' | 'aggravated',
     delta: number,
   ) => void;
+  onCycleV20HealthCell?: (fieldId: string, boxIndex: number) => void;
+  onAdjustV20HealthDamage?: (
+    fieldId: string,
+    damageType: 'bashing' | 'lethal' | 'aggravated',
+    delta: number,
+  ) => void;
+  onAdjustV5HealthDamage?: (
+    fieldId: string,
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
+  onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
+  onTriggerWillpowerSurge?: () => void;
   onRoll: (field: SheetField) => void;
   onAddRow: (fieldId: string) => void;
   onUpdateRow: (fieldId: string, rowId: string, col: 'col1' | 'col2', val: string | number) => void;
@@ -346,6 +497,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   field,
   mode,
   systemId = 'wod',
+  rulePreset = 'storyteller-v20',
+  woundPenalty = 0,
+  bloodSurge = false,
+  lastSoakTotal = null,
+  canWillpowerSurge = false,
   variables,
   computed,
   totalCargoWeight,
@@ -359,6 +515,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onChangeValue,
   onAdjustResource,
   onAdjustHealthDamage,
+  onCycleV20HealthCell,
+  onAdjustV20HealthDamage,
+  onAdjustV5HealthDamage,
+  onApplyV5SuperficialHalving,
+  onTriggerWillpowerSurge,
   onRoll,
   onAddRow,
   onUpdateRow,
@@ -366,6 +527,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onUpdateSchema,
   onRemoveField,
 }) => {
+  const [v5RawSupDamage, setV5RawSupDamage] = useState(2);
   const inputId = `field_${field.id}`;
   const isCustomSystem = systemId === 'blank';
   const lang = inferLangFromCardsT(t);
@@ -633,26 +795,237 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       );
     }
 
-    // 3A. Recurso especial: WoD Health Damage Track
+    // 3A. Recurso especial: WoD Health Damage Track (Dual V20 3-state vs V5 2-state)
     if (field.kind === 'resource' && field.damageTrack) {
-      const max = Math.max(1, field.max ?? 7);
-      const agg = Math.max(
-        0,
-        Math.min(
-          max,
-          typeof field.aggravatedDamage === 'number'
-            ? field.aggravatedDamage
-            : Math.max(0, max - (typeof field.value === 'number' ? field.value : max)),
-        ),
-      );
-      const sup = agg >= max ? 0 : Math.max(0, Math.min(max - 1, field.superficialDamage ?? 0));
-      const healthy = Math.max(0, max - agg);
-      const totalSupEq = agg * max + sup;
+      if (rulePreset === 'vampire-v5') {
+        const { max, aggravated: agg, superficial: sup, totalDamage, healthy } =
+          getV5HealthBreakdown(field);
+        const isImpaired = totalDamage >= max;
+        const halvedIncoming = Math.ceil(Math.max(0, v5RawSupDamage) / 2);
+        const boxes = Array.from({ length: max }, (_, idx) => {
+          if (idx < agg) return 'aggravated' as const;
+          if (idx < agg + sup) return 'superficial' as const;
+          return 'healthy' as const;
+        });
+
+        const adjustV5 = onAdjustV5HealthDamage ?? onAdjustHealthDamage;
+
+        return (
+          <div
+            data-testid={`health-damage-track-${field.id}`}
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                  {field.label}
+                </span>
+                <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
+                  {t.t('cards.vital.v5OverflowRule')}
+                </span>
+                {isImpaired && (
+                  <span
+                    data-testid="health-impaired-badge"
+                    className="font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] whitespace-nowrap"
+                  >
+                    {t.t('cards.vital.impairedBadge')}
+                  </span>
+                )}
+              </div>
+              <span
+                data-testid="health-healthy-summary"
+                className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] tabular-nums whitespace-nowrap"
+                aria-live="polite"
+              >
+                <AnimatedCounter value={healthy} /> / <AnimatedCounter value={max} pulseOnChange={false} />{' '}
+                {t.healthyRemaining}
+              </span>
+            </div>
+
+            <div
+              className="seg-meter-track flex items-center gap-[3px]"
+              role="meter"
+              aria-label={field.label}
+              aria-valuemin={0}
+              aria-valuemax={max}
+              aria-valuenow={healthy}
+            >
+              {boxes.map((state, idx) => (
+                <motion.div
+                  key={idx}
+                  aria-hidden="true"
+                  initial={false}
+                  animate={{ scale: state === 'healthy' ? 0.96 : 1 }}
+                  transition={
+                    shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }
+                  }
+                  style={
+                    state === 'aggravated'
+                      ? {
+                          backgroundColor: 'var(--ink-primary)',
+                          color: 'var(--bg-card)',
+                          borderColor: 'var(--border-color)',
+                        }
+                      : state === 'superficial'
+                        ? {
+                            backgroundImage:
+                              'repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-primary) 18%, transparent) 0 3px, transparent 3px 6px)',
+                            backgroundColor: 'var(--bg-card)',
+                            color: 'var(--ink-primary)',
+                            borderColor: 'var(--border-color)',
+                          }
+                        : undefined
+                  }
+                  className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
+                    state === 'healthy'
+                      ? 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                      : ''
+                  }`}
+                >
+                  {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
+                </motion.div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
+                  {t.aggravatedDmg} (X)
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    data-testid="health-aggravated-dec"
+                    aria-label={`${t.aggravatedDmg} -`}
+                    onClick={() => adjustV5?.(field.id, 'aggravated', -1)}
+                    className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span
+                    data-testid="health-aggravated-value"
+                    className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--ink-primary)]"
+                  >
+                    <AnimatedCounter value={agg} /> / <AnimatedCounter value={max} pulseOnChange={false} />
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="health-aggravated-inc"
+                    aria-label={`${t.aggravatedDmg} +`}
+                    onClick={() => adjustV5?.(field.id, 'aggravated', 1)}
+                    className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
+                  {t.superficialDmg} (/)
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    data-testid="health-superficial-dec"
+                    aria-label={`${t.superficialDmg} -`}
+                    onClick={() => adjustV5?.(field.id, 'superficial', -1)}
+                    className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span
+                    data-testid="health-superficial-value"
+                    className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--accent-wine)]"
+                  >
+                    <AnimatedCounter value={sup} /> / <AnimatedCounter value={max} pulseOnChange={false} />
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="health-superficial-inc"
+                    aria-label={`${t.superficialDmg} +`}
+                    onClick={() => adjustV5?.(field.id, 'superficial', 1)}
+                    className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div
+                data-testid="v5-superficial-halving-bar"
+                className="no-print print:hidden mt-0.5 pt-1.5 border-t border-dashed border-[var(--border-ink)]/35 flex flex-wrap items-center justify-between gap-2"
+              >
+                <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                  {t.t('cards.vital.reduceSupLabel')}
+                </span>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <input
+                    type="number"
+                    min={0}
+                    max={30}
+                    aria-label={t.t('cards.vital.reduceSupAria')}
+                    data-testid="v5-halve-superficial-input"
+                    value={v5RawSupDamage}
+                    onChange={(e) =>
+                      setV5RawSupDamage(Math.max(0, Math.min(30, Number(e.target.value) || 0)))
+                    }
+                    className="cyber-input mobile-touch-input w-14 px-1.5 py-0.5 text-[11px] font-bold text-center tabular-nums"
+                  />
+                  <button
+                    type="button"
+                    data-testid="v5-halve-superficial-btn"
+                    disabled={halvedIncoming <= 0}
+                    onClick={() => onApplyV5SuperficialHalving?.(field.id, v5RawSupDamage)}
+                    className="cyber-btn-outline min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                  >
+                    {t.t('cards.vital.reduceSupApply', { amount: halvedIncoming })}
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
+      // V20 / Custom 3-state Health Track (* Aggravated > X Lethal > / Bashing)
+      const { max, aggravated: agg, lethal: letDmg, bashing: bashDmg, healthy } =
+        getV20HealthBreakdown(field);
       const boxes = Array.from({ length: max }, (_, idx) => {
         if (idx < agg) return 'aggravated' as const;
-        if (idx < agg + sup) return 'superficial' as const;
+        if (idx < agg + letDmg) return 'lethal' as const;
+        if (idx < agg + letDmg + bashDmg) return 'bashing' as const;
         return 'healthy' as const;
       });
+
+      const v20CellStyle = (state: 'aggravated' | 'lethal' | 'bashing' | 'healthy'): React.CSSProperties | undefined => {
+        if (state === 'aggravated') {
+          return {
+            backgroundColor: 'var(--ink-primary)',
+            color: 'var(--bg-card)',
+            borderColor: 'var(--border-color)',
+          };
+        }
+        if (state === 'lethal') {
+          return {
+            backgroundImage:
+              'repeating-linear-gradient(45deg, color-mix(in srgb, var(--ink-primary) 20%, transparent) 0 3px, transparent 3px 6px), repeating-linear-gradient(-45deg, color-mix(in srgb, var(--ink-primary) 20%, transparent) 0 3px, transparent 3px 6px)',
+            backgroundColor: 'var(--bg-card)',
+            color: 'var(--ink-primary)',
+            borderColor: 'var(--border-color)',
+          };
+        }
+        if (state === 'bashing') {
+          return {
+            backgroundImage:
+              'repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-primary) 16%, transparent) 0 3px, transparent 3px 6px)',
+            backgroundColor: 'var(--bg-card)',
+            color: 'var(--ink-primary)',
+            borderColor: 'var(--border-color)',
+          };
+        }
+        return undefined;
+      };
 
       return (
         <div
@@ -660,13 +1033,21 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2"
         >
           <div className="flex flex-wrap items-center justify-between gap-2">
-            <div className="flex items-center gap-2 min-w-0">
+            <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
                 {field.label}
               </span>
               <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
-                {t.aggEqRule(max)}
+                {t.t('cards.vital.v20TrackRule')}
               </span>
+              {woundPenalty < 0 && (
+                <span
+                  data-testid="health-wound-penalty-badge"
+                  className="font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] whitespace-nowrap"
+                >
+                  {t.t('cards.vital.woundPenaltyLabel', { penalty: woundPenalty })}
+                </span>
+              )}
             </div>
             <span
               data-testid="health-healthy-summary"
@@ -687,43 +1068,41 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             aria-valuenow={healthy}
           >
             {boxes.map((state, idx) => (
-              <motion.div
+              <button
                 key={idx}
-                aria-hidden="true"
-                initial={false}
-                animate={{ scale: state === 'healthy' ? 0.96 : 1 }}
-                transition={
-                  shouldReduceMotion ? { duration: 0 } : { duration: 0.18, ease: 'easeOut' }
-                }
-                className={`seg-block h-[18px] flex items-center justify-center font-mono-tech text-[10px] font-extrabold select-none ${
-                  state === 'aggravated'
-                    ? 'is-aggravated'
-                    : state === 'superficial'
-                      ? 'is-superficial'
-                      : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                type="button"
+                data-testid={`v20-health-box-${idx}`}
+                aria-label={`${field.label} ${idx + 1}: ${state}`}
+                onClick={() => onCycleV20HealthCell?.(field.id, idx)}
+                style={v20CellStyle(state)}
+                className={`seg-block min-h-[36px] sm:min-h-[26px] flex items-center justify-center font-mono-tech text-xs font-extrabold select-none cursor-pointer ${
+                  state === 'healthy'
+                    ? 'bg-[var(--bg-card)] border-[var(--border-ink)]/45 text-transparent hover:border-[var(--border-ink)]'
+                    : ''
                 }`}
               >
-                {state === 'aggravated' ? '✕' : state === 'superficial' ? '/' : ''}
-              </motion.div>
+                {state === 'aggravated'
+                  ? '*'
+                  : state === 'lethal'
+                    ? 'X'
+                    : state === 'bashing'
+                      ? '/'
+                      : ''}
+              </button>
             ))}
           </div>
 
           <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
             <div className="flex flex-wrap items-center justify-between gap-2">
-              <div className="flex items-center gap-1.5 min-w-0">
-                <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words">
-                  {t.aggravatedDmg}
-                </span>
-                <span className="font-mono-tech text-[9px] font-semibold text-[var(--ink-muted)] tabular-nums shrink-0">
-                  ({t.supEqTag(totalSupEq)})
-                </span>
-              </div>
+              <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
+                {t.t('cards.vital.aggravatedV20Dmg')}
+              </span>
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
                   data-testid="health-aggravated-dec"
-                  aria-label={`${t.aggravatedDmg} -`}
-                  onClick={() => onAdjustHealthDamage?.(field.id, 'aggravated', -1)}
+                  aria-label={`${t.t('cards.vital.aggravatedV20Dmg')} -`}
+                  onClick={() => onAdjustV20HealthDamage?.(field.id, 'aggravated', -1)}
                   className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   -
@@ -737,8 +1116,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <button
                   type="button"
                   data-testid="health-aggravated-inc"
-                  aria-label={`${t.aggravatedDmg} +`}
-                  onClick={() => onAdjustHealthDamage?.(field.id, 'aggravated', 1)}
+                  aria-label={`${t.t('cards.vital.aggravatedV20Dmg')} +`}
+                  onClick={() => onAdjustV20HealthDamage?.(field.id, 'aggravated', 1)}
                   className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   +
@@ -748,29 +1127,61 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
-                {t.superficialDmg}
+                {t.t('cards.vital.lethalDmg')}
               </span>
               <div className="flex items-center gap-1 shrink-0">
                 <button
                   type="button"
-                  data-testid="health-superficial-dec"
-                  aria-label={`${t.superficialDmg} -`}
-                  onClick={() => onAdjustHealthDamage?.(field.id, 'superficial', -1)}
+                  data-testid="health-lethal-dec"
+                  aria-label={`${t.t('cards.vital.lethalDmg')} -`}
+                  onClick={() => onAdjustV20HealthDamage?.(field.id, 'lethal', -1)}
                   className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   -
                 </button>
                 <span
-                  data-testid="health-superficial-value"
+                  data-testid="health-lethal-value"
                   className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--accent-wine)]"
                 >
-                  <AnimatedCounter value={sup} /> / <AnimatedCounter value={max} pulseOnChange={false} />
+                  <AnimatedCounter value={letDmg} /> / <AnimatedCounter value={max} pulseOnChange={false} />
                 </span>
                 <button
                   type="button"
-                  data-testid="health-superficial-inc"
-                  aria-label={`${t.superficialDmg} +`}
-                  onClick={() => onAdjustHealthDamage?.(field.id, 'superficial', 1)}
+                  data-testid="health-lethal-inc"
+                  aria-label={`${t.t('cards.vital.lethalDmg')} +`}
+                  onClick={() => onAdjustV20HealthDamage?.(field.id, 'lethal', 1)}
+                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase break-words min-w-0">
+                {t.t('cards.vital.bashingDmg')}
+              </span>
+              <div className="flex items-center gap-1 shrink-0">
+                <button
+                  type="button"
+                  data-testid="health-bashing-dec"
+                  aria-label={`${t.t('cards.vital.bashingDmg')} -`}
+                  onClick={() => onAdjustV20HealthDamage?.(field.id, 'bashing', -1)}
+                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  -
+                </button>
+                <span
+                  data-testid="health-bashing-value"
+                  className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--ink-secondary)]"
+                >
+                  <AnimatedCounter value={bashDmg} /> / <AnimatedCounter value={max} pulseOnChange={false} />
+                </span>
+                <button
+                  type="button"
+                  data-testid="health-bashing-inc"
+                  aria-label={`${t.t('cards.vital.bashingDmg')} +`}
+                  onClick={() => onAdjustV20HealthDamage?.(field.id, 'bashing', 1)}
                   className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   +
@@ -786,6 +1197,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     if (field.kind === 'resource') {
       const max = Math.max(1, field.max ?? 12);
       const current = Math.max(0, Math.min(max, typeof field.value === 'number' ? field.value : 0));
+      const isWillpowerField = field.id === 'f_willpower' || field.key === 'willpower';
+      const wpSuperficial =
+        isWillpowerField && rulePreset === 'vampire-v5'
+          ? Math.max(0, Math.min(max - current, field.superficialDamage ?? 0))
+          : 0;
       const useContinuousBar = max > 20;
       const fillPct = Math.max(0, Math.min(100, (current / max) * 100));
       const segments = useContinuousBar ? [] : Array.from({ length: max }, (_, idx) => idx);
@@ -864,6 +1280,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             >
               {segments.map((idx) => {
                 const filled = idx < current;
+                const isSupDamaged = !filled && idx >= current && idx < current + wpSuperficial;
                 return (
                   <motion.button
                     key={idx}
@@ -875,8 +1292,23 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     transition={
                       shouldReduceMotion ? { duration: 0 } : { duration: 0.16, ease: 'easeOut' }
                     }
-                    className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
-                  />
+                    style={
+                      isSupDamaged
+                        ? {
+                            backgroundImage:
+                              'repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-primary) 18%, transparent) 0 3px, transparent 3px 6px)',
+                            backgroundColor: 'var(--bg-card)',
+                            color: 'var(--ink-primary)',
+                            borderColor: 'var(--border-color)',
+                          }
+                        : undefined
+                    }
+                    className={`seg-block cursor-pointer flex items-center justify-center font-mono-tech text-[10px] font-extrabold ${
+                      filled ? 'is-filled' : ''
+                    }`}
+                  >
+                    {isSupDamaged ? '/' : ''}
+                  </motion.button>
                 );
               })}
             </div>
@@ -889,6 +1321,39 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     if (field.kind === 'boolean') {
       const checked = Boolean(field.value);
       const isWillpowerAutoSuccess = field.id === 'f_wp_boost' || field.key === 'wp_boost';
+
+      if (isWillpowerAutoSuccess && rulePreset === 'vampire-v5') {
+        const currentWillpower = typeof variables.willpower === 'number' ? variables.willpower : 0;
+        const isDisabled = currentWillpower <= 0 || !canWillpowerSurge;
+        return (
+          <div
+            data-testid="willpower-surge-panel"
+            className="py-1 flex flex-col gap-1.5 p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)]"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="min-w-0 flex-1">
+                <div className="font-mono-tech text-xs font-bold tracking-wide uppercase text-[var(--ink-primary)] break-words">
+                  {t.t('cards.vital.wpSurgeLabel')}
+                </div>
+                <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)]">
+                  {t.t('cards.vital.wpSurgeHint')}
+                </div>
+              </div>
+              <button
+                type="button"
+                data-testid="willpower-surge-btn"
+                disabled={isDisabled}
+                onClick={() => onTriggerWillpowerSurge?.()}
+                className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-extrabold uppercase shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+              >
+                {canWillpowerSurge
+                  ? t.t('cards.vital.wpSurgeBtn')
+                  : t.t('cards.vital.wpSurgeNoRoll')}
+              </button>
+            </div>
+          </div>
+        );
+      }
 
       if (isWillpowerAutoSuccess) {
         const currentWillpower = typeof variables.willpower === 'number' ? variables.willpower : 0;
@@ -999,6 +1464,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             field={field}
             variables={variables}
             defaultDifficulty={defaultDiff}
+            rulePreset={rulePreset}
+            woundPenalty={woundPenalty}
+            bloodSurge={bloodSurge}
+            lastSoakTotal={lastSoakTotal}
             t={t}
             onRoll={onRoll}
             onUpdateSchema={onUpdateSchema}

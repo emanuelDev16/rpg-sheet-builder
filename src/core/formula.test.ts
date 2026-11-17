@@ -1,6 +1,14 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { evaluateFormula, rollDiceExpression } from './formula';
+import {
+  computeRemainingDamageAfterSoak,
+  evaluateFormula,
+  evaluateV5Rolls,
+  executeRouseCheck,
+  getV5BloodSurgeBonus,
+  rerollV5PoolDice,
+  rollDiceExpression,
+} from './formula';
 
 test('evaluateFormula calculates D20 attribute modifiers accurately', () => {
   const res14 = evaluateFormula('floor((forca - 10) / 2)', { forca: 14 }, true);
@@ -147,4 +155,121 @@ test('WoD Storyteller engine handles Specialty (10=+2), 1s clamping before Willp
   assert.equal(soakFail.outcome, 'failure');
   assert.equal(soakFail.isSoak, true);
 });
+
+test('V20 Aggravated Soak excludes Stamina and blocks Willpower, Bashing Soak halves remaining, and Wound Penalty respects exemption', () => {
+  // Aggravated soak: Stamina=3 is zeroed, Fortitude/Armor=2 stays -> 2d10, WP blocked even when requested
+  const aggSeq = [0.75, 0.85];
+  let aIdx = 0;
+  const aggSoak = rollDiceExpression(
+    'pool(stamina + fortitude_armor, 6)',
+    { stamina: 3, fortitude_armor: 2 },
+    () => aggSeq[aIdx++],
+    {
+      rulePreset: 'storyteller-v20',
+      isSoak: true,
+      soakDamageType: 'aggravated',
+      willpowerAutoSuccess: true,
+      woundPenalty: -5,
+    },
+  );
+  assert.equal(aggSoak.rolls.length, 2);
+  assert.deepEqual(aggSoak.rolls, [8, 9]);
+  assert.equal(aggSoak.willpowerUsed, false);
+  assert.equal(aggSoak.soakDamageType, 'aggravated');
+  assert.equal(aggSoak.woundPenalty, undefined);
+  assert.equal(aggSoak.total, 2);
+
+  // Bashing soak post-soak halving (floor((incoming - soaked) / 2)) vs Lethal full remaining
+  assert.equal(computeRemainingDamageAfterSoak(7, 2, 'bashing'), 2);
+  assert.equal(computeRemainingDamageAfterSoak(7, 2, 'lethal'), 5);
+  assert.equal(computeRemainingDamageAfterSoak(3, 5, 'bashing'), 0);
+
+  // Normal skill pool applies woundPenalty (-2 -> 5-2 = 3 dice)
+  const wSeq = [0.65, 0.75, 0.85];
+  let wIdx = 0;
+  const woundedRoll = rollDiceExpression(
+    'pool(strength + brawl, 6)',
+    { strength: 3, brawl: 2 },
+    () => wSeq[wIdx++],
+    { rulePreset: 'storyteller-v20', woundPenalty: -2 },
+  );
+  assert.equal(woundedRoll.rolls.length, 3);
+  assert.equal(woundedRoll.woundPenalty, -2);
+  assert.equal(woundedRoll.total, 3);
+
+  // Wound-exempt roll keeps full pool (5 dice)
+  const exSeq = [0.65, 0.65, 0.65, 0.65, 0.65];
+  let exIdx = 0;
+  const exemptRoll = rollDiceExpression(
+    'pool(strength + brawl, 6)',
+    { strength: 3, brawl: 2 },
+    () => exSeq[exIdx++],
+    { rulePreset: 'storyteller-v20', woundPenalty: -2, isWoundExempt: true },
+  );
+  assert.equal(exemptRoll.rolls.length, 5);
+  assert.equal(exemptRoll.woundPenalty, undefined);
+});
+
+test('V5 pool locks Diff 6, disables 1s cancellation, awards +4 per pair of 10s, tracks Hunger dice, Messy Critical, Bestial Failure, Rouse Check & WP Reroll', () => {
+  // 1) Messy Critical: 2 tens (1 normal 10, 1 hunger 10) + 1 fail -> 1 pair = 4 successes, messyCritical=true
+  // Also verifies difficulty override (diff 8 ignored -> locked at 6) and 1s do NOT cancel successes
+  const v5CritSeq = [0.95, 0.01, 0.65, 0.95]; // normal: [10, 1, 7], hunger: [10]
+  let cIdx = 0;
+  const v5Crit = rollDiceExpression(
+    'pool(strength + brawl, 6)',
+    { strength: 2, brawl: 2, hunger: 1 },
+    () => v5CritSeq[cIdx++],
+    { rulePreset: 'vampire-v5', difficulty: 9, hungerDice: 1 },
+  );
+  assert.equal(v5Crit.difficulty, 6);
+  assert.equal(v5Crit.canceledOnes, 0);
+  assert.equal(v5Crit.critPairsCount, 1);
+  assert.equal(v5Crit.total, 5); // 10 (1) + 7 (1) + 10 (1) + pair bonus (+2) = 5
+  assert.deepEqual(v5Crit.hungerRolls, [10]);
+  assert.equal(v5Crit.messyCritical, true);
+  assert.equal(v5Crit.bestialFailure, false);
+
+  // 2) Bestial Failure: 0 successes and a 1 on Hunger die
+  const bestialEval = evaluateV5Rolls([4, 3, 1], 1);
+  assert.equal(bestialEval.total, 0);
+  assert.equal(bestialEval.bestialFailure, true);
+  assert.equal(bestialEval.outcome, 'botch');
+
+  // 3) Blood Surge bonus scales by Blood Potency
+  assert.equal(getV5BloodSurgeBonus(1), 2);
+  assert.equal(getV5BloodSurgeBonus(3), 3);
+  assert.equal(getV5BloodSurgeBonus(5), 4);
+  const surgeRoll = rollDiceExpression(
+    'pool(strength + brawl, 6)',
+    { strength: 2, brawl: 1, blood_potency: 3, hunger: 1 },
+    () => 0.65,
+    { rulePreset: 'vampire-v5', bloodSurge: true },
+  );
+  assert.equal(surgeRoll.rolls.length, 6); // 3 base + 3 blood surge
+  assert.equal(surgeRoll.isBloodSurge, true);
+
+  // 4) Rouse Check: >=6 passes (hungerDelta 0), <=5 fails (hungerDelta +1)
+  const rousePass = executeRouseCheck(() => 0.55); // 6
+  assert.deepEqual(rousePass.rolls, [6]);
+  assert.equal(rousePass.hungerDelta, 0);
+  assert.equal(rousePass.outcome, 'success');
+
+  const rouseFail = executeRouseCheck(() => 0.45); // 5
+  assert.deepEqual(rouseFail.rolls, [5]);
+  assert.equal(rouseFail.hungerDelta, 1);
+  assert.equal(rouseFail.outcome, 'failure');
+
+  // 5) Willpower Reroll: blocks Hunger die index (index 3), caps at 3 normal dice, re-evaluates total
+  const prevRolls = [2, 3, 4, 1]; // 3 normal dice (indices 0,1,2) + 1 Hunger die (index 3)
+  let rIdx = 0;
+  const rerollSeq = [0.95, 0.95, 0.65]; // 10, 10, 7
+  const rerolled = rerollV5PoolDice(prevRolls, 1, [0, 1, 2, 3], () => rerollSeq[rIdx++]);
+  assert.deepEqual(rerolled.rerolledIndices, [0, 1, 2]);
+  assert.deepEqual(rerolled.rolls, [10, 10, 7, 1]);
+  assert.equal(rerolled.critPairsCount, 1);
+  assert.equal(rerolled.total, 5);
+  assert.equal(rerolled.isWillpowerReroll, true);
+  assert.equal(rerolled.messyCritical, false); // 10s are on normal dice, Hunger die is 1
+});
+
 

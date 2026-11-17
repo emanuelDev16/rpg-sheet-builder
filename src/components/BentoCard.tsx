@@ -4,12 +4,15 @@ import {
   AppMode,
   FieldKind,
   reorderFieldInCard,
+  RulePreset,
   SheetCard,
   SheetEvaluation,
   SheetField,
   SystemId,
+  VirtuesState,
 } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { AnimatedCounter } from './AnimatedCounter';
 import { FieldPrimitive } from './FieldPrimitives';
 
 interface BentoCardProps {
@@ -18,6 +21,14 @@ interface BentoCardProps {
   filteredInfo?: { shown: number; total: number };
   mode: AppMode;
   systemId?: SystemId;
+  rulePreset?: RulePreset;
+  woundPenalty?: number;
+  bloodPool?: { current: number; max: number };
+  virtues?: VirtuesState;
+  bloodSurge?: boolean;
+  bloodSurgeBonus?: number;
+  lastSoakTotal?: number | null;
+  canWillpowerSurge?: boolean;
   evaluation: SheetEvaluation;
   t?: AppTranslations['cards'];
   onChangeValue: (fieldId: string, value: number | string | boolean) => void;
@@ -27,6 +38,24 @@ interface BentoCardProps {
     damageType: 'superficial' | 'aggravated',
     delta: number,
   ) => void;
+  onCycleV20HealthCell?: (fieldId: string, boxIndex: number) => void;
+  onAdjustV20HealthDamage?: (
+    fieldId: string,
+    damageType: 'bashing' | 'lethal' | 'aggravated',
+    delta: number,
+  ) => void;
+  onAdjustV5HealthDamage?: (
+    fieldId: string,
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
+  onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
+  onAdjustBloodPool?: (delta: number) => void;
+  onSetBloodPool?: (nextVal: number) => void;
+  onUpdateVirtue?: (virtue: keyof VirtuesState, nextVal: number) => void;
+  onRouseCheck?: () => void;
+  onToggleBloodSurge?: () => void;
+  onTriggerWillpowerSurge?: () => void;
   onRoll: (field: SheetField) => void;
   onAddRow: (fieldId: string) => void;
   onUpdateRow: (fieldId: string, rowId: string, col: 'col1' | 'col2', val: string | number) => void;
@@ -245,11 +274,29 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   filteredInfo,
   mode,
   systemId = 'wod',
+  rulePreset = 'storyteller-v20',
+  woundPenalty = 0,
+  bloodPool,
+  virtues,
+  bloodSurge = false,
+  bloodSurgeBonus = 2,
+  lastSoakTotal = null,
+  canWillpowerSurge = false,
   evaluation,
   t = DEFAULT_CARDS_T,
   onChangeValue,
   onAdjustResource,
   onAdjustHealthDamage,
+  onCycleV20HealthCell,
+  onAdjustV20HealthDamage,
+  onAdjustV5HealthDamage,
+  onApplyV5SuperficialHalving,
+  onAdjustBloodPool,
+  onSetBloodPool,
+  onUpdateVirtue,
+  onRouseCheck,
+  onToggleBloodSurge,
+  onTriggerWillpowerSurge,
   onRoll,
   onAddRow,
   onUpdateRow,
@@ -280,7 +327,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const selectedMeta = guided.templates[selectedTemplate];
 
   const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
-  const fieldsToRender = displayFields ?? card.fields;
+  const rawFieldsToRender = displayFields ?? card.fields;
+  const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
+  const fieldsToRender =
+    isWodCombatCard && mode === 'jogo'
+      ? rawFieldsToRender.filter((f) => {
+          if (rulePreset === 'storyteller-v20' && (f.id === 'f_hunger' || f.key === 'hunger')) {
+            return false;
+          }
+          if (rulePreset === 'vampire-v5' && (f.id === 'f_soak' || f.key === 'soak_roll' || f.isSoak)) {
+            return false;
+          }
+          return true;
+        })
+      : rawFieldsToRender;
 
   const canUseTwoColBody =
     card.colSpan === 2 &&
@@ -428,45 +488,256 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 
         {fieldsToRender.map((field) => {
           const realIdx = card.fields.findIndex((f) => f.id === field.id);
+          const showV20BloodAfterWillpower =
+            isWodCombatCard &&
+            mode === 'jogo' &&
+            rulePreset === 'storyteller-v20' &&
+            (field.id === 'f_willpower' || field.key === 'willpower') &&
+            Boolean(bloodPool);
+          const showV20VirtuesBeforeHumanity =
+            isWodCombatCard &&
+            mode === 'jogo' &&
+            rulePreset === 'storyteller-v20' &&
+            (field.id === 'f_humanity' || field.key === 'humanity') &&
+            Boolean(virtues);
+          const showV5FuelAfterHunger =
+            isWodCombatCard &&
+            mode === 'jogo' &&
+            rulePreset === 'vampire-v5' &&
+            (field.id === 'f_hunger' || field.key === 'hunger');
+
           return (
-            <FieldPrimitive
-              key={field.id}
-              field={field}
-              mode={mode}
-              systemId={systemId}
-              variables={evaluation.variables}
-              computed={evaluation.computedByFieldId[field.id]}
-              totalCargoWeight={evaluation.totalCargoWeight}
-              t={t}
-              isEditOpen={mode === 'edicao' && editingFieldId === field.id}
-              onToggleEdit={() =>
-                setEditingFieldId((prev) => (prev === field.id ? null : field.id))
-              }
-              canMoveUp={realIdx > 0}
-              canMoveDown={realIdx !== -1 && realIdx < card.fields.length - 1}
-              onMoveUp={() =>
-                onUpdateCard(card.id, {
-                  fields: reorderFieldInCard(card.fields, field.id, 'up'),
-                })
-              }
-              onMoveDown={() =>
-                onUpdateCard(card.id, {
-                  fields: reorderFieldInCard(card.fields, field.id, 'down'),
-                })
-              }
-              onChangeValue={onChangeValue}
-              onAdjustResource={onAdjustResource}
-              onAdjustHealthDamage={onAdjustHealthDamage}
-              onRoll={onRoll}
-              onAddRow={onAddRow}
-              onUpdateRow={onUpdateRow}
-              onRemoveRow={onRemoveRow}
-              onUpdateSchema={onUpdateSchema}
-              onRemoveField={(fid) => {
-                if (editingFieldId === fid) setEditingFieldId(null);
-                onRemoveField(card.id, fid);
-              }}
-            />
+            <React.Fragment key={field.id}>
+              {showV20VirtuesBeforeHumanity && virtues && (
+                <div
+                  data-testid="v20-virtues-panel"
+                  className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] flex flex-col gap-2"
+                >
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="font-mono-tech text-[10px] font-bold tracking-wider uppercase text-[var(--accent-wine)]">
+                      {t.t('cards.vital.virtuesHeading')}
+                    </span>
+                  </div>
+                  <div className="grid grid-cols-1 gap-1.5">
+                    {(
+                      [
+                        ['conscience', t.t('cards.vital.virtueConscience')],
+                        ['selfControl', t.t('cards.vital.virtueSelfControl')],
+                        ['courage', t.t('cards.vital.virtueCourage')],
+                      ] as const
+                    ).map(([vKey, vLabel]) => {
+                      const val = virtues[vKey];
+                      return (
+                        <div
+                          key={vKey}
+                          className="flex items-center justify-between gap-2"
+                        >
+                          <span className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)] truncate">
+                            {vLabel}
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              data-testid={`v20-virtue-${vKey}-dec`}
+                              aria-label={`${vLabel} -`}
+                              disabled={val <= 1}
+                              onClick={() => onUpdateVirtue?.(vKey, val - 1)}
+                              className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                            >
+                              -
+                            </button>
+                            <span
+                              data-testid={`v20-virtue-${vKey}-value`}
+                              className="font-mono-tech text-xs font-bold min-w-[34px] text-center tabular-nums text-[var(--ink-primary)]"
+                            >
+                              {val} / 5
+                            </span>
+                            <button
+                              type="button"
+                              data-testid={`v20-virtue-${vKey}-inc`}
+                              aria-label={`${vLabel} +`}
+                              disabled={val >= 5}
+                              onClick={() => onUpdateVirtue?.(vKey, val + 1)}
+                              className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              <FieldPrimitive
+                field={field}
+                mode={mode}
+                systemId={systemId}
+                rulePreset={rulePreset}
+                woundPenalty={woundPenalty}
+                bloodSurge={bloodSurge}
+                lastSoakTotal={lastSoakTotal}
+                canWillpowerSurge={canWillpowerSurge}
+                variables={evaluation.variables}
+                computed={evaluation.computedByFieldId[field.id]}
+                totalCargoWeight={evaluation.totalCargoWeight}
+                t={t}
+                isEditOpen={mode === 'edicao' && editingFieldId === field.id}
+                onToggleEdit={() =>
+                  setEditingFieldId((prev) => (prev === field.id ? null : field.id))
+                }
+                canMoveUp={realIdx > 0}
+                canMoveDown={realIdx !== -1 && realIdx < card.fields.length - 1}
+                onMoveUp={() =>
+                  onUpdateCard(card.id, {
+                    fields: reorderFieldInCard(card.fields, field.id, 'up'),
+                  })
+                }
+                onMoveDown={() =>
+                  onUpdateCard(card.id, {
+                    fields: reorderFieldInCard(card.fields, field.id, 'down'),
+                  })
+                }
+                onChangeValue={onChangeValue}
+                onAdjustResource={onAdjustResource}
+                onAdjustHealthDamage={onAdjustHealthDamage}
+                onCycleV20HealthCell={onCycleV20HealthCell}
+                onAdjustV20HealthDamage={onAdjustV20HealthDamage}
+                onAdjustV5HealthDamage={onAdjustV5HealthDamage}
+                onApplyV5SuperficialHalving={onApplyV5SuperficialHalving}
+                onTriggerWillpowerSurge={onTriggerWillpowerSurge}
+                onRoll={onRoll}
+                onAddRow={onAddRow}
+                onUpdateRow={onUpdateRow}
+                onRemoveRow={onRemoveRow}
+                onUpdateSchema={onUpdateSchema}
+                onRemoveField={(fid) => {
+                  if (editingFieldId === fid) setEditingFieldId(null);
+                  onRemoveField(card.id, fid);
+                }}
+              />
+
+              {showV20BloodAfterWillpower && bloodPool && (
+                <div
+                  data-testid="v20-blood-pool-panel"
+                  className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] flex flex-col gap-2"
+                >
+                  <div className="flex flex-wrap items-center justify-between gap-2">
+                    <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                      {t.t('cards.vital.bloodPoolLabel')}
+                    </span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <button
+                        type="button"
+                        data-testid="v20-spend-blood-btn"
+                        disabled={bloodPool.current <= 0}
+                        onClick={() => onAdjustBloodPool?.(-1)}
+                        className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                      >
+                        {t.t('cards.vital.spendBloodBtn')}
+                      </button>
+                      <span
+                        data-testid="v20-blood-pool-value"
+                        className="font-mono-tech text-xs font-bold px-1.5 min-w-[52px] text-center tabular-nums"
+                        aria-live="polite"
+                      >
+                        <AnimatedCounter value={bloodPool.current} /> /{' '}
+                        <AnimatedCounter value={bloodPool.max} pulseOnChange={false} />
+                      </span>
+                      <button
+                        type="button"
+                        data-testid="v20-blood-pool-inc"
+                        aria-label={`${t.t('cards.vital.bloodPoolLabel')} +`}
+                        disabled={bloodPool.current >= bloodPool.max}
+                        onClick={() => onAdjustBloodPool?.(1)}
+                        className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-40"
+                      >
+                        +
+                      </button>
+                    </div>
+                  </div>
+                  {bloodPool.max > 20 ? (
+                    <div
+                      className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer overflow-hidden"
+                      role="meter"
+                      aria-label={t.t('cards.vital.bloodPoolLabel')}
+                      aria-valuemin={0}
+                      aria-valuemax={bloodPool.max}
+                      aria-valuenow={bloodPool.current}
+                      onClick={(e) => {
+                        const rect = e.currentTarget.getBoundingClientRect();
+                        if (rect.width <= 0) return;
+                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                        onSetBloodPool?.(Math.round(ratio * bloodPool.max));
+                      }}
+                    >
+                      <div
+                        className="h-full bg-[var(--accent-primary)]"
+                        style={{
+                          width: `${Math.max(0, Math.min(100, (bloodPool.current / bloodPool.max) * 100))}%`,
+                        }}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      className="seg-meter-track flex items-center gap-[3px]"
+                      role="meter"
+                      aria-label={t.t('cards.vital.bloodPoolLabel')}
+                      aria-valuemin={0}
+                      aria-valuemax={bloodPool.max}
+                      aria-valuenow={bloodPool.current}
+                    >
+                      {Array.from({ length: bloodPool.max }, (_, idx) => {
+                        const filled = idx < bloodPool.current;
+                        return (
+                          <button
+                            key={idx}
+                            type="button"
+                            aria-label={t.t('cards.setResourceAria', {
+                              label: t.t('cards.vital.bloodPoolLabel'),
+                              value: idx + 1,
+                            })}
+                            onClick={() => onSetBloodPool?.(idx + 1 === bloodPool.current ? idx : idx + 1)}
+                            className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
+                          />
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {showV5FuelAfterHunger && (
+                <div
+                  data-testid="v5-hunger-controls"
+                  className="no-print print:hidden flex flex-wrap items-center gap-2"
+                >
+                  <button
+                    type="button"
+                    data-testid="v5-rouse-check-btn"
+                    onClick={() => onRouseCheck?.()}
+                    className="cyber-roll-btn min-h-[36px] flex-1 min-w-[140px] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+                  >
+                    {t.t('cards.vital.rouseCheckBtn')} ↗
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="v5-blood-surge-toggle"
+                    aria-pressed={bloodSurge}
+                    onClick={() => onToggleBloodSurge?.()}
+                    className={`font-mono-tech min-h-[36px] flex-1 min-w-[140px] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-[var(--radius-control)] border-[1.5px] cursor-pointer transition-colors ${
+                      bloodSurge
+                        ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                        : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)] hover:bg-[var(--bg-hover)]'
+                    }`}
+                  >
+                    {t.t('cards.vital.bloodSurgeLabel', { bonus: bloodSurgeBonus })}
+                    {bloodSurge ? ' · ON' : ''}
+                  </button>
+                </div>
+              )}
+            </React.Fragment>
           );
         })}
 

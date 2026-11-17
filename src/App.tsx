@@ -6,30 +6,45 @@ import {
   addRepeatableRow,
   adjustHealthDamage,
   adjustResourceValue,
+  adjustSheetBloodPool,
+  adjustV20HealthDamage,
+  adjustV5HealthDamage,
   AppMode,
+  applyRouseCheckHunger,
+  applyV5SuperficialHalving,
+  applyV5WillpowerSuperficialDamage,
   CharacterSheetState,
+  computeWoundPenalty,
   consumeWillpowerForRoll,
   createDefaultSheet,
   createNewSheetForSystem,
   createPresetBySystemId,
+  cycleV20HealthCell,
   detectSystemId,
   evaluateSheet,
   FieldKind,
+  getSheetBloodPool,
+  getSheetVirtues,
   NewSheetIdentityInput,
   nowIsoUtc,
   removeCardFromSheet,
   removeFieldFromCard,
   removeRepeatableRow,
+  resolveRulePreset,
   RollLogEntry,
+  RulePreset,
+  setSheetRulePreset,
   SheetCard,
   SheetField,
   SystemId,
   TabId,
+  toggleSheetBloodSurge,
   touchSheetMetadata,
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
   updateRepeatableRow,
+  updateSheetVirtue,
   WorkspaceState,
 } from './core/sheetModel';
 import {
@@ -43,7 +58,10 @@ import {
   RoomSyncIndicatorState,
 } from './core/roomSync';
 import {
+  executeRouseCheck,
+  getV5BloodSurgeBonus,
   isWodPoolExpression,
+  rerollV5PoolDice,
   rollDiceExpression,
   WodPoolOptions,
 } from './core/formula';
@@ -84,7 +102,7 @@ import { SheetSearchBar } from './components/SheetSearchBar';
 import { BentoCard } from './components/BentoCard';
 import { BentoGridSkeleton } from './components/BentoGridSkeleton';
 import { CustomCardBuilder } from './components/CustomCardBuilder';
-import { RollLogSidebar } from './components/RollLogSidebar';
+import { RollDiceChips, RollLogSidebar } from './components/RollLogSidebar';
 import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
 import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
@@ -103,6 +121,7 @@ import {
   buyBackgroundWithXp,
   buySpecialtyWithXp,
   getAvailableXp,
+  setXpRulePresetConfig,
   undoLastUpgrade,
   upgradeTraitWithXp,
 } from './core/xpSystem';
@@ -190,6 +209,7 @@ function HydratedAppWorkspace({
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
   const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
   const mobileRollToastTimerRef = useRef<number | null>(null);
+  const [rerollArmedLogId, setRerollArmedLogId] = useState<string | null>(null);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [customTemplates, setCustomTemplates] = useState<CustomSheetTemplate[]>(
     hydrated.customTemplates,
@@ -245,6 +265,30 @@ function HydratedAppWorkspace({
     () =>
       workspace.sheetsBySystem[activeSystemId] ?? createPresetBySystemId(activeSystemId),
     [workspace, activeSystemId],
+  );
+  const rulePreset = useMemo(() => resolveRulePreset(sheet), [sheet]);
+  const woundPenalty = useMemo(
+    () => computeWoundPenalty(sheet, rulePreset),
+    [sheet, rulePreset],
+  );
+  const bloodPool = useMemo(() => getSheetBloodPool(sheet), [sheet]);
+  const virtues = useMemo(() => getSheetVirtues(sheet), [sheet]);
+  const bloodSurge = Boolean(sheet.bloodSurge);
+  const lastSoakTotal = useMemo(
+    () => sheet.rollLogs.find((l) => l.isSoak)?.total ?? null,
+    [sheet.rollLogs],
+  );
+  const latestEligibleV5Roll = useMemo(
+    () =>
+      sheet.rollLogs.find(
+        (l) =>
+          l.isPoolRoll &&
+          l.rulePreset === 'vampire-v5' &&
+          !l.isRouseCheck &&
+          !l.isWillpowerReroll &&
+          (l.rolls?.length ?? 0) > (l.hungerDice ?? 0),
+      ) ?? null,
+    [sheet.rollLogs],
   );
 
   const refreshPersistedSheets = async () => {
@@ -655,6 +699,12 @@ function HydratedAppWorkspace({
   };
 
   const evaluation = useMemo(() => evaluateSheet(sheet), [sheet]);
+  const currentWillpower =
+    typeof evaluation.variables.willpower === 'number' ? evaluation.variables.willpower : 0;
+  const bloodSurgeBonus = useMemo(
+    () => getV5BloodSurgeBonus(evaluation.variables.blood_potency),
+    [evaluation.variables.blood_potency],
+  );
 
   const visibleCards = useMemo(
     () => sheet.cards.filter((card) => card.tab === activeTab),
@@ -718,12 +768,141 @@ function HydratedAppWorkspace({
     [language],
   );
 
+  const showMobileToastWithTimeout = (entry: RollLogEntry) => {
+    setMobileRollToast(entry);
+    if (mobileRollToastTimerRef.current !== null) {
+      window.clearTimeout(mobileRollToastTimerRef.current);
+    }
+    const timeoutMs =
+      entry.rulePreset === 'vampire-v5' && entry.isPoolRoll && !entry.isRouseCheck ? 6500 : 4000;
+    mobileRollToastTimerRef.current = window.setTimeout(() => {
+      mobileRollToastTimerRef.current = null;
+      setMobileRollToast((curr) => (curr?.id === entry.id ? null : curr));
+    }, timeoutMs);
+  };
+
+  const handleSelectRulePreset = (preset: RulePreset) => {
+    setRerollArmedLogId(null);
+    setXpRulePresetConfig(sheet, preset);
+    setSheet((prev) => setSheetRulePreset(prev, preset));
+  };
+
+  const handleRouseCheck = () => {
+    const result = executeRouseCheck(Math.random);
+    const entry: RollLogEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: nowTimeString(),
+      label: t.t('cards.vital.rouseCheckBtn'),
+      total: result.total,
+      formula: result.resolvedExpression,
+      breakdown: result.breakdown,
+      rolls: result.rolls,
+      difficulty: result.difficulty,
+      outcome: result.outcome,
+      isPoolRoll: true,
+      rulePreset: 'vampire-v5',
+      isRouseCheck: true,
+    };
+    playDiceClatter({ diceCount: 1, isCritical: false, isFumble: false });
+    showMobileToastWithTimeout(entry);
+    setSheet((prev) => {
+      const nextWithHunger = applyRouseCheckHunger(prev, result.hungerDelta ?? 0);
+      return {
+        ...nextWithHunger,
+        rollLogs: [entry, ...nextWithHunger.rollLogs].slice(0, 30),
+      };
+    });
+  };
+
+  const handleArmWillpowerReroll = (logId: string) => {
+    const target = sheet.rollLogs.find(
+      (l) =>
+        l.id === logId &&
+        l.isPoolRoll &&
+        l.rulePreset === 'vampire-v5' &&
+        !l.isRouseCheck &&
+        !l.isWillpowerReroll &&
+        (l.rolls?.length ?? 0) > (l.hungerDice ?? 0),
+    );
+    if (!target || rerollArmedLogId === logId) return;
+    if (!rerollArmedLogId) {
+      if (currentWillpower <= 0) {
+        triggerFlash(t.t('sidebar.roll.noWillpowerLeft'));
+        return;
+      }
+      setSheet((prev) => applyV5WillpowerSuperficialDamage(prev, 1));
+    }
+    setRerollArmedLogId(logId);
+    dismissMobileRollToast();
+    if (typeof window !== 'undefined' && window.innerWidth < 1024) {
+      setMobileSidebarOpen(true);
+    }
+    triggerFlash(t.t('sidebar.roll.rerollPrompt'));
+  };
+
+  const handleTriggerWillpowerSurge = () => {
+    if (!latestEligibleV5Roll) return;
+    handleArmWillpowerReroll(latestEligibleV5Roll.id);
+  };
+
+  const handleConfirmWillpowerReroll = (logId: string, indices: number[]) => {
+    const target = sheet.rollLogs.find((l) => l.id === logId);
+    if (!target || !target.rolls || target.rolls.length === 0 || indices.length === 0) {
+      setRerollArmedLogId(null);
+      return;
+    }
+    const rerolled = rerollV5PoolDice(
+      target.rolls,
+      target.hungerDice ?? 0,
+      indices,
+      Math.random,
+      {
+        woundPenalty: target.woundPenalty,
+        isBloodSurge: target.isBloodSurge,
+      },
+    );
+    const updatedEntry: RollLogEntry = {
+      ...target,
+      total: rerolled.total,
+      formula: rerolled.resolvedExpression,
+      breakdown: rerolled.breakdown,
+      rolls: rerolled.rolls,
+      onesCount: rerolled.onesCount,
+      outcome: rerolled.outcome,
+      isCritical: rerolled.isCritical,
+      isFumble: rerolled.isFumble,
+      hungerRolls: rerolled.hungerRolls,
+      messyCritical: rerolled.messyCritical,
+      bestialFailure: rerolled.bestialFailure,
+      critPairsCount: rerolled.critPairsCount,
+      willpowerUsed: true,
+      isWillpowerReroll: true,
+      rerolledIndices: rerolled.rerolledIndices,
+    };
+    playDiceClatter({
+      diceCount: rerolled.rerolledIndices?.length || 1,
+      isCritical: rerolled.isCritical,
+      isFumble: rerolled.isFumble,
+    });
+    showMobileToastWithTimeout(updatedEntry);
+    setSheet((prev) => ({
+      ...prev,
+      rollLogs: prev.rollLogs.map((l) => (l.id === logId ? updatedEntry : l)),
+    }));
+    setRerollArmedLogId(null);
+    triggerFlash(`${t.t('sidebar.roll.wpRerollChip')}: ${rerolled.total}`);
+  };
+
   const appendRollLog = (
     label: string,
     expression: string,
     poolOptions?: WodPoolOptions,
   ) => {
     const isPool = isWodPoolExpression(expression);
+    const effectiveRulePreset = poolOptions?.rulePreset ?? rulePreset;
+    const isSoak = Boolean(poolOptions?.isSoak);
+    const isV5 = effectiveRulePreset === 'vampire-v5';
+
     const allFields = sheet.cards.flatMap((c) => c.fields);
     const willpowerField = allFields.find((f) => f.id === 'f_willpower' || f.key === 'willpower');
     const wpBoostField = allFields.find((f) => f.id === 'f_wp_boost' || f.key === 'wp_boost');
@@ -731,13 +910,25 @@ function HydratedAppWorkspace({
       typeof willpowerField?.value === 'number'
         ? willpowerField.value
         : evaluation.variables.willpower ?? 0;
-    const wpAutoSuccess = isPool && Boolean(wpBoostField?.value) && currentWillpower > 0;
+    const wpBlocked = isV5 || (isSoak && poolOptions?.soakDamageType === 'aggravated');
+    const wpAutoSuccess =
+      isPool && !wpBlocked && Boolean(wpBoostField?.value) && currentWillpower > 0;
 
     const result = rollDiceExpression(
       expression,
       evaluation.variables,
       Math.random,
-      isPool ? { ...poolOptions, willpowerAutoSuccess: wpAutoSuccess } : undefined,
+      isPool
+        ? {
+            ...poolOptions,
+            rulePreset: effectiveRulePreset,
+            woundPenalty: poolOptions?.woundPenalty ?? woundPenalty,
+            hungerDice: evaluation.variables.hunger ?? 0,
+            bloodSurge: isV5 && !isSoak && Boolean(sheet.bloodSurge),
+            bloodSurgeDice: bloodSurgeBonus,
+            willpowerAutoSuccess: wpAutoSuccess,
+          }
+        : undefined,
     );
     if (!result.ok) {
       triggerFlash(t.t('app.rollError', { error: result.error ?? '' }));
@@ -756,6 +947,7 @@ function HydratedAppWorkspace({
       specialty: result.specialty,
       willpowerUsed: result.willpowerUsed,
       isSoak: result.isSoak,
+      soakDamageType: result.soakDamageType,
       onesCount: result.onesCount,
       canceledOnes: result.canceledOnes,
       doubledTensCount: result.doubledTensCount,
@@ -763,25 +955,30 @@ function HydratedAppWorkspace({
       isCritical: result.isCritical,
       isFumble: result.isFumble,
       isPoolRoll: result.isPoolRoll,
+      rulePreset: result.rulePreset,
+      woundPenalty: result.woundPenalty,
+      hungerDice: result.hungerDice,
+      hungerRolls: result.hungerRolls,
+      messyCritical: result.messyCritical,
+      bestialFailure: result.bestialFailure,
+      critPairsCount: result.critPairsCount,
+      isBloodSurge: result.isBloodSurge,
     };
     playDiceClatter({
       diceCount: result.rolls.length || 1,
       isCritical: result.isCritical,
       isFumble: result.isFumble,
     });
-    setMobileRollToast(entry);
-    if (mobileRollToastTimerRef.current !== null) {
-      window.clearTimeout(mobileRollToastTimerRef.current);
-    }
-    mobileRollToastTimerRef.current = window.setTimeout(() => {
-      mobileRollToastTimerRef.current = null;
-      setMobileRollToast((curr) => (curr?.id === entry.id ? null : curr));
-    }, 4000);
+    showMobileToastWithTimeout(entry);
     setSheet((prev) => {
       const updatedSheet = wpAutoSuccess ? consumeWillpowerForRoll(prev) : prev;
+      const clearedSurgeSheet =
+        result.isBloodSurge && updatedSheet.bloodSurge
+          ? { ...updatedSheet, bloodSurge: false }
+          : updatedSheet;
       return {
-        ...updatedSheet,
-        rollLogs: [entry, ...updatedSheet.rollLogs].slice(0, 30),
+        ...clearedSurgeSheet,
+        rollLogs: [entry, ...clearedSurgeSheet.rollLogs].slice(0, 30),
       };
     });
   };
@@ -799,6 +996,9 @@ function HydratedAppWorkspace({
             specialty: field.rollSpecialty,
             modifier: field.rollMod,
             isSoak,
+            soakDamageType: field.soakDamageType ?? 'lethal',
+            rulePreset,
+            woundPenalty,
           }
         : undefined,
     );
@@ -1356,9 +1556,11 @@ function HydratedAppWorkspace({
             <TabNav
               activeTab={activeTab}
               systemId={activeSystemId}
+              rulePreset={rulePreset}
               language={language}
               t={t.tabNav}
               onSelectTab={setActiveTab}
+              onSelectRulePreset={handleSelectRulePreset}
               characterName={sheet.characterName}
               mode={mode}
               onChangeCharacterName={(characterName) =>
@@ -1391,6 +1593,7 @@ function HydratedAppWorkspace({
                 onBuySpecialty={handleBuySpecialty}
                 onBuyBackground={handleBuyBackground}
                 onUndoLastUpgrade={handleUndoLastUpgrade}
+                onSelectRulePreset={handleSelectRulePreset}
               />
             ) : (
               <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
@@ -1426,6 +1629,14 @@ function HydratedAppWorkspace({
                       }
                       mode={mode}
                       systemId={activeSystemId}
+                      rulePreset={rulePreset}
+                      woundPenalty={woundPenalty}
+                      bloodPool={bloodPool}
+                      virtues={virtues}
+                      bloodSurge={bloodSurge}
+                      bloodSurgeBonus={bloodSurgeBonus}
+                      lastSoakTotal={lastSoakTotal}
+                      canWillpowerSurge={Boolean(latestEligibleV5Roll)}
                       evaluation={evaluation}
                       t={t.cards}
                       onChangeValue={(fid, val) =>
@@ -1437,6 +1648,32 @@ function HydratedAppWorkspace({
                       onAdjustHealthDamage={(fid, dmgType, delta) =>
                         setSheet((prev) => adjustHealthDamage(prev, fid, dmgType, delta))
                       }
+                      onCycleV20HealthCell={(fid, idx) =>
+                        setSheet((prev) => cycleV20HealthCell(prev, fid, idx))
+                      }
+                      onAdjustV20HealthDamage={(fid, dmgType, delta) =>
+                        setSheet((prev) => adjustV20HealthDamage(prev, fid, dmgType, delta))
+                      }
+                      onAdjustV5HealthDamage={(fid, dmgType, delta) =>
+                        setSheet((prev) => adjustV5HealthDamage(prev, fid, dmgType, delta))
+                      }
+                      onApplyV5SuperficialHalving={(fid, rawDmg) =>
+                        setSheet((prev) => applyV5SuperficialHalving(prev, fid, rawDmg).sheet)
+                      }
+                      onAdjustBloodPool={(delta) =>
+                        setSheet((prev) => adjustSheetBloodPool(prev, delta))
+                      }
+                      onSetBloodPool={(nextVal) =>
+                        setSheet((prev) => adjustSheetBloodPool(prev, nextVal, true))
+                      }
+                      onUpdateVirtue={(virtueKey, nextVal) =>
+                        setSheet((prev) => updateSheetVirtue(prev, virtueKey, nextVal))
+                      }
+                      onRouseCheck={handleRouseCheck}
+                      onToggleBloodSurge={() =>
+                        setSheet((prev) => toggleSheetBloodSurge(prev))
+                      }
+                      onTriggerWillpowerSurge={handleTriggerWillpowerSurge}
                       onRoll={handleFieldRoll}
                       onAddRow={(fid) =>
                         setSheet((prev) =>
@@ -1490,12 +1727,26 @@ function HydratedAppWorkspace({
           systemName={sheet.systemName}
           language={language}
           t={t.sidebar}
+          rerollArmedLogId={rerollArmedLogId}
+          canWillpowerReroll={currentWillpower > 0 || Boolean(rerollArmedLogId)}
+          onArmWillpowerReroll={handleArmWillpowerReroll}
+          onWillpowerReroll={handleConfirmWillpowerReroll}
+          onCancelReroll={() => {
+            if (rerollArmedLogId) {
+              setSheet((prev) => applyV5WillpowerSuperficialDamage(prev, -1));
+            }
+            setRerollArmedLogId(null);
+            setFlashMessage(null);
+          }}
           isMobileOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
           onQuickRoll={(expr) =>
             appendRollLog(t.t('app.quickRollLabel', { expr: expr.toUpperCase() }), expr)
           }
-          onClearLogs={() => setSheet((prev) => ({ ...prev, rollLogs: [] }))}
+          onClearLogs={() => {
+            setRerollArmedLogId(null);
+            setSheet((prev) => ({ ...prev, rollLogs: [] }));
+          }}
         />
       </div>
 
@@ -1505,121 +1756,192 @@ function HydratedAppWorkspace({
             role="status"
             aria-live="polite"
             data-testid="mobile-roll-toast"
-            className="mobile-roll-toast lg:hidden absolute bottom-full mb-2 z-30 flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-card)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] shadow-[var(--shadow-card)]"
+            className="mobile-roll-toast lg:hidden absolute bottom-full mb-2 z-30 flex flex-col gap-2 px-3 py-2.5 max-h-[70dvh] overflow-y-auto bg-[var(--bg-card)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] shadow-[var(--shadow-card)]"
           >
-            <div className="flex items-center gap-2.5 min-w-0 flex-1">
-              <span
-                data-testid="mobile-roll-toast-total"
-                className="font-display text-2xl font-extrabold leading-none text-[var(--ink-primary)] tabular-nums shrink-0"
-              >
-                {mobileRollToast.total}
-              </span>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-1.5 min-w-0">
-                  <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)] truncate">
-                    {mobileRollToast.label}
-                  </span>
-                  {(() => {
-                    if (mobileRollToast.isPoolRoll) {
-                      const outcome =
-                        mobileRollToast.outcome ??
-                        (mobileRollToast.isFumble
-                          ? 'botch'
-                          : mobileRollToast.total > 0
-                            ? 'success'
-                            : 'failure');
-                      if (outcome === 'botch') {
+            <div className="flex items-start justify-between gap-2 min-w-0">
+              <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                <span
+                  data-testid="mobile-roll-toast-total"
+                  className="font-display text-2xl font-extrabold leading-none text-[var(--ink-primary)] tabular-nums shrink-0"
+                >
+                  {mobileRollToast.total}
+                </span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex flex-wrap items-center gap-1.5 min-w-0">
+                    <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)] truncate">
+                      {mobileRollToast.label}
+                    </span>
+                    {(() => {
+                      if (mobileRollToast.isPoolRoll) {
+                        const outcome =
+                          mobileRollToast.outcome ??
+                          (mobileRollToast.isFumble
+                            ? 'botch'
+                            : mobileRollToast.total > 0
+                              ? 'success'
+                              : 'failure');
+                        if (mobileRollToast.isRouseCheck) {
+                          return (
+                            <span
+                              data-testid="mobile-roll-toast-status"
+                              className={`font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 border rounded-[var(--radius-pill)] uppercase shrink-0 ${
+                                outcome === 'success'
+                                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                  : 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                              }`}
+                            >
+                              {outcome === 'success'
+                                ? t.t('sidebar.roll.rousePass')
+                                : t.t('sidebar.roll.rouseFail')}
+                            </span>
+                          );
+                        }
+                        if (mobileRollToast.messyCritical) {
+                          return (
+                            <span
+                              data-testid="mobile-roll-toast-status"
+                              className="v5-status-badge--messy text-[9px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
+                            >
+                              {t.t('sidebar.roll.messyCritical')}
+                            </span>
+                          );
+                        }
+                        if (mobileRollToast.bestialFailure) {
+                          return (
+                            <span
+                              data-testid="mobile-roll-toast-status"
+                              className="v5-status-badge--bestial text-[9px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
+                            >
+                              {t.t('sidebar.roll.bestialFailure')}
+                            </span>
+                          );
+                        }
+                        if (outcome === 'botch') {
+                          return (
+                            <span
+                              data-testid="mobile-roll-toast-status"
+                              className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.botch')}
+                            </span>
+                          );
+                        }
+                        if (outcome === 'failure') {
+                          return (
+                            <span
+                              data-testid="mobile-roll-toast-status"
+                              className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--text-secondary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.failure')}
+                            </span>
+                          );
+                        }
+                        return (
+                          <span
+                            data-testid="mobile-roll-toast-status"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                          >
+                            {t.t('sidebar.roll.success')}
+                          </span>
+                        );
+                      }
+                      if (mobileRollToast.isCritical) {
+                        return (
+                          <span
+                            data-testid="mobile-roll-toast-status"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                          >
+                            {t.t('sidebar.roll.critShort')}
+                          </span>
+                        );
+                      }
+                      if (mobileRollToast.isFumble) {
                         return (
                           <span
                             data-testid="mobile-roll-toast-status"
                             className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
                           >
-                            {t.t('sidebar.roll.botch')}
+                            {t.t('sidebar.roll.fumble1')}
                           </span>
                         );
                       }
-                      if (outcome === 'failure') {
-                        return (
-                          <span
-                            data-testid="mobile-roll-toast-status"
-                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--text-secondary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
-                          >
-                            {t.t('sidebar.roll.failure')}
-                          </span>
-                        );
-                      }
-                      return (
-                        <span
-                          data-testid="mobile-roll-toast-status"
-                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
-                        >
-                          {t.t('sidebar.roll.success')}
-                        </span>
-                      );
-                    }
-                    if (mobileRollToast.isCritical) {
-                      return (
-                        <span
-                          data-testid="mobile-roll-toast-status"
-                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
-                        >
-                          {t.t('sidebar.roll.critShort')}
-                        </span>
-                      );
-                    }
-                    if (mobileRollToast.isFumble) {
-                      return (
-                        <span
-                          data-testid="mobile-roll-toast-status"
-                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
-                        >
-                          {t.t('sidebar.roll.fumble1')}
-                        </span>
-                      );
-                    }
-                    return null;
-                  })()}
+                      return null;
+                    })()}
+                  </div>
+                  <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
+                    {mobileRollToast.isPoolRoll
+                      ? `${mobileRollToast.total} ${
+                          mobileRollToast.isSoak
+                            ? t.t('sidebar.roll.soaked')
+                            : mobileRollToast.total === 1
+                              ? t.t('sidebar.roll.sucSingular')
+                              : t.t('sidebar.roll.sucPlural')
+                        } · ${
+                          mobileRollToast.rolls && mobileRollToast.rolls.length > 0
+                            ? `${mobileRollToast.rolls.length}d10 (${t.t('cards.pool.diff')} ${mobileRollToast.difficulty ?? 6})`
+                            : mobileRollToast.formula
+                        }`
+                      : mobileRollToast.breakdown}
+                  </div>
                 </div>
-                <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
-                  {mobileRollToast.isPoolRoll
-                    ? `${mobileRollToast.total} ${
-                        mobileRollToast.isSoak
-                          ? t.t('sidebar.roll.soaked')
-                          : mobileRollToast.total === 1
-                            ? t.t('sidebar.roll.sucSingular')
-                            : t.t('sidebar.roll.sucPlural')
-                      } · ${
-                        mobileRollToast.rolls && mobileRollToast.rolls.length > 0
-                          ? `${mobileRollToast.rolls.length}d10 (${t.t('cards.pool.diff')} ${mobileRollToast.difficulty ?? 6})`
-                          : mobileRollToast.formula
-                      }`
-                    : mobileRollToast.breakdown}
-                </div>
+              </div>
+
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-testid="mobile-roll-toast-open-log"
+                  onClick={() => {
+                    dismissMobileRollToast();
+                    setMobileSidebarOpen(true);
+                  }}
+                  className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase cursor-pointer"
+                >
+                  {t.t('statusBar.mobileLogsBtn')}
+                </button>
+                <button
+                  type="button"
+                  data-testid="mobile-roll-toast-close"
+                  aria-label={t.t('sidebar.closeToastAria')}
+                  onClick={dismissMobileRollToast}
+                  className="cyber-btn-outline min-h-[36px] min-w-[36px] w-9 h-9 flex items-center justify-center cursor-pointer"
+                >
+                  <X className="w-4 h-4" aria-hidden="true" />
+                </button>
               </div>
             </div>
 
-            <div className="flex items-center gap-1.5 shrink-0">
-              <button
-                type="button"
-                data-testid="mobile-roll-toast-open-log"
-                onClick={() => {
-                  dismissMobileRollToast();
-                  setMobileSidebarOpen(true);
-                }}
-                className="cyber-btn-outline px-2 py-1 text-[10px] font-bold uppercase cursor-pointer"
-              >
-                {t.t('statusBar.mobileLogsBtn')}
-              </button>
-              <button
-                type="button"
-                data-testid="mobile-roll-toast-close"
-                aria-label={t.t('sidebar.closeToastAria')}
-                onClick={dismissMobileRollToast}
-                className="cyber-btn-outline w-7 h-7 flex items-center justify-center cursor-pointer"
-              >
-                <X className="w-3.5 h-3.5" aria-hidden="true" />
-              </button>
-            </div>
+            {mobileRollToast.isPoolRoll &&
+              mobileRollToast.rolls &&
+              mobileRollToast.rolls.length > 0 && (
+                <div className="border-t border-[var(--border-subtle)] pt-1.5">
+                  <RollDiceChips
+                    entry={mobileRollToast}
+                    t={t.sidebar}
+                    testIdPrefix="mobile-toast"
+                  />
+                </div>
+              )}
+
+            {mobileRollToast.isPoolRoll &&
+              mobileRollToast.rulePreset === 'vampire-v5' &&
+              !mobileRollToast.isRouseCheck &&
+              !mobileRollToast.isWillpowerReroll &&
+              (mobileRollToast.rolls?.length ?? 0) > (mobileRollToast.hungerDice ?? 0) && (
+                <button
+                  type="button"
+                  data-testid="mobile-toast-reroll-wp-btn"
+                  disabled={currentWillpower <= 0 && !rerollArmedLogId}
+                  title={
+                    currentWillpower > 0 || rerollArmedLogId
+                      ? t.t('sidebar.roll.rerollWillpower')
+                      : t.t('sidebar.roll.noWillpowerLeft')
+                  }
+                  onClick={() => handleArmWillpowerReroll(mobileRollToast.id)}
+                  className="cyber-btn-outline min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center"
+                >
+                  {t.t('sidebar.roll.rerollWillpower')}
+                </button>
+              )}
           </div>
         )}
 

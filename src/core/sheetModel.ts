@@ -1,10 +1,15 @@
 import {
   evaluateFormula,
+  getV5BloodSurgeBonus,
   parseWodPoolExpression,
   rollDiceExpression,
+  type RulePreset,
+  type SoakDamageType,
   type VariableMap,
   type WodOutcome,
 } from './formula.ts';
+
+export type { RulePreset, SoakDamageType };
 
 export const DEVICE_ID_STORAGE_KEY = 'grid_sheet_device_id_v1';
 
@@ -132,8 +137,11 @@ export interface SheetField {
   value?: number | string | boolean;
   max?: number;
   damageTrack?: boolean;
+  bashingDamage?: number;
+  lethalDamage?: number;
   superficialDamage?: number;
   aggravatedDamage?: number;
+  soakDamageType?: SoakDamageType;
   formula?: string;
   showPlus?: boolean;
   rollLabel?: string;
@@ -170,6 +178,7 @@ export interface RollLogEntry {
   specialty?: boolean;
   willpowerUsed?: boolean;
   isSoak?: boolean;
+  soakDamageType?: SoakDamageType;
   onesCount?: number;
   canceledOnes?: number;
   doubledTensCount?: number;
@@ -177,10 +186,27 @@ export interface RollLogEntry {
   isCritical?: boolean;
   isFumble?: boolean;
   isPoolRoll?: boolean;
+  rulePreset?: RulePreset;
+  woundPenalty?: number;
+  hungerDice?: number;
+  hungerRolls?: number[];
+  messyCritical?: boolean;
+  bestialFailure?: boolean;
+  critPairsCount?: number;
+  isRouseCheck?: boolean;
+  isBloodSurge?: boolean;
+  isWillpowerReroll?: boolean;
+  rerolledIndices?: number[];
 }
 
 export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
-export type XpRulePreset = 'storyteller-v20' | 'vampire-v5' | 'custom';
+export type XpRulePreset = RulePreset;
+
+export interface VirtuesState {
+  conscience: number;
+  selfControl: number;
+  courage: number;
+}
 
 export interface XpLedgerEntry {
   id: string;
@@ -214,8 +240,12 @@ export interface CharacterSheetState {
   revision: number;
   updatedAt: string;
   deviceId: string;
+  rulePreset?: RulePreset;
   xpRulePreset?: XpRulePreset;
   customUseNewLevelBase?: boolean;
+  bloodPool?: number;
+  bloodSurge?: boolean;
+  virtues?: VirtuesState;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
   xp?: XpState;
@@ -307,7 +337,10 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
+    rulePreset: 'storyteller-v20',
     xpRulePreset: 'storyteller-v20',
+    bloodPool: 10,
+    virtues: { conscience: 3, selfControl: 3, courage: 4 },
     cards: [
       {
         id: 'card_identidade',
@@ -1549,27 +1582,55 @@ export function evaluateSheet(sheet: CharacterSheetState): SheetEvaluation {
 export function resolveRollPreview(
   expression: string,
   vars: VariableMap,
-  options?: { difficulty?: number; modifier?: number; specialty?: boolean },
+  options?: {
+    difficulty?: number;
+    modifier?: number;
+    specialty?: boolean;
+    rulePreset?: RulePreset;
+    woundPenalty?: number;
+    isSoak?: boolean;
+    soakDamageType?: SoakDamageType;
+    bloodSurge?: boolean;
+  },
 ): string {
   const cleaned = expression.trim();
   if (!cleaned) return '';
 
   const parsedPool = parseWodPoolExpression(cleaned);
   if (parsedPool) {
-    const countRes = evaluateFormula(parsedPool.countExpr, vars, false);
-    const diffRes = evaluateFormula(parsedPool.diffExpr, vars, false);
-    if (countRes.ok && (diffRes.ok || options?.difficulty !== undefined)) {
+    const preset: RulePreset = options?.rulePreset ?? 'storyteller-v20';
+    const isSoak = Boolean(options?.isSoak);
+    const soakType: SoakDamageType = options?.soakDamageType ?? 'lethal';
+    const effectiveVars =
+      isSoak && preset !== 'vampire-v5' && soakType === 'aggravated'
+        ? { ...vars, stamina: 0, vigor: 0 }
+        : vars;
+
+    const countRes = evaluateFormula(parsedPool.countExpr, effectiveVars, false);
+    const diffRes = evaluateFormula(parsedPool.diffExpr, effectiveVars, false);
+    if (countRes.ok && (diffRes.ok || options?.difficulty !== undefined || preset === 'vampire-v5')) {
       const mod =
         typeof options?.modifier === 'number' && Number.isFinite(options.modifier)
           ? Math.round(options.modifier)
           : 0;
-      const poolSize = Math.max(0, Math.min(30, Math.round(countRes.value) + mod));
+      const wound =
+        !isSoak && typeof options?.woundPenalty === 'number' && Number.isFinite(options.woundPenalty)
+          ? Math.min(0, Math.round(options.woundPenalty))
+          : 0;
+      const surge =
+        preset === 'vampire-v5' && !isSoak && options?.bloodSurge
+          ? getV5BloodSurgeBonus(vars.blood_potency)
+          : 0;
+      const poolSize = Math.max(0, Math.min(30, Math.round(countRes.value) + mod + surge + wound));
       const rawDiff =
-        typeof options?.difficulty === 'number' && Number.isFinite(options.difficulty)
-          ? options.difficulty
-          : diffRes.value;
+        preset === 'vampire-v5'
+          ? 6
+          : typeof options?.difficulty === 'number' && Number.isFinite(options.difficulty)
+            ? options.difficulty
+            : diffRes.value;
       const diff = Math.max(2, Math.min(10, Math.round(rawDiff)));
-      return `${poolSize}d10 @ DIFF ${diff}${options?.specialty ? ' · SPEC' : ''}`;
+      const specSuffix = preset !== 'vampire-v5' && options?.specialty ? ' · SPEC' : '';
+      return `${poolSize}d10 @ DIFF ${diff}${specSuffix}`;
     }
   }
 
@@ -1636,6 +1697,9 @@ export function migrateLegacySheetMetadata(
       ? sheet.id.trim()
       : `sheet_${sysId}`;
 
+  const resolvedRulePreset: RulePreset =
+    sheet.rulePreset ?? sheet.xpRulePreset ?? 'storyteller-v20';
+
   return {
     ...sheet,
     id,
@@ -1643,6 +1707,8 @@ export function migrateLegacySheetMetadata(
     revision,
     updatedAt,
     deviceId,
+    rulePreset: resolvedRulePreset,
+    xpRulePreset: sheet.xpRulePreset ?? resolvedRulePreset,
     rollLogs: Array.isArray(sheet.rollLogs) ? sheet.rollLogs : [],
   };
 }
@@ -1793,6 +1859,453 @@ export function adjustHealthDamage(
   });
 }
 
+export function resolveRulePreset(sheet: CharacterSheetState): RulePreset {
+  return sheet.rulePreset ?? sheet.xpRulePreset ?? 'storyteller-v20';
+}
+
+export function setSheetRulePreset(
+  sheet: CharacterSheetState,
+  preset: RulePreset,
+): CharacterSheetState {
+  return touchSheetMetadata({
+    ...sheet,
+    rulePreset: preset,
+    xpRulePreset: preset,
+  });
+}
+
+export function getBloodPoolMaxByGeneration(generation?: number): number {
+  if (typeof generation !== 'number' || !Number.isFinite(generation)) return 13;
+  const gen = Math.round(generation);
+  if (gen <= 4) return 50;
+  if (gen === 5) return 40;
+  if (gen === 6) return 30;
+  if (gen === 7) return 20;
+  if (gen === 8) return 15;
+  if (gen === 9) return 14;
+  if (gen === 10) return 13;
+  if (gen === 11) return 12;
+  if (gen === 12) return 11;
+  return 10;
+}
+
+export function getSheetBloodPool(sheet: CharacterSheetState): { current: number; max: number } {
+  const genField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_generation' || f.key === 'generation');
+  const generation = typeof genField?.value === 'number' ? genField.value : 10;
+  const max = getBloodPoolMaxByGeneration(generation);
+  const bpField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_blood_pool' || f.key === 'blood_pool');
+  const rawVal =
+    typeof bpField?.value === 'number'
+      ? bpField.value
+      : typeof sheet.bloodPool === 'number'
+        ? sheet.bloodPool
+        : Math.min(max, 10);
+  const current = Math.max(0, Math.min(max, Math.round(rawVal)));
+  return { current, max };
+}
+
+export function adjustSheetBloodPool(
+  sheet: CharacterSheetState,
+  deltaOrValue: number,
+  absolute = false,
+): CharacterSheetState {
+  const { current, max } = getSheetBloodPool(sheet);
+  const nextVal = Math.max(0, Math.min(max, Math.round(absolute ? deltaOrValue : current + deltaOrValue)));
+  const hasField = sheet.cards
+    .flatMap((c) => c.fields)
+    .some((f) => f.id === 'f_blood_pool' || f.key === 'blood_pool');
+
+  return touchSheetMetadata({
+    ...sheet,
+    bloodPool: nextVal,
+    cards: hasField
+      ? sheet.cards.map((card) => ({
+          ...card,
+          fields: card.fields.map((f) =>
+            f.id === 'f_blood_pool' || f.key === 'blood_pool' ? { ...f, value: nextVal, max } : f,
+          ),
+        }))
+      : sheet.cards,
+  });
+}
+
+export function getSheetVirtues(sheet: CharacterSheetState): VirtuesState {
+  return {
+    conscience: Math.max(1, Math.min(5, Math.round(sheet.virtues?.conscience ?? 3))),
+    selfControl: Math.max(1, Math.min(5, Math.round(sheet.virtues?.selfControl ?? 3))),
+    courage: Math.max(1, Math.min(5, Math.round(sheet.virtues?.courage ?? 4))),
+  };
+}
+
+export function updateSheetVirtue(
+  sheet: CharacterSheetState,
+  virtue: keyof VirtuesState,
+  nextVal: number,
+): CharacterSheetState {
+  const curr = getSheetVirtues(sheet);
+  const clamped = Math.max(1, Math.min(5, Math.round(nextVal)));
+  return touchSheetMetadata({
+    ...sheet,
+    virtues: {
+      ...curr,
+      [virtue]: clamped,
+    },
+  });
+}
+
+export function getV20HealthBreakdown(field: SheetField): {
+  max: number;
+  aggravated: number;
+  lethal: number;
+  bashing: number;
+  totalDamage: number;
+  healthy: number;
+} {
+  const max = Math.max(1, field.max ?? 7);
+  const agg = Math.max(
+    0,
+    Math.min(
+      max,
+      typeof field.aggravatedDamage === 'number'
+        ? field.aggravatedDamage
+        : Math.max(0, max - (typeof field.value === 'number' ? field.value : max)),
+    ),
+  );
+  const remainingAfterAgg = Math.max(0, max - agg);
+  const letRaw = Math.max(0, field.lethalDamage ?? 0);
+  const letDmg = Math.min(remainingAfterAgg, letRaw);
+  const remainingAfterLet = Math.max(0, remainingAfterAgg - letDmg);
+  const bashRaw = Math.max(
+    0,
+    typeof field.bashingDamage === 'number' ? field.bashingDamage : field.superficialDamage ?? 0,
+  );
+  const bashDmg = Math.min(remainingAfterLet, bashRaw);
+  const totalDamage = agg + letDmg + bashDmg;
+  return {
+    max,
+    aggravated: agg,
+    lethal: letDmg,
+    bashing: bashDmg,
+    totalDamage,
+    healthy: Math.max(0, max - totalDamage),
+  };
+}
+
+export function adjustV20HealthDamage(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  damageType: 'bashing' | 'lethal' | 'aggravated',
+  delta: number,
+): CharacterSheetState {
+  return touchSheetMetadata({
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id !== fieldId || f.kind !== 'resource') return f;
+        const { max, aggravated, lethal, bashing } = getV20HealthBreakdown(f);
+        let nextAgg = aggravated;
+        let nextLet = lethal;
+        let nextBash = bashing;
+
+        if (delta > 0) {
+          for (let step = 0; step < delta; step += 1) {
+            const total = nextAgg + nextLet + nextBash;
+            if (damageType === 'bashing') {
+              if (total < max) {
+                nextBash += 1;
+              } else if (nextBash > 0) {
+                // Overflow bashing upgrades existing bashing to lethal per Storyteller rules
+                nextBash -= 1;
+                nextLet += 1;
+              }
+            } else if (damageType === 'lethal') {
+              if (total < max) {
+                nextLet += 1;
+              } else if (nextBash > 0) {
+                nextBash -= 1;
+                nextLet += 1;
+              }
+            } else if (damageType === 'aggravated') {
+              if (total < max) {
+                nextAgg += 1;
+              } else if (nextBash > 0) {
+                nextBash -= 1;
+                nextAgg += 1;
+              } else if (nextLet > 0) {
+                nextLet -= 1;
+                nextAgg += 1;
+              }
+            }
+          }
+        } else if (delta < 0) {
+          const steps = Math.abs(delta);
+          if (damageType === 'bashing') nextBash = Math.max(0, nextBash - steps);
+          if (damageType === 'lethal') nextLet = Math.max(0, nextLet - steps);
+          if (damageType === 'aggravated') nextAgg = Math.max(0, nextAgg - steps);
+        }
+
+        const healthy = Math.max(0, max - (nextAgg + nextLet + nextBash));
+        return {
+          ...f,
+          damageTrack: true,
+          max,
+          value: healthy,
+          aggravatedDamage: nextAgg,
+          lethalDamage: nextLet,
+          bashingDamage: nextBash,
+          superficialDamage: nextBash,
+        };
+      }),
+    })),
+  });
+}
+
+export function cycleV20HealthCell(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  boxIndex: number,
+): CharacterSheetState {
+  const field = sheet.cards.flatMap((c) => c.fields).find((f) => f.id === fieldId);
+  if (!field) return sheet;
+  const { max, aggravated, lethal, bashing } = getV20HealthBreakdown(field);
+  if (boxIndex < 0 || boxIndex >= max) return sheet;
+
+  let nextAgg = aggravated;
+  let nextLet = lethal;
+  let nextBash = bashing;
+
+  if (boxIndex < aggravated) {
+    // Aggravated -> cleared
+    nextAgg = Math.max(0, aggravated - 1);
+  } else if (boxIndex < aggravated + lethal) {
+    // Lethal -> Aggravated
+    nextLet = Math.max(0, lethal - 1);
+    nextAgg = Math.min(max, aggravated + 1);
+  } else if (boxIndex < aggravated + lethal + bashing) {
+    // Bashing -> Lethal
+    nextBash = Math.max(0, bashing - 1);
+    nextLet = Math.min(max - nextAgg, lethal + 1);
+  } else {
+    // Empty -> Bashing
+    if (nextAgg + nextLet + nextBash < max) {
+      nextBash += 1;
+    }
+  }
+
+  const healthy = Math.max(0, max - (nextAgg + nextLet + nextBash));
+  return touchSheetMetadata({
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) =>
+        f.id === fieldId
+          ? {
+              ...f,
+              damageTrack: true,
+              max,
+              value: healthy,
+              aggravatedDamage: nextAgg,
+              lethalDamage: nextLet,
+              bashingDamage: nextBash,
+              superficialDamage: nextBash,
+            }
+          : f,
+      ),
+    })),
+  });
+}
+
+export function getV5HealthBreakdown(field: SheetField): {
+  max: number;
+  aggravated: number;
+  superficial: number;
+  totalDamage: number;
+  healthy: number;
+} {
+  const max = Math.max(1, field.max ?? 7);
+  const agg = Math.max(
+    0,
+    Math.min(
+      max,
+      typeof field.aggravatedDamage === 'number'
+        ? field.aggravatedDamage
+        : Math.max(0, max - (typeof field.value === 'number' ? field.value : max)),
+    ),
+  );
+  const remaining = Math.max(0, max - agg);
+  const sup = Math.max(0, Math.min(remaining, field.superficialDamage ?? 0));
+  const totalDamage = agg + sup;
+  return {
+    max,
+    aggravated: agg,
+    superficial: sup,
+    totalDamage,
+    healthy: Math.max(0, max - totalDamage),
+  };
+}
+
+export function halveV5SuperficialDamage(rawDamage: number): number {
+  const clean = Math.max(0, Math.round(rawDamage));
+  return Math.ceil(clean / 2);
+}
+
+export function adjustV5HealthDamage(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  damageType: 'superficial' | 'aggravated',
+  delta: number,
+): CharacterSheetState {
+  return touchSheetMetadata({
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id !== fieldId || f.kind !== 'resource') return f;
+        const { max, aggravated, superficial } = getV5HealthBreakdown(f);
+        let nextAgg = aggravated;
+        let nextSup = superficial;
+
+        if (delta > 0) {
+          for (let step = 0; step < delta; step += 1) {
+            if (damageType === 'superficial') {
+              if (nextAgg + nextSup < max) {
+                nextSup += 1;
+              } else if (nextSup > 0) {
+                // V5 overflow: excess superficial converts existing superficial into aggravated
+                nextSup -= 1;
+                nextAgg = Math.min(max, nextAgg + 1);
+              }
+            } else {
+              if (nextAgg < max) {
+                nextAgg += 1;
+                nextSup = Math.min(nextSup, max - nextAgg);
+              }
+            }
+          }
+        } else if (delta < 0) {
+          const steps = Math.abs(delta);
+          if (damageType === 'superficial') {
+            nextSup = Math.max(0, nextSup - steps);
+          } else {
+            nextAgg = Math.max(0, nextAgg - steps);
+          }
+        }
+
+        const nextHealthy = Math.max(0, max - nextAgg);
+        return {
+          ...f,
+          damageTrack: true,
+          max,
+          value: nextHealthy,
+          superficialDamage: nextSup,
+          aggravatedDamage: nextAgg,
+        };
+      }),
+    })),
+  });
+}
+
+export function applyV5SuperficialHalving(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  rawIncomingDamage: number,
+): { sheet: CharacterSheetState; appliedDamage: number } {
+  const appliedDamage = halveV5SuperficialDamage(rawIncomingDamage);
+  if (appliedDamage <= 0) return { sheet, appliedDamage: 0 };
+  return {
+    sheet: adjustV5HealthDamage(sheet, fieldId, 'superficial', appliedDamage),
+    appliedDamage,
+  };
+}
+
+export function computeWoundPenalty(
+  sheet: CharacterSheetState,
+  presetOverride?: RulePreset,
+): number {
+  const sysId = detectSystemId(sheet);
+  if (sysId !== 'wod') return 0;
+  const healthField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_health' || (f.kind === 'resource' && f.damageTrack));
+  if (!healthField) return 0;
+
+  const preset = presetOverride ?? resolveRulePreset(sheet);
+  if (preset === 'vampire-v5') {
+    const { max, totalDamage } = getV5HealthBreakdown(healthField);
+    return totalDamage >= max ? -2 : 0;
+  }
+
+  const { max, totalDamage } = getV20HealthBreakdown(healthField);
+  if (totalDamage <= 0) return 0;
+  if (max === 7) {
+    if (totalDamage <= 1) return 0; // Bruised (0)
+    if (totalDamage <= 3) return -1; // Hurt / Injured (-1)
+    if (totalDamage <= 5) return -2; // Wounded / Mauled (-2)
+    return -5; // Crippled / Incapacitated (-5)
+  }
+  const ratio = totalDamage / max;
+  if (ratio <= 1 / 7) return 0;
+  if (ratio <= 3 / 7) return -1;
+  if (ratio <= 5 / 7) return -2;
+  return -5;
+}
+
+export function applyV5WillpowerSuperficialDamage(
+  sheet: CharacterSheetState,
+  delta = 1,
+): CharacterSheetState {
+  return touchSheetMetadata({
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if ((f.id !== 'f_willpower' && f.key !== 'willpower') || f.kind !== 'resource') return f;
+        const max = Math.max(1, f.max ?? 8);
+        const currentVal = typeof f.value === 'number' ? Math.max(0, Math.min(max, f.value)) : max;
+        const currentSup = Math.max(0, Math.min(max, f.superficialDamage ?? 0));
+        if (delta > 0) {
+          const spent = Math.min(currentVal, delta);
+          return {
+            ...f,
+            value: Math.max(0, currentVal - spent),
+            superficialDamage: Math.min(max, currentSup + spent),
+          };
+        }
+        const healed = Math.min(currentSup, Math.abs(delta));
+        return {
+          ...f,
+          value: Math.min(max, currentVal + healed),
+          superficialDamage: Math.max(0, currentSup - healed),
+        };
+      }),
+    })),
+  });
+}
+
+export function applyRouseCheckHunger(
+  sheet: CharacterSheetState,
+  hungerDelta: number,
+): CharacterSheetState {
+  if (hungerDelta <= 0) return sheet;
+  return adjustResourceValue(sheet, 'f_hunger', hungerDelta);
+}
+
+export function toggleSheetBloodSurge(
+  sheet: CharacterSheetState,
+  nextState?: boolean,
+): CharacterSheetState {
+  const next = nextState !== undefined ? nextState : !Boolean(sheet.bloodSurge);
+  return touchSheetMetadata({
+    ...sheet,
+    bloodSurge: next,
+  });
+}
+
 export function migrateLegacyWodSheet(
   sheet: CharacterSheetState,
   options?: {
@@ -1931,6 +2444,12 @@ export function migrateLocalStorageSheet(
       revision: candidate.revision as number,
       updatedAt: candidate.updatedAt as string,
       deviceId: candidate.deviceId as string,
+      rulePreset: candidate.rulePreset ?? candidate.xpRulePreset,
+      xpRulePreset: candidate.xpRulePreset ?? candidate.rulePreset,
+      customUseNewLevelBase: candidate.customUseNewLevelBase,
+      bloodPool: candidate.bloodPool,
+      bloodSurge: candidate.bloodSurge,
+      virtues: candidate.virtues,
       cards: candidate.cards,
       rollLogs: Array.isArray(candidate.rollLogs) ? candidate.rollLogs : [],
       xp: candidate.xp,
@@ -2259,8 +2778,13 @@ export function createNewSheetForSystem(
   if (resolvedId === 'blank') {
     const blank = createBlankSheet(identity?.localeOptions);
     return customCharName
-      ? { ...blank, characterName: customCharName.toUpperCase(), xpRulePreset: defaultXpRulePreset }
-      : { ...blank, xpRulePreset: defaultXpRulePreset };
+      ? {
+          ...blank,
+          characterName: customCharName.toUpperCase(),
+          rulePreset: defaultXpRulePreset,
+          xpRulePreset: defaultXpRulePreset,
+        }
+      : { ...blank, rulePreset: defaultXpRulePreset, xpRulePreset: defaultXpRulePreset };
   }
 
   const preset = createPresetBySystemId(resolvedId);
@@ -2271,6 +2795,7 @@ export function createNewSheetForSystem(
     revision: 1,
     updatedAt: nowIsoUtc(),
     deviceId: getOrCreateDeviceId(),
+    rulePreset: defaultXpRulePreset,
     xpRulePreset: defaultXpRulePreset,
     cards: preset.cards.map((card) => ({
       ...card,
@@ -2529,8 +3054,12 @@ const ROOT_SHEET_KEYS = new Set([
   'revision',
   'updatedAt',
   'deviceId',
+  'rulePreset',
   'xpRulePreset',
   'customUseNewLevelBase',
+  'bloodPool',
+  'bloodSurge',
+  'virtues',
   'tabs',
   'cards',
   'rollLogs',
@@ -2548,8 +3077,11 @@ const FIELD_KEYS = new Set([
   'boolValue',
   'max',
   'damageTrack',
+  'bashingDamage',
+  'lethalDamage',
   'superficialDamage',
   'aggravatedDamage',
+  'soakDamageType',
   'formula',
   'showPlus',
   'rollLabel',
@@ -2581,10 +3113,22 @@ const ROLL_LOG_KEYS = new Set([
   'specialty',
   'willpowerUsed',
   'isSoak',
+  'soakDamageType',
   'doubledTensCount',
   'onesCount',
   'canceledOnes',
   'outcome',
+  'rulePreset',
+  'woundPenalty',
+  'hungerDice',
+  'hungerRolls',
+  'messyCritical',
+  'bestialFailure',
+  'critPairsCount',
+  'isRouseCheck',
+  'isBloodSurge',
+  'isWillpowerReroll',
+  'rerolledIndices',
 ]);
 const XP_STATE_KEYS = new Set(['totalEarned', 'spent', 'ledger']);
 const XP_LEDGER_KEYS = new Set([
@@ -2598,6 +3142,10 @@ const XP_LEDGER_KEYS = new Set([
   'category',
   'fromValue',
   'toValue',
+  'createdField',
+  'createdCardId',
+  'prevSpecialtyLabel',
+  'prevRollSpecialty',
 ]);
 
 function checkPlainObject(
@@ -2667,11 +3215,33 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       errors.push('$.deviceId: string inválida (1..128 caracteres).');
     }
   }
+  if (data.rulePreset !== undefined && !ALLOWED_XP_RULE_PRESETS.has(String(data.rulePreset))) {
+    errors.push(`$.rulePreset: preset de regras inválido "${String(data.rulePreset)}".`);
+  }
   if (data.xpRulePreset !== undefined && !ALLOWED_XP_RULE_PRESETS.has(String(data.xpRulePreset))) {
     errors.push(`$.xpRulePreset: preset de XP inválido "${String(data.xpRulePreset)}".`);
   }
   if (data.customUseNewLevelBase !== undefined && typeof data.customUseNewLevelBase !== 'boolean') {
     errors.push('$.customUseNewLevelBase: deve ser booleano.');
+  }
+  if (
+    data.bloodPool !== undefined &&
+    (typeof data.bloodPool !== 'number' || !Number.isInteger(data.bloodPool) || data.bloodPool < 0 || data.bloodPool > 50)
+  ) {
+    errors.push('$.bloodPool: deve ser inteiro entre 0 e 50.');
+  }
+  if (data.bloodSurge !== undefined && typeof data.bloodSurge !== 'boolean') {
+    errors.push('$.bloodSurge: deve ser booleano.');
+  }
+  if (data.virtues !== undefined) {
+    if (checkPlainObject(data.virtues, '$.virtues', new Set(['conscience', 'selfControl', 'courage']), errors)) {
+      for (const vk of ['conscience', 'selfControl', 'courage']) {
+        const vv = data.virtues[vk];
+        if (vv !== undefined && (typeof vv !== 'number' || !Number.isInteger(vv) || vv < 1 || vv > 5)) {
+          errors.push(`$.virtues.${vk}: deve ser inteiro entre 1 e 5.`);
+        }
+      }
+    }
   }
 
   if (data.tabs !== undefined) {

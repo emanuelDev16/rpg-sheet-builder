@@ -70,6 +70,10 @@
   --shadow-modal: 6px 6px 0px #0B0B0B;
   --shadow-drawer: -6px 0px 0px #0B0B0B;
   --seg-border: rgba(91, 15, 24, 0.28);
+
+  --hunger-bg: #7A0C18;
+  --hunger-border: #3A040A;
+  --hunger-text: #FFFDF9;
 }
 
 [data-theme="dark"] {
@@ -125,6 +129,10 @@
   --shadow-modal: 6px 6px 0px #000000;
   --shadow-drawer: -6px 0px 0px #000000;
   --seg-border: rgba(217, 72, 88, 0.45);
+
+  --hunger-bg: #B81D2D;
+  --hunger-border: #FF7A88;
+  --hunger-text: #FFFDF9;
 }
 
 [data-theme="eink"] {
@@ -191,6 +199,10 @@
   --shadow-modal: none;
   --shadow-drawer: none;
   --seg-border: rgba(26, 26, 26, 0.35);
+
+  --hunger-bg: #1A1A1A;
+  --hunger-border: #1A1A1A;
+  --hunger-text: #FFFFFF;
 }
 
 * {
@@ -434,6 +446,61 @@ select:focus-visible,
 [data-theme="eink"] .cyber-slant-pill {
   clip-path: none;
   border-radius: var(--radius-pill);
+}
+
+/* ============================================================================
+   DADOS DE FOME V5 (HUNGER DICE) & BADGES MESSY CRITICAL / BESTIAL FAILURE
+   ============================================================================ */
+.die-chip {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  line-height: 1;
+  border-radius: var(--radius-pill);
+  font-weight: 800;
+}
+
+.die-chip--hunger {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 2px solid var(--hunger-border);
+}
+
+.die-chip--hunger-ten {
+  outline: 2px solid var(--hunger-border);
+  outline-offset: 1px;
+}
+
+.die-chip--hunger-one {
+  text-decoration: underline;
+  text-decoration-thickness: 2px;
+  text-underline-offset: 2px;
+}
+
+[data-theme="eink"] .die-chip--hunger {
+  box-shadow: inset 0 0 0 2px #FFFFFF;
+}
+
+[data-theme="eink"] .die-chip--hunger-ten {
+  box-shadow: inset 0 0 0 2px #FFFFFF, 0 0 0 2px #1A1A1A;
+  outline: none;
+}
+
+.v5-status-badge--messy,
+.v5-status-badge--bestial {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 2px solid var(--hunger-border);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .v5-status-badge--messy,
+[data-theme="eink"] .v5-status-badge--bestial {
+  box-shadow: inset 0 0 0 2px #FFFFFF;
 }
 
 /* Seleção ativa: creme/vinho em light/dark, inversão binária pura (#1A1A1A / #F8F8F8) em E-Ink */
@@ -859,7 +926,11 @@ select:focus-visible,
 [data-theme="eink"] [data-testid="health-superficial-value"],
 [data-theme="eink"] [data-testid="willpower-auto-success-badge"],
 [data-theme="eink"] [data-testid="xp-active-formula-badge"],
-[data-theme="eink"] [data-testid^="xp-trait-formula-"] {
+[data-theme="eink"] [data-testid^="xp-trait-formula-"],
+[data-theme="eink"] .die-chip,
+[data-theme="eink"] .die-chip--hunger,
+[data-theme="eink"] .v5-status-badge--messy,
+[data-theme="eink"] .v5-status-badge--bestial {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }

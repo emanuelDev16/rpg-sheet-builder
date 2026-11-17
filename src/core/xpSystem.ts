@@ -159,7 +159,13 @@ export function getEffectiveXpRulePreset(
   pricingOverride?: XpPricingConfig,
 ): XpRulePreset {
   const pricing = pricingOverride ?? getXpPricingConfig(sheet);
-  return pricing.xpRulePreset ?? sheet.xpRulePreset ?? 'storyteller-v20';
+  return (
+    pricingOverride?.xpRulePreset ??
+    sheet.rulePreset ??
+    pricing.xpRulePreset ??
+    sheet.xpRulePreset ??
+    'storyteller-v20'
+  );
 }
 
 export function getEffectiveCustomUseNewLevelBase(
@@ -176,6 +182,7 @@ export function setXpRulePreset(
 ): CharacterSheetState {
   return {
     ...sheet,
+    rulePreset: preset,
     xpRulePreset: preset,
   };
 }

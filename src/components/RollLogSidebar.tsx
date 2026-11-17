@@ -12,11 +12,206 @@ interface RollLogSidebarProps {
   systemName: string;
   language?: AppLanguage;
   t: AppTranslations['sidebar'];
+  rerollArmedLogId?: string | null;
+  canWillpowerReroll?: boolean;
+  onArmWillpowerReroll?: (logId: string) => void;
+  onWillpowerReroll?: (logId: string, indices: number[]) => void;
+  onCancelReroll?: () => void;
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
+
+export interface RollDiceChipsProps {
+  entry: RollLogEntry;
+  t: AppTranslations['sidebar'];
+  isRerollArmed?: boolean;
+  selectedRerollIndices?: number[];
+  onToggleRerollIndex?: (idx: number) => void;
+  testIdPrefix?: string;
+}
+
+export const RollDiceChips: React.FC<RollDiceChipsProps> = ({
+  entry,
+  t,
+  isRerollArmed = false,
+  selectedRerollIndices = [],
+  onToggleRerollIndex,
+  testIdPrefix,
+}) => {
+  if (!entry.isPoolRoll || !entry.rolls || entry.rolls.length === 0) {
+    return null;
+  }
+
+  const diffThreshold = entry.difficulty ?? 6;
+  const isV5Pool = entry.rulePreset === 'vampire-v5' && !entry.isRouseCheck;
+  const hungerCount = isV5Pool
+    ? Math.min(entry.rolls.length, Math.max(0, entry.hungerDice ?? entry.hungerRolls?.length ?? 0))
+    : 0;
+  const normalCount = Math.max(0, entry.rolls.length - hungerCount);
+
+  if (isV5Pool) {
+    const normalDice = entry.rolls.slice(0, normalCount).map((val, dIdx) => ({ val, dIdx }));
+    const hungerDice = entry.rolls
+      .slice(normalCount)
+      .map((val, offset) => ({ val, dIdx: normalCount + offset }));
+
+    return (
+      <div
+        className="flex flex-col gap-1.5 my-1.5"
+        aria-label={t.t('sidebar.diceResultsAria')}
+      >
+        {normalDice.length > 0 && (
+          <div
+            data-testid={testIdPrefix ? `${testIdPrefix}-normal-dice` : undefined}
+            className="flex flex-wrap items-center gap-1"
+          >
+            <span className="font-mono-tech text-[9px] font-bold uppercase tracking-wider text-[var(--ink-muted)] mr-0.5">
+              {t.t('sidebar.roll.normalDiceLabel')}:
+            </span>
+            {normalDice.map(({ val, dIdx }) => {
+              const isSuccessDie = val >= diffThreshold;
+              const isOne = val === 1;
+              const isRerollPick = selectedRerollIndices.includes(dIdx);
+              const normalClassName = `die-chip text-[10px] border ${
+                isRerollPick
+                  ? 'ring-2 ring-[var(--accent-primary)] bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                  : isSuccessDie
+                    ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                    : isOne
+                      ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                      : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-color)]/45'
+              }`;
+
+              if (isRerollArmed && onToggleRerollIndex) {
+                return (
+                  <button
+                    key={dIdx}
+                    type="button"
+                    data-testid={`reroll-die-${dIdx}`}
+                    aria-pressed={isRerollPick}
+                    aria-label={t.t('sidebar.roll.normalDie', { value: val })}
+                    onClick={() => onToggleRerollIndex(dIdx)}
+                    className={`${normalClassName} min-h-[32px] min-w-[32px] px-2 cursor-pointer`}
+                  >
+                    {val}
+                  </button>
+                );
+              }
+
+              return (
+                <span
+                  key={dIdx}
+                  aria-label={t.t('sidebar.roll.normalDie', { value: val })}
+                  className={`${normalClassName} px-1.5 py-1`}
+                >
+                  {val}
+                </span>
+              );
+            })}
+          </div>
+        )}
+
+        {hungerDice.length > 0 && (
+          <div
+            data-testid={testIdPrefix ? `${testIdPrefix}-hunger-dice` : undefined}
+            className="flex flex-wrap items-center gap-1.5"
+          >
+            <span className="font-mono-tech text-[9px] font-extrabold uppercase tracking-wider text-[var(--accent-wine)] mr-0.5">
+              {t.t('sidebar.roll.hungerDiceLabel')}:
+            </span>
+            {hungerDice.map(({ val, dIdx }) => {
+              const hungerHint =
+                val === 10
+                  ? t.t('sidebar.roll.hungerDieTenHint')
+                  : val === 1
+                    ? t.t('sidebar.roll.hungerDieOneHint')
+                    : t.t('sidebar.roll.hungerDie', { value: val });
+              const specialClass =
+                val === 10
+                  ? 'die-chip--hunger-ten'
+                  : val === 1
+                    ? 'die-chip--hunger-one'
+                    : '';
+              const faceText = val === 10 ? '10★' : val === 1 ? '1!' : String(val);
+
+              if (isRerollArmed) {
+                const blockedTitle = t.t('sidebar.roll.cannotRerollHunger');
+                return (
+                  <span
+                    key={dIdx}
+                    title={blockedTitle}
+                    className="inline-flex cursor-not-allowed"
+                  >
+                    <button
+                      type="button"
+                      disabled
+                      data-hunger-die="true"
+                      data-testid={`reroll-hunger-die-${dIdx}`}
+                      title={blockedTitle}
+                      aria-label={`${hungerHint} — ${blockedTitle}`}
+                      className={`die-chip die-chip--hunger ${specialClass} min-h-[32px] min-w-[36px] px-2 text-[10px] pointer-events-none`}
+                    >
+                      <span className="hunger-die-tag text-[8px] font-black uppercase" aria-hidden="true">
+                        H
+                      </span>
+                      <span>{faceText}</span>
+                    </button>
+                  </span>
+                );
+              }
+
+              return (
+                <span
+                  key={dIdx}
+                  data-hunger-die="true"
+                  role="img"
+                  title={hungerHint}
+                  aria-label={hungerHint}
+                  className={`die-chip die-chip--hunger ${specialClass} px-1.5 py-1 text-[10px]`}
+                >
+                  <span className="hunger-die-tag text-[8px] font-black uppercase" aria-hidden="true">
+                    H
+                  </span>
+                  <span>{faceText}</span>
+                </span>
+              );
+            })}
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  return (
+    <div
+      className="flex flex-wrap items-center gap-1 my-1.5"
+      aria-label={t.t('sidebar.diceResultsAria')}
+    >
+      {entry.rolls.map((dieVal, dIdx) => {
+        const isDoubledTen = Boolean(entry.specialty) && dieVal === 10;
+        const isSuccessDie = dieVal >= diffThreshold;
+        const isOne = dieVal === 1;
+        const dieClassName = `die-chip text-[10px] px-1.5 py-1 border ${
+          isDoubledTen
+            ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+            : isSuccessDie
+              ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+              : isOne
+                ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-color)]/40'
+        }`;
+
+        return (
+          <span key={dIdx} className={dieClassName}>
+            {isDoubledTen ? '10×2' : dieVal}
+          </span>
+        );
+      })}
+    </div>
+  );
+};
 
 function getQuickDicePresets(systemId: SystemId): string[] {
   if (systemId === 'wod') {
@@ -37,6 +232,11 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   systemName,
   language = 'pt-BR',
   t,
+  rerollArmedLogId = null,
+  canWillpowerReroll = true,
+  onArmWillpowerReroll,
+  onWillpowerReroll,
+  onCancelReroll,
   onQuickRoll,
   onClearLogs,
   isMobileOpen = false,
@@ -45,10 +245,18 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   const [sidebarTab, setSidebarTab] = useState<SidebarTab>('logs');
   const quickDice = useMemo(() => getQuickDicePresets(systemId), [systemId]);
   const [customExpr, setCustomExpr] = useState(systemId === 'wod' ? '5d10@6' : quickDice[0]);
+  const [selectedRerollIndices, setSelectedRerollIndices] = useState<number[]>([]);
   const mobileCloseBtnRef = useRef<HTMLButtonElement>(null);
   const previousFocusRef = useRef<HTMLElement | null>(null);
   const onCloseMobileRef = useRef(onCloseMobile);
   onCloseMobileRef.current = onCloseMobile;
+
+  useEffect(() => {
+    setSelectedRerollIndices([]);
+    if (rerollArmedLogId) {
+      setSidebarTab('logs');
+    }
+  }, [rerollArmedLogId]);
 
   useEffect(() => {
     setCustomExpr(systemId === 'wod' ? '5d10@6' : getQuickDicePresets(systemId)[0]);
@@ -208,6 +416,17 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                     (entry.isFumble ? 'botch' : entry.total > 0 ? 'success' : 'failure')
                   : null;
                 const diffThreshold = entry.difficulty ?? 6;
+                const hungerCount = entry.hungerDice ?? 0;
+                const normalDiceCount = Math.max(0, (entry.rolls?.length ?? 0) - hungerCount);
+                const isRerollArmed = rerollArmedLogId === entry.id;
+                const canArmThisRollReroll =
+                  Boolean(onArmWillpowerReroll) &&
+                  Boolean(entry.isPoolRoll) &&
+                  entry.rulePreset === 'vampire-v5' &&
+                  !entry.isRouseCheck &&
+                  normalDiceCount > 0 &&
+                  !entry.isWillpowerReroll &&
+                  !isRerollArmed;
 
                 return (
                   <article
@@ -234,7 +453,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         >
                           {entry.total}
                         </span>
-                        {entry.isPoolRoll && poolOutcome !== 'botch' && (
+                        {entry.isPoolRoll && !entry.isRouseCheck && poolOutcome !== 'botch' && (
                           <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
                             {entry.isSoak
                               ? t.t('sidebar.roll.soaked')
@@ -246,7 +465,37 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       </div>
 
                       {entry.isPoolRoll ? (
-                        poolOutcome === 'botch' ? (
+                        entry.isRouseCheck ? (
+                          poolOutcome === 'success' ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-rouse-outcome' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase"
+                            >
+                              {t.t('sidebar.roll.rousePass')}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid={idx === 0 ? 'latest-rouse-outcome' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase"
+                            >
+                              {t.t('sidebar.roll.rouseFail')}
+                            </span>
+                          )
+                        ) : entry.messyCritical ? (
+                          <span
+                            data-testid={idx === 0 ? 'latest-roll-messy-crit' : undefined}
+                            className="v5-status-badge--messy text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
+                          >
+                            {t.t('sidebar.roll.messyCritical')}
+                          </span>
+                        ) : entry.bestialFailure ? (
+                          <span
+                            data-testid={idx === 0 ? 'latest-roll-bestial-fail' : undefined}
+                            className="v5-status-badge--bestial text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
+                          >
+                            {t.t('sidebar.roll.bestialFailure')}
+                          </span>
+                        ) : poolOutcome === 'botch' ? (
                           <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase">
                             {t.t('sidebar.roll.botch')}
                           </span>
@@ -279,45 +528,78 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       )}
                     </div>
 
-                    {entry.isPoolRoll && entry.rolls && entry.rolls.length > 0 && (
-                      <div
-                        className="flex flex-wrap items-center gap-1 my-1.5"
-                        aria-label={t.t('sidebar.diceResultsAria')}
-                      >
-                        {entry.rolls.map((dieVal, dIdx) => {
-                          const isDoubledTen = Boolean(entry.specialty) && dieVal === 10;
-                          const isSuccessDie = dieVal >= diffThreshold;
-                          const isOne = dieVal === 1;
-                          return (
-                            <span
-                              key={dIdx}
-                              className={`font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 rounded-[var(--radius-pill)] border tabular-nums leading-none ${
-                                isDoubledTen
-                                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
-                                  : isSuccessDie
-                                    ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)] border-[var(--border-color)]'
-                                    : isOne
-                                      ? 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
-                                      : 'bg-[var(--bg-card)] text-[var(--ink-muted)] border-[var(--border-color)]/40'
-                              }`}
-                            >
-                              {isDoubledTen ? '10×2' : dieVal}
-                            </span>
-                          );
-                        })}
-                      </div>
-                    )}
+                    <RollDiceChips
+                      entry={entry}
+                      t={t}
+                      isRerollArmed={isRerollArmed && !entry.isRouseCheck}
+                      selectedRerollIndices={selectedRerollIndices}
+                      testIdPrefix={idx === 0 ? 'latest-roll' : undefined}
+                      onToggleRerollIndex={(dIdx) =>
+                        setSelectedRerollIndices((prev) => {
+                          if (prev.includes(dIdx)) {
+                            return prev.filter((item) => item !== dIdx);
+                          }
+                          if (prev.length >= 3) return prev;
+                          return [...prev, dIdx];
+                        })
+                      }
+                    />
 
                     {(entry.willpowerUsed ||
+                      entry.isWillpowerReroll ||
+                      entry.isBloodSurge ||
+                      (entry.hungerDice ?? 0) > 0 ||
+                      (entry.critPairsCount ?? 0) > 0 ||
+                      (entry.woundPenalty ?? 0) < 0 ||
                       (entry.canceledOnes ?? 0) > 0 ||
                       (entry.doubledTensCount ?? 0) > 0) && (
                       <div className="flex flex-wrap items-center gap-1 mb-1">
-                        {entry.willpowerUsed && (
+                        {entry.willpowerUsed && !entry.isWillpowerReroll && (
                           <span
                             data-testid="roll-log-wp-chip"
                             className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase"
                           >
                             {t.t('sidebar.roll.wpChip')}
+                          </span>
+                        )}
+                        {entry.isWillpowerReroll && (
+                          <span
+                            data-testid="roll-log-wp-reroll-chip"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.wpRerollChip')}
+                          </span>
+                        )}
+                        {(entry.critPairsCount ?? 0) > 0 && (
+                          <span
+                            data-testid="roll-log-crit-pairs-chip"
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.critPairsChip', { count: entry.critPairsCount ?? 0 })}
+                          </span>
+                        )}
+                        {(entry.hungerDice ?? 0) > 0 && (
+                          <span
+                            data-testid="roll-log-hunger-chip"
+                            className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.hungerChip', { count: entry.hungerDice ?? 0 })}
+                          </span>
+                        )}
+                        {entry.isBloodSurge && (
+                          <span
+                            data-testid="roll-log-surge-chip"
+                            className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.surgeChip')}
+                          </span>
+                        )}
+                        {(entry.woundPenalty ?? 0) < 0 && (
+                          <span
+                            data-testid="roll-log-wound-chip"
+                            className="font-mono-tech text-[9px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)]/70 rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.woundChip', { penalty: entry.woundPenalty ?? 0 })}
                           </span>
                         )}
                         {(entry.doubledTensCount ?? 0) > 0 && (
@@ -333,8 +615,69 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       </div>
                     )}
 
+                    {canArmThisRollReroll && (
+                      <div className="my-1.5">
+                        <button
+                          type="button"
+                          data-testid={
+                            idx === 0
+                              ? 'latest-roll-reroll-wp-btn'
+                              : `roll-reroll-wp-btn-${entry.id}`
+                          }
+                          disabled={!canWillpowerReroll}
+                          title={
+                            canWillpowerReroll
+                              ? t.t('sidebar.roll.rerollWillpower')
+                              : t.t('sidebar.roll.noWillpowerLeft')
+                          }
+                          onClick={() => onArmWillpowerReroll?.(entry.id)}
+                          className="cyber-btn-outline min-h-[36px] w-full px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center"
+                        >
+                          {t.t('sidebar.roll.rerollWillpower')}
+                        </button>
+                      </div>
+                    )}
+
+                    {isRerollArmed && !entry.isRouseCheck && (
+                      <div
+                        data-testid="v5-wp-reroll-panel"
+                        className="my-2 p-2 bg-[var(--bg-header-strip)] border border-[var(--accent-wine)] rounded-[var(--radius-card)] flex flex-col gap-1.5"
+                      >
+                        <p className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)]">
+                          {t.t('sidebar.roll.rerollPrompt')}
+                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            data-testid="v5-wp-reroll-confirm"
+                            disabled={selectedRerollIndices.length === 0}
+                            onClick={() => onWillpowerReroll?.(entry.id, selectedRerollIndices)}
+                            className="cyber-roll-btn min-h-[36px] sm:min-h-[30px] flex-1 px-2 py-1 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                          >
+                            {t.t('sidebar.roll.rerollConfirm', {
+                              count: selectedRerollIndices.length,
+                            })}
+                          </button>
+                          <button
+                            type="button"
+                            data-testid="v5-wp-reroll-cancel"
+                            onClick={() => onCancelReroll?.()}
+                            className="cyber-btn-outline min-h-[36px] sm:min-h-[30px] px-2 py-1 text-[10px] font-bold uppercase cursor-pointer"
+                          >
+                            {t.t('sidebar.roll.rerollCancel')}
+                          </button>
+                        </div>
+                      </div>
+                    )}
+
                     {(() => {
-                      if (!entry.isPoolRoll || !entry.rolls || entry.rolls.length === 0) {
+                      if (
+                        !entry.isPoolRoll ||
+                        !entry.rolls ||
+                        entry.rolls.length === 0 ||
+                        entry.rulePreset === 'vampire-v5' ||
+                        entry.isRouseCheck
+                      ) {
                         return (
                           <>
                             <div className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words">
@@ -360,6 +703,11 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       }
                       if (entry.willpowerUsed) {
                         detailParts.push(t.t('sidebar.roll.wpChip'));
+                      }
+                      if ((entry.woundPenalty ?? 0) < 0) {
+                        detailParts.push(
+                          t.t('sidebar.roll.woundChip', { penalty: entry.woundPenalty ?? 0 }),
+                        );
                       }
                       const detailSuffix =
                         detailParts.length > 0 ? ` (${detailParts.join(' · ')})` : '';

@@ -10,6 +10,12 @@ import {
   addRepeatableRow,
   adjustHealthDamage,
   adjustResourceValue,
+  adjustSheetBloodPool,
+  adjustV20HealthDamage,
+  adjustV5HealthDamage,
+  applyV5SuperficialHalving,
+  applyV5WillpowerSuperficialDamage,
+  computeWoundPenalty,
   consumeWillpowerForRoll,
   createBlankSheet,
   createDefaultSheet,
@@ -17,10 +23,16 @@ import {
   createGenericD20Preset,
   createNewSheetForSystem,
   createPresetBySystemId,
+  cycleV20HealthCell,
   detectSystemId,
   evaluateSheet,
   fromCanonicalSheet,
+  getBloodPoolMaxByGeneration,
   getOrCreateDeviceId,
+  getSheetBloodPool,
+  getSheetVirtues,
+  getV20HealthBreakdown,
+  getV5HealthBreakdown,
   isValidIsoDateTime,
   migrateLegacySheetMetadata,
   migrateLegacyWodSheet,
@@ -28,10 +40,13 @@ import {
   removeCardFromSheet,
   removeRepeatableRow,
   resolveRollPreview,
+  resolveRulePreset,
+  setSheetRulePreset,
   toCanonicalSheet,
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
+  updateSheetVirtue,
   validateSheetPayload,
 } from './sheetModel';
 
@@ -417,3 +432,139 @@ test('createNewSheetForSystem creates clean fillable character sheet in existing
   );
   assert.equal(evaluateSheet(customDnd).formulaErrors.length, 0);
 });
+
+test('Rule preset root promotion, V20 Blood Pool by Generation, Virtues, 3-state V20 Health & Wound Penalties', () => {
+  let sheet = createDefaultSheet();
+  assert.equal(resolveRulePreset(sheet), 'storyteller-v20');
+
+  // Switch preset cleanly and verify both rulePreset & xpRulePreset sync
+  sheet = setSheetRulePreset(sheet, 'vampire-v5');
+  assert.equal(resolveRulePreset(sheet), 'vampire-v5');
+  assert.equal(sheet.rulePreset, 'vampire-v5');
+  assert.equal(sheet.xpRulePreset, 'vampire-v5');
+  sheet = setSheetRulePreset(sheet, 'storyteller-v20');
+
+  // Blood Pool generation caps (Gen 10 = 13, Gen 8 = 15, Gen 13 = 10)
+  assert.equal(getBloodPoolMaxByGeneration(10), 13);
+  assert.equal(getBloodPoolMaxByGeneration(8), 15);
+  assert.equal(getBloodPoolMaxByGeneration(13), 10);
+
+  let bp = getSheetBloodPool(sheet);
+  assert.equal(bp.current, 10);
+  assert.equal(bp.max, 13);
+  sheet = adjustSheetBloodPool(sheet, -3);
+  bp = getSheetBloodPool(sheet);
+  assert.equal(bp.current, 7);
+
+  // Virtues clamp [1, 5]
+  sheet = updateSheetVirtue(sheet, 'courage', 5);
+  sheet = updateSheetVirtue(sheet, 'conscience', 0);
+  const virtues = getSheetVirtues(sheet);
+  assert.equal(virtues.courage, 5);
+  assert.equal(virtues.conscience, 1);
+
+  // V20 3-state health & wound penalties (Bruised 0, Hurt/Injured -1, Wounded/Mauled -2, Crippled/Incap -5)
+  assert.equal(computeWoundPenalty(sheet, 'storyteller-v20'), 0);
+  sheet = adjustV20HealthDamage(sheet, 'f_health', 'bashing', 1); // 1 total -> 0
+  assert.equal(computeWoundPenalty(sheet, 'storyteller-v20'), 0);
+  sheet = adjustV20HealthDamage(sheet, 'f_health', 'lethal', 1); // 2 total -> -1
+  assert.equal(computeWoundPenalty(sheet, 'storyteller-v20'), -1);
+  sheet = adjustV20HealthDamage(sheet, 'f_health', 'aggravated', 2); // 4 total -> -2
+  assert.equal(computeWoundPenalty(sheet, 'storyteller-v20'), -2);
+  sheet = adjustV20HealthDamage(sheet, 'f_health', 'bashing', 2); // 6 total -> -5
+  assert.equal(computeWoundPenalty(sheet, 'storyteller-v20'), -5);
+
+  // Overflow bashing converts bashing -> lethal
+  sheet = adjustV20HealthDamage(sheet, 'f_health', 'bashing', 2); // reaches 7 max, then 1 bashing -> lethal
+  const healthField = sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!;
+  const breakdown = getV20HealthBreakdown(healthField);
+  assert.equal(breakdown.totalDamage, 7);
+  assert.equal(breakdown.aggravated, 2);
+  assert.equal(breakdown.lethal, 2);
+  assert.equal(breakdown.bashing, 3);
+
+  // Cell cycling on fresh sheet: empty -> bashing -> lethal -> aggravated -> cleared
+  let cycleSheet = createDefaultSheet();
+  cycleSheet = cycleV20HealthCell(cycleSheet, 'f_health', 0);
+  assert.equal(getV20HealthBreakdown(cycleSheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!).bashing, 1);
+  cycleSheet = cycleV20HealthCell(cycleSheet, 'f_health', 0);
+  assert.equal(getV20HealthBreakdown(cycleSheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!).lethal, 1);
+  cycleSheet = cycleV20HealthCell(cycleSheet, 'f_health', 0);
+  assert.equal(getV20HealthBreakdown(cycleSheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!).aggravated, 1);
+  cycleSheet = cycleV20HealthCell(cycleSheet, 'f_health', 0);
+  assert.equal(getV20HealthBreakdown(cycleSheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!).totalDamage, 0);
+});
+
+test('V5 Health halving/overflow, Impaired (-2) wound penalty, V5 WP Superficial damage, and schema validation of new V20/V5 fields', () => {
+  let sheet = setSheetRulePreset(createDefaultSheet(), 'vampire-v5');
+
+  // Halving rounds up (Math.ceil)
+  const halved = applyV5SuperficialHalving(sheet, 'f_health', 5);
+  assert.equal(halved.appliedDamage, 3);
+  sheet = halved.sheet;
+  let health = getV5HealthBreakdown(sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!);
+  assert.equal(health.superficial, 3);
+  assert.equal(computeWoundPenalty(sheet, 'vampire-v5'), 0);
+
+  // Fill remaining 4 boxes -> total 7 = Impaired (-2)
+  sheet = adjustV5HealthDamage(sheet, 'f_health', 'superficial', 4);
+  health = getV5HealthBreakdown(sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!);
+  assert.equal(health.superficial, 7);
+  assert.equal(computeWoundPenalty(sheet, 'vampire-v5'), -2);
+
+  // +1 more superficial overflows -> converts 1 superficial into aggravated
+  sheet = adjustV5HealthDamage(sheet, 'f_health', 'superficial', 1);
+  health = getV5HealthBreakdown(sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_health')!);
+  assert.equal(health.aggravated, 1);
+  assert.equal(health.superficial, 6);
+
+  // V5 Willpower superficial damage marks '/' and decreases remaining WP
+  sheet = applyV5WillpowerSuperficialDamage(sheet, 1);
+  const wpField = sheet.cards.flatMap((c) => c.fields).find((f) => f.id === 'f_willpower')!;
+  assert.equal(wpField.value, 5);
+  assert.equal(wpField.superficialDamage, 1);
+
+  // Schema & local payload validation accept mutated V20/V5 fields (rulePreset, bloodPool, virtues, V5 rollLog fields)
+  sheet = {
+    ...sheet,
+    bloodPool: 9,
+    bloodSurge: true,
+    virtues: { conscience: 3, selfControl: 4, courage: 5 },
+    rollLogs: [
+      ...sheet.rollLogs,
+      {
+        id: 'log_v5_test',
+        timestamp: '23:59',
+        label: 'ROLL BRAWL',
+        total: 4,
+        formula: '5d10 (DIFF 6 · V5 · HUNGER 1)',
+        breakdown: '5d10[10, 8, 6, 4, 10] ≥6 → 4 SUCESSOS',
+        rolls: [10, 8, 6, 4, 10],
+        rulePreset: 'vampire-v5',
+        woundPenalty: -2,
+        hungerDice: 1,
+        hungerRolls: [10],
+        messyCritical: true,
+        bestialFailure: false,
+        critPairsCount: 1,
+        isBloodSurge: true,
+        isWillpowerReroll: true,
+        rerolledIndices: [3],
+      },
+    ],
+  };
+
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  assert.equal(validateAjv(sheet), true, `AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  const localVal = validateSheetPayload(sheet);
+  assert.equal(localVal.valid, true, `validateSheetPayload errors: ${localVal.errors.join('; ')}`);
+});
+
