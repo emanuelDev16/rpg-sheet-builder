@@ -10,6 +10,7 @@
       "revision": 1,
       "updatedAt": "2026-11-14T23:57:19.810Z",
       "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "rulePreset": "storyteller_v20",
       "cards": [
         {
           "id": "card_identidade",
@@ -513,6 +514,7 @@
       "revision": 1,
       "updatedAt": "2026-11-14T23:57:19.818Z",
       "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "rulePreset": "storyteller_v20",
       "cards": [
         {
           "id": "card_identidade",
@@ -992,6 +994,7 @@
       "revision": 1,
       "updatedAt": "2026-11-14T23:57:19.819Z",
       "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "rulePreset": "storyteller_v20",
       "cards": [
         {
           "id": "card_identidade",
@@ -1336,6 +1339,7 @@
       "revision": 1,
       "updatedAt": "2026-11-14T23:57:19.819Z",
       "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "rulePreset": "storyteller_v20",
       "cards": [
         {
           "id": "card_identidade",
@@ -1680,6 +1684,7 @@
       "revision": 1,
       "updatedAt": "2026-11-14T23:57:19.819Z",
       "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "rulePreset": "storyteller_v20",
       "cards": [],
       "rollLogs": [],
       "xp": {

@@ -24,6 +24,10 @@ data class DiceRollResult(
     val isCritical: Boolean = false,
     val isFumble: Boolean = false,
     val isPoolRoll: Boolean = false,
+    val isMessyCritical: Boolean = false,
+    val isBestialFailure: Boolean = false,
+    val normalRolls: List<Int> = emptyList(),
+    val hungerRolls: List<Int> = emptyList(),
     val error: String? = null
 )
 
@@ -248,10 +252,80 @@ object FormulaEngine {
         }
     }
 
+    fun evaluateV5PoolResult(
+        normalRolls: List<Int>,
+        hungerRolls: List<Int>,
+        woundPenalty: Int = 0,
+        extraTag: String = ""
+    ): DiceRollResult {
+        val effectivePoolSize = normalRolls.size + hungerRolls.size
+        val allRolls = normalRolls + hungerRolls
+        val baseSuccesses = allRolls.count { it >= 6 }
+        val normalTens = normalRolls.count { it == 10 }
+        val hungerTens = hungerRolls.count { it == 10 }
+        val critPairs = (normalTens + hungerTens) / 2
+        val totalSuccesses = baseSuccesses + critPairs * 2
+        val isCritical = critPairs > 0
+        val isMessyCritical = isCritical && hungerTens > 0
+        val hungerOnes = hungerRolls.count { it == 1 }
+        val isBestialFailure = effectivePoolSize > 0 && totalSuccesses == 0 && hungerOnes > 0
+
+        val statusText = when {
+            isBestialFailure -> "BESTIAL FAILURE!"
+            isMessyCritical -> "$totalSuccesses SUCESSOS · MESSY CRITICAL!"
+            isCritical -> "$totalSuccesses SUCESSOS · CRITICAL!"
+            else -> "$totalSuccesses ${if (totalSuccesses == 1) "SUCESSO" else "SUCESSOS"}"
+        }
+        val woundTag = if (woundPenalty < 0) " (IMPAIRED $woundPenalty)" else ""
+        val diceText = buildString {
+            append("N:[${normalRolls.joinToString(", ")}]")
+            if (hungerRolls.isNotEmpty()) {
+                append(" | FOME:[${hungerRolls.joinToString(", ")}]")
+            }
+        }
+        return DiceRollResult(
+            ok = true,
+            total = totalSuccesses,
+            resolvedExpression = "V5 ${effectivePoolSize}d10 (DIFF 6)$woundTag$extraTag",
+            breakdown = "V5 ${effectivePoolSize}d10 $diceText$woundTag$extraTag → $statusText",
+            rolls = allRolls,
+            isCritical = isCritical,
+            isFumble = isBestialFailure,
+            isPoolRoll = true,
+            isMessyCritical = isMessyCritical,
+            isBestialFailure = isBestialFailure,
+            normalRolls = normalRolls,
+            hungerRolls = hungerRolls
+        )
+    }
+
+    fun rerollV5WithWillpower(
+        normalRolls: List<Int>,
+        hungerRolls: List<Int>,
+        rng: () -> Double = { Random.nextDouble() }
+    ): DiceRollResult {
+        val mutableNormal = normalRolls.toMutableList()
+        var rerolled = 0
+        for (i in mutableNormal.indices) {
+            if (mutableNormal[i] < 6 && rerolled < 3) {
+                mutableNormal[i] = floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
+                rerolled++
+            }
+        }
+        return evaluateV5PoolResult(
+            normalRolls = mutableNormal,
+            hungerRolls = hungerRolls,
+            extraTag = " · WP SURGE ($rerolled)"
+        )
+    }
+
     private fun executeWodPool(
         countExpr: String,
         diffExpr: String,
         vars: Map<String, Double>,
+        rulePreset: XpRulePreset,
+        hunger: Int,
+        woundPenalty: Int,
         rng: () -> Double
     ): DiceRollResult {
         val countRes = evaluateFormula(countExpr, vars, showPlus = false)
@@ -280,22 +354,41 @@ object FormulaEngine {
             )
         }
 
-        val poolSize = max(0, min(30, countRes.value.roundToInt()))
+        val basePoolSize = max(0, min(30, countRes.value.roundToInt()))
+        val effectivePoolSize = max(0, basePoolSize + woundPenalty)
+
+        if (rulePreset == XpRulePreset.VAMPIRE_V5) {
+            val hungerCount = min(effectivePoolSize, hunger.coerceIn(0, 5))
+            val normalCount = effectivePoolSize - hungerCount
+            val normalRolls = List(normalCount) {
+                floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
+            }
+            val hungerRolls = List(hungerCount) {
+                floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
+            }
+            return evaluateV5PoolResult(
+                normalRolls = normalRolls,
+                hungerRolls = hungerRolls,
+                woundPenalty = woundPenalty
+            )
+        }
+
         val difficulty = max(2, min(10, diffRes.value.roundToInt()))
         val rolls = mutableListOf<Int>()
         var rawSuccesses = 0
         var ones = 0
 
-        repeat(poolSize) {
+        repeat(effectivePoolSize) {
             val roll = floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
             rolls.add(roll)
             if (roll >= difficulty) rawSuccesses++
             if (roll == 1) ones++
         }
 
-        val isBotch = poolSize > 0 && rawSuccesses == 0 && ones > 0
+        val isBotch = effectivePoolSize > 0 && rawSuccesses == 0 && ones > 0
         val netSuccesses = max(0, rawSuccesses - ones)
         val isExceptional = !isBotch && netSuccesses >= 5
+        val woundTag = if (woundPenalty < 0) " (FERIMENTO $woundPenalty)" else ""
 
         val statusText = if (isBotch) {
             "BOTCH!"
@@ -306,18 +399,22 @@ object FormulaEngine {
         return DiceRollResult(
             ok = true,
             total = if (isBotch) 0 else netSuccesses,
-            resolvedExpression = "${poolSize}d10 (DIFF $difficulty)",
-            breakdown = "${poolSize}d10[${rolls.joinToString(", ")}] ≥$difficulty → $statusText",
+            resolvedExpression = "${effectivePoolSize}d10 (DIFF $difficulty)$woundTag",
+            breakdown = "${effectivePoolSize}d10[${rolls.joinToString(", ")}] ≥$difficulty$woundTag → $statusText",
             rolls = rolls,
             isCritical = isExceptional,
             isFumble = isBotch,
-            isPoolRoll = true
+            isPoolRoll = true,
+            normalRolls = rolls
         )
     }
 
     fun rollDiceExpression(
         expression: String,
         vars: Map<String, Double>,
+        rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
+        hunger: Int = 0,
+        woundPenalty: Int = 0,
         rng: () -> Double = { Random.nextDouble() }
     ): DiceRollResult {
         val cleaned = expression.trim()
@@ -350,13 +447,13 @@ object FormulaEngine {
             }
             val countPart = if (splitIdx == -1) inner else inner.substring(0, splitIdx)
             val diffPart = if (splitIdx == -1) "6" else inner.substring(splitIdx + 1)
-            return executeWodPool(countPart, diffPart, vars, rng)
+            return executeWodPool(countPart, diffPart, vars, rulePreset, hunger, woundPenalty, rng)
         }
 
         // Shorthand pool syntax: 5d10@6 or 5d10>=6
         val shortPoolRegex = Regex("^(.+?)d10\\s*(?:@|>=)\\s*(\\d+)$", RegexOption.IGNORE_CASE)
         shortPoolRegex.matchEntire(cleaned)?.let { match ->
-            return executeWodPool(match.groupValues[1], match.groupValues[2], vars, rng)
+            return executeWodPool(match.groupValues[1], match.groupValues[2], vars, rulePreset, hunger, woundPenalty, rng)
         }
 
         // Substitute variables (ignoring dice literals like d20)
@@ -459,7 +556,12 @@ object FormulaEngine {
         }
     }
 
-    fun resolveRollPreview(expression: String, vars: Map<String, Double>): String {
+    fun resolveRollPreview(
+        expression: String,
+        vars: Map<String, Double>,
+        rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
+        woundPenalty: Int = 0
+    ): String {
         val cleaned = expression.trim()
         if (cleaned.isEmpty()) return ""
 
@@ -483,9 +585,15 @@ object FormulaEngine {
             val countRes = evaluateFormula(countPart, vars, showPlus = false)
             val diffRes = evaluateFormula(diffPart, vars, showPlus = false)
             if (countRes.ok && diffRes.ok) {
-                val poolSize = max(0, min(30, countRes.value.roundToInt()))
-                val diff = max(2, min(10, diffRes.value.roundToInt()))
-                return "${poolSize}d10 @ DIFF $diff"
+                val basePool = max(0, min(30, countRes.value.roundToInt()))
+                val poolSize = max(0, basePool + woundPenalty)
+                val diff = if (rulePreset == XpRulePreset.VAMPIRE_V5) 6 else max(2, min(10, diffRes.value.roundToInt()))
+                val penTag = if (woundPenalty < 0) " ($woundPenalty)" else ""
+                return if (rulePreset == XpRulePreset.VAMPIRE_V5) {
+                    "${poolSize}d10 @ V5$penTag"
+                } else {
+                    "${poolSize}d10 @ DIFF $diff$penTag"
+                }
             }
         }
 
@@ -493,8 +601,15 @@ object FormulaEngine {
         shortPoolRegex.matchEntire(cleaned)?.let { match ->
             val countRes = evaluateFormula(match.groupValues[1], vars, showPlus = false)
             if (countRes.ok) {
-                val poolSize = max(0, min(30, countRes.value.roundToInt()))
-                return "${poolSize}d10 @ DIFF ${match.groupValues[2]}"
+                val basePool = max(0, min(30, countRes.value.roundToInt()))
+                val poolSize = max(0, basePool + woundPenalty)
+                val diff = if (rulePreset == XpRulePreset.VAMPIRE_V5) "6" else match.groupValues[2]
+                val penTag = if (woundPenalty < 0) " ($woundPenalty)" else ""
+                return if (rulePreset == XpRulePreset.VAMPIRE_V5) {
+                    "${poolSize}d10 @ V5$penTag"
+                } else {
+                    "${poolSize}d10 @ DIFF $diff$penTag"
+                }
             }
         }
 

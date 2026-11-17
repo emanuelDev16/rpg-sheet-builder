@@ -84,6 +84,7 @@ import com.gridsheet.app.core.Presets
 import com.gridsheet.app.core.SheetMetadata
 import com.gridsheet.app.core.SystemId
 import com.gridsheet.app.core.TabId
+import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.core.XpSystem
 import com.gridsheet.app.ui.components.ActiveSessionHeroCard
 import com.gridsheet.app.ui.components.BentoCardView
@@ -153,6 +154,8 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
 
     val availableXp = XpSystem.getAvailableXp(sheet.xp)
     val activeSystemId = workspace.activeSystemId
+    val isWodSheet = remember(sheet) { XpSystem.isWodSystem(sheet) }
+    val activeRulePreset = remember(sheet) { XpSystem.resolveRulePreset(sheet) }
     val visibleCards = remember(sheet.cards, activeTab) {
         sheet.cards.filter { it.tab == activeTab }
     }
@@ -342,13 +345,67 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                     SheetTabButton("/03 XP & UPGRADES", activeTab == TabId.XP) { vm.setTab(TabId.XP) }
                 }
 
-                Text(
-                    text = sheet.characterName,
-                    fontFamily = theme.titleFontFamily,
-                    fontSize = 13.sp,
-                    fontWeight = FontWeight.Bold,
-                    color = theme.textSecondary
-                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.SpaceBetween
+                ) {
+                    Text(
+                        text = sheet.characterName,
+                        fontFamily = theme.titleFontFamily,
+                        fontSize = 13.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = theme.textSecondary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.weight(1f).padding(end = 8.dp)
+                    )
+                    if (isWodSheet) {
+                        val rulePillShape = RoundedCornerShape(theme.pillCornerRadius)
+                        Row(
+                            modifier = Modifier
+                                .height(IntrinsicSize.Min)
+                                .clip(rulePillShape)
+                                .background(theme.bgCard)
+                                .border(theme.borderWidth, theme.borderColor, rulePillShape),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            listOf(
+                                XpRulePreset.STORYTELLER_V20 to "V20",
+                                XpRulePreset.VAMPIRE_V5 to "V5",
+                                XpRulePreset.CUSTOM to "CUSTOM"
+                            ).forEachIndexed { idx, (preset, label) ->
+                                if (idx > 0) {
+                                    Box(
+                                        modifier = Modifier
+                                            .width(theme.borderWidth)
+                                            .fillMaxHeight()
+                                            .background(theme.borderColor)
+                                    )
+                                }
+                                val selected = activeRulePreset == preset
+                                Box(
+                                    modifier = Modifier
+                                        .defaultMinSize(minWidth = 48.dp, minHeight = 48.dp)
+                                        .background(if (selected) theme.accentBlack else theme.bgCard)
+                                        .semantics { this.selected = selected }
+                                        .clickable(role = Role.RadioButton) { vm.setXpRulePreset(preset) }
+                                        .padding(horizontal = 10.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = label,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontSize = 10.sp,
+                                        fontWeight = FontWeight.Black,
+                                        color = if (selected) theme.accentContrast else theme.textPrimary,
+                                        maxLines = 1
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
             }
 
             // Main Bento Card Feed
@@ -382,13 +439,19 @@ fun GridSheetApp(vm: SheetViewModel = viewModel()) {
                             card = card,
                             mode = mode,
                             evaluation = evaluation,
+                            rulePreset = activeRulePreset,
+                            isWodSheet = isWodSheet,
                             onUpdateNumber = vm::updateNumberField,
                             onUpdateText = vm::updateTextField,
                             onUpdateBoolean = vm::updateBooleanField,
                             onAdjustResource = vm::adjustResource,
                             onAdjustHealthDamage = vm::adjustHealthDamage,
+                            onReduceSuperficial = vm::reduceSuperficialDamage,
+                            onRouseCheck = vm::performRouseCheck,
+                            onRollSoak = vm::rollSoak,
+                            onWillpowerSurge = vm::performWillpowerSurge,
                             onSetResource = vm::setResource,
-                            onRoll = vm::rollExpression,
+                            onRoll = { label, expr -> vm.rollExpression(label, expr) },
                             onAddRow = vm::addRepeatableRow,
                             onUpdateRow = vm::updateRepeatableRow,
                             onRemoveRow = vm::removeRepeatableRow,

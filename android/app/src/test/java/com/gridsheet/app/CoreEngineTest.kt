@@ -1450,4 +1450,118 @@ class CoreEngineTest {
             failingScope.cancel()
         }
     }
+
+    @Test
+    fun rulePresetSyncsWithXpStateAndSupportsLegacyJson() {
+        var wod = Presets.createWorldOfDarknessSheet()
+        assertEquals(XpRulePreset.STORYTELLER_V20, wod.rulePreset)
+        assertEquals(XpRulePreset.STORYTELLER_V20, XpSystem.resolveRulePreset(wod))
+
+        wod = XpSystem.setXpRulePreset(wod, XpRulePreset.VAMPIRE_V5)
+        assertEquals(XpRulePreset.VAMPIRE_V5, wod.rulePreset)
+        assertEquals(XpRulePreset.VAMPIRE_V5, wod.xp.xpRulePreset)
+        assertEquals(XpRulePreset.VAMPIRE_V5, XpSystem.resolveRulePreset(wod))
+
+        // Legacy JSON with only xp.xpRulePreset set
+        val legacyV5 = Presets.createWorldOfDarknessSheet().let {
+            it.copy(xp = it.xp.copy(xpRulePreset = XpRulePreset.VAMPIRE_V5))
+        }
+        assertEquals(XpRulePreset.VAMPIRE_V5, XpSystem.resolveRulePreset(legacyV5))
+    }
+
+    @Test
+    fun v20ThreeStateDamageAndWoundPenaltiesApplyToSkillPools() {
+        var wod = Presets.createWorldOfDarknessSheet()
+        assertEquals(0, SheetEvaluator.evaluateSheet(wod).woundPenalty)
+
+        // 2 bashing -> -1 wound penalty
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "bashing", 2)
+        val eval2 = SheetEvaluator.evaluateSheet(wod)
+        assertEquals(-1, eval2.woundPenalty)
+
+        // +2 lethal (total 4 damaged) -> -2 wound penalty
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "lethal", 2)
+        val eval4 = SheetEvaluator.evaluateSheet(wod)
+        assertEquals(-2, eval4.woundPenalty)
+
+        // +2 aggravated (total 6 damaged) -> -5 wound penalty
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "aggravated", 2)
+        val eval6 = SheetEvaluator.evaluateSheet(wod)
+        assertEquals(-5, eval6.woundPenalty)
+
+        // Skill pool (strength 3 + brawl 2 = 5) with -5 penalty -> 0 dice
+        val penalizedRoll = FormulaEngine.rollDiceExpression(
+            expression = "pool(strength + brawl, 6)",
+            vars = eval6.variables,
+            rulePreset = XpRulePreset.STORYTELLER_V20,
+            woundPenalty = eval6.woundPenalty
+        ) { 0.9 }
+        assertTrue(penalizedRoll.ok)
+        assertEquals(0, penalizedRoll.rolls.size)
+        assertEquals(0, penalizedRoll.total)
+    }
+
+    @Test
+    fun v5ImpairedPenaltyAndReduceSuperficialWorkCorrectly() {
+        var wod = XpSystem.setXpRulePreset(Presets.createWorldOfDarknessSheet(), XpRulePreset.VAMPIRE_V5)
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "superficial", 6)
+        assertEquals(0, SheetEvaluator.evaluateSheet(wod).woundPenalty)
+
+        // 1 aggravated + 6 superficial = 7/7 track filled -> Impaired (-2)
+        wod = SheetMutators.adjustHealthDamage(wod, "f_health", "aggravated", 1)
+        val healthField = wod.cards.flatMap { it.fields }.first { it.id == "f_health" }
+        assertEquals(1, healthField.aggravatedDamage)
+        assertEquals(6, healthField.superficialDamage)
+        assertEquals(-2, SheetEvaluator.evaluateSheet(wod).woundPenalty)
+
+        // Reduce superficial (÷2): 6 -> 3, no longer Impaired
+        wod = SheetMutators.reduceSuperficialDamage(wod, "f_health")
+        val afterHalve = wod.cards.flatMap { it.fields }.first { it.id == "f_health" }
+        assertEquals(3, afterHalve.superficialDamage)
+        assertEquals(0, SheetEvaluator.evaluateSheet(wod).woundPenalty)
+    }
+
+    @Test
+    fun v5DiceResolutionHandlesFixedDiff6No1SubtractionPairsOf10MessyCriticalBestialFailureAndWillpowerSurge() {
+        // 1. Pair of 10s = +4 successes, 1s do NOT subtract, Messy Critical when Hunger die is 10
+        val messyInputs = ArrayDeque(listOf(0.95, 0.05, 0.95)) // normal: [10, 1], hunger: [10]
+        val messyRoll = FormulaEngine.rollDiceExpression(
+            expression = "pool(3, 8)", // V5 ignores diff 8 and uses fixed 6
+            vars = emptyMap(),
+            rulePreset = XpRulePreset.VAMPIRE_V5,
+            hunger = 1
+        ) { messyInputs.removeFirst() }
+        assertTrue(messyRoll.ok)
+        assertEquals(listOf(10, 1), messyRoll.normalRolls)
+        assertEquals(listOf(10), messyRoll.hungerRolls)
+        assertEquals(4, messyRoll.total) // 2 base successes + 2 bonus for pair of 10s
+        assertTrue(messyRoll.isCritical)
+        assertTrue(messyRoll.isMessyCritical)
+        assertFalse(messyRoll.isBestialFailure)
+
+        // 2. Bestial Failure when 0 successes and Hunger die rolls 1
+        val bestialInputs = ArrayDeque(listOf(0.25, 0.05)) // normal: [3], hunger: [1]
+        val bestialRoll = FormulaEngine.rollDiceExpression(
+            expression = "pool(2, 6)",
+            vars = emptyMap(),
+            rulePreset = XpRulePreset.VAMPIRE_V5,
+            hunger = 1
+        ) { bestialInputs.removeFirst() }
+        assertTrue(bestialRoll.ok)
+        assertEquals(0, bestialRoll.total)
+        assertTrue(bestialRoll.isBestialFailure)
+        assertTrue(bestialRoll.isFumble)
+
+        // 3. Willpower Surge rerolls up to 3 failed normal dice (never hunger dice)
+        val surgeInputs = ArrayDeque(listOf(0.75, 0.75)) // reroll two failed normal dice -> 8, 8
+        val surged = FormulaEngine.rerollV5WithWillpower(
+            normalRolls = listOf(2, 3, 7),
+            hungerRolls = listOf(1)
+        ) { surgeInputs.removeFirst() }
+        assertTrue(surged.ok)
+        assertEquals(listOf(8, 8, 7), surged.normalRolls)
+        assertEquals(listOf(1), surged.hungerRolls)
+        assertEquals(3, surged.total)
+        assertFalse(surged.isBestialFailure)
+    }
 }

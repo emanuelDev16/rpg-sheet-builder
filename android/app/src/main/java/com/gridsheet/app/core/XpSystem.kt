@@ -152,10 +152,19 @@ object XpSystem {
         return sig.contains("DARKNESS") || sig.contains("STORYTELLER") || sig.contains("VAMPIRE")
     }
 
+    fun resolveRulePreset(sheet: CharacterSheetState): XpRulePreset {
+        if (sheet.rulePreset != XpRulePreset.STORYTELLER_V20) return sheet.rulePreset
+        if (sheet.xp.xpRulePreset != XpRulePreset.STORYTELLER_V20) return sheet.xp.xpRulePreset
+        return XpRulePreset.STORYTELLER_V20
+    }
+
     fun setXpRulePreset(sheet: CharacterSheetState, preset: XpRulePreset): CharacterSheetState {
         val norm = normalizeXpState(sheet.xp)
         return SheetMutators.touchMetadata(
-            sheet.copy(xp = norm.copy(xpRulePreset = preset))
+            sheet.copy(
+                rulePreset = preset,
+                xp = norm.copy(xpRulePreset = preset)
+            )
         )
     }
 
@@ -261,10 +270,11 @@ object XpSystem {
 
     fun getCostRulesSummary(sheet: CharacterSheetState): List<String> {
         val norm = normalizeXpState(sheet.xp)
+        val preset = resolveRulePreset(sheet)
         return when {
-            norm.xpRulePreset == XpRulePreset.VAMPIRE_V5 ->
+            preset == XpRulePreset.VAMPIRE_V5 ->
                 listOf("ATTR NOVO×5", "PERÍCIA NOVO×3", "CLÃ NOVO×5 / FORA NOVO×7", "VANTAGENS NOVO×3", "WP/HUM: EM JOGO")
-            norm.xpRulePreset == XpRulePreset.CUSTOM -> {
+            preset == XpRulePreset.CUSTOM -> {
                 val baseLabel = if (norm.customUseNewLevelBase) "NOVO NÍVEL" else "NÍVEL ATUAL"
                 listOf("BASE: $baseLabel", "MULTIPLICADORES EDITÁVEIS")
             }
@@ -331,10 +341,11 @@ object XpSystem {
                 val isWillpower = category == XpUpgradeCategory.VIRTUE && cleanKey in WILLPOWER_KEYS
                 val isHumanity = category == XpUpgradeCategory.VIRTUE && cleanKey in HUMANITY_KEYS
                 val customMult = normXp.customMultipliers[field.id]
+                val effectivePreset = resolveRulePreset(sheet)
                 val costResult = calculateUpgradeCost(
                     currentLevel = currentValue,
                     category = category,
-                    preset = normXp.xpRulePreset,
+                    preset = effectivePreset,
                     customOverride = customMult,
                     isOutOfClan = isOutOfClan,
                     isWillpower = isWillpower,

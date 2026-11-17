@@ -58,6 +58,7 @@ import java.util.Collections
 import java.util.Date
 import java.util.Locale
 import java.util.UUID
+import kotlin.math.roundToInt
 
 enum class ActiveScreen {
     HOME,
@@ -696,8 +697,106 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         controller.updateActiveSheet { SheetMutators.adjustResourceValue(it, fieldId, delta) }
     }
 
+    private data class LastV5RollState(
+        val label: String,
+        val normalRolls: List<Int>,
+        val hungerRolls: List<Int>
+    )
+    private var lastV5RollState: LastV5RollState? = null
+
     fun adjustHealthDamage(fieldId: String, damageType: String, delta: Int) {
         controller.updateActiveSheet { SheetMutators.adjustHealthDamage(it, fieldId, damageType, delta) }
+    }
+
+    fun reduceSuperficialDamage(fieldId: String) {
+        controller.updateActiveSheet { SheetMutators.reduceSuperficialDamage(it, fieldId) }
+        controller.setStatusMessage("DANO SUPERFICIAL REDUZIDO (÷2)")
+    }
+
+    fun performRouseCheck() {
+        val res = FormulaEngine.rollDiceExpression("1d10", emptyMap())
+        if (!res.ok) return
+        val die = res.total
+        val passed = die >= 6
+        val sheet = activeSheet.value
+        val hungerField = sheet.cards.flatMap { it.fields }
+            .firstOrNull { it.id == "f_hunger" || it.key.trim().lowercase() == "hunger" }
+        val currentHunger = (hungerField?.numValue ?: 0.0).roundToInt().coerceIn(0, 5)
+        val nextHunger = if (passed) currentHunger else (currentHunger + 1).coerceAtMost(5)
+        val statusText = when {
+            passed -> "SUCESSO ($die) · FOME $currentHunger"
+            currentHunger >= 5 -> "FALHA ($die) · FOME MÁXIMA (5)!"
+            else -> "FALHA ($die) · FOME $currentHunger → $nextHunger"
+        }
+        val entry = RollLogEntry(
+            id = "roll_${UUID.randomUUID().toString().take(8)}",
+            timestamp = currentTimeStamp(),
+            label = "ROUSE CHECK (1D10)",
+            total = die,
+            formula = "1d10 ≥ 6",
+            breakdown = "1d10[$die] → $statusText",
+            isCritical = passed && die == 10,
+            isFumble = !passed && currentHunger >= 5,
+            isPoolRoll = false
+        )
+        controller.updateActiveSheet { current ->
+            val withHunger = if (!passed && hungerField != null && nextHunger != currentHunger) {
+                SheetMutators.setResourceValue(current, hungerField.id, nextHunger)
+            } else {
+                current
+            }
+            withHunger.copy(rollLogs = (listOf(entry) + withHunger.rollLogs).take(30))
+        }
+        controller.setStatusMessage("ROUSE CHECK: $statusText")
+    }
+
+    fun rollSoak(soakType: String) {
+        val (label, expr) = when (soakType) {
+            "aggravated" -> "SOAK AGRAVADO (FORTITUDE)" to "pool(fortitude_armor, 6)"
+            "lethal" -> "SOAK LETAL" to "pool(stamina + fortitude_armor, 6)"
+            else -> "SOAK CONTUNDENTE (÷2)" to "pool(stamina + fortitude_armor, 6)"
+        }
+        rollExpression(label, expr, isSoak = true)
+    }
+
+    fun performWillpowerSurge() {
+        val sheet = activeSheet.value
+        val wpField = sheet.cards.flatMap { it.fields }
+            .firstOrNull { it.id == "f_willpower" || it.key.trim().lowercase() == "willpower" }
+        val currentWp = (wpField?.numValue ?: 0.0).roundToInt()
+        if (wpField == null || currentWp <= 0) {
+            controller.setStatusMessage("FORÇA DE VONTADE INSUFICIENTE PARA WILLPOWER SURGE")
+            return
+        }
+        val last = lastV5RollState
+        if (last == null) {
+            controller.setStatusMessage("FAÇA UMA ROLAGEM V5 ANTES DE USAR WILLPOWER SURGE")
+            return
+        }
+        if (last.normalRolls.none { it < 6 }) {
+            controller.setStatusMessage("NENHUM DADO NORMAL FALHO PARA REROLAR")
+            return
+        }
+        val res = FormulaEngine.rerollV5WithWillpower(last.normalRolls, last.hungerRolls)
+        lastV5RollState = LastV5RollState(last.label, res.normalRolls, res.hungerRolls)
+        val entry = RollLogEntry(
+            id = "roll_${UUID.randomUUID().toString().take(8)}",
+            timestamp = currentTimeStamp(),
+            label = "${last.label} · WP SURGE",
+            total = res.total,
+            formula = res.resolvedExpression,
+            breakdown = res.breakdown,
+            isCritical = res.isCritical,
+            isFumble = res.isFumble,
+            isPoolRoll = res.isPoolRoll
+        )
+        controller.updateActiveSheet { current ->
+            SheetMutators.adjustResourceValue(current, wpField.id, -1)
+                .copy(rollLogs = (listOf(entry) + current.rollLogs).take(30))
+        }
+        controller.setStatusMessage("WILLPOWER SURGE: ${res.total} SUCESSOS (-1 WP)")
+        _sideSheetMode.value = SideSheetMode.LOGS
+        _sideSheetOpen.value = true
     }
 
     fun setResource(fieldId: String, target: Int) {
@@ -786,11 +885,30 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
         controller.updateActiveSheet { SheetMutators.removeFieldFromCard(it, cardId, fieldId) }
     }
 
-    fun rollExpression(label: String, expression: String) {
-        val res = FormulaEngine.rollDiceExpression(expression, evaluation.value.variables)
+    fun rollExpression(label: String, expression: String, isSoak: Boolean = false) {
+        val sheet = activeSheet.value
+        val isWod = XpSystem.isWodSystem(sheet)
+        val rulePreset = XpSystem.resolveRulePreset(sheet)
+        val vars = evaluation.value.variables
+        val hunger = (vars["hunger"] ?: 0.0).roundToInt().coerceIn(0, 5)
+        val woundPenalty = if (isWod && !isSoak) evaluation.value.woundPenalty else 0
+        val res = FormulaEngine.rollDiceExpression(
+            expression = expression,
+            vars = vars,
+            rulePreset = rulePreset,
+            hunger = hunger,
+            woundPenalty = woundPenalty
+        )
         if (!res.ok) {
             controller.setStatusMessage("ERRO NA ROLAGEM: ${res.error ?: "Fórmula inválida"}")
             return
+        }
+        if (res.isPoolRoll && rulePreset == XpRulePreset.VAMPIRE_V5) {
+            lastV5RollState = LastV5RollState(
+                label = label.uppercase(),
+                normalRolls = res.normalRolls,
+                hungerRolls = res.hungerRolls
+            )
         }
         val entry = RollLogEntry(
             id = "roll_${UUID.randomUUID().toString().take(8)}",

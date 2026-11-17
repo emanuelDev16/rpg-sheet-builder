@@ -164,6 +164,8 @@ data class SheetField(
     val damageTrack: Boolean? = null,
     val superficialDamage: Int? = null,
     val aggravatedDamage: Int? = null,
+    val bashingDamage: Int? = null,
+    val lethalDamage: Int? = null,
     val formula: String? = null,
     val showPlus: Boolean? = null,
     val rollLabel: String? = null,
@@ -239,7 +241,8 @@ data class CharacterSheetState(
     val deviceId: String = "local-device",
     val cards: List<SheetCard>,
     val rollLogs: List<RollLogEntry> = emptyList(),
-    val xp: XpState = XpState()
+    val xp: XpState = XpState(),
+    val rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20
 )
 
 typealias Sheet = CharacterSheetState
@@ -317,7 +320,8 @@ data class SheetEvaluation(
     val variables: Map<String, Double>,
     val computedByFieldId: Map<String, ComputedFieldInfo>,
     val formulaErrors: List<FormulaErrorInfo>,
-    val totalCargoWeight: Double
+    val totalCargoWeight: Double,
+    val woundPenalty: Int = 0
 )
 
 object SheetEvaluator {
@@ -368,6 +372,34 @@ object SheetEvaluator {
 
         val roundedCargo = ((totalCargoWeight * 100.0).roundToInt() / 100.0)
         variables["carga_total"] = roundedCargo
+
+        val activeRulePreset = XpSystem.resolveRulePreset(sheet)
+        var woundPenalty = 0
+        if (XpSystem.isWodSystem(sheet)) {
+            val healthField = sheet.cards.flatMap { it.fields }
+                .firstOrNull { it.damageTrack == true || it.key.trim().lowercase() == "health" }
+            if (healthField != null) {
+                val maxVal = max(1, healthField.max ?: 7)
+                woundPenalty = if (activeRulePreset == XpRulePreset.VAMPIRE_V5) {
+                    val agg = (healthField.aggravatedDamage ?: 0).coerceIn(0, maxVal)
+                    val sup = if (agg >= maxVal) 0 else (healthField.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
+                    if (agg + sup >= maxVal) -2 else 0
+                } else {
+                    val agg = (healthField.aggravatedDamage ?: 0).coerceIn(0, maxVal)
+                    val lethal = (healthField.lethalDamage ?: 0).coerceIn(0, maxVal - agg)
+                    val bashing = (healthField.bashingDamage ?: 0).coerceIn(0, maxVal - agg - lethal)
+                    val totalDamaged = agg + lethal + bashing
+                    val effectiveDamaged = max(0, totalDamaged - max(0, maxVal - 7))
+                    when {
+                        effectiveDamaged >= 6 -> -5
+                        effectiveDamaged >= 4 -> -2
+                        effectiveDamaged >= 2 -> -1
+                        else -> 0
+                    }
+                }
+            }
+        }
+        variables["wound_penalty"] = woundPenalty.toDouble()
 
         // Pass 2 & 3: evaluate calculated fields in 2 passes for chained formulas
         val calcFields = sheet.cards.flatMap { it.fields }.filter { it.kind == FieldKind.CALCULATED }
@@ -421,7 +453,8 @@ object SheetEvaluator {
             variables = variables,
             computedByFieldId = computedByFieldId,
             formulaErrors = formulaErrors,
-            totalCargoWeight = roundedCargo
+            totalCargoWeight = roundedCargo,
+            woundPenalty = woundPenalty
         )
     }
 }
@@ -436,10 +469,16 @@ object SheetMutators {
     fun updateBooleanField(sheet: CharacterSheetState, fieldId: String, value: Boolean): CharacterSheetState =
         mapField(sheet, fieldId) { it.copy(boolValue = value) }
 
-    fun adjustResourceValue(sheet: CharacterSheetState, fieldId: String, delta: Int): CharacterSheetState =
-        mapField(sheet, fieldId) { field ->
+    fun adjustResourceValue(sheet: CharacterSheetState, fieldId: String, delta: Int): CharacterSheetState {
+        val rulePreset = XpSystem.resolveRulePreset(sheet)
+        return mapField(sheet, fieldId) { field ->
             if (field.kind != FieldKind.RESOURCE) return@mapField field
-            val maxVal = max(1, field.max ?: 12)
+            val baseMax = max(1, field.max ?: 12)
+            val maxVal = if (field.id == "f_hunger" && rulePreset != XpRulePreset.VAMPIRE_V5) {
+                max(10, baseMax)
+            } else {
+                baseMax
+            }
             val current = (field.numValue ?: 0.0).roundToInt()
             val clamped = max(0, min(maxVal, current + delta))
             if (field.damageTrack == true) {
@@ -453,23 +492,88 @@ object SheetMutators {
             }
             field.copy(numValue = clamped.toDouble())
         }
+    }
 
-    fun setResourceValue(sheet: CharacterSheetState, fieldId: String, target: Int): CharacterSheetState =
-        mapField(sheet, fieldId) { field ->
+    fun setResourceValue(sheet: CharacterSheetState, fieldId: String, target: Int): CharacterSheetState {
+        val rulePreset = XpSystem.resolveRulePreset(sheet)
+        return mapField(sheet, fieldId) { field ->
             if (field.kind != FieldKind.RESOURCE) return@mapField field
-            val maxVal = max(1, field.max ?: 12)
+            val baseMax = max(1, field.max ?: 12)
+            val maxVal = if (field.id == "f_hunger" && rulePreset != XpRulePreset.VAMPIRE_V5) {
+                max(10, baseMax)
+            } else {
+                baseMax
+            }
             field.copy(numValue = max(0, min(maxVal, target)).toDouble())
         }
+    }
 
     fun adjustHealthDamage(
         sheet: CharacterSheetState,
         fieldId: String,
         damageType: String,
         delta: Int
-    ): CharacterSheetState =
-        mapField(sheet, fieldId) { field ->
+    ): CharacterSheetState {
+        val rulePreset = XpSystem.resolveRulePreset(sheet)
+        return mapField(sheet, fieldId) { field ->
             if (field.kind != FieldKind.RESOURCE) return@mapField field
             val maxVal = max(1, field.max ?: 7)
+            if (rulePreset != XpRulePreset.VAMPIRE_V5 && damageType in setOf("bashing", "lethal", "aggravated")) {
+                var agg = (field.aggravatedDamage ?: 0).coerceIn(0, maxVal)
+                var lethal = (field.lethalDamage ?: 0).coerceIn(0, maxVal - agg)
+                var bashing = (field.bashingDamage ?: 0).coerceIn(0, maxVal - agg - lethal)
+
+                if (delta > 0) {
+                    repeat(delta) {
+                        val total = agg + lethal + bashing
+                        when (damageType) {
+                            "bashing" -> {
+                                if (total < maxVal) bashing++
+                                else if (bashing > 0) {
+                                    bashing--
+                                    lethal++
+                                }
+                            }
+                            "lethal" -> {
+                                if (total < maxVal) lethal++
+                                else if (bashing > 0) {
+                                    bashing--
+                                    lethal++
+                                }
+                            }
+                            "aggravated" -> {
+                                if (total < maxVal) agg++
+                                else if (bashing > 0) {
+                                    bashing--
+                                    agg++
+                                } else if (lethal > 0) {
+                                    lethal--
+                                    agg++
+                                }
+                            }
+                        }
+                    }
+                } else if (delta < 0) {
+                    repeat(-delta) {
+                        when (damageType) {
+                            "bashing" -> bashing = max(0, bashing - 1)
+                            "lethal" -> lethal = max(0, lethal - 1)
+                            "aggravated" -> agg = max(0, agg - 1)
+                        }
+                    }
+                }
+
+                val nextHealth = max(0, maxVal - agg - lethal - bashing)
+                return@mapField field.copy(
+                    damageTrack = true,
+                    max = maxVal,
+                    numValue = nextHealth.toDouble(),
+                    aggravatedDamage = agg,
+                    lethalDamage = lethal,
+                    bashingDamage = bashing
+                )
+            }
+
             val currentAgg = (field.aggravatedDamage ?: max(0, maxVal - (field.numValue ?: maxVal.toDouble()).roundToInt()))
                 .coerceIn(0, maxVal)
             val currentSup = if (currentAgg >= maxVal) 0 else (field.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
@@ -490,6 +594,17 @@ object SheetMutators {
                 superficialDamage = nextSup,
                 aggravatedDamage = nextAgg
             )
+        }
+    }
+
+    fun reduceSuperficialDamage(sheet: CharacterSheetState, fieldId: String): CharacterSheetState =
+        mapField(sheet, fieldId) { field ->
+            if (field.kind != FieldKind.RESOURCE || field.damageTrack != true) return@mapField field
+            val maxVal = max(1, field.max ?: 7)
+            val currentAgg = (field.aggravatedDamage ?: 0).coerceIn(0, maxVal)
+            val currentSup = if (currentAgg >= maxVal) 0 else (field.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
+            val nextSup = currentSup / 2
+            field.copy(superficialDamage = nextSup)
         }
 
     fun addRepeatableRow(sheet: CharacterSheetState, fieldId: String, newId: String): CharacterSheetState =
@@ -738,14 +853,15 @@ object SheetPayloadValidator {
     private val allowedFieldKinds = setOf(
         "number", "text", "calculated", "resource", "boolean", "roll", "repeatable"
     )
+    private val allowedRulePresets = setOf("storyteller_v20", "vampire_v5", "custom")
     val rootKeys = setOf(
         "id", "systemId", "systemName", "systemCode", "characterName",
-        "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp"
+        "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp", "rulePreset"
     )
     val cardKeys = setOf("id", "tab", "code", "title", "colSpan", "fields")
     val fieldKeys = setOf(
         "id", "key", "label", "kind", "value", "numValue", "textValue", "boolValue",
-        "max", "damageTrack", "superficialDamage", "aggravatedDamage",
+        "max", "damageTrack", "superficialDamage", "aggravatedDamage", "bashingDamage", "lethalDamage",
         "formula", "showPlus", "rollLabel", "rollExpr", "rollDifficulty", "rollMod",
         "rollSpecialty", "useWillpower", "isSoak", "columns", "col2Type", "rows", "hint"
     )
@@ -777,6 +893,12 @@ object SheetPayloadValidator {
         (root["systemId"] as? JsonPrimitive)?.let { prim ->
             if (!prim.isString || prim.content !in allowedSystemIds) {
                 errors.add("$.systemId: sistema inválido '${prim.content}'.")
+            }
+        }
+
+        (root["rulePreset"] as? JsonPrimitive)?.let { prim ->
+            if (!prim.isString || prim.content !in allowedRulePresets) {
+                errors.add("$.rulePreset: preset inválido '${prim.content}'.")
             }
         }
 

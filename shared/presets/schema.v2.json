@@ -59,7 +59,11 @@
       "maxItems": 200,
       "items": { "$ref": "#/$defs/RollLogEntry" }
     },
-    "xp": { "$ref": "#/$defs/XpState" }
+    "xp": { "$ref": "#/$defs/XpState" },
+    "rulePreset": {
+      "type": "string",
+      "enum": ["storyteller_v20", "vampire_v5", "custom"]
+    }
   },
   "$defs": {
     "TabDefinition": {
@@ -123,6 +127,8 @@
         "damageTrack": { "type": "boolean" },
         "superficialDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "aggravatedDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "bashingDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "lethalDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "formula": { "type": "string", "maxLength": 256 },
         "showPlus": { "type": "boolean" },
         "rollLabel": { "type": "string", "maxLength": 80 },

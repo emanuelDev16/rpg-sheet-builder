@@ -83,6 +83,7 @@ import com.gridsheet.app.core.SheetField
 import com.gridsheet.app.core.SheetMetadata
 import com.gridsheet.app.core.SheetMetadataMapper
 import com.gridsheet.app.core.TabId
+import com.gridsheet.app.core.XpRulePreset
 import com.gridsheet.app.ui.theme.CyberDimens
 import com.gridsheet.app.ui.theme.GridThemeTokens
 import com.gridsheet.app.ui.theme.LocalGridTheme
@@ -152,11 +153,17 @@ fun BentoCardView(
     card: SheetCard,
     mode: AppMode,
     evaluation: SheetEvaluation,
+    rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
+    isWodSheet: Boolean = false,
     onUpdateNumber: (String, Double) -> Unit,
     onUpdateText: (String, String) -> Unit,
     onUpdateBoolean: (String, Boolean) -> Unit,
     onAdjustResource: (String, Int) -> Unit,
     onAdjustHealthDamage: (String, String, Int) -> Unit,
+    onReduceSuperficial: (String) -> Unit = {},
+    onRouseCheck: () -> Unit = {},
+    onRollSoak: (String) -> Unit = {},
+    onWillpowerSurge: () -> Unit = {},
     onSetResource: (String, Int) -> Unit,
     onRoll: (String, String) -> Unit,
     onAddRow: (String) -> Unit,
@@ -303,6 +310,8 @@ fun BentoCardView(
                         field = field,
                         mode = mode,
                         evaluation = evaluation,
+                        rulePreset = rulePreset,
+                        isWodSheet = isWodSheet,
                         isFirst = index == 0,
                         isLast = index == card.fields.lastIndex,
                         isExpanded = expandedFieldId == field.id,
@@ -318,6 +327,10 @@ fun BentoCardView(
                         onUpdateBoolean = onUpdateBoolean,
                         onAdjustResource = onAdjustResource,
                         onAdjustHealthDamage = onAdjustHealthDamage,
+                        onReduceSuperficial = onReduceSuperficial,
+                        onRouseCheck = onRouseCheck,
+                        onRollSoak = onRollSoak,
+                        onWillpowerSurge = onWillpowerSurge,
                         onSetResource = onSetResource,
                         onRoll = onRoll,
                         onAddRow = onAddRow,
@@ -497,6 +510,8 @@ private fun FieldRenderer(
     field: SheetField,
     mode: AppMode,
     evaluation: SheetEvaluation,
+    rulePreset: XpRulePreset,
+    isWodSheet: Boolean,
     isFirst: Boolean,
     isLast: Boolean,
     isExpanded: Boolean,
@@ -510,6 +525,10 @@ private fun FieldRenderer(
     onUpdateBoolean: (String, Boolean) -> Unit,
     onAdjustResource: (String, Int) -> Unit,
     onAdjustHealthDamage: (String, String, Int) -> Unit,
+    onReduceSuperficial: (String) -> Unit,
+    onRouseCheck: () -> Unit,
+    onRollSoak: (String) -> Unit,
+    onWillpowerSurge: () -> Unit,
     onSetResource: (String, Int) -> Unit,
     onRoll: (String, String) -> Unit,
     onAddRow: (String) -> Unit,
@@ -926,12 +945,13 @@ private fun FieldRenderer(
 
             FieldKind.RESOURCE -> {
                 val blockShape = RoundedCornerShape(if (theme.isEink) theme.pillCornerRadius else 2.dp)
-                if (field.damageTrack == true) {
+                if (field.damageTrack == true && isWodSheet && rulePreset != XpRulePreset.VAMPIRE_V5) {
                     val maxVal = (field.max ?: 7).coerceAtLeast(1)
-                    val agg = (field.aggravatedDamage ?: kotlin.math.max(0, maxVal - (field.numValue ?: maxVal.toDouble()).roundToInt())).coerceIn(0, maxVal)
-                    val sup = if (agg >= maxVal) 0 else (field.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
-                    val healthy = (maxVal - agg).coerceAtLeast(0)
-                    val totalSupEq = agg * maxVal + sup
+                    val agg = (field.aggravatedDamage ?: 0).coerceIn(0, maxVal)
+                    val lethal = (field.lethalDamage ?: 0).coerceIn(0, maxVal - agg)
+                    val bashing = (field.bashingDamage ?: 0).coerceIn(0, maxVal - agg - lethal)
+                    val healthy = (maxVal - agg - lethal - bashing).coerceAtLeast(0)
+                    val woundPen = evaluation.woundPenalty
 
                     Column(
                         modifier = Modifier
@@ -961,15 +981,245 @@ private fun FieldRenderer(
                                 Box(
                                     modifier = Modifier
                                         .background(theme.accentCreamBadge, RoundedCornerShape(3.dp))
-                                        .border(1.dp, theme.accentPrimary, RoundedCornerShape(3.dp))
+                                        .border(1.dp, if (woundPen < 0) theme.accentDanger else theme.accentPrimary, RoundedCornerShape(3.dp))
                                         .padding(horizontal = 5.dp, vertical = 2.dp)
                                 ) {
                                     Text(
-                                        text = "1 AGRAV = $maxVal SUP",
+                                        text = if (healthy == 0) "INCAPACITADO" else if (woundPen < 0) "FERIMENTO $woundPen" else "V20 · 3 ESTADOS",
                                         fontFamily = FontFamily.Monospace,
                                         fontWeight = FontWeight.Bold,
                                         fontSize = 9.sp,
-                                        color = theme.accentPrimary
+                                        color = if (woundPen < 0) theme.accentDanger else theme.accentPrimary
+                                    )
+                                }
+                            }
+                            Text(
+                                text = "$healthy / $maxVal SAUDÁVEL",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 11.sp,
+                                color = theme.textPrimary
+                            )
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            for (idx in 0 until maxVal) {
+                                val state = when {
+                                    idx < agg -> "aggravated"
+                                    idx < agg + lethal -> "lethal"
+                                    idx < agg + lethal + bashing -> "bashing"
+                                    else -> "healthy"
+                                }
+                                val bg = when (state) {
+                                    "aggravated" -> theme.accentBlack
+                                    "lethal" -> if (theme.isEink) theme.bgCard else theme.accentDanger
+                                    "bashing" -> if (theme.isEink) theme.bgStrip else theme.accentPrimary
+                                    else -> theme.bgCard
+                                }
+                                val borderCol = when (state) {
+                                    "aggravated" -> theme.accentBlack
+                                    "lethal" -> if (theme.isEink) theme.borderColor else theme.accentDanger
+                                    "bashing" -> if (theme.isEink) theme.borderColor else theme.accentPrimary
+                                    else -> theme.borderColor.copy(alpha = if (theme.isEink) 1f else 0.45f)
+                                }
+                                val mark = when (state) {
+                                    "aggravated" -> "*"
+                                    "lethal" -> "X"
+                                    "bashing" -> "/"
+                                    else -> ""
+                                }
+                                val markColor = if (theme.isEink && state != "aggravated") {
+                                    theme.textPrimary
+                                } else {
+                                    theme.accentContrast
+                                }
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(20.dp)
+                                        .clip(blockShape)
+                                        .background(bg)
+                                        .border(1.dp, borderCol, blockShape),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    if (theme.isEink && (state == "bashing" || state == "lethal")) {
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val step = 5.dp.toPx()
+                                            var x = -size.height
+                                            while (x < size.width + size.height) {
+                                                drawLine(
+                                                    color = theme.borderColor.copy(alpha = 0.45f),
+                                                    start = Offset(x, size.height),
+                                                    end = Offset(x + size.height, 0f),
+                                                    strokeWidth = 1.2f
+                                                )
+                                                if (state == "lethal") {
+                                                    drawLine(
+                                                        color = theme.borderColor.copy(alpha = 0.45f),
+                                                        start = Offset(x, 0f),
+                                                        end = Offset(x + size.height, size.height),
+                                                        strokeWidth = 1.2f
+                                                    )
+                                                }
+                                                x += step
+                                            }
+                                        }
+                                    }
+                                    if (mark.isNotEmpty()) {
+                                        Text(
+                                            text = mark,
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Black,
+                                            fontSize = 11.sp,
+                                            color = markColor
+                                        )
+                                    }
+                                }
+                            }
+                        }
+
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(1.dp)
+                                .background(theme.borderSubtle)
+                        )
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "AGRAVADO (*)",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = theme.textPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                SmallSquareButton(label = "-") { onAdjustHealthDamage(field.id, "aggravated", -1) }
+                                Text(
+                                    text = "$agg / $maxVal",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = theme.textPrimary
+                                )
+                                SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "aggravated", +1) }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "LETAL (X)",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = if (theme.isEink) theme.textPrimary else theme.accentDanger,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                SmallSquareButton(label = "-") { onAdjustHealthDamage(field.id, "lethal", -1) }
+                                Text(
+                                    text = "$lethal / $maxVal",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = if (theme.isEink) theme.textPrimary else theme.accentDanger
+                                )
+                                SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "lethal", +1) }
+                            }
+                        }
+
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Text(
+                                text = "CONTUNDENTE (/)",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Bold,
+                                fontSize = 10.sp,
+                                color = theme.accentPrimary,
+                                modifier = Modifier.weight(1f)
+                            )
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp)
+                            ) {
+                                SmallSquareButton(label = "-") { onAdjustHealthDamage(field.id, "bashing", -1) }
+                                Text(
+                                    text = "$bashing / $maxVal",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 12.sp,
+                                    color = theme.accentPrimary
+                                )
+                                SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "bashing", +1) }
+                            }
+                        }
+                    }
+                } else if (field.damageTrack == true) {
+                    val maxVal = (field.max ?: 7).coerceAtLeast(1)
+                    val agg = (field.aggravatedDamage ?: kotlin.math.max(0, maxVal - (field.numValue ?: maxVal.toDouble()).roundToInt())).coerceIn(0, maxVal)
+                    val sup = if (agg >= maxVal) 0 else (field.superficialDamage ?: 0).coerceIn(0, maxVal - 1)
+                    val healthy = (maxVal - agg).coerceAtLeast(0)
+                    val totalSupEq = agg * maxVal + sup
+                    val impairedPenalty = evaluation.woundPenalty
+
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(theme.bgCardAlt, cardShape)
+                            .border(theme.borderWidth, theme.borderColor, cardShape)
+                            .padding(theme.cardPadding),
+                        verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text(
+                                    text = field.label,
+                                    fontFamily = theme.bodyFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = if (theme.isEink) 14.sp else 12.sp,
+                                    color = theme.textPrimary
+                                )
+                                Box(
+                                    modifier = Modifier
+                                        .background(theme.accentCreamBadge, RoundedCornerShape(3.dp))
+                                        .border(1.dp, if (impairedPenalty < 0) theme.accentDanger else theme.accentPrimary, RoundedCornerShape(3.dp))
+                                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                                ) {
+                                    Text(
+                                        text = if (impairedPenalty < 0) "IMPAIRED ($impairedPenalty DADOS)" else "1 AGRAV = $maxVal SUP",
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Bold,
+                                        fontSize = 9.sp,
+                                        color = if (impairedPenalty < 0) theme.accentDanger else theme.accentPrimary
                                     )
                                 }
                             }
@@ -1021,6 +1271,21 @@ private fun FieldRenderer(
                                         .border(1.dp, borderCol, blockShape),
                                     contentAlignment = Alignment.Center
                                 ) {
+                                    if (theme.isEink && state == "superficial") {
+                                        Canvas(modifier = Modifier.fillMaxSize()) {
+                                            val step = 5.dp.toPx()
+                                            var x = -size.height
+                                            while (x < size.width + size.height) {
+                                                drawLine(
+                                                    color = theme.borderColor.copy(alpha = 0.45f),
+                                                    start = Offset(x, size.height),
+                                                    end = Offset(x + size.height, 0f),
+                                                    strokeWidth = 1.2f
+                                                )
+                                                x += step
+                                            }
+                                        }
+                                    }
                                     if (mark.isNotEmpty()) {
                                         Text(
                                             text = mark,
@@ -1098,10 +1363,42 @@ private fun FieldRenderer(
                                 SmallSquareButton(label = "+") { onAdjustHealthDamage(field.id, "superficial", +1) }
                             }
                         }
+
+                        if (isWodSheet) {
+                            OutlinedButton(
+                                onClick = { onReduceSuperficial(field.id) },
+                                enabled = sup > 0,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                                shape = pillShape,
+                                border = BorderStroke(theme.borderWidth, theme.borderColor)
+                            ) {
+                                Text(
+                                    text = "REDUZIR SUPERFICIAL (÷2)",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 11.sp,
+                                    color = if (sup > 0) theme.textPrimary else theme.textMuted
+                                )
+                            }
+                        }
                     }
                 } else {
-                val maxVal = (field.max ?: 10).coerceIn(1, 50)
+                val isBloodOrHunger = isWodSheet && (field.id == "f_hunger" || field.key.trim().lowercase() == "hunger" || field.id == "f_blood_pool")
+                val isV5Hunger = isBloodOrHunger && rulePreset == XpRulePreset.VAMPIRE_V5
+                val isV20BloodPool = isBloodOrHunger && rulePreset != XpRulePreset.VAMPIRE_V5
+                val maxVal = when {
+                    isV5Hunger -> 5
+                    isV20BloodPool -> kotlin.math.max(10, field.max ?: 10)
+                    else -> (field.max ?: 10).coerceIn(1, 50)
+                }
                 val current = (field.numValue ?: 0.0).roundToInt().coerceIn(0, maxVal)
+                val displayLabel = when {
+                    isV5Hunger -> "HUNGER (0..5)"
+                    isV20BloodPool -> "RESERVA DE SANGUE"
+                    else -> field.label
+                }
 
                 Column(
                     modifier = Modifier
@@ -1117,7 +1414,7 @@ private fun FieldRenderer(
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
                         Text(
-                            text = field.label,
+                            text = displayLabel,
                             fontFamily = theme.bodyFontFamily,
                             fontWeight = FontWeight.Bold,
                             fontSize = if (theme.isEink) 14.sp else 12.sp,
@@ -1181,11 +1478,54 @@ private fun FieldRenderer(
                             )
                         }
                     }
+
+                    if (isV5Hunger) {
+                        Button(
+                            onClick = onRouseCheck,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                            shape = pillShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.accentBlack,
+                                contentColor = theme.accentContrast
+                            ),
+                            border = BorderStroke(theme.borderWidth, theme.borderColor)
+                        ) {
+                            Text(
+                                text = "ROUSE CHECK (1D10)",
+                                fontFamily = FontFamily.Monospace,
+                                fontWeight = FontWeight.Black,
+                                fontSize = 11.sp
+                            )
+                        }
+                    }
                 }
                 }
             }
 
             FieldKind.BOOLEAN -> {
+                if (isWodSheet && rulePreset == XpRulePreset.VAMPIRE_V5 && (field.id == "f_wp_boost" || field.key.trim().lowercase() == "wp_boost")) {
+                    Button(
+                        onClick = onWillpowerSurge,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                        shape = pillShape,
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = theme.accentPrimary,
+                            contentColor = theme.accentContrast
+                        ),
+                        border = BorderStroke(theme.borderWidth, theme.borderColor)
+                    ) {
+                        Text(
+                            text = "WILLPOWER SURGE (REROLAR ATÉ 3)",
+                            fontFamily = FontFamily.Monospace,
+                            fontWeight = FontWeight.Black,
+                            fontSize = 11.sp
+                        )
+                    }
+                } else {
                 val checked = field.boolValue == true
                 val inverted = theme.isEink && checked
                 Row(
@@ -1262,12 +1602,112 @@ private fun FieldRenderer(
                         }
                     )
                 }
+                }
             }
 
             FieldKind.ROLL -> {
+                val isSoakField = isWodSheet && (field.id == "f_soak" || field.key.trim().lowercase() == "soak_roll" || field.rollLabel?.uppercase() == "ROLL SOAK")
+                if (isSoakField && rulePreset == XpRulePreset.VAMPIRE_V5) {
+                    // V5 replaces Roll Soak with REDUZIR SUPERFICIAL (÷2) on the Health track
+                } else if (isSoakField) {
+                    var selectedSoakType by remember { mutableStateOf("bashing") }
+                    val soakPreviewExpr = if (selectedSoakType == "aggravated") {
+                        "pool(fortitude_armor, 6)"
+                    } else {
+                        "pool(stamina + fortitude_armor, 6)"
+                    }
+                    val soakPreview = FormulaEngine.resolveRollPreview(soakPreviewExpr, evaluation.variables)
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .background(theme.bgCardAlt, cardShape)
+                            .border(theme.borderWidth, theme.borderColor, cardShape)
+                            .padding(theme.cardPadding),
+                        verticalArrangement = Arrangement.spacedBy(theme.fieldGap)
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(pillShape)
+                                .border(theme.borderWidth, theme.borderColor, pillShape)
+                        ) {
+                            listOf(
+                                "bashing" to "CONTUNDENTE (÷2)",
+                                "lethal" to "LETAL",
+                                "aggravated" to "AGRAVADO"
+                            ).forEach { (typeKey, typeLabel) ->
+                                val selected = selectedSoakType == typeKey
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
+                                        .background(if (selected) theme.accentBlack else theme.bgCard)
+                                        .clickable { selectedSoakType = typeKey }
+                                        .padding(horizontal = 4.dp, vertical = 8.dp),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Text(
+                                        text = typeLabel,
+                                        fontFamily = FontFamily.Monospace,
+                                        fontWeight = FontWeight.Black,
+                                        fontSize = 9.sp,
+                                        color = if (selected) theme.accentContrast else theme.textPrimary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis
+                                    )
+                                }
+                            }
+                        }
+                        if (selectedSoakType == "aggravated") {
+                            Text(
+                                text = "AGRAVADO: APENAS FORTITUDE (SEM STAMINA / SEM WILLPOWER)",
+                                fontFamily = FontFamily.Monospace,
+                                fontSize = 9.sp,
+                                fontWeight = FontWeight.Bold,
+                                color = theme.accentDanger
+                            )
+                        }
+                        Button(
+                            onClick = { onRollSoak(selectedSoakType) },
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .defaultMinSize(minHeight = CyberDimens.MinTouchTarget),
+                            shape = pillShape,
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = theme.accentBlack,
+                                contentColor = theme.accentContrast
+                            ),
+                            border = BorderStroke(theme.borderStrong, theme.borderColor)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "ROLL SOAK",
+                                    fontFamily = theme.bodyFontFamily,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = if (theme.isEink) 13.sp else 12.sp
+                                )
+                                Text(
+                                    text = "$soakPreview ↗",
+                                    fontFamily = FontFamily.Monospace,
+                                    fontWeight = FontWeight.Black,
+                                    fontSize = 12.sp
+                                )
+                            }
+                        }
+                    }
+                } else {
                 val label = field.rollLabel ?: field.label
                 val expr = field.rollExpr ?: "2d6"
-                val preview = FormulaEngine.resolveRollPreview(expr, evaluation.variables)
+                val preview = FormulaEngine.resolveRollPreview(
+                    expression = expr,
+                    vars = evaluation.variables,
+                    rulePreset = if (isWodSheet) rulePreset else XpRulePreset.STORYTELLER_V20,
+                    woundPenalty = if (isWodSheet) evaluation.woundPenalty else 0
+                )
 
                 Row(
                     modifier = Modifier.fillMaxWidth(),
@@ -1275,15 +1715,20 @@ private fun FieldRenderer(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     if (field.rollDifficulty != null) {
-                        val diff = field.rollDifficulty.coerceIn(2, 10)
+                        val diff = if (isWodSheet && rulePreset == XpRulePreset.VAMPIRE_V5) 6 else field.rollDifficulty.coerceIn(2, 10)
                         val hasSpec = field.rollSpecialty == true
-                        val pillText = if (hasSpec) "DIFF $diff · SPEC" else "DIFF $diff"
+                        val pillText = when {
+                            isWodSheet && rulePreset == XpRulePreset.VAMPIRE_V5 && hasSpec -> "V5 · SPEC"
+                            isWodSheet && rulePreset == XpRulePreset.VAMPIRE_V5 -> "V5 · DIFF 6"
+                            hasSpec -> "DIFF $diff · SPEC"
+                            else -> "DIFF $diff"
+                        }
                         val pillBg = if (theme.isEink && hasSpec) theme.accentPrimary else theme.accentCreamBadge
                         val pillFg = if (theme.isEink && hasSpec) theme.accentContrast else theme.accentPrimary
                         Surface(
                             modifier = Modifier
                                 .defaultMinSize(minHeight = CyberDimens.MinTouchTarget)
-                                .clickable(onClick = onCycleRollDifficulty),
+                                .clickable(enabled = !(isWodSheet && rulePreset == XpRulePreset.VAMPIRE_V5), onClick = onCycleRollDifficulty),
                             shape = pillShape,
                             color = pillBg,
                             border = BorderStroke(1.dp, theme.accentPrimary)
@@ -1336,6 +1781,7 @@ private fun FieldRenderer(
                             )
                         }
                     }
+                }
                 }
             }
 

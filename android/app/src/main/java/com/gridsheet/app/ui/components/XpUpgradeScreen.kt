@@ -69,7 +69,8 @@ fun XpUpgradeWorkspace(
     onBuyBackground: (String, Int?) -> Unit,
     onUndoLastUpgrade: () -> Unit
 ) {
-    val xp = XpSystem.normalizeXpState(sheet.xp)
+    val activeRulePreset = XpSystem.resolveRulePreset(sheet)
+    val xp = XpSystem.normalizeXpState(sheet.xp).copy(xpRulePreset = activeRulePreset)
     val availableXp = XpSystem.getAvailableXp(xp)
     val allTraits = remember(sheet) { XpSystem.extractAllTraits(sheet) }
     val filteredTraits = remember(allTraits, filter) {
