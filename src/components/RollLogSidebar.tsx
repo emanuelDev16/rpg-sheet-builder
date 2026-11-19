@@ -411,9 +411,32 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
               </div>
             ) : (
               logs.map((entry, idx) => {
+                const isV5Pool =
+                  Boolean(entry.isPoolRoll) &&
+                  entry.rulePreset === 'vampire-v5' &&
+                  !entry.isRouseCheck;
+                const v5Target = Math.max(1, Math.min(10, Math.round(entry.difficulty ?? 2)));
+                const v5Margin =
+                  typeof entry.margin === 'number' ? entry.margin : entry.total - v5Target;
+                const v5Succeeded = entry.total >= v5Target;
+                const v5HasHungerOne = (entry.hungerRolls ?? []).includes(1);
+                const v5IsBestial =
+                  isV5Pool &&
+                  (Boolean(entry.bestialFailure) ||
+                    (!v5Succeeded && v5HasHungerOne && (entry.rolls?.length ?? 0) > 0));
+                const v5IsMessy = isV5Pool && Boolean(entry.messyCritical) && v5Succeeded;
+                const v5IsCrit =
+                  isV5Pool && Boolean(entry.isCritical) && v5Succeeded && !v5IsMessy;
+
                 const poolOutcome = entry.isPoolRoll
-                  ? entry.outcome ??
-                    (entry.isFumble ? 'botch' : entry.total > 0 ? 'success' : 'failure')
+                  ? isV5Pool
+                    ? v5IsBestial
+                      ? 'botch'
+                      : v5Succeeded
+                        ? 'success'
+                        : 'failure'
+                    : entry.outcome ??
+                      (entry.isFumble ? 'botch' : entry.total > 0 ? 'success' : 'failure')
                   : null;
                 const diffThreshold = entry.difficulty ?? 6;
                 const hungerCount = entry.hungerDice ?? 0;
@@ -421,9 +444,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 const isRerollArmed = rerollArmedLogId === entry.id;
                 const canArmThisRollReroll =
                   Boolean(onArmWillpowerReroll) &&
-                  Boolean(entry.isPoolRoll) &&
-                  entry.rulePreset === 'vampire-v5' &&
-                  !entry.isRouseCheck &&
+                  isV5Pool &&
                   normalDiceCount > 0 &&
                   !entry.isWillpowerReroll &&
                   !isRerollArmed;
@@ -446,21 +467,35 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                     </div>
 
                     <div className="flex items-baseline justify-between gap-2 my-1">
-                      <div className="flex items-baseline gap-1.5">
+                      <div className="flex items-baseline gap-1.5 flex-wrap min-w-0">
                         <span
                           data-testid={idx === 0 ? 'latest-roll-total' : undefined}
                           className="font-display text-4xl font-extrabold leading-none tracking-tight text-[var(--ink-primary)] tabular-nums"
                         >
                           {entry.total}
                         </span>
-                        {entry.isPoolRoll && !entry.isRouseCheck && poolOutcome !== 'botch' && (
-                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
-                            {entry.isSoak
-                              ? t.t('sidebar.roll.soaked')
-                              : entry.total === 1
-                                ? t.t('sidebar.roll.sucSingular')
-                                : t.t('sidebar.roll.sucPlural')}
+                        {isV5Pool ? (
+                          <span
+                            data-testid={idx === 0 ? 'latest-roll-v5-score' : undefined}
+                            className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)] tabular-nums"
+                          >
+                            {t.t('sidebar.roll.v5Score', {
+                              total: entry.total,
+                              target: v5Target,
+                            })}
                           </span>
+                        ) : (
+                          entry.isPoolRoll &&
+                          !entry.isRouseCheck &&
+                          poolOutcome !== 'botch' && (
+                            <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
+                              {entry.isSoak
+                                ? t.t('sidebar.roll.soaked')
+                                : entry.total === 1
+                                  ? t.t('sidebar.roll.sucSingular')
+                                  : t.t('sidebar.roll.sucPlural')}
+                            </span>
+                          )
                         )}
                       </div>
 
@@ -481,20 +516,43 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                               {t.t('sidebar.roll.rouseFail')}
                             </span>
                           )
-                        ) : entry.messyCritical ? (
-                          <span
-                            data-testid={idx === 0 ? 'latest-roll-messy-crit' : undefined}
-                            className="v5-status-badge--messy text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
-                          >
-                            {t.t('sidebar.roll.messyCritical')}
-                          </span>
-                        ) : entry.bestialFailure ? (
-                          <span
-                            data-testid={idx === 0 ? 'latest-roll-bestial-fail' : undefined}
-                            className="v5-status-badge--bestial text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
-                          >
-                            {t.t('sidebar.roll.bestialFailure')}
-                          </span>
+                        ) : isV5Pool ? (
+                          v5IsMessy ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-messy-crit' : undefined}
+                              className="v5-status-badge--messy text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
+                            >
+                              {t.t('sidebar.roll.messyCritical')}
+                            </span>
+                          ) : v5IsBestial ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-bestial-fail' : undefined}
+                              className="v5-status-badge--bestial text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] uppercase tracking-wider shrink-0"
+                            >
+                              {t.t('sidebar.roll.bestialFailure')}
+                            </span>
+                          ) : !v5Succeeded ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-v5-status' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--text-secondary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.failure')}
+                            </span>
+                          ) : v5IsCrit ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-v5-status' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.exceptional')}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-v5-status' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.success')}
+                            </span>
+                          )
                         ) : poolOutcome === 'botch' ? (
                           <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase">
                             {t.t('sidebar.roll.botch')}
@@ -527,6 +585,17 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         </>
                       )}
                     </div>
+
+                    {isV5Pool && v5Succeeded && (
+                      <div className="flex items-center gap-1.5 mb-1">
+                        <span
+                          data-testid={idx === 0 ? 'latest-roll-v5-margin' : undefined}
+                          className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase tabular-nums"
+                        >
+                          {t.t('sidebar.roll.margin', { margin: v5Margin })}
+                        </span>
+                      </div>
+                    )}
 
                     <RollDiceChips
                       entry={entry}
@@ -671,6 +740,38 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                     )}
 
                     {(() => {
+                      if (isV5Pool && entry.rolls && entry.rolls.length > 0) {
+                        const scoreLabel = t.t('sidebar.roll.v5Score', {
+                          total: entry.total,
+                          target: v5Target,
+                        });
+                        const v5OutcomeText = v5IsMessy
+                          ? `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })} · ${t.t('sidebar.roll.messyCritical')}`
+                          : v5IsBestial
+                            ? `${scoreLabel} · ${t.t('sidebar.roll.bestialFailure')}`
+                            : !v5Succeeded
+                              ? `${scoreLabel} · ${t.t('sidebar.roll.failure')}`
+                              : v5IsCrit
+                                ? `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })} · ${t.t('sidebar.roll.exceptional')}`
+                                : `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })}`;
+                        const v5FormulaLine = `${entry.rolls.length}d10 (${t.t('cards.pool.diffMeta')} ${v5Target}${
+                          (entry.hungerDice ?? 0) > 0 ? ` · H:${entry.hungerDice}` : ''
+                        })`;
+                        return (
+                          <>
+                            <div
+                              data-testid={idx === 0 ? 'latest-roll-breakdown' : undefined}
+                              className="font-mono-tech text-[11px] text-[var(--ink-secondary)] break-words"
+                            >
+                              {v5OutcomeText}
+                            </div>
+                            <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] mt-0.5">
+                              {v5FormulaLine}
+                            </div>
+                          </>
+                        );
+                      }
+
                       if (
                         !entry.isPoolRoll ||
                         !entry.rolls ||

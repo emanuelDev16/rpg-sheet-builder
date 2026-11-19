@@ -1,11 +1,23 @@
-import React, { useState } from 'react';
-import { Plus } from 'lucide-react';
-import { SheetCard, SheetField, TabId } from '../core/sheetModel';
+import React, { useMemo, useState } from 'react';
+import { Check, Plus, Search } from 'lucide-react';
+import { RulePreset, SheetCard, SheetField, SystemId, TabId } from '../core/sheetModel';
+import { VariableMap } from '../core/formula';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import {
+  buildCatalogSkillFields,
+  getGroupedWodSkillsCatalog,
+  getWodSkillsCatalog,
+  isCatalogSkillPresent,
+  isOfficialVampireSheet,
+} from '../core/wodSkillsCatalog';
 
 interface CustomCardBuilderProps {
   activeTab: Exclude<TabId, 'xp'>;
   isEmptySheet: boolean;
+  systemId?: SystemId;
+  rulePreset?: RulePreset;
+  existingFieldKeys?: string[];
+  availableVariables?: VariableMap;
   t?: AppTranslations['customBuilder'];
   onCreateCard: (card: SheetCard) => void;
 }
@@ -284,6 +296,10 @@ function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): She
 export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   activeTab,
   isEmptySheet,
+  systemId,
+  rulePreset,
+  existingFieldKeys = [],
+  availableVariables = {},
   t = DEFAULT_BUILDER_T,
   onCreateCard,
 }) => {
@@ -291,10 +307,27 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   const [code, setCode] = useState('');
   const [colSpan, setColSpan] = useState<1 | 2>(1);
   const [starterTemplate, setStarterTemplate] = useState<StarterTemplateId>('empty');
+  const [catalogQuery, setCatalogQuery] = useState('');
+  const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
   const lang = inferLang(t);
+  const fullT = getTranslations(lang);
   const copy = TEMPLATE_LABELS[lang];
   const selectedMeta = copy.options[starterTemplate];
+
+  const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
+  const showOfficialSkillCatalog = Boolean(officialEdition) && starterTemplate === 'skill_d10';
+
+  const catalogGroups = useMemo(
+    () => (officialEdition ? getGroupedWodSkillsCatalog(officialEdition, catalogQuery) : []),
+    [officialEdition, catalogQuery],
+  );
+
+  const toggleCatalogSkill = (skillId: string) => {
+    setSelectedSkillIds((prev) =>
+      prev.includes(skillId) ? prev.filter((id) => id !== skillId) : [...prev, skillId],
+    );
+  };
 
   const handleCreate = (e: React.FormEvent) => {
     e.preventDefault();
@@ -310,18 +343,48 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
     const normalizedCode = derivedCode.startsWith('//') ? derivedCode : `//${derivedCode}`;
     const uid = `card_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
 
+    let starterFields: SheetField[];
+    if (showOfficialSkillCatalog && officialEdition && selectedSkillIds.length > 0) {
+      const catalogById = new Map(
+        getWodSkillsCatalog(officialEdition).map((item) => [item.id, item]),
+      );
+      starterFields = selectedSkillIds.flatMap((id) => {
+        const skill = catalogById.get(id);
+        return skill
+          ? buildCatalogSkillFields(skill, officialEdition, lang, availableVariables)
+          : [];
+      });
+    } else if (showOfficialSkillCatalog && officialEdition) {
+      // If user clicks Create Card without selecting from catalog, still respect edition difficulty & xpCategory
+      starterFields = buildStarterFields(starterTemplate, lang).map((field) =>
+        field.kind === 'roll'
+          ? {
+              ...field,
+              rollDifficulty: officialEdition === 'vampire-v5' ? 2 : 6,
+              ...(officialEdition === 'vampire-v5' ? { rollDifficultyV5: 2 } : {}),
+              rollSpecialty: false,
+              xpCategory: 'skill',
+            }
+          : { ...field, xpCategory: 'skill' },
+      );
+    } else {
+      starterFields = buildStarterFields(starterTemplate, lang);
+    }
+
     onCreateCard({
       id: uid,
       tab: activeTab,
       code: normalizedCode,
       title: cleanTitle,
       colSpan,
-      fields: buildStarterFields(starterTemplate, lang),
+      fields: starterFields,
     });
 
     setTitle('');
     setCode('');
     setStarterTemplate('empty');
+    setCatalogQuery('');
+    setSelectedSkillIds([]);
   };
 
   return (
@@ -370,7 +433,13 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
                   role="radio"
                   aria-checked={active}
                   data-testid={`builder-tpl-${tplId}`}
-                  onClick={() => setStarterTemplate(tplId)}
+                  onClick={() => {
+                    setStarterTemplate(tplId);
+                    if (tplId !== 'skill_d10') {
+                      setCatalogQuery('');
+                      setSelectedSkillIds([]);
+                    }
+                  }}
                   className={`font-mono-tech min-h-[36px] sm:min-h-[30px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border transition-colors cursor-pointer ${
                     active
                       ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
@@ -383,6 +452,89 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
             })}
           </div>
         </div>
+
+        {showOfficialSkillCatalog && officialEdition && (
+          <div
+            data-testid="builder-official-skills-catalog"
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono-tech text-[10px] font-extrabold text-[var(--accent-wine)] uppercase">
+                {officialEdition === 'vampire-v5'
+                  ? fullT.t('cards.catalog.headingV5')
+                  : fullT.t('cards.catalog.headingV20')}
+              </span>
+              {selectedSkillIds.length > 0 && (
+                <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] rounded-[var(--radius-pill)] uppercase">
+                  {fullT.t('cards.catalog.selectedCount', { count: selectedSkillIds.length })}
+                </span>
+              )}
+            </div>
+
+            <div className="relative">
+              <Search
+                className="w-3.5 h-3.5 text-[var(--ink-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                aria-hidden="true"
+              />
+              <input
+                type="search"
+                data-testid="builder-catalog-search"
+                aria-label={fullT.t('cards.catalog.searchAria')}
+                value={catalogQuery}
+                onChange={(e) => setCatalogQuery(e.target.value)}
+                placeholder={fullT.t('cards.catalog.searchPlaceholder')}
+                className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[11px] w-full"
+              />
+            </div>
+
+            <div className="max-h-52 overflow-y-auto pr-0.5 flex flex-col gap-2.5">
+              {catalogGroups.length === 0 ? (
+                <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
+                  {fullT.t('cards.catalog.emptySearch')}
+                </p>
+              ) : (
+                catalogGroups.map((group) => (
+                  <div key={group.category} className="flex flex-col gap-1">
+                    <span className="font-mono-tech text-[9px] font-extrabold tracking-wider uppercase text-[var(--ink-muted)]">
+                      {group.labels[lang]}
+                    </span>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-1">
+                      {group.skills.map((skill) => {
+                        const alreadyOnSheet = isCatalogSkillPresent(skill, existingFieldKeys);
+                        const isSelected = selectedSkillIds.includes(skill.id);
+                        return (
+                          <button
+                            key={skill.id}
+                            type="button"
+                            disabled={alreadyOnSheet}
+                            data-testid={`builder-catalog-skill-${skill.varName}`}
+                            onClick={() => toggleCatalogSkill(skill.id)}
+                            className={`font-mono-tech min-h-[34px] px-2 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-control)] border flex items-center justify-between gap-1.5 text-left transition-colors ${
+                              alreadyOnSheet
+                                ? 'bg-[var(--bg-strip)] text-[var(--ink-muted)] border-[var(--border-ink)]/30 opacity-65 cursor-not-allowed'
+                                : isSelected
+                                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)] cursor-pointer'
+                                  : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/60 hover:bg-[var(--bg-hover)] cursor-pointer'
+                            }`}
+                          >
+                            <span className="truncate">{skill.labels[lang]}</span>
+                            {alreadyOnSheet ? (
+                              <span className="text-[8px] font-extrabold px-1 py-0.5 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-ink)]/40 rounded-[var(--radius-pill)] shrink-0">
+                                {fullT.t('cards.catalog.alreadyOnSheet')}
+                              </span>
+                            ) : isSelected ? (
+                              <Check className="w-3 h-3 shrink-0" aria-hidden="true" />
+                            ) : null}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </div>
+        )}
 
         <div className="grid grid-cols-1 md:grid-cols-12 gap-2.5 items-end">
           <div className="md:col-span-5 flex flex-col gap-1">

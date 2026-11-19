@@ -1,5 +1,5 @@
-import React, { useEffect, useRef, useState } from 'react';
-import { Plus, Trash2, X } from 'lucide-react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
+import { Plus, Search, Trash2, X } from 'lucide-react';
 import {
   AppMode,
   FieldKind,
@@ -12,6 +12,13 @@ import {
   VirtuesState,
 } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import {
+  buildCatalogSkillFields,
+  getGroupedWodSkillsCatalog,
+  isCatalogSkillPresent,
+  isOfficialVampireSheet,
+  WodCatalogSkill,
+} from '../core/wodSkillsCatalog';
 import { AnimatedCounter } from './AnimatedCounter';
 import { FieldPrimitive } from './FieldPrimitives';
 
@@ -308,23 +315,42 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onRemoveCard,
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
+  const [catalogQuery, setCatalogQuery] = useState('');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<GuidedFieldTemplateId>(() =>
     inferDefaultTemplateForCard(card),
   );
   const labelInputRef = useRef<HTMLInputElement | null>(null);
+  const catalogSearchRef = useRef<HTMLInputElement | null>(null);
 
   useEffect(() => {
     if (mode !== 'edicao') {
       setEditingFieldId(null);
       setComposerOpen(false);
+      setCatalogQuery('');
     }
   }, [mode]);
 
   const lang = inferLang(t);
   const guided = GUIDED_COPY[lang];
   const selectedMeta = guided.templates[selectedTemplate];
+
+  const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
+  const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
+
+  const existingSheetKeys = useMemo(
+    () => [
+      ...Object.keys(evaluation.variables),
+      ...card.fields.map((f) => f.key),
+    ],
+    [evaluation.variables, card.fields],
+  );
+
+  const catalogGroups = useMemo(
+    () => (officialEdition ? getGroupedWodSkillsCatalog(officialEdition, catalogQuery) : []),
+    [officialEdition, catalogQuery],
+  );
 
   const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
@@ -349,15 +375,36 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const useTwoColBody = mode === 'jogo' && canUseTwoColBody;
 
   const openGuidedComposer = () => {
-    setSelectedTemplate(inferDefaultTemplateForCard(card));
+    const defaultTpl = inferDefaultTemplateForCard(card);
+    setSelectedTemplate(defaultTpl);
+    setCatalogQuery('');
     setComposerOpen(true);
     window.setTimeout(() => {
-      labelInputRef.current?.focus();
+      if (officialEdition && defaultTpl === 'skill_d10') {
+        catalogSearchRef.current?.focus();
+      } else {
+        labelInputRef.current?.focus();
+      }
     }, 0);
+  };
+
+  const handleAddOfficialCatalogSkill = (skill: WodCatalogSkill) => {
+    if (!officialEdition) return;
+    if (isCatalogSkillPresent(skill, existingSheetKeys)) return;
+    const newFields = buildCatalogSkillFields(
+      skill,
+      officialEdition,
+      lang,
+      evaluation.variables,
+    );
+    onUpdateCard(card.id, {
+      fields: [...card.fields, ...newFields],
+    });
   };
 
   const handleCreateGuidedField = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
+    if (showOfficialSkillCatalog) return;
     const trimmed = newFieldLabel.trim();
     const resolvedLabel =
       trimmed || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
@@ -801,27 +848,115 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 </div>
 
                 <p className="font-mono-tech text-[10px] text-[var(--ink-secondary)]">
-                  {selectedMeta.hint}
+                  {showOfficialSkillCatalog && officialEdition
+                    ? t.t('cards.catalog.clickHint')
+                    : selectedMeta.hint}
                 </p>
 
-                <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
-                  <input
-                    ref={labelInputRef}
-                    type="text"
-                    aria-label={t.t('cards.newFieldNameAria', { title: card.title })}
-                    value={newFieldLabel}
-                    onChange={(e) => setNewFieldLabel(e.target.value)}
-                    placeholder={t.newFieldPlaceholder}
-                    className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-[11px] flex-1 min-w-[140px]"
-                  />
-                  <button
-                    type="submit"
-                    data-testid={`create-guided-field-btn-${card.id}`}
-                    className="cyber-roll-btn mobile-touch-input min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                {showOfficialSkillCatalog && officialEdition ? (
+                  <div
+                    data-testid={`official-skills-catalog-${card.id}`}
+                    className="flex flex-col gap-2"
                   >
-                    {guided.createFieldBtn}
-                  </button>
-                </div>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono-tech text-[10px] font-extrabold uppercase text-[var(--accent-wine)]">
+                        {officialEdition === 'vampire-v5'
+                          ? t.t('cards.catalog.headingV5')
+                          : t.t('cards.catalog.headingV20')}
+                      </span>
+                    </div>
+
+                    <div className="relative">
+                      <Search
+                        className="w-3.5 h-3.5 text-[var(--ink-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        ref={catalogSearchRef}
+                        type="search"
+                        data-testid={`official-catalog-search-${card.id}`}
+                        aria-label={t.t('cards.catalog.searchAria')}
+                        value={catalogQuery}
+                        onChange={(e) => setCatalogQuery(e.target.value)}
+                        placeholder={t.t('cards.catalog.searchPlaceholder')}
+                        className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[11px] w-full"
+                      />
+                    </div>
+
+                    <div className="max-h-64 overflow-y-auto pr-0.5 flex flex-col gap-2.5">
+                      {catalogGroups.length === 0 ? (
+                        <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
+                          {t.t('cards.catalog.emptySearch')}
+                        </p>
+                      ) : (
+                        catalogGroups.map((group) => (
+                          <div
+                            key={group.category}
+                            data-testid={`catalog-group-${group.category}`}
+                            className="flex flex-col gap-1"
+                          >
+                            <span className="font-mono-tech text-[9px] font-extrabold tracking-wider uppercase text-[var(--ink-muted)]">
+                              {group.labels[lang]}
+                            </span>
+                            <div className="grid grid-cols-1 sm:grid-cols-2 gap-1">
+                              {group.skills.map((skill) => {
+                                const alreadyOnSheet = isCatalogSkillPresent(
+                                  skill,
+                                  existingSheetKeys,
+                                );
+                                return (
+                                  <button
+                                    key={skill.id}
+                                    type="button"
+                                    disabled={alreadyOnSheet}
+                                    data-testid={`catalog-skill-${skill.varName}`}
+                                    onClick={() => handleAddOfficialCatalogSkill(skill)}
+                                    className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-control)] border flex items-center justify-between gap-1.5 text-left transition-colors ${
+                                      alreadyOnSheet
+                                        ? 'bg-[var(--bg-strip)] text-[var(--ink-muted)] border-[var(--border-ink)]/30 opacity-65 cursor-not-allowed'
+                                        : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/65 hover:bg-[var(--accent-primary)] hover:text-[var(--accent-contrast)] hover:border-[var(--border-color)] cursor-pointer'
+                                    }`}
+                                  >
+                                    <span className="truncate">{skill.labels[lang]}</span>
+                                    {alreadyOnSheet ? (
+                                      <span
+                                        data-testid={`catalog-skill-badge-${skill.varName}`}
+                                        className="text-[8px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-ink)]/40 rounded-[var(--radius-pill)] shrink-0"
+                                      >
+                                        {t.t('cards.catalog.alreadyOnSheet')}
+                                      </span>
+                                    ) : (
+                                      <Plus className="w-3 h-3 shrink-0" aria-hidden="true" />
+                                    )}
+                                  </button>
+                                );
+                              })}
+                            </div>
+                          </div>
+                        ))
+                      )}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                    <input
+                      ref={labelInputRef}
+                      type="text"
+                      aria-label={t.t('cards.newFieldNameAria', { title: card.title })}
+                      value={newFieldLabel}
+                      onChange={(e) => setNewFieldLabel(e.target.value)}
+                      placeholder={t.newFieldPlaceholder}
+                      className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-[11px] flex-1 min-w-[140px]"
+                    />
+                    <button
+                      type="submit"
+                      data-testid={`create-guided-field-btn-${card.id}`}
+                      className="cyber-roll-btn mobile-touch-input min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                    >
+                      {guided.createFieldBtn}
+                    </button>
+                  </div>
+                )}
               </form>
             )}
           </div>

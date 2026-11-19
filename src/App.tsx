@@ -857,6 +857,7 @@ function HydratedAppWorkspace({
       indices,
       Math.random,
       {
+        difficulty: target.difficulty ?? 2,
         woundPenalty: target.woundPenalty,
         isBloodSurge: target.isBloodSurge,
       },
@@ -867,8 +868,11 @@ function HydratedAppWorkspace({
       formula: rerolled.resolvedExpression,
       breakdown: rerolled.breakdown,
       rolls: rerolled.rolls,
+      difficulty: rerolled.difficulty,
       onesCount: rerolled.onesCount,
       outcome: rerolled.outcome,
+      status: rerolled.status,
+      margin: rerolled.margin,
       isCritical: rerolled.isCritical,
       isFumble: rerolled.isFumble,
       hungerRolls: rerolled.hungerRolls,
@@ -952,6 +956,8 @@ function HydratedAppWorkspace({
       canceledOnes: result.canceledOnes,
       doubledTensCount: result.doubledTensCount,
       outcome: result.outcome,
+      status: result.status,
+      margin: result.margin,
       isCritical: result.isCritical,
       isFumble: result.isFumble,
       isPoolRoll: result.isPoolRoll,
@@ -987,12 +993,16 @@ function HydratedAppWorkspace({
     const expr = field.rollExpr ?? '2d6';
     const isPool = isWodPoolExpression(expr);
     const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
+    const effectiveFieldDiff =
+      rulePreset === 'vampire-v5' && !isSoak
+        ? (field.rollDifficultyV5 ?? field.rollDifficulty ?? 2)
+        : field.rollDifficulty;
     appendRollLog(
       field.rollLabel ?? field.label,
       expr,
       isPool
         ? {
-            difficulty: field.rollDifficulty,
+            difficulty: effectiveFieldDiff,
             specialty: field.rollSpecialty,
             modifier: field.rollMod,
             isSoak,
@@ -1711,6 +1721,10 @@ function HydratedAppWorkspace({
                   <CustomCardBuilder
                     activeTab={activeTab}
                     isEmptySheet={visibleCards.length === 0}
+                    systemId={activeSystemId}
+                    rulePreset={rulePreset}
+                    existingFieldKeys={Object.keys(evaluation.variables)}
+                    availableVariables={evaluation.variables}
                     t={t.customBuilder}
                     onCreateCard={handleCreateCard}
                   />
@@ -1773,13 +1787,34 @@ function HydratedAppWorkspace({
                     </span>
                     {(() => {
                       if (mobileRollToast.isPoolRoll) {
-                        const outcome =
-                          mobileRollToast.outcome ??
-                          (mobileRollToast.isFumble
+                        const isV5Toast =
+                          mobileRollToast.rulePreset === 'vampire-v5' &&
+                          !mobileRollToast.isRouseCheck;
+                        const v5ToastTarget = Math.max(
+                          1,
+                          Math.min(10, Math.round(mobileRollToast.difficulty ?? 2)),
+                        );
+                        const v5ToastSucceeded = mobileRollToast.total >= v5ToastTarget;
+                        const v5ToastBestial =
+                          isV5Toast &&
+                          (Boolean(mobileRollToast.bestialFailure) ||
+                            (!v5ToastSucceeded &&
+                              (mobileRollToast.hungerRolls ?? []).includes(1) &&
+                              (mobileRollToast.rolls?.length ?? 0) > 0));
+                        const v5ToastMessy =
+                          isV5Toast && Boolean(mobileRollToast.messyCritical) && v5ToastSucceeded;
+                        const outcome = isV5Toast
+                          ? v5ToastBestial
                             ? 'botch'
-                            : mobileRollToast.total > 0
+                            : v5ToastSucceeded
                               ? 'success'
-                              : 'failure');
+                              : 'failure'
+                          : mobileRollToast.outcome ??
+                            (mobileRollToast.isFumble
+                              ? 'botch'
+                              : mobileRollToast.total > 0
+                                ? 'success'
+                                : 'failure');
                         if (mobileRollToast.isRouseCheck) {
                           return (
                             <span
@@ -1796,7 +1831,7 @@ function HydratedAppWorkspace({
                             </span>
                           );
                         }
-                        if (mobileRollToast.messyCritical) {
+                        if (v5ToastMessy) {
                           return (
                             <span
                               data-testid="mobile-roll-toast-status"
@@ -1806,7 +1841,7 @@ function HydratedAppWorkspace({
                             </span>
                           );
                         }
-                        if (mobileRollToast.bestialFailure) {
+                        if (v5ToastBestial) {
                           return (
                             <span
                               data-testid="mobile-roll-toast-status"
@@ -1870,17 +1905,37 @@ function HydratedAppWorkspace({
                   </div>
                   <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
                     {mobileRollToast.isPoolRoll
-                      ? `${mobileRollToast.total} ${
-                          mobileRollToast.isSoak
-                            ? t.t('sidebar.roll.soaked')
-                            : mobileRollToast.total === 1
-                              ? t.t('sidebar.roll.sucSingular')
-                              : t.t('sidebar.roll.sucPlural')
-                        } · ${
-                          mobileRollToast.rolls && mobileRollToast.rolls.length > 0
-                            ? `${mobileRollToast.rolls.length}d10 (${t.t('cards.pool.diff')} ${mobileRollToast.difficulty ?? 6})`
-                            : mobileRollToast.formula
-                        }`
+                      ? mobileRollToast.rulePreset === 'vampire-v5' && !mobileRollToast.isRouseCheck
+                        ? (() => {
+                            const v5T = Math.max(
+                              1,
+                              Math.min(10, Math.round(mobileRollToast.difficulty ?? 2)),
+                            );
+                            const v5M =
+                              typeof mobileRollToast.margin === 'number'
+                                ? mobileRollToast.margin
+                                : mobileRollToast.total - v5T;
+                            const score = t.t('sidebar.roll.v5Score', {
+                              total: mobileRollToast.total,
+                              target: v5T,
+                            });
+                            return `${score}${
+                              v5M >= 0
+                                ? ` · ${t.t('sidebar.roll.margin', { margin: v5M })}`
+                                : ` · ${t.t('sidebar.roll.failure')}`
+                            } · ${mobileRollToast.rolls?.length ?? 0}d10 (${t.t('cards.pool.diffMeta')} ${v5T})`;
+                          })()
+                        : `${mobileRollToast.total} ${
+                            mobileRollToast.isSoak
+                              ? t.t('sidebar.roll.soaked')
+                              : mobileRollToast.total === 1
+                                ? t.t('sidebar.roll.sucSingular')
+                                : t.t('sidebar.roll.sucPlural')
+                          } · ${
+                            mobileRollToast.rolls && mobileRollToast.rolls.length > 0
+                              ? `${mobileRollToast.rolls.length}d10 (${t.t('cards.pool.diffTn')} ${mobileRollToast.difficulty ?? 6})`
+                              : mobileRollToast.formula
+                          }`
                       : mobileRollToast.breakdown}
                   </div>
                 </div>

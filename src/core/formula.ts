@@ -8,6 +8,7 @@ export interface FormulaResult {
 }
 
 export type WodOutcome = 'success' | 'failure' | 'botch';
+export type V5RollStatus = 'success' | 'critical' | 'messy_critical' | 'failure' | 'bestial_failure';
 export type RulePreset = 'storyteller-v20' | 'vampire-v5' | 'custom';
 export type SoakDamageType = 'bashing' | 'lethal' | 'aggravated';
 
@@ -45,6 +46,8 @@ export interface DiceRollResult {
   canceledOnes?: number;
   doubledTensCount?: number;
   outcome?: WodOutcome;
+  status?: V5RollStatus;
+  margin?: number;
   rulePreset?: RulePreset;
   woundPenalty?: number;
   hungerDice?: number;
@@ -87,9 +90,12 @@ export function getV5BloodSurgeBonus(bloodPotency?: number): number {
 export function evaluateV5Rolls(
   rolls: number[],
   hungerDiceCount: number,
+  difficulty = 2,
 ): {
   total: number;
   rawDiceSuccesses: number;
+  difficulty: number;
+  margin: number;
   critPairsCount: number;
   onesCount: number;
   normalRolls: number[];
@@ -99,7 +105,12 @@ export function evaluateV5Rolls(
   isCritical: boolean;
   isFumble: boolean;
   outcome: WodOutcome;
+  status: V5RollStatus;
 } {
+  const targetDifficulty = Math.max(
+    1,
+    Math.min(10, Math.round(Number.isFinite(difficulty) ? difficulty : 2)),
+  );
   const clampedHunger = Math.max(0, Math.min(rolls.length, Math.round(hungerDiceCount)));
   const normalCount = rolls.length - clampedHunger;
   const normalRolls = rolls.slice(0, normalCount);
@@ -118,15 +129,28 @@ export function evaluateV5Rolls(
   const critPairsCount = Math.floor(tensCount / 2);
   // Each pair of 10s grants +2 bonus successes on top of their 2 base successes (= +4 total per pair)
   const total = baseSuccesses + critPairsCount * 2;
-  const messyCritical = critPairsCount > 0 && hungerRolls.some((r) => r === 10);
-  const bestialFailure = rolls.length > 0 && total === 0 && hungerRolls.some((r) => r === 1);
-  const isCritical = critPairsCount > 0;
+  const margin = total - targetDifficulty;
+  const succeeded = total >= targetDifficulty;
+  const isCritical = critPairsCount > 0 && succeeded;
+  const messyCritical = isCritical && hungerRolls.some((r) => r === 10);
+  const bestialFailure = rolls.length > 0 && !succeeded && hungerRolls.some((r) => r === 1);
   const isFumble = bestialFailure;
-  const outcome: WodOutcome = bestialFailure ? 'botch' : total > 0 ? 'success' : 'failure';
+  const outcome: WodOutcome = bestialFailure ? 'botch' : succeeded ? 'success' : 'failure';
+  const status: V5RollStatus = messyCritical
+    ? 'messy_critical'
+    : isCritical
+      ? 'critical'
+      : bestialFailure
+        ? 'bestial_failure'
+        : succeeded
+          ? 'success'
+          : 'failure';
 
   return {
     total,
     rawDiceSuccesses: total,
+    difficulty: targetDifficulty,
+    margin,
     critPairsCount,
     onesCount,
     normalRolls,
@@ -136,6 +160,7 @@ export function evaluateV5Rolls(
     isCritical,
     isFumble,
     outcome,
+    status,
   };
 }
 
@@ -165,7 +190,7 @@ export function rerollV5PoolDice(
   hungerDiceCount: number,
   indicesToReroll: number[],
   rng: () => number = Math.random,
-  extraMeta?: { woundPenalty?: number; isBloodSurge?: boolean },
+  extraMeta?: { woundPenalty?: number; isBloodSurge?: boolean; difficulty?: number },
 ): DiceRollResult {
   const clampedHunger = Math.max(0, Math.min(previousRolls.length, Math.round(hungerDiceCount)));
   const maxNormalIndex = previousRolls.length - clampedHunger;
@@ -182,16 +207,21 @@ export function rerollV5PoolDice(
     nextRolls[idx] = Math.floor(rng() * 10) + 1;
   }
 
-  const v5Eval = evaluateV5Rolls(nextRolls, clampedHunger);
+  const difficulty =
+    typeof extraMeta?.difficulty === 'number' && Number.isFinite(extraMeta.difficulty)
+      ? Math.max(1, Math.min(10, Math.round(extraMeta.difficulty)))
+      : 2;
+
+  const v5Eval = evaluateV5Rolls(nextRolls, clampedHunger, difficulty);
   const statusText = v5Eval.messyCritical
-    ? `${v5Eval.total} SUCESSOS · MESSY CRITICAL!`
+    ? `${v5Eval.total} / ${difficulty} SUCESSOS · MARGEM +${v5Eval.margin} · MESSY CRITICAL!`
     : v5Eval.bestialFailure
-      ? '0 SUCESSOS · BESTIAL FAILURE!'
-      : v5Eval.critPairsCount > 0
-        ? `${v5Eval.total} SUCESSOS · CRIT`
-        : v5Eval.total > 0
-          ? `${v5Eval.total} ${v5Eval.total === 1 ? 'SUCESSO' : 'SUCESSOS'}`
-          : '0 SUCESSOS · FAILURE';
+      ? `${v5Eval.total} / ${difficulty} SUCESSOS · BESTIAL FAILURE!`
+      : v5Eval.isCritical
+        ? `${v5Eval.total} / ${difficulty} SUCESSOS · MARGEM +${v5Eval.margin} · CRIT`
+        : v5Eval.outcome === 'success'
+          ? `${v5Eval.total} / ${difficulty} SUCESSOS · MARGEM +${v5Eval.margin}`
+          : `${v5Eval.total} / ${difficulty} SUCESSOS · FALHA`;
 
   const woundPenalty =
     typeof extraMeta?.woundPenalty === 'number' && extraMeta.woundPenalty < 0
@@ -201,13 +231,15 @@ export function rerollV5PoolDice(
   return {
     ok: true,
     total: v5Eval.total,
-    resolvedExpression: `${nextRolls.length}d10 (V5 · DIFF 6 · WP REROLL)`,
+    resolvedExpression: `${nextRolls.length}d10 (V5 · DIFF (META) ${difficulty} · WP REROLL)`,
     breakdown: `${nextRolls.length}d10[${nextRolls.join(', ')}] ≥6 (WP REROLL) → ${statusText}`,
     rolls: nextRolls,
     isCritical: v5Eval.isCritical,
     isFumble: v5Eval.isFumble,
     isPoolRoll: true,
-    difficulty: 6,
+    difficulty,
+    margin: v5Eval.margin,
+    status: v5Eval.status,
     specialty: false,
     willpowerUsed: true,
     isSoak: false,
@@ -469,7 +501,7 @@ export function evaluateFormula(
 
 export function parseWodPoolExpression(
   expression: string,
-): { countExpr: string; diffExpr: string } | null {
+): { countExpr: string; diffExpr: string; hasExplicitDiff: boolean } | null {
   const cleaned = expression.trim();
   if (!cleaned) return null;
 
@@ -489,6 +521,7 @@ export function parseWodPoolExpression(
     return {
       countExpr: (splitIdx === -1 ? inner : inner.slice(0, splitIdx)).trim(),
       diffExpr: (splitIdx === -1 ? '6' : inner.slice(splitIdx + 1)).trim(),
+      hasExplicitDiff: splitIdx !== -1,
     };
   }
 
@@ -497,6 +530,7 @@ export function parseWodPoolExpression(
     return {
       countExpr: shortPoolMatch[1].trim(),
       diffExpr: shortPoolMatch[2].trim(),
+      hasExplicitDiff: true,
     };
   }
 
@@ -513,6 +547,7 @@ function executeWodPool(
   vars: VariableMap,
   rng: () => number,
   options: WodPoolOptions = {},
+  hasExplicitDiff = true,
 ): DiceRollResult {
   const rulePreset: RulePreset = options.rulePreset ?? 'storyteller-v20';
   const isSoak = Boolean(options.isSoak);
@@ -573,9 +608,15 @@ function executeWodPool(
     Math.min(30, Math.round(countRes.value) + mod + bloodSurgeBonus + appliedWoundPenalty),
   );
 
-  // V5 locks die target number to 6 and disables 1s cancellation
+  // V5 counts every d10 >= 6 as a success, disables 1s cancellation, and treats difficulty as Target Successes (1-10, default 2)
   if (rulePreset === 'vampire-v5') {
-    const difficulty = 6;
+    const rawV5Diff =
+      typeof options.difficulty === 'number' && Number.isFinite(options.difficulty)
+        ? options.difficulty
+        : hasExplicitDiff && diffRes.ok
+          ? diffRes.value
+          : 2;
+    const difficulty = Math.max(1, Math.min(10, Math.round(rawV5Diff)));
     const rawHunger =
       typeof options.hungerDice === 'number' && Number.isFinite(options.hungerDice)
         ? options.hungerDice
@@ -594,17 +635,17 @@ function executeWodPool(
       hungerRolls.push(Math.floor(rng() * 10) + 1);
     }
     const rolls = [...normalRolls, ...hungerRolls];
-    const v5Eval = evaluateV5Rolls(rolls, hungerDice);
+    const v5Eval = evaluateV5Rolls(rolls, hungerDice, difficulty);
 
     const statusText = v5Eval.messyCritical
-      ? `${v5Eval.total} SUCESSOS · MESSY CRITICAL!`
+      ? `${v5Eval.total} / ${difficulty} SUCESSOS · MARGEM +${v5Eval.margin} · MESSY CRITICAL!`
       : v5Eval.bestialFailure
-        ? '0 SUCESSOS · BESTIAL FAILURE!'
-        : v5Eval.critPairsCount > 0
-          ? `${v5Eval.total} SUCESSOS · CRIT`
-          : v5Eval.total > 0
-            ? `${v5Eval.total} ${v5Eval.total === 1 ? 'SUCESSO' : 'SUCESSOS'}`
-            : '0 SUCESSOS · FAILURE';
+        ? `${v5Eval.total} / ${difficulty} SUCESSOS · BESTIAL FAILURE!`
+        : v5Eval.isCritical
+          ? `${v5Eval.total} / ${difficulty} SUCESSOS · MARGEM +${v5Eval.margin} · CRIT`
+          : v5Eval.outcome === 'success'
+            ? `${v5Eval.total} / ${difficulty} SUCESSOS · MARGEM +${v5Eval.margin}`
+            : `${v5Eval.total} / ${difficulty} SUCESSOS · FALHA`;
 
     const extraTags = [
       'V5',
@@ -613,9 +654,11 @@ function executeWodPool(
       appliedWoundPenalty < 0 ? `FERIMENTO ${appliedWoundPenalty}` : null,
     ].filter(Boolean);
 
-    const resolvedExpression = `${poolSize}d10 (DIFF 6 · ${extraTags.join(' · ')})`;
+    const resolvedExpression = `${poolSize}d10 (DIFF (META) ${difficulty} · ${extraTags.join(' · ')})`;
     const detailParts: string[] = [];
-    if (v5Eval.critPairsCount > 0) detailParts.push(`CRIT ×${v5Eval.critPairsCount} (+${v5Eval.critPairsCount * 2})`);
+    if (v5Eval.critPairsCount > 0) {
+      detailParts.push(`CRIT ×${v5Eval.critPairsCount} (+${v5Eval.critPairsCount * 2})`);
+    }
     if (hungerDice > 0) detailParts.push(`H:[${hungerRolls.join(',')}]`);
     if (appliedWoundPenalty < 0) detailParts.push(`FERIMENTO ${appliedWoundPenalty}`);
     const detailSuffix = detailParts.length > 0 ? ` (${detailParts.join(' · ')})` : '';
@@ -630,6 +673,8 @@ function executeWodPool(
       isFumble: v5Eval.isFumble,
       isPoolRoll: true,
       difficulty,
+      margin: v5Eval.margin,
+      status: v5Eval.status,
       specialty: false,
       willpowerUsed: false,
       isSoak: false,
@@ -770,7 +815,14 @@ export function rollDiceExpression(
 
   const parsedPool = parseWodPoolExpression(cleaned);
   if (parsedPool) {
-    return executeWodPool(parsedPool.countExpr, parsedPool.diffExpr, vars, rng, options);
+    return executeWodPool(
+      parsedPool.countExpr,
+      parsedPool.diffExpr,
+      vars,
+      rng,
+      options,
+      parsedPool.hasExplicitDiff,
+    );
   }
 
   // Replace known variable identifiers (non-dice identifiers) with their numeric values

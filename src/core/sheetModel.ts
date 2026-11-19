@@ -5,6 +5,7 @@ import {
   rollDiceExpression,
   type RulePreset,
   type SoakDamageType,
+  type V5RollStatus,
   type VariableMap,
   type WodOutcome,
 } from './formula.ts';
@@ -147,9 +148,11 @@ export interface SheetField {
   rollLabel?: string;
   rollExpr?: string;
   rollDifficulty?: number;
+  rollDifficultyV5?: number;
   rollSpecialty?: boolean;
   rollMod?: number;
   isSoak?: boolean;
+  xpCategory?: XpUpgradeCategory;
   columns?: [string, string];
   col2Type?: 'number' | 'text';
   rows?: RepeatableRow[];
@@ -183,6 +186,8 @@ export interface RollLogEntry {
   canceledOnes?: number;
   doubledTensCount?: number;
   outcome?: WodOutcome;
+  status?: V5RollStatus;
+  margin?: number;
   isCritical?: boolean;
   isFumble?: boolean;
   isPoolRoll?: boolean;
@@ -1622,14 +1627,22 @@ export function resolveRollPreview(
           ? getV5BloodSurgeBonus(vars.blood_potency)
           : 0;
       const poolSize = Math.max(0, Math.min(30, Math.round(countRes.value) + mod + surge + wound));
-      const rawDiff =
-        preset === 'vampire-v5'
-          ? 6
-          : typeof options?.difficulty === 'number' && Number.isFinite(options.difficulty)
+      if (preset === 'vampire-v5' && !isSoak) {
+        const rawV5Target =
+          typeof options?.difficulty === 'number' && Number.isFinite(options.difficulty)
             ? options.difficulty
-            : diffRes.value;
+            : parsedPool.hasExplicitDiff && diffRes.ok
+              ? diffRes.value
+              : 2;
+        const v5Target = Math.max(1, Math.min(10, Math.round(rawV5Target)));
+        return `${poolSize}d10 · DIFF (META) ${v5Target}`;
+      }
+      const rawDiff =
+        typeof options?.difficulty === 'number' && Number.isFinite(options.difficulty)
+          ? options.difficulty
+          : diffRes.value;
       const diff = Math.max(2, Math.min(10, Math.round(rawDiff)));
-      const specSuffix = preset !== 'vampire-v5' && options?.specialty ? ' · SPEC' : '';
+      const specSuffix = options?.specialty ? ' · SPEC' : '';
       return `${poolSize}d10 @ DIFF ${diff}${specSuffix}`;
     }
   }
@@ -2594,7 +2607,7 @@ export function addFieldToCard(
 
       if (normalizedField.kind === 'roll') {
         const clampedDiff = Math.max(
-          2,
+          1,
           Math.min(10, Math.round(normalizedField.rollDifficulty ?? 6)),
         );
         const matchingNumericField = card.fields.find(
@@ -2924,7 +2937,7 @@ export function toCanonicalSheet(sheet: CharacterSheetState): CanonicalSheet {
             expression: expr,
           };
           if (typeof field.rollDifficulty === 'number') {
-            rollConfig.difficulty = Math.max(2, Math.min(10, Math.round(field.rollDifficulty)));
+            rollConfig.difficulty = Math.max(1, Math.min(10, Math.round(field.rollDifficulty)));
           }
           if (typeof field.rollSpecialty === 'boolean') {
             rollConfig.specialty = field.rollSpecialty;
@@ -3087,10 +3100,12 @@ const FIELD_KEYS = new Set([
   'rollLabel',
   'rollExpr',
   'rollDifficulty',
+  'rollDifficultyV5',
   'rollMod',
   'rollSpecialty',
   'useWillpower',
   'isSoak',
+  'xpCategory',
   'columns',
   'col2Type',
   'rows',
@@ -3118,6 +3133,8 @@ const ROLL_LOG_KEYS = new Set([
   'onesCount',
   'canceledOnes',
   'outcome',
+  'status',
+  'margin',
   'rulePreset',
   'woundPenalty',
   'hungerDice',
@@ -3325,10 +3342,19 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           field.rollDifficulty !== undefined &&
           (typeof field.rollDifficulty !== 'number' ||
             !Number.isInteger(field.rollDifficulty) ||
-            field.rollDifficulty < 2 ||
+            field.rollDifficulty < 1 ||
             field.rollDifficulty > 10)
         ) {
-          errors.push(`${fPath}.rollDifficulty: deve ser inteiro entre 2 e 10.`);
+          errors.push(`${fPath}.rollDifficulty: deve ser inteiro entre 1 e 10.`);
+        }
+        if (
+          field.rollDifficultyV5 !== undefined &&
+          (typeof field.rollDifficultyV5 !== 'number' ||
+            !Number.isInteger(field.rollDifficultyV5) ||
+            field.rollDifficultyV5 < 1 ||
+            field.rollDifficultyV5 > 10)
+        ) {
+          errors.push(`${fPath}.rollDifficultyV5: deve ser inteiro entre 1 e 10.`);
         }
         if (field.rollSpecialty !== undefined && typeof field.rollSpecialty !== 'boolean') {
           errors.push(`${fPath}.rollSpecialty: deve ser booleano.`);

@@ -210,32 +210,76 @@ test('V20 Aggravated Soak excludes Stamina and blocks Willpower, Bashing Soak ha
   assert.equal(exemptRoll.woundPenalty, undefined);
 });
 
-test('V5 pool locks Diff 6, disables 1s cancellation, awards +4 per pair of 10s, tracks Hunger dice, Messy Critical, Bestial Failure, Rouse Check & WP Reroll', () => {
-  // 1) Messy Critical: 2 tens (1 normal 10, 1 hunger 10) + 1 fail -> 1 pair = 4 successes, messyCritical=true
-  // Also verifies difficulty override (diff 8 ignored -> locked at 6) and 1s do NOT cancel successes
+test('V5 pool evaluates fixed >=6 per die against Target Successes (1-10), disables 1s cancellation, gates Critical/Messy Critical on total >= diff, detects Failure & Bestial Failure, Rouse Check & WP Reroll', () => {
+  // 1) Messy Critical: 2 tens (1 normal 10, 1 hunger 10) + 1 seven + 1 one = 5 successes vs diff 5 -> messy_critical (margin 0)
+  // Also verifies 1s NEVER cancel successes in V5
   const v5CritSeq = [0.95, 0.01, 0.65, 0.95]; // normal: [10, 1, 7], hunger: [10]
   let cIdx = 0;
   const v5Crit = rollDiceExpression(
     'pool(strength + brawl, 6)',
     { strength: 2, brawl: 2, hunger: 1 },
     () => v5CritSeq[cIdx++],
-    { rulePreset: 'vampire-v5', difficulty: 9, hungerDice: 1 },
+    { rulePreset: 'vampire-v5', difficulty: 5, hungerDice: 1 },
   );
-  assert.equal(v5Crit.difficulty, 6);
+  assert.equal(v5Crit.difficulty, 5);
   assert.equal(v5Crit.canceledOnes, 0);
   assert.equal(v5Crit.critPairsCount, 1);
   assert.equal(v5Crit.total, 5); // 10 (1) + 7 (1) + 10 (1) + pair bonus (+2) = 5
+  assert.equal(v5Crit.margin, 0);
+  assert.equal(v5Crit.status, 'messy_critical');
+  assert.equal(v5Crit.outcome, 'success');
   assert.deepEqual(v5Crit.hungerRolls, [10]);
+  assert.equal(v5Crit.isCritical, true);
   assert.equal(v5Crit.messyCritical, true);
   assert.equal(v5Crit.bestialFailure, false);
 
-  // 2) Bestial Failure: 0 successes and a 1 on Hunger die
-  const bestialEval = evaluateV5Rolls([4, 3, 1], 1);
+  // 2) V5 Failure with positive successes: 3 successes vs Difficulty 6 -> FAILURE (not success!), margin -3
+  const v5Fail3vs6 = evaluateV5Rolls([6, 7, 8, 2, 3], 1, 6); // normal [6,7,8,2], hunger [3] -> 3 successes
+  assert.equal(v5Fail3vs6.total, 3);
+  assert.equal(v5Fail3vs6.difficulty, 6);
+  assert.equal(v5Fail3vs6.margin, -3);
+  assert.equal(v5Fail3vs6.status, 'failure');
+  assert.equal(v5Fail3vs6.outcome, 'failure');
+  assert.equal(v5Fail3vs6.bestialFailure, false);
+  assert.equal(v5Fail3vs6.isCritical, false);
+
+  // 3) V5 Bestial Failure with positive successes: 3 successes vs Difficulty 6 + Hunger die 1 -> BESTIAL FAILURE!
+  const v5Bestial3vs6 = evaluateV5Rolls([6, 7, 8, 2, 1], 1, 6); // normal [6,7,8,2], hunger [1] -> 3 successes < 6
+  assert.equal(v5Bestial3vs6.total, 3);
+  assert.equal(v5Bestial3vs6.difficulty, 6);
+  assert.equal(v5Bestial3vs6.margin, -3);
+  assert.equal(v5Bestial3vs6.status, 'bestial_failure');
+  assert.equal(v5Bestial3vs6.bestialFailure, true);
+  assert.equal(v5Bestial3vs6.outcome, 'botch');
+
+  // 4) V5 Pair of 10s (4 successes, including Hunger 10) vs Difficulty 6 -> FAILURE (NO Critical / NO Messy Critical!)
+  const v5PairFail = evaluateV5Rolls([10, 2, 3, 10], 1, 6); // 1 pair of 10s = 4 successes < 6
+  assert.equal(v5PairFail.total, 4);
+  assert.equal(v5PairFail.critPairsCount, 1);
+  assert.equal(v5PairFail.difficulty, 6);
+  assert.equal(v5PairFail.margin, -2);
+  assert.equal(v5PairFail.status, 'failure');
+  assert.equal(v5PairFail.outcome, 'failure');
+  assert.equal(v5PairFail.isCritical, false);
+  assert.equal(v5PairFail.messyCritical, false);
+
+  // 5) V5 Exact Success: 6 successes vs Difficulty 6 -> SUCCESS (margin 0)
+  const v5Exact6vs6 = evaluateV5Rolls([6, 6, 7, 8, 9, 6], 1, 6);
+  assert.equal(v5Exact6vs6.total, 6);
+  assert.equal(v5Exact6vs6.difficulty, 6);
+  assert.equal(v5Exact6vs6.margin, 0);
+  assert.equal(v5Exact6vs6.status, 'success');
+  assert.equal(v5Exact6vs6.outcome, 'success');
+  assert.equal(v5Exact6vs6.bestialFailure, false);
+
+  // 6) V5 Bestial Failure at 0 successes (classic case)
+  const bestialEval = evaluateV5Rolls([4, 3, 1], 1, 2);
   assert.equal(bestialEval.total, 0);
+  assert.equal(bestialEval.status, 'bestial_failure');
   assert.equal(bestialEval.bestialFailure, true);
   assert.equal(bestialEval.outcome, 'botch');
 
-  // 3) Blood Surge bonus scales by Blood Potency
+  // 7) Blood Surge bonus scales by Blood Potency
   assert.equal(getV5BloodSurgeBonus(1), 2);
   assert.equal(getV5BloodSurgeBonus(3), 3);
   assert.equal(getV5BloodSurgeBonus(5), 4);
@@ -243,12 +287,14 @@ test('V5 pool locks Diff 6, disables 1s cancellation, awards +4 per pair of 10s,
     'pool(strength + brawl, 6)',
     { strength: 2, brawl: 1, blood_potency: 3, hunger: 1 },
     () => 0.65,
-    { rulePreset: 'vampire-v5', bloodSurge: true },
+    { rulePreset: 'vampire-v5', difficulty: 2, bloodSurge: true },
   );
   assert.equal(surgeRoll.rolls.length, 6); // 3 base + 3 blood surge
   assert.equal(surgeRoll.isBloodSurge, true);
+  assert.equal(surgeRoll.status, 'success');
+  assert.equal(surgeRoll.margin, 4);
 
-  // 4) Rouse Check: >=6 passes (hungerDelta 0), <=5 fails (hungerDelta +1)
+  // 8) Rouse Check: >=6 passes (hungerDelta 0), <=5 fails (hungerDelta +1)
   const rousePass = executeRouseCheck(() => 0.55); // 6
   assert.deepEqual(rousePass.rolls, [6]);
   assert.equal(rousePass.hungerDelta, 0);
@@ -259,17 +305,53 @@ test('V5 pool locks Diff 6, disables 1s cancellation, awards +4 per pair of 10s,
   assert.equal(rouseFail.hungerDelta, 1);
   assert.equal(rouseFail.outcome, 'failure');
 
-  // 5) Willpower Reroll: blocks Hunger die index (index 3), caps at 3 normal dice, re-evaluates total
+  // 9) Willpower Reroll preserves difficulty (Target Successes) & blocks Hunger die index (index 3)
   const prevRolls = [2, 3, 4, 1]; // 3 normal dice (indices 0,1,2) + 1 Hunger die (index 3)
   let rIdx = 0;
-  const rerollSeq = [0.95, 0.95, 0.65]; // 10, 10, 7
-  const rerolled = rerollV5PoolDice(prevRolls, 1, [0, 1, 2, 3], () => rerollSeq[rIdx++]);
-  assert.deepEqual(rerolled.rerolledIndices, [0, 1, 2]);
-  assert.deepEqual(rerolled.rolls, [10, 10, 7, 1]);
-  assert.equal(rerolled.critPairsCount, 1);
-  assert.equal(rerolled.total, 5);
-  assert.equal(rerolled.isWillpowerReroll, true);
-  assert.equal(rerolled.messyCritical, false); // 10s are on normal dice, Hunger die is 1
+  const rerollSeq = [0.95, 0.95, 0.65]; // 10, 10, 7 -> 5 successes
+  const rerolledFailVs6 = rerollV5PoolDice(prevRolls, 1, [0, 1, 2, 3], () => rerollSeq[rIdx++], {
+    difficulty: 6,
+  });
+  assert.deepEqual(rerolledFailVs6.rerolledIndices, [0, 1, 2]);
+  assert.deepEqual(rerolledFailVs6.rolls, [10, 10, 7, 1]);
+  assert.equal(rerolledFailVs6.difficulty, 6);
+  assert.equal(rerolledFailVs6.critPairsCount, 1);
+  assert.equal(rerolledFailVs6.total, 5);
+  assert.equal(rerolledFailVs6.margin, -1);
+  assert.equal(rerolledFailVs6.status, 'bestial_failure'); // 5 < 6 and Hunger die is 1!
+  assert.equal(rerolledFailVs6.isCritical, false);
+  assert.equal(rerolledFailVs6.messyCritical, false);
+  assert.equal(rerolledFailVs6.bestialFailure, true);
+  assert.equal(rerolledFailVs6.isWillpowerReroll, true);
+
+  let rIdx2 = 0;
+  const rerollSeq2 = [0.95, 0.95, 0.65]; // 10, 10, 7 -> 5 successes vs diff 2 -> critical!
+  const rerolledPassVs2 = rerollV5PoolDice(prevRolls, 1, [0, 1, 2, 3], () => rerollSeq2[rIdx2++], {
+    difficulty: 2,
+  });
+  assert.equal(rerolledPassVs2.total, 5);
+  assert.equal(rerolledPassVs2.margin, 3);
+  assert.equal(rerolledPassVs2.status, 'critical');
+  assert.equal(rerolledPassVs2.isCritical, true);
+  assert.equal(rerolledPassVs2.messyCritical, false); // 10s are on normal dice, Hunger die is 1
+  assert.equal(rerolledPassVs2.bestialFailure, false);
 });
+
+test('V20 regression: 3 successes vs Difficulty 6 remains SUCCESS (100% isolated from V5)', () => {
+  const v20Seq = [0.55, 0.65, 0.75, 0.25, 0.35]; // [6, 7, 8, 3, 4] -> 3 successes at Diff 6
+  let idx = 0;
+  const res = rollDiceExpression(
+    'pool(strength + brawl, 6)',
+    { strength: 3, brawl: 2 },
+    () => v20Seq[idx++],
+    { rulePreset: 'storyteller-v20', difficulty: 6 },
+  );
+  assert.equal(res.ok, true);
+  assert.equal(res.difficulty, 6);
+  assert.equal(res.total, 3);
+  assert.equal(res.outcome, 'success');
+  assert.equal(res.isFumble, false);
+});
+
 
 

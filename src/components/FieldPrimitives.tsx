@@ -178,15 +178,28 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   const isV5 = rulePreset === 'vampire-v5';
   const soakDamageType: SoakDamageType = field.soakDamageType ?? 'lethal';
 
-  const clampedDefaultDiff = isV5 ? 6 : Math.max(2, Math.min(10, Math.round(defaultDifficulty)));
-  const difficulty = isV5
-    ? 6
+  const isV5Pool = isV5 && !isSoak;
+  const minDiff = isV5Pool ? 1 : 2;
+  const clampedDefaultDiff = isV5Pool
+    ? 2
+    : Math.max(2, Math.min(10, Math.round(defaultDifficulty)));
+  const difficulty = isV5Pool
+    ? Math.max(1, Math.min(10, Math.round(field.rollDifficultyV5 ?? 2)))
     : Math.max(2, Math.min(10, Math.round(field.rollDifficulty ?? clampedDefaultDiff)));
   const specialty = isV5 ? false : Boolean(field.rollSpecialty);
   const modifier =
     typeof field.rollMod === 'number' && Number.isFinite(field.rollMod)
       ? Math.round(field.rollMod)
       : 0;
+
+  const commitDifficulty = (nextDiff: number) => {
+    const clamped = Math.max(minDiff, Math.min(10, Math.round(nextDiff)));
+    if (isV5Pool) {
+      onUpdateSchema(field.id, { rollDifficultyV5: clamped });
+    } else {
+      onUpdateSchema(field.id, { rollDifficulty: clamped });
+    }
+  };
 
   const effectiveWoundPenalty = isSoak ? 0 : woundPenalty;
 
@@ -204,9 +217,10 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   const wpArmed = !wpBlocked && Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
   const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
 
-  const summaryParts = [
-    isV5 && !isSoak ? t.t('cards.pool.v5DiffLocked') : `${t.t('cards.pool.diff')} ${difficulty}`,
-  ];
+  const diffPillLabel = isV5Pool
+    ? `${t.t('cards.pool.diffMeta')} ${difficulty}`
+    : `${t.t('cards.pool.diffTn')} ${difficulty}`;
+  const summaryParts = [diffPillLabel];
   if (modifier !== 0) {
     summaryParts.push(`${modifier > 0 ? `+${modifier}` : modifier} ${t.t('cards.pool.mod')}`);
   }
@@ -226,7 +240,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
       <button
         type="button"
         data-testid={`roll-btn-${field.id}`}
-        onClick={() => onRoll(field)}
+        onClick={() => onRoll(isV5Pool ? { ...field, rollDifficulty: difficulty } : field)}
         className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
       >
         <span className="text-left break-words whitespace-normal leading-snug min-w-0">
@@ -345,7 +359,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               }`}
             >
               <SlidersHorizontal className="w-3 h-3 shrink-0" aria-hidden="true" />
-              <span data-testid={isV5 && !isSoak ? `v5-diff-locked-${field.id}` : undefined}>
+              <span data-testid={isV5Pool ? `v5-diff-meta-${field.id}` : `v20-diff-tn-${field.id}`}>
                 {summaryParts.join(' · ')}
               </span>
               <ChevronDown
@@ -356,34 +370,28 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               />
             </button>
 
-            {(!isV5 || isSoak) && (
-              <div className="inline-flex items-center border border-[var(--border-ink)]/55 rounded-[var(--radius-pill)] overflow-hidden bg-[var(--bg-card-alt)]">
-                <button
-                  type="button"
-                  data-testid={`roll-diff-dec-${field.id}`}
-                  aria-label={`${ctrlLabels.diffMinus}: ${field.rollLabel ?? field.label}`}
-                  disabled={difficulty <= 2}
-                  onClick={() =>
-                    onUpdateSchema(field.id, { rollDifficulty: Math.max(2, difficulty - 1) })
-                  }
-                  className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Minus className="w-3 h-3" aria-hidden="true" />
-                </button>
-                <button
-                  type="button"
-                  data-testid={`roll-diff-inc-${field.id}`}
-                  aria-label={`${ctrlLabels.diffPlus}: ${field.rollLabel ?? field.label}`}
-                  disabled={difficulty >= 10}
-                  onClick={() =>
-                    onUpdateSchema(field.id, { rollDifficulty: Math.min(10, difficulty + 1) })
-                  }
-                  className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center border-l border-[var(--border-ink)]/35 text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
-                >
-                  <Plus className="w-3 h-3" aria-hidden="true" />
-                </button>
-              </div>
-            )}
+            <div className="inline-flex items-center border border-[var(--border-ink)]/55 rounded-[var(--radius-pill)] overflow-hidden bg-[var(--bg-card-alt)]">
+              <button
+                type="button"
+                data-testid={`roll-diff-dec-${field.id}`}
+                aria-label={`${ctrlLabels.diffMinus}: ${field.rollLabel ?? field.label}`}
+                disabled={difficulty <= minDiff}
+                onClick={() => commitDifficulty(difficulty - 1)}
+                className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Minus className="w-3 h-3" aria-hidden="true" />
+              </button>
+              <button
+                type="button"
+                data-testid={`roll-diff-inc-${field.id}`}
+                aria-label={`${ctrlLabels.diffPlus}: ${field.rollLabel ?? field.label}`}
+                disabled={difficulty >= 10}
+                onClick={() => commitDifficulty(difficulty + 1)}
+                className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center border-l border-[var(--border-ink)]/35 text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
+              >
+                <Plus className="w-3 h-3" aria-hidden="true" />
+              </button>
+            </div>
           </div>
         </div>
 
@@ -394,21 +402,19 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
             className="px-2 py-1.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)]/75 rounded-[var(--radius-card)] flex flex-wrap items-center justify-between gap-2"
           >
             <div className="flex items-center gap-2.5 flex-wrap">
-              {(!isV5 || isSoak) && (
-                <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
-                  <span>{t.t('cards.pool.diff')}</span>
-                  <ClampedNumberInput
-                    min={2}
-                    max={10}
-                    ariaLabel={t.t('cards.pool.diffAria', {
-                      label: field.rollLabel ?? field.label,
-                    })}
-                    testId={`roll-diff-${field.id}`}
-                    value={difficulty}
-                    onCommit={(next) => onUpdateSchema(field.id, { rollDifficulty: next })}
-                  />
-                </label>
-              )}
+              <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
+                <span>{isV5Pool ? t.t('cards.pool.diffMeta') : t.t('cards.pool.diffTn')}</span>
+                <ClampedNumberInput
+                  min={minDiff}
+                  max={10}
+                  ariaLabel={t.t(isV5Pool ? 'cards.pool.diffMetaAria' : 'cards.pool.diffAria', {
+                    label: field.rollLabel ?? field.label,
+                  })}
+                  testId={`roll-diff-${field.id}`}
+                  value={difficulty}
+                  onCommit={commitDifficulty}
+                />
+              </label>
 
               <label className="flex items-center gap-1 font-mono-tech text-[10px] font-bold text-[var(--ink-secondary)] uppercase">
                 <span>{t.t('cards.pool.mod')}</span>
