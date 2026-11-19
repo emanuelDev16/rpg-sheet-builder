@@ -194,7 +194,7 @@ export const TopBar: React.FC<TopBarProps> = ({
         </div>
 
         {onChangeTheme && (
-          <ThemeSelector theme={theme} onChangeTheme={onChangeTheme} />
+          <ThemeSelector theme={theme} language={language} onChangeTheme={onChangeTheme} />
         )}
 
         <div

@@ -122,9 +122,14 @@ private fun tokenize(input: String): List<Token> {
 
 private class ExpressionParser(
     private val tokens: List<Token>,
-    private val vars: Map<String, Double>
+    private val vars: Map<String, Double>,
+    private val formulaMap: Map<String, String> = emptyMap(),
+    private val visited: Set<String> = emptySet(),
+    initialDepth: Int = 0,
+    private val resolvedMemo: MutableMap<String, Double> = mutableMapOf()
 ) {
     private var pos = 0
+    private var depth = initialDepth
 
     fun parse(): Double {
         if (tokens.isEmpty()) throw IllegalArgumentException("Fórmula vazia")
@@ -136,6 +141,17 @@ private class ExpressionParser(
     private fun peek(): Token? = tokens.getOrNull(pos)
 
     private fun consume(): Token = tokens[pos++]
+
+    private fun enterDepth() {
+        depth++
+        if (depth > FormulaEngine.MAX_RECURSION_DEPTH) {
+            throw IllegalArgumentException("Profundidade máxima de recursão excedida (${FormulaEngine.MAX_RECURSION_DEPTH})")
+        }
+    }
+
+    private fun leaveDepth() {
+        depth--
+    }
 
     private fun parseExpression(): Double {
         var left = parseTerm()
@@ -191,10 +207,15 @@ private class ExpressionParser(
             }
             is Token.LParen -> {
                 consume()
-                val value = parseExpression()
-                if (peek() !is Token.RParen) throw IllegalArgumentException("Parêntese \")\" ausente")
-                consume()
-                value
+                enterDepth()
+                try {
+                    val value = parseExpression()
+                    if (peek() !is Token.RParen) throw IllegalArgumentException("Parêntese \")\" ausente")
+                    consume()
+                    value
+                } finally {
+                    leaveDepth()
+                }
             }
             is Token.Id -> {
                 consume()
@@ -202,22 +223,56 @@ private class ExpressionParser(
                     val fn = ALLOWED_FUNCTIONS[tok.value]
                         ?: throw IllegalArgumentException("Função desconhecida: \"${tok.value}\"")
                     consume() // '('
-                    val args = mutableListOf<Double>()
-                    if (peek() !is Token.RParen) {
-                        args.add(parseExpression())
-                        while (peek() is Token.Comma) {
-                            consume()
+                    enterDepth()
+                    try {
+                        val args = mutableListOf<Double>()
+                        if (peek() !is Token.RParen) {
                             args.add(parseExpression())
+                            while (peek() is Token.Comma) {
+                                consume()
+                                args.add(parseExpression())
+                            }
                         }
+                        if (peek() !is Token.RParen) {
+                            throw IllegalArgumentException("Parêntese \")\" ausente em ${tok.value}()")
+                        }
+                        consume()
+                        fn(args)
+                    } finally {
+                        leaveDepth()
                     }
-                    if (peek() !is Token.RParen) {
-                        throw IllegalArgumentException("Parêntese \")\" ausente em ${tok.value}()")
-                    }
-                    consume()
-                    fn(args)
                 } else {
-                    vars[tok.value]
-                        ?: throw IllegalArgumentException("Variável indefinida: \"${tok.value}\"")
+                    resolvedMemo[tok.value]?.let { return it }
+                    if (tok.value in visited) {
+                        val chain = (visited + tok.value).joinToString(" -> ")
+                        throw IllegalArgumentException("Referência circular detectada: $chain")
+                    }
+                    val targetFormula = formulaMap[tok.value]
+                    if (targetFormula != null) {
+                        val nextDepth = depth + 1
+                        if (nextDepth > FormulaEngine.MAX_RECURSION_DEPTH) {
+                            throw IllegalArgumentException(
+                                "Profundidade máxima de recursão excedida (${FormulaEngine.MAX_RECURSION_DEPTH})"
+                            )
+                        }
+                        val subRes = FormulaEngine.evaluateFormula(
+                            expression = targetFormula,
+                            vars = vars,
+                            showPlus = false,
+                            formulaMap = formulaMap,
+                            visited = visited + tok.value,
+                            depth = nextDepth,
+                            resolvedMemo = resolvedMemo
+                        )
+                        if (!subRes.ok) {
+                            throw IllegalArgumentException(subRes.error ?: "Erro ao resolver \"${tok.value}\"")
+                        }
+                        resolvedMemo[tok.value] = subRes.value
+                        subRes.value
+                    } else {
+                        vars[tok.value]
+                            ?: throw IllegalArgumentException("Variável indefinida: \"${tok.value}\"")
+                    }
                 }
             }
             else -> throw IllegalArgumentException("Token inesperado na fórmula")
@@ -226,6 +281,11 @@ private class ExpressionParser(
 }
 
 object FormulaEngine {
+    const val MAX_RECURSION_DEPTH = 15
+    const val MAX_DICE_COUNT = 100
+    const val MAX_DICE_SIDES = 1000
+    const val MAX_FORMULA_LENGTH = 256
+
     fun formatSigned(value: Double, showPlus: Boolean = true): String {
         if (!value.isFinite()) return "ERR"
         val rounded = if (value % 1.0 == 0.0) {
@@ -240,11 +300,39 @@ object FormulaEngine {
     fun evaluateFormula(
         expression: String,
         vars: Map<String, Double>,
-        showPlus: Boolean = true
+        showPlus: Boolean = true,
+        formulaMap: Map<String, String> = emptyMap(),
+        visited: Set<String> = emptySet(),
+        depth: Int = 0,
+        resolvedMemo: MutableMap<String, Double> = mutableMapOf()
     ): FormulaResult {
         return try {
-            val tokens = tokenize(expression.trim())
-            val valResult = ExpressionParser(tokens, vars).parse()
+            val trimmed = expression.trim()
+            if (trimmed.length > MAX_FORMULA_LENGTH) {
+                return FormulaResult(
+                    false,
+                    0.0,
+                    "ERR",
+                    "Fórmula excede o tamanho máximo ($MAX_FORMULA_LENGTH caracteres)"
+                )
+            }
+            if (depth > MAX_RECURSION_DEPTH) {
+                return FormulaResult(
+                    false,
+                    0.0,
+                    "ERR",
+                    "Profundidade máxima de recursão excedida ($MAX_RECURSION_DEPTH)"
+                )
+            }
+            val tokens = tokenize(trimmed)
+            val valResult = ExpressionParser(
+                tokens = tokens,
+                vars = vars,
+                formulaMap = formulaMap,
+                visited = visited,
+                initialDepth = depth,
+                resolvedMemo = resolvedMemo
+            ).parse()
             if (!valResult.isFinite()) {
                 FormulaResult(false, 0.0, "ERR", "Resultado numérico inválido")
             } else {
@@ -342,9 +430,20 @@ object FormulaEngine {
         rulePreset: XpRulePreset,
         hunger: Int,
         woundPenalty: Int,
-        rng: () -> Double
+        rng: () -> Double,
+        difficultyOverride: Int? = null,
+        specialty: Boolean = false,
+        willpowerAutoSuccess: Boolean = false,
+        isSoak: Boolean = false,
+        soakDamageType: String = "lethal"
     ): DiceRollResult {
-        val countRes = evaluateFormula(countExpr, vars, showPlus = false)
+        val effectiveVars = if (isSoak && rulePreset != XpRulePreset.VAMPIRE_V5 && soakDamageType == "aggravated") {
+            vars + mapOf("stamina" to 0.0, "vigor" to 0.0)
+        } else {
+            vars
+        }
+
+        val countRes = evaluateFormula(countExpr, effectiveVars, showPlus = false)
         if (!countRes.ok) {
             return DiceRollResult(
                 ok = false,
@@ -357,8 +456,8 @@ object FormulaEngine {
             )
         }
 
-        val diffRes = evaluateFormula(diffExpr, vars, showPlus = false)
-        if (!diffRes.ok) {
+        val diffRes = evaluateFormula(diffExpr, effectiveVars, showPlus = false)
+        if (!diffRes.ok && difficultyOverride == null && rulePreset != XpRulePreset.VAMPIRE_V5) {
             return DiceRollResult(
                 ok = false,
                 total = 0,
@@ -370,8 +469,22 @@ object FormulaEngine {
             )
         }
 
+        if (countRes.value.roundToInt() > MAX_DICE_COUNT) {
+            val err = "Quantidade de dados excede o limite ($MAX_DICE_COUNT)"
+            return DiceRollResult(
+                ok = false,
+                total = 0,
+                resolvedExpression = countExpr,
+                breakdown = err,
+                rolls = emptyList(),
+                isPoolRoll = true,
+                error = err
+            )
+        }
+
+        val appliedWoundPenalty = if (isSoak) 0 else min(0, woundPenalty)
         val basePoolSize = max(0, min(30, countRes.value.roundToInt()))
-        val effectivePoolSize = max(0, basePoolSize + woundPenalty)
+        val effectivePoolSize = max(0, basePoolSize + appliedWoundPenalty)
 
         if (rulePreset == XpRulePreset.VAMPIRE_V5) {
             val hungerCount = min(effectivePoolSize, hunger.coerceIn(0, 5))
@@ -385,36 +498,50 @@ object FormulaEngine {
             return evaluateV5PoolResult(
                 normalRolls = normalRolls,
                 hungerRolls = hungerRolls,
-                woundPenalty = woundPenalty
+                woundPenalty = appliedWoundPenalty
             )
         }
 
-        val difficulty = max(2, min(10, diffRes.value.roundToInt()))
+        val rawDiff = difficultyOverride ?: diffRes.value.roundToInt()
+        val difficulty = max(2, min(10, rawDiff))
+        val willpowerBlocked = isSoak && soakDamageType == "aggravated"
+        val willpowerUsed = !willpowerBlocked && willpowerAutoSuccess
+
         val rolls = mutableListOf<Int>()
         var rawSuccesses = 0
         var ones = 0
+        var anyDieMetTarget = false
 
         repeat(effectivePoolSize) {
             val roll = floor(rng() * 10.0).toInt().coerceIn(0, 9) + 1
             rolls.add(roll)
-            if (roll >= difficulty) rawSuccesses++
+            if (roll >= difficulty) {
+                anyDieMetTarget = true
+                if (roll == 10 && specialty) {
+                    rawSuccesses += 2
+                } else {
+                    rawSuccesses++
+                }
+            }
             if (roll == 1) ones++
         }
 
-        val isBotch = effectivePoolSize > 0 && rawSuccesses == 0 && ones > 0
-        val netSuccesses = max(0, rawSuccesses - ones)
-        val isExceptional = !isBotch && netSuccesses >= 5
-        val woundTag = if (woundPenalty < 0) " (FERIMENTO $woundPenalty)" else ""
+        val diceSuccessesAfterOnes = max(0, rawSuccesses - ones)
+        val finalTotal = diceSuccessesAfterOnes + if (willpowerUsed) 1 else 0
+        val isBotch = !isSoak && effectivePoolSize > 0 && finalTotal == 0 && !anyDieMetTarget && ones > 0 && !willpowerUsed
+        val isExceptional = !isBotch && finalTotal >= 5
+        val woundTag = if (appliedWoundPenalty < 0) " (FERIMENTO $appliedWoundPenalty)" else ""
 
-        val statusText = if (isBotch) {
-            "BOTCH!"
-        } else {
-            "$netSuccesses ${if (netSuccesses == 1) "SUCESSO" else "SUCESSOS"}"
+        val statusText = when {
+            isBotch -> "BOTCH!"
+            finalTotal == 0 && isSoak -> "0 SOAKED · FAILURE"
+            isSoak -> "$finalTotal SOAKED"
+            else -> "$finalTotal ${if (finalTotal == 1) "SUCESSO" else "SUCESSOS"}"
         }
 
         return DiceRollResult(
             ok = true,
-            total = if (isBotch) 0 else netSuccesses,
+            total = if (isBotch) 0 else finalTotal,
             resolvedExpression = "${effectivePoolSize}d10 (DIFF $difficulty)$woundTag",
             breakdown = "${effectivePoolSize}d10[${rolls.joinToString(", ")}] ≥$difficulty$woundTag → $statusText",
             rolls = rolls,
@@ -431,6 +558,11 @@ object FormulaEngine {
         rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
         hunger: Int = 0,
         woundPenalty: Int = 0,
+        difficultyOverride: Int? = null,
+        specialty: Boolean = false,
+        willpowerAutoSuccess: Boolean = false,
+        isSoak: Boolean = false,
+        soakDamageType: String = "lethal",
         rng: () -> Double = { Random.nextDouble() }
     ): DiceRollResult {
         val cleaned = expression.trim()
@@ -463,13 +595,39 @@ object FormulaEngine {
             }
             val countPart = if (splitIdx == -1) inner else inner.substring(0, splitIdx)
             val diffPart = if (splitIdx == -1) "6" else inner.substring(splitIdx + 1)
-            return executeWodPool(countPart, diffPart, vars, rulePreset, hunger, woundPenalty, rng)
+            return executeWodPool(
+                countExpr = countPart,
+                diffExpr = diffPart,
+                vars = vars,
+                rulePreset = rulePreset,
+                hunger = hunger,
+                woundPenalty = woundPenalty,
+                rng = rng,
+                difficultyOverride = difficultyOverride,
+                specialty = specialty,
+                willpowerAutoSuccess = willpowerAutoSuccess,
+                isSoak = isSoak,
+                soakDamageType = soakDamageType
+            )
         }
 
         // Shorthand pool syntax: 5d10@6 or 5d10>=6
         val shortPoolRegex = Regex("^(.+?)d10\\s*(?:@|>=)\\s*(\\d+)$", RegexOption.IGNORE_CASE)
         shortPoolRegex.matchEntire(cleaned)?.let { match ->
-            return executeWodPool(match.groupValues[1], match.groupValues[2], vars, rulePreset, hunger, woundPenalty, rng)
+            return executeWodPool(
+                countExpr = match.groupValues[1],
+                diffExpr = match.groupValues[2],
+                vars = vars,
+                rulePreset = rulePreset,
+                hunger = hunger,
+                woundPenalty = woundPenalty,
+                rng = rng,
+                difficultyOverride = difficultyOverride,
+                specialty = specialty,
+                willpowerAutoSuccess = willpowerAutoSuccess,
+                isSoak = isSoak,
+                soakDamageType = soakDamageType
+            )
         }
 
         // Substitute variables (ignoring dice literals like d20)
@@ -495,14 +653,23 @@ object FormulaEngine {
         var hasSingleD20 = false
         var singleD20Roll = 0
         var diceCount = 0
+        var totalDiceRolled = 0
 
         return try {
             val diceRegex = Regex("(\\d*)d(\\d+)", RegexOption.IGNORE_CASE)
             val mathExpr = diceRegex.replace(substituted) { m ->
-                val count = m.groupValues[1].ifEmpty { "1" }.toInt()
-                val sides = m.groupValues[2].toInt()
-                require(count in 1..50) { "Quantidade de dados inválida: $count" }
-                require(sides in 2..1000) { "Lados do dado inválidos: d$sides" }
+                val count = m.groupValues[1].ifEmpty { "1" }.toIntOrNull()
+                    ?: throw IllegalArgumentException("Quantidade de dados inválida: ${m.groupValues[1]}")
+                val sides = m.groupValues[2].toIntOrNull()
+                    ?: throw IllegalArgumentException("Lados do dado inválidos: d${m.groupValues[2]}")
+                require(count in 1..MAX_DICE_COUNT) {
+                    "Quantidade de dados inválida: $count (máx $MAX_DICE_COUNT)"
+                }
+                totalDiceRolled += count
+                require(totalDiceRolled <= MAX_DICE_COUNT) {
+                    "Quantidade total de dados excede o limite ($MAX_DICE_COUNT)"
+                }
+                require(sides in 2..MAX_DICE_SIDES) { "Lados do dado inválidos: d$sides" }
 
                 diceCount++
                 val rolls = mutableListOf<Int>()

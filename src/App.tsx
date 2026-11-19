@@ -115,6 +115,7 @@ import {
   readStoredTheme,
   ThemeMode,
 } from './utils/theme';
+import { useFocusTrap } from './utils/useFocusTrap';
 import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
@@ -198,6 +199,8 @@ function HydratedAppWorkspace({
   const [workspace, setWorkspace] = useState<WorkspaceState>(hydrated.workspace);
   const [activeView, setActiveView] = useState<'home' | 'sheet'>('home');
   const [homeRulesOpen, setHomeRulesOpen] = useState(false);
+  const homeRulesDrawerRef = useRef<HTMLElement>(null);
+  const homeRulesCloseBtnRef = useRef<HTMLButtonElement>(null);
   const [persistedSheets, setPersistedSheets] = useState<CharacterSheetState[]>(
     hydrated.persistedSheets,
   );
@@ -206,6 +209,8 @@ function HydratedAppWorkspace({
   const [searchQuery, setSearchQuery] = useState('');
   const [modalMode, setModalMode] = useState<'new' | 'open' | 'save' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
+  const [mobileSidebarTab, setMobileSidebarTab] = useState<'logs' | 'rules'>('logs');
+  const [mobileSidebarTabSeq, setMobileSidebarTabSeq] = useState(0);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
   const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
   const mobileRollToastTimerRef = useRef<number | null>(null);
@@ -882,7 +887,7 @@ function HydratedAppWorkspace({
     playDiceClatter({
       diceCount: rerolled.rerolledIndices?.length || 1,
       isCritical: rerolled.isCritical,
-      isFumble: rerolled.isFumble,
+      isFumble: Boolean(rerolled.isFumble || rerolled.bestialFailure),
     });
     showMobileToastWithTimeout(updatedEntry);
     setSheet((prev) => ({
@@ -967,7 +972,7 @@ function HydratedAppWorkspace({
     playDiceClatter({
       diceCount: result.rolls.length || 1,
       isCritical: result.isCritical,
-      isFumble: result.isFumble,
+      isFumble: Boolean(result.isFumble || result.bestialFailure),
     });
     showMobileToastWithTimeout(entry);
     setSheet((prev) => {
@@ -1439,6 +1444,19 @@ function HydratedAppWorkspace({
     }
   };
 
+  useFocusTrap(
+    homeRulesOpen,
+    homeRulesDrawerRef,
+    () => setHomeRulesOpen(false),
+    homeRulesCloseBtnRef,
+  );
+
+  const openMobileSidebarTab = (tab: 'logs' | 'rules') => {
+    setMobileSidebarTab(tab);
+    setMobileSidebarTabSeq((n) => n + 1);
+    setMobileSidebarOpen(true);
+  };
+
   return (
     <div className="print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden print:overflow-visible">
       <TopBar
@@ -1510,17 +1528,19 @@ function HydratedAppWorkspace({
               }}
             >
               <aside
+                ref={homeRulesDrawerRef}
                 role="dialog"
                 aria-modal="true"
                 aria-label={t.sidebar.rulesTab}
                 data-testid="home-rules-drawer"
-                className="mobile-drawer-panel w-[min(94vw,400px)] bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] shadow-[var(--shadow-drawer)] flex flex-col min-h-0"
+                className="mobile-drawer-panel overscroll-contain w-[min(94vw,400px)] bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] shadow-[var(--shadow-drawer)] flex flex-col min-h-0"
               >
                 <div className="flex items-center justify-between gap-2 px-3 py-2 bg-[var(--bg-strip)] border-b-[length:var(--border-width)] border-[var(--border-color)] shrink-0">
                   <span className="font-mono-tech text-[11px] font-bold tracking-wider uppercase text-[var(--accent-wine)]">
                     {t.t('sidebar.rulesDrawerTitle')}
                   </span>
                   <button
+                    ref={homeRulesCloseBtnRef}
                     type="button"
                     aria-label={t.t('sidebar.closeRulesAria')}
                     onClick={() => setHomeRulesOpen(false)}
@@ -1738,6 +1758,8 @@ function HydratedAppWorkspace({
             setRerollArmedLogId(null);
             setFlashMessage(null);
           }}
+          requestedTab={mobileSidebarTab}
+          requestedTabSeq={mobileSidebarTabSeq}
           isMobileOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
           onQuickRoll={(expr) =>
@@ -1892,7 +1914,7 @@ function HydratedAppWorkspace({
                   data-testid="mobile-roll-toast-open-log"
                   onClick={() => {
                     dismissMobileRollToast();
-                    setMobileSidebarOpen(true);
+                    openMobileSidebarTab('logs');
                   }}
                   className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase cursor-pointer"
                 >
@@ -1980,20 +2002,45 @@ function HydratedAppWorkspace({
             />
           </div>
 
-          <button
-            type="button"
-            data-testid="mobile-drawer-fab"
-            aria-label={`${t.sidebar.rollLogsTab} / ${t.sidebar.rulesTab}`}
-            aria-expanded={mobileSidebarOpen}
-            onClick={() => setMobileSidebarOpen((prev) => !prev)}
-            className="lg:hidden mobile-drawer-fab cyber-roll-btn px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shrink-0 cursor-pointer"
-          >
-            <Dices className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
-            <span>{t.t('statusBar.mobileLogsBtn')}</span>
-            <span className="px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)] tabular-nums leading-none">
-              {sheet.rollLogs.length}
-            </span>
-          </button>
+          <div className="lg:hidden flex items-center gap-1.5 shrink-0">
+            <button
+              type="button"
+              data-testid="mobile-dock-rules-btn"
+              aria-label={t.sidebar.rulesTab}
+              aria-expanded={mobileSidebarOpen && mobileSidebarTab === 'rules'}
+              onClick={() => {
+                if (mobileSidebarOpen && mobileSidebarTab === 'rules') {
+                  setMobileSidebarOpen(false);
+                } else {
+                  openMobileSidebarTab('rules');
+                }
+              }}
+              className="cyber-btn-outline min-h-[44px] px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase flex items-center gap-1 shrink-0 cursor-pointer whitespace-nowrap"
+            >
+              <span>{t.t('statusBar.mobileRulesBtn')}</span>
+            </button>
+
+            <button
+              type="button"
+              data-testid="mobile-drawer-fab"
+              aria-label={`${t.sidebar.rollLogsTab} / ${t.sidebar.rulesTab}`}
+              aria-expanded={mobileSidebarOpen && mobileSidebarTab === 'logs'}
+              onClick={() => {
+                if (mobileSidebarOpen && mobileSidebarTab === 'logs') {
+                  setMobileSidebarOpen(false);
+                } else {
+                  openMobileSidebarTab('logs');
+                }
+              }}
+              className="mobile-drawer-fab cyber-roll-btn min-h-[44px] px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase flex items-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap"
+            >
+              <Dices className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+              <span>{t.t('statusBar.mobileLogsBtn')}</span>
+              <span className="px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)] tabular-nums leading-none">
+                {sheet.rollLogs.length}
+              </span>
+            </button>
+          </div>
         </div>
       </div>
         </>

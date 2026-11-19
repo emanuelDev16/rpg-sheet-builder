@@ -22,7 +22,7 @@ enum class RulePagesStorageMode {
         SavedSheetEntity::class
     ],
     version = 4,
-    exportSchema = false
+    exportSchema = true
 )
 abstract class GridSheetDatabase : RoomDatabase() {
     abstract fun sheetDao(): SheetDao
@@ -243,7 +243,6 @@ abstract class GridSheetDatabase : RoomDatabase() {
                             runCatching { ensureRulePagesTable(db) }
                         }
                     })
-                    .fallbackToDestructiveMigration()
                     .build()
                     .also { INSTANCE = it }
             }

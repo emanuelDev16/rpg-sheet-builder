@@ -1,0 +1,26 @@
+{
+  "description": "V5 Messy Critical and Willpower Surge blocking Hunger dice fixture shared between Web and Android",
+  "expression": "pool(4, 8)",
+  "vars": {},
+  "hunger": 2,
+  "rng": [0.95, 0.25, 0.95, 0.05],
+  "expectedInitial": {
+    "difficulty": 6,
+    "normalDice": [10, 3],
+    "hungerDice": [10, 1],
+    "total": 4,
+    "isCritical": true,
+    "isMessyCritical": true,
+    "isBestialFailure": false
+  },
+  "willpowerRerollAttemptIndices": [1, 2],
+  "rerollRng": [0.75],
+  "expectedAfterWillpowerReroll": {
+    "normalDice": [10, 8],
+    "hungerDice": [10, 1],
+    "total": 5,
+    "isCritical": true,
+    "isMessyCritical": true,
+    "isBestialFailure": false
+  }
+}

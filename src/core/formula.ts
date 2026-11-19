@@ -1,10 +1,28 @@
 export type VariableMap = Record<string, number>;
 
+export const MAX_RECURSION_DEPTH = 15;
+export const MAX_DICE_COUNT = 100;
+export const MAX_DICE_SIDES = 1000;
+export const MAX_FORMULA_LENGTH = 256;
+
+export function normalizeRulePreset(raw?: string | null): RulePreset {
+  if (raw === 'vampire-v5' || raw === 'vampire_v5') return 'vampire-v5';
+  if (raw === 'custom') return 'custom';
+  return 'storyteller-v20';
+}
+
 export interface FormulaResult {
   ok: boolean;
   value: number;
   formatted: string;
   error?: string;
+}
+
+export interface EvaluateFormulaOptions {
+  formulaMap?: Record<string, string>;
+  visited?: Set<string>;
+  depth?: number;
+  resolvedMemo?: Record<string, number>;
 }
 
 export type WodOutcome = 'success' | 'failure' | 'botch';
@@ -47,6 +65,7 @@ export interface DiceRollResult {
   outcome?: WodOutcome;
   rulePreset?: RulePreset;
   woundPenalty?: number;
+  normalDice?: number[];
   hungerDice?: number;
   hungerRolls?: number[];
   messyCritical?: boolean;
@@ -218,6 +237,7 @@ export function rerollV5PoolDice(
     outcome: v5Eval.outcome,
     rulePreset: 'vampire-v5',
     woundPenalty: woundPenalty < 0 ? woundPenalty : undefined,
+    normalDice: v5Eval.normalRolls,
     hungerDice: clampedHunger,
     hungerRolls: v5Eval.hungerRolls,
     messyCritical: v5Eval.messyCritical,
@@ -313,10 +333,14 @@ class Parser {
   private pos = 0;
   private readonly tokens: Token[];
   private readonly vars: VariableMap;
+  private readonly options?: EvaluateFormulaOptions;
+  private depth: number;
 
-  constructor(tokens: Token[], vars: VariableMap) {
+  constructor(tokens: Token[], vars: VariableMap, options?: EvaluateFormulaOptions) {
     this.tokens = tokens;
     this.vars = vars;
+    this.options = options;
+    this.depth = options?.depth ?? 0;
   }
 
   parse(): number {
@@ -338,6 +362,17 @@ class Parser {
     const tok = this.tokens[this.pos];
     this.pos += 1;
     return tok;
+  }
+
+  private enterDepth(): void {
+    this.depth += 1;
+    if (this.depth > MAX_RECURSION_DEPTH) {
+      throw new Error(`Profundidade máxima de recursão excedida (${MAX_RECURSION_DEPTH})`);
+    }
+  }
+
+  private leaveDepth(): void {
+    this.depth -= 1;
   }
 
   private parseExpression(): number {
@@ -396,11 +431,16 @@ class Parser {
 
     if (tok.type === 'lparen') {
       this.consume();
-      const val = this.parseExpression();
-      const close = this.peek();
-      if (close?.type !== 'rparen') throw new Error('Parêntese ")" ausente');
-      this.consume();
-      return val;
+      this.enterDepth();
+      try {
+        const val = this.parseExpression();
+        const close = this.peek();
+        if (close?.type !== 'rparen') throw new Error('Parêntese ")" ausente');
+        this.consume();
+        return val;
+      } finally {
+        this.leaveDepth();
+      }
     }
 
     if (tok.type === 'id') {
@@ -410,17 +450,53 @@ class Parser {
         const fn = ALLOWED_FUNCTIONS[tok.value];
         if (!fn) throw new Error(`Função desconhecida: "${tok.value}"`);
         this.consume(); // '('
-        const args: number[] = [];
-        if (this.peek()?.type !== 'rparen') {
-          args.push(this.parseExpression());
-          while (this.peek()?.type === 'comma') {
-            this.consume();
+        this.enterDepth();
+        try {
+          const args: number[] = [];
+          if (this.peek()?.type !== 'rparen') {
             args.push(this.parseExpression());
+            while (this.peek()?.type === 'comma') {
+              this.consume();
+              args.push(this.parseExpression());
+            }
           }
+          if (this.peek()?.type !== 'rparen') throw new Error(`Parêntese ")" ausente em ${tok.value}()`);
+          this.consume();
+          return fn(...args);
+        } finally {
+          this.leaveDepth();
         }
-        if (this.peek()?.type !== 'rparen') throw new Error(`Parêntese ")" ausente em ${tok.value}()`);
-        this.consume();
-        return fn(...args);
+      }
+
+      const memo = this.options?.resolvedMemo;
+      if (memo && Object.prototype.hasOwnProperty.call(memo, tok.value)) {
+        return memo[tok.value];
+      }
+      if (this.options?.visited?.has(tok.value)) {
+        const chain = [...this.options.visited, tok.value].join(' -> ');
+        throw new Error(`Referência circular detectada: ${chain}`);
+      }
+      const formulaMap = this.options?.formulaMap;
+      if (formulaMap && Object.prototype.hasOwnProperty.call(formulaMap, tok.value)) {
+        const nextDepth = this.depth + 1;
+        if (nextDepth > MAX_RECURSION_DEPTH) {
+          throw new Error(`Profundidade máxima de recursão excedida (${MAX_RECURSION_DEPTH})`);
+        }
+        const nextVisited = new Set(this.options?.visited ?? []);
+        nextVisited.add(tok.value);
+        const subResult = evaluateFormula(formulaMap[tok.value], this.vars, false, {
+          formulaMap,
+          visited: nextVisited,
+          depth: nextDepth,
+          resolvedMemo: memo,
+        });
+        if (!subResult.ok) {
+          throw new Error(subResult.error ?? `Erro ao resolver "${tok.value}"`);
+        }
+        if (memo) {
+          memo[tok.value] = subResult.value;
+        }
+        return subResult.value;
       }
 
       if (Object.prototype.hasOwnProperty.call(this.vars, tok.value)) {
@@ -444,10 +520,28 @@ export function evaluateFormula(
   expression: string,
   vars: VariableMap,
   showPlus = true,
+  options?: EvaluateFormulaOptions,
 ): FormulaResult {
   try {
-    const tokens = tokenize(expression.trim());
-    const parser = new Parser(tokens, vars);
+    const trimmed = expression.trim();
+    if (trimmed.length > MAX_FORMULA_LENGTH) {
+      return {
+        ok: false,
+        value: 0,
+        formatted: 'ERR',
+        error: `Fórmula excede o tamanho máximo (${MAX_FORMULA_LENGTH} caracteres)`,
+      };
+    }
+    if ((options?.depth ?? 0) > MAX_RECURSION_DEPTH) {
+      return {
+        ok: false,
+        value: 0,
+        formatted: 'ERR',
+        error: `Profundidade máxima de recursão excedida (${MAX_RECURSION_DEPTH})`,
+      };
+    }
+    const tokens = tokenize(trimmed);
+    const parser = new Parser(tokens, vars, options);
     const val = parser.parse();
     if (!Number.isFinite(val)) {
       return { ok: false, value: 0, formatted: 'ERR', error: 'Resultado numérico inválido' };
@@ -568,6 +662,18 @@ function executeWodPool(
       : getV5BloodSurgeBonus(vars.blood_potency)
     : 0;
 
+  if (Math.round(countRes.value) > MAX_DICE_COUNT) {
+    return {
+      ok: false,
+      total: 0,
+      resolvedExpression: countExpr,
+      breakdown: `Quantidade de dados excede o limite (${MAX_DICE_COUNT})`,
+      rolls: [],
+      isPoolRoll: true,
+      error: `Quantidade de dados excede o limite (${MAX_DICE_COUNT})`,
+    };
+  }
+
   const poolSize = Math.max(
     0,
     Math.min(30, Math.round(countRes.value) + mod + bloodSurgeBonus + appliedWoundPenalty),
@@ -640,6 +746,7 @@ function executeWodPool(
       outcome: v5Eval.outcome,
       rulePreset: 'vampire-v5',
       woundPenalty: appliedWoundPenalty < 0 ? appliedWoundPenalty : undefined,
+      normalDice: v5Eval.normalRolls,
       hungerDice,
       hungerRolls,
       messyCritical: v5Eval.messyCritical,
@@ -747,6 +854,7 @@ function executeWodPool(
     outcome,
     rulePreset,
     woundPenalty: appliedWoundPenalty < 0 ? appliedWoundPenalty : undefined,
+    normalDice: rolls,
   };
 }
 
@@ -792,32 +900,50 @@ export function rollDiceExpression(
   let singleD20Roll = 0;
 
   let diceCount = 0;
-  const mathExpr = substituted.replace(/(\d*)d(\d+)/gi, (_full, countStr: string, sidesStr: string) => {
-    const count = countStr ? Number(countStr) : 1;
-    const sides = Number(sidesStr);
-    if (!Number.isInteger(count) || count < 1 || count > 50) {
-      throw new Error(`Quantidade de dados inválida: ${count}`);
-    }
-    if (!Number.isInteger(sides) || sides < 2 || sides > 1000) {
-      throw new Error(`Lados do dado inválidos: d${sides}`);
-    }
-    diceCount += 1;
-    const rolls: number[] = [];
-    for (let i = 0; i < count; i += 1) {
-      const roll = Math.floor(rng() * sides) + 1;
-      rolls.push(roll);
-      allRolls.push(roll);
-    }
-    if (count === 1 && sides === 20 && diceCount === 1) {
-      hasSingleD20 = true;
-      singleD20Roll = rolls[0];
-    } else {
-      hasSingleD20 = false;
-    }
-    const sum = rolls.reduce((acc, n) => acc + n, 0);
-    diceDisplayParts.push(`${count}d${sides}[${rolls.join(',')}]`);
-    return `${sum}`;
-  });
+  let totalDiceRolled = 0;
+  let mathExpr = '';
+  try {
+    mathExpr = substituted.replace(/(\d*)d(\d+)/gi, (_full, countStr: string, sidesStr: string) => {
+      const count = countStr ? Number(countStr) : 1;
+      const sides = Number(sidesStr);
+      if (!Number.isInteger(count) || count < 1 || count > MAX_DICE_COUNT) {
+        throw new Error(`Quantidade de dados inválida: ${count} (máx ${MAX_DICE_COUNT})`);
+      }
+      totalDiceRolled += count;
+      if (totalDiceRolled > MAX_DICE_COUNT) {
+        throw new Error(`Quantidade total de dados excede o limite (${MAX_DICE_COUNT})`);
+      }
+      if (!Number.isInteger(sides) || sides < 2 || sides > MAX_DICE_SIDES) {
+        throw new Error(`Lados do dado inválidos: d${sides}`);
+      }
+      diceCount += 1;
+      const rolls: number[] = [];
+      for (let i = 0; i < count; i += 1) {
+        const roll = Math.floor(rng() * sides) + 1;
+        rolls.push(roll);
+        allRolls.push(roll);
+      }
+      if (count === 1 && sides === 20 && diceCount === 1) {
+        hasSingleD20 = true;
+        singleD20Roll = rolls[0];
+      } else {
+        hasSingleD20 = false;
+      }
+      const sum = rolls.reduce((acc, n) => acc + n, 0);
+      diceDisplayParts.push(`${count}d${sides}[${rolls.join(',')}]`);
+      return `${sum}`;
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'Erro na rolagem';
+    return {
+      ok: false,
+      total: 0,
+      resolvedExpression: substituted,
+      breakdown: message,
+      rolls: allRolls,
+      error: message,
+    };
+  }
 
   const evalResult = evaluateFormula(mathExpr, vars, false);
   if (!evalResult.ok) {

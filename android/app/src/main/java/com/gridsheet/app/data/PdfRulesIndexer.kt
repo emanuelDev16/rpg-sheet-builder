@@ -500,6 +500,7 @@ class PdfRulesIndexer(
                         totalPages = totalPdfPages,
                         pageRange = normalizedRange,
                         recognizePageText = { pageIndex ->
+                            currentCoroutineContext().ensureActive()
                             val page = renderer.openPage(pageIndex)
                             var bitmap: Bitmap? = null
                             try {

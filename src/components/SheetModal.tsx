@@ -36,6 +36,7 @@ import {
   getTranslations,
 } from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 interface SheetModalProps {
   mode: 'new' | 'open' | 'save' | null;
@@ -107,10 +108,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const [secondaryTrait, setSecondaryTrait] = useState('');
   const [templateName, setTemplateName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseRef = useRef(onClose);
-  onCloseRef.current = onClose;
+
+  useFocusTrap(Boolean(mode), dialogRef, onClose, closeButtonRef);
 
   const refreshSnapshots = async () => {
     try {
@@ -135,31 +136,6 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       void refreshSnapshots();
     }
   }, [mode, activeSystemId, sheet.characterName]);
-
-  useEffect(() => {
-    if (!mode) return;
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const rafId = window.requestAnimationFrame(() => {
-      closeButtonRef.current?.focus();
-    });
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCloseRef.current();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus?.();
-      previousFocusRef.current = null;
-    };
-  }, [mode]);
 
   if (!mode) return null;
 
@@ -272,10 +248,11 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       }}
     >
       <div
+        ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-label={mode === 'new' ? t.newTitle : mode === 'open' ? t.openTitle : t.saveTitle}
-        className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+        className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto overscroll-contain bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
       >
         <header className="bento-card-header sticky top-0 z-10">
           <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">

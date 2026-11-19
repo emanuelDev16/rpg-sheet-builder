@@ -17,9 +17,14 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // Optional backend URL for // REGRAS Google Search Grounding proxy
+        // Optional backend URL for workspace sync & rules API
         buildConfigField("String", "RULES_API_BASE_URL", "\"https://ais-pre-hpyrcjlwksdvevcd2vvsl5-858489851321.us-east1.run.app\"")
         buildConfigField("String", "SYNC_TOKEN", "\"\"")
+        testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
+    }
+
+    sourceSets {
+        getByName("androidTest").assets.srcDir("$projectDir/schemas")
     }
 
     buildTypes {
@@ -50,6 +55,10 @@ android {
         compose = true
         buildConfig = true
     }
+}
+
+ksp {
+    arg("room.schemaLocation", "$projectDir/schemas")
 }
 
 val copyPresetAssets by tasks.registering(Copy::class) {
@@ -92,4 +101,7 @@ dependencies {
 
     debugImplementation("androidx.compose.ui:ui-tooling")
     testImplementation("junit:junit:4.13.2")
+    androidTestImplementation("androidx.room:room-testing:$roomVersion")
+    androidTestImplementation("androidx.test.ext:junit:1.2.1")
+    androidTestImplementation("androidx.test:runner:1.6.2")
 }

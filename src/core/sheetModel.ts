@@ -1,6 +1,7 @@
 import {
   evaluateFormula,
   getV5BloodSurgeBonus,
+  normalizeRulePreset,
   parseWodPoolExpression,
   rollDiceExpression,
   type RulePreset,
@@ -188,10 +189,14 @@ export interface RollLogEntry {
   isPoolRoll?: boolean;
   rulePreset?: RulePreset;
   woundPenalty?: number;
+  normalDice?: number[];
+  normalRolls?: number[];
   hungerDice?: number;
   hungerRolls?: number[];
   messyCritical?: boolean;
+  isMessyCritical?: boolean;
   bestialFailure?: boolean;
+  isBestialFailure?: boolean;
   critPairsCount?: number;
   isRouseCheck?: boolean;
   isBloodSurge?: boolean;
@@ -1529,21 +1534,34 @@ export function evaluateSheet(sheet: CharacterSheetState): SheetEvaluation {
   }
 
   variables['carga_total'] = Number(totalCargoWeight.toFixed(2));
+  variables['wound_penalty'] = computeWoundPenalty(sheet);
 
-  // Pass 2 & 3: evaluate calculated fields (2 passes to allow chained calculated fields)
+  // Pass 2: evaluate calculated fields with formulaMap, cycle detection, and memoization
   const calcFields = sheet.cards.flatMap((c) => c.fields).filter((f) => f.kind === 'calculated');
-  for (let pass = 0; pass < 2; pass += 1) {
-    for (const field of calcFields) {
-      const res = evaluateFormula(field.formula ?? '0', variables, field.showPlus ?? true);
-      computedByFieldId[field.id] = {
-        value: res.value,
-        formatted: res.formatted,
-        ok: res.ok,
-        error: res.error,
-      };
-      if (res.ok && field.key.trim()) {
-        variables[field.key.trim().toLowerCase()] = res.value;
-      }
+  const formulaMap: Record<string, string> = {};
+  for (const field of calcFields) {
+    const key = field.key.trim().toLowerCase();
+    if (key) {
+      formulaMap[key] = field.formula ?? '0';
+    }
+  }
+  const resolvedMemo: Record<string, number> = {};
+  for (const field of calcFields) {
+    const key = field.key.trim().toLowerCase();
+    const res = evaluateFormula(field.formula ?? '0', variables, field.showPlus ?? true, {
+      formulaMap,
+      visited: key ? new Set([key]) : new Set(),
+      resolvedMemo,
+    });
+    computedByFieldId[field.id] = {
+      value: res.value,
+      formatted: res.formatted,
+      ok: res.ok,
+      error: res.error,
+    };
+    if (res.ok && key) {
+      variables[key] = res.value;
+      resolvedMemo[key] = res.value;
     }
   }
 
@@ -1697,8 +1715,8 @@ export function migrateLegacySheetMetadata(
       ? sheet.id.trim()
       : `sheet_${sysId}`;
 
-  const resolvedRulePreset: RulePreset =
-    sheet.rulePreset ?? sheet.xpRulePreset ?? 'storyteller-v20';
+  const rawRulePreset = (sheet.rulePreset ?? sheet.xpRulePreset) as string | undefined;
+  const resolvedRulePreset: RulePreset = normalizeRulePreset(rawRulePreset);
 
   return {
     ...sheet,
@@ -1708,7 +1726,7 @@ export function migrateLegacySheetMetadata(
     updatedAt,
     deviceId,
     rulePreset: resolvedRulePreset,
-    xpRulePreset: sheet.xpRulePreset ?? resolvedRulePreset,
+    xpRulePreset: resolvedRulePreset,
     rollLogs: Array.isArray(sheet.rollLogs) ? sheet.rollLogs : [],
   };
 }
@@ -1860,7 +1878,8 @@ export function adjustHealthDamage(
 }
 
 export function resolveRulePreset(sheet: CharacterSheetState): RulePreset {
-  return sheet.rulePreset ?? sheet.xpRulePreset ?? 'storyteller-v20';
+  const raw = (sheet.rulePreset ?? sheet.xpRulePreset) as string | undefined;
+  return normalizeRulePreset(raw);
 }
 
 export function setSheetRulePreset(
@@ -3043,7 +3062,13 @@ const ALLOWED_FIELD_KINDS = new Set([
   'repeatable',
 ]);
 const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline', 'virtue']);
-const ALLOWED_XP_RULE_PRESETS = new Set(['storyteller-v20', 'vampire-v5', 'custom']);
+const ALLOWED_XP_RULE_PRESETS = new Set([
+  'storyteller-v20',
+  'storyteller_v20',
+  'vampire-v5',
+  'vampire_v5',
+  'custom',
+]);
 
 const ROOT_SHEET_KEYS = new Set([
   'id',
@@ -3120,17 +3145,29 @@ const ROLL_LOG_KEYS = new Set([
   'outcome',
   'rulePreset',
   'woundPenalty',
+  'normalDice',
+  'normalRolls',
   'hungerDice',
   'hungerRolls',
   'messyCritical',
+  'isMessyCritical',
   'bestialFailure',
+  'isBestialFailure',
   'critPairsCount',
   'isRouseCheck',
   'isBloodSurge',
   'isWillpowerReroll',
   'rerolledIndices',
 ]);
-const XP_STATE_KEYS = new Set(['totalEarned', 'spent', 'ledger']);
+const XP_STATE_KEYS = new Set([
+  'totalEarned',
+  'spent',
+  'ledger',
+  'outOfClanFieldIds',
+  'customMultipliers',
+  'xpRulePreset',
+  'customUseNewLevelBase',
+]);
 const XP_LEDGER_KEYS = new Set([
   'id',
   'timestamp',
@@ -3453,7 +3490,7 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
           errors: validation.errors.map((err) => `[#${i + 1}] ${err}`),
         };
       }
-      validSheets.push(parsed[i] as CharacterSheetState);
+      validSheets.push(migrateLegacyWodSheet(parsed[i] as CharacterSheetState, { storage: null }));
     }
     return { valid: true, sheets: validSheets, errors: [] };
   }
@@ -3493,7 +3530,9 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
           errors: validation.errors.map((err) => `[#${i + 1}] ${err}`),
         };
       }
-      validSheets.push(bundleSheets[i] as CharacterSheetState);
+      validSheets.push(
+        migrateLegacyWodSheet(bundleSheets[i] as CharacterSheetState, { storage: null }),
+      );
     }
     return { valid: true, sheets: validSheets, errors: [] };
   }
@@ -3508,7 +3547,7 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
   }
   return {
     valid: true,
-    sheets: [parsed as CharacterSheetState],
+    sheets: [migrateLegacyWodSheet(parsed as CharacterSheetState, { storage: null })],
     errors: [],
   };
 }

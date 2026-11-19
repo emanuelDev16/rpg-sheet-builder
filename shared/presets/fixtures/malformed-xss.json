@@ -1,0 +1,56 @@
+{
+  "pollutedRawJson": "{\"systemName\":\"WOD\",\"systemCode\":\"/WOD\",\"characterName\":\"Intruder\",\"cards\":[],\"__proto__\":{\"polluted\":true}}",
+  "xssSheet": {
+    "id": "sheet_xss_test",
+    "systemId": "wod",
+    "systemName": "WORLD OF DARKNESS <script>alert(1)</script>",
+    "systemCode": "/SYS: <img src=x onerror=alert(1)>",
+    "characterName": "</script><script>alert('xss')</script>",
+    "revision": 1,
+    "updatedAt": "2026-11-19T10:00:00Z",
+    "deviceId": "fixture-device",
+    "cards": [
+      {
+        "id": "card_xss",
+        "tab": "geral",
+        "code": "//XSS_PROBE",
+        "title": "PROBE <svg onload=alert(1)>",
+        "colSpan": 1,
+        "fields": [
+          {
+            "id": "f_bad_url",
+            "key": "bad_url",
+            "label": "BAD LINK",
+            "kind": "text",
+            "value": "javascript:alert(1)"
+          },
+          {
+            "id": "f_good_url",
+            "key": "good_url",
+            "label": "SAFE LINK",
+            "kind": "text",
+            "value": "https://example.com/sheet?a=1&b=2"
+          },
+          {
+            "id": "f_big_pool",
+            "key": "big_pool",
+            "label": "LARGE POOL",
+            "kind": "resource",
+            "value": 25,
+            "max": 50
+          }
+        ]
+      }
+    ],
+    "rollLogs": [
+      {
+        "id": "log_xss_1",
+        "timestamp": "10:00",
+        "label": "<script>alert('log')</script>",
+        "total": 2,
+        "formula": "pool(2, 6)",
+        "breakdown": "2d10[7, 8] <img src=x onerror=alert(2)>"
+      }
+    ]
+  }
+}

@@ -28,17 +28,14 @@ const __dirname = path.dirname(__filename);
 const PORT = Number(process.env.PORT || 3000);
 
 export function resolveBindHost(env: NodeJS.ProcessEnv = process.env): string {
-  if (
-    env.ALLOW_LAN_SYNC === 'true' ||
-    env.NODE_ENV === 'production' ||
-    Boolean(env.K_SERVICE || env.K_REVISION || env.PORT)
-  ) {
+  if (env.ALLOW_LAN_SYNC === 'true') {
     return '0.0.0.0';
   }
-  if (env.ALLOW_LAN_SYNC === 'false') {
-    return '127.0.0.1';
+  const explicitHost = env.HOST?.trim();
+  if (explicitHost) {
+    return explicitHost;
   }
-  return '0.0.0.0';
+  return '127.0.0.1';
 }
 
 const ROOM_MIRROR_DIR = path.resolve(__dirname, '.data');

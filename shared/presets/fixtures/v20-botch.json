@@ -1,0 +1,21 @@
+{
+  "description": "V20 Storyteller Botch & Willpower save fixture shared between Web and Android",
+  "expression": "pool(strength + brawl, 6)",
+  "vars": {
+    "strength": 2,
+    "brawl": 1
+  },
+  "difficulty": 6,
+  "rng": [0.05, 0.25, 0.35],
+  "expectedRolls": [1, 3, 4],
+  "expectedWithoutWillpower": {
+    "total": 0,
+    "isFumble": true,
+    "outcome": "botch"
+  },
+  "expectedWithWillpower": {
+    "total": 1,
+    "isFumble": false,
+    "outcome": "success"
+  }
+}

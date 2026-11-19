@@ -1,21 +1,31 @@
 import React from 'react';
+import { AppLanguage, createTranslator } from '../core/i18n';
 import { THEME_OPTIONS, ThemeMode } from '../utils/theme';
 
 interface ThemeSelectorProps {
   theme: ThemeMode;
+  language?: AppLanguage;
   onChangeTheme: (theme: ThemeMode) => void;
   className?: string;
 }
 
 export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
   theme,
+  language = 'pt-BR',
   onChangeTheme,
   className = '',
 }) => {
+  const t = createTranslator(language);
+  const labelForTheme = (id: ThemeMode): string => {
+    if (id === 'dark') return t('theme.dark');
+    if (id === 'eink') return t('theme.eink');
+    return t('theme.light');
+  };
+
   return (
     <div
       role="group"
-      aria-label="Selecionar tema visual"
+      aria-label={t('theme.ariaSelector')}
       data-testid="theme-selector"
       className={`inline-flex items-stretch border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-pill)] overflow-hidden bg-[var(--bg-card)] shrink-0 ${className}`.trim()}
     >
@@ -36,7 +46,7 @@ export const ThemeSelector: React.FC<ThemeSelectorProps> = ({
                 : 'bg-[var(--bg-card)] text-[var(--text-primary)] hover:bg-[var(--bg-hover)]'
             }`}
           >
-            {opt.label}
+            {labelForTheme(opt.id)}
           </button>
         );
       })}
