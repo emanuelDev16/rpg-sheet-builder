@@ -14,6 +14,9 @@ jobs:
   # 1. Build da Demo Web (React + Vite) e publicação no GitHub Pages
   deploy-web:
     runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
     environment:
       name: github-pages
       url: ${{ steps.deployment.outputs.page_url }}
@@ -30,8 +33,14 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Verificar tipagem TypeScript
+        run: npm run lint
+
       - name: Executar testes unitários (Vitest)
-        run: npx vitest run
+        run: npm run test:vitest
+
+      - name: Executar testes unitários (node:test)
+        run: npm run test:node
 
       - name: Gerar build estático (Vite)
         run: npx vite build --base=/rpg-sheet-builder/
