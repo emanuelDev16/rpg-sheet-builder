@@ -388,6 +388,18 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
             formula: 'max(1, 13 - generation)',
             showPlus: false,
           },
+          { id: 'f_concept', key: 'concept', label: 'CONCEPT', kind: 'text', value: 'Corporate Fixer' },
+          { id: 'f_sire', key: 'sire', label: 'SIRE', kind: 'text', value: 'Helena Vance' },
+          { id: 'f_chronicle', key: 'chronicle', label: 'CHRONICLE', kind: 'text', value: 'Nocturne Harbor' },
+          { id: 'f_nature', key: 'nature', label: 'NATURE', kind: 'text', value: 'Director' },
+          { id: 'f_demeanor', key: 'demeanor', label: 'DEMEANOR', kind: 'text', value: 'Architect' },
+          {
+            id: 'f_clan_weakness',
+            key: 'clan_weakness',
+            label: 'CLAN WEAKNESS',
+            kind: 'text',
+            value: 'Refined Palate (Specific Vessel Type)',
+          },
         ],
       },
       {
@@ -402,6 +414,9 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
           { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', value: 3 },
           { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', value: 3 },
           { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', value: 4 },
+          { id: 'f_appearance', key: 'appearance', label: 'APPEARANCE', kind: 'number', value: 3 },
+          { id: 'f_perception', key: 'perception', label: 'PERCEPTION', kind: 'number', value: 3 },
+          { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', kind: 'number', value: 3 },
           { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', value: 3 },
           {
             id: 'f_initiative',
@@ -1767,6 +1782,94 @@ function syncWillpowerToggleWithResource(sheet: CharacterSheetState): CharacterS
   };
 }
 
+function syncV5DerivedTrackMaxes(
+  sheet: CharacterSheetState,
+  changedFieldId: string,
+): CharacterSheetState {
+  if (resolveRulePreset(sheet) !== 'vampire-v5') return sheet;
+
+  const allFields = sheet.cards.flatMap((c) => c.fields);
+  const editedField = allFields.find((f) => f.id === changedFieldId);
+  if (!editedField || editedField.kind !== 'number') return sheet;
+
+  const editedKey = (editedField.key ?? '').trim().toLowerCase();
+  const editedVal = typeof editedField.value === 'number' && Number.isFinite(editedField.value)
+    ? Math.round(editedField.value)
+    : null;
+  if (editedVal === null) return sheet;
+
+  const isStaminaEdit = editedField.id === 'f_stamina' || editedKey === 'stamina';
+  const isWillpowerAttrEdit = editedKey === 'composure' || editedKey === 'resolve';
+  if (!isStaminaEdit && !isWillpowerAttrEdit) return sheet;
+
+  let nextHealthMax: number | null = null;
+  if (isStaminaEdit) {
+    nextHealthMax = Math.max(4, editedVal + 3);
+  }
+
+  let nextWillpowerMax: number | null = null;
+  if (isWillpowerAttrEdit) {
+    const composureField = allFields.find(
+      (f) => f.kind === 'number' && (f.key ?? '').trim().toLowerCase() === 'composure',
+    );
+    const resolveField = allFields.find(
+      (f) => f.kind === 'number' && (f.key ?? '').trim().toLowerCase() === 'resolve',
+    );
+    if (composureField && resolveField) {
+      const compVal =
+        typeof composureField.value === 'number' && Number.isFinite(composureField.value)
+          ? Math.round(composureField.value)
+          : 1;
+      const resVal =
+        typeof resolveField.value === 'number' && Number.isFinite(resolveField.value)
+          ? Math.round(resolveField.value)
+          : 1;
+      nextWillpowerMax = Math.max(2, compVal + resVal);
+    }
+  }
+
+  if (nextHealthMax === null && nextWillpowerMax === null) return sheet;
+
+  return {
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (nextHealthMax !== null && f.kind === 'resource' && (f.id === 'f_health' || f.key === 'health')) {
+          const agg = Math.min(nextHealthMax, Math.max(0, f.aggravatedDamage ?? 0));
+          const sup = Math.min(nextHealthMax - agg, Math.max(0, f.superficialDamage ?? 0));
+          return {
+            ...f,
+            max: nextHealthMax,
+            aggravatedDamage: agg,
+            superficialDamage: sup,
+            value: Math.max(0, nextHealthMax - agg - sup),
+          };
+        }
+        if (
+          nextWillpowerMax !== null &&
+          f.kind === 'resource' &&
+          (f.id === 'f_willpower' || f.key === 'willpower')
+        ) {
+          const agg = Math.min(nextWillpowerMax, Math.max(0, f.aggravatedDamage ?? 0));
+          const sup = Math.min(nextWillpowerMax - agg, Math.max(0, f.superficialDamage ?? 0));
+          const hasDamageTracking =
+            typeof f.superficialDamage === 'number' || typeof f.aggravatedDamage === 'number';
+          return {
+            ...f,
+            max: nextWillpowerMax,
+            ...(hasDamageTracking
+              ? { superficialDamage: sup, aggravatedDamage: agg }
+              : {}),
+            value: Math.max(0, nextWillpowerMax - agg - sup),
+          };
+        }
+        return f;
+      }),
+    })),
+  };
+}
+
 export function updateFieldValue(
   sheet: CharacterSheetState,
   fieldId: string,
@@ -1779,7 +1882,11 @@ export function updateFieldValue(
       fields: card.fields.map((f) => (f.id === fieldId ? { ...f, value: nextValue } : f)),
     })),
   });
-  return syncWillpowerToggleWithResource(updated);
+  const withDerivedTracks =
+    typeof nextValue === 'number' && Number.isFinite(nextValue)
+      ? syncV5DerivedTrackMaxes(updated, fieldId)
+      : updated;
+  return syncWillpowerToggleWithResource(withDerivedTracks);
 }
 
 export function adjustResourceValue(
@@ -2761,7 +2868,12 @@ const WOD_BASE_ONE_KEYS = new Set([
   'stamina',
   'charisma',
   'manipulation',
+  'appearance',
+  'composure',
+  'perception',
+  'intelligence',
   'wits',
+  'resolve',
 ]);
 
 const DND_ABILITY_KEYS = new Set([
@@ -2783,11 +2895,133 @@ const DND_ABILITY_KEYS = new Set([
 export interface NewSheetIdentityInput {
   characterName?: string;
   secondaryTrait?: string;
+  rulePreset?: RulePreset;
   localeOptions?: {
     newCharacterName?: string;
     customSystemName?: string;
     customSystemCode?: string;
   };
+}
+
+const V20_ONLY_IDENTITY_IDS = new Set(['f_nature', 'f_demeanor', 'f_clan_weakness']);
+
+function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
+  const v5IdentityExtras: SheetField[] = [
+    {
+      id: 'f_predator_type',
+      key: 'predator_type',
+      label: 'PREDATOR TYPE',
+      kind: 'text',
+      value: '',
+      placeholder: 'Siren',
+    },
+    {
+      id: 'f_ambition',
+      key: 'ambition',
+      label: 'AMBITION',
+      kind: 'text',
+      value: '',
+      placeholder: 'Control the Harbor Elysium',
+    },
+    {
+      id: 'f_desire',
+      key: 'desire',
+      label: 'DESIRE',
+      kind: 'text',
+      value: '',
+      placeholder: 'Expose the rival Primogen',
+    },
+    {
+      id: 'f_clan_bane',
+      key: 'clan_bane',
+      label: 'CLAN BANE',
+      kind: 'text',
+      value: '',
+      placeholder: 'Rarefied Tastes',
+    },
+    {
+      id: 'f_clan_compulsion',
+      key: 'clan_compulsion',
+      label: 'CLAN COMPULSION',
+      kind: 'text',
+      value: '',
+      placeholder: 'Arrogance',
+    },
+  ];
+
+  const v5Attributes: SheetField[] = [
+    { id: 'f_strength', key: 'strength', label: 'STRENGTH', kind: 'number', value: 1 },
+    { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', kind: 'number', value: 1 },
+    { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', value: 1 },
+    { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', value: 1 },
+    { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', value: 1 },
+    { id: 'f_composure', key: 'composure', label: 'COMPOSURE', kind: 'number', value: 1 },
+    { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', kind: 'number', value: 1 },
+    { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', value: 1 },
+    { id: 'f_resolve', key: 'resolve', label: 'RESOLVE', kind: 'number', value: 1 },
+  ];
+
+  return cards.map((card) => {
+    let nextFields = card.fields;
+
+    if (card.id === 'card_identidade') {
+      const baseIdentity = nextFields.filter(
+        (f) => !V20_ONLY_IDENTITY_IDS.has(f.id) && !['nature', 'demeanor', 'clan_weakness'].includes((f.key ?? '').trim().toLowerCase()),
+      );
+      nextFields = [...baseIdentity, ...v5IdentityExtras];
+    } else if (card.id === 'card_atributos') {
+      const derivedFields = nextFields.filter((f) => f.kind === 'calculated');
+      nextFields = [...v5Attributes, ...derivedFields];
+    } else if (card.id === 'card_combate') {
+      nextFields = nextFields.map((f) => {
+        const k = (f.key ?? '').trim().toLowerCase();
+        if (f.id === 'f_health' || k === 'health') {
+          return {
+            ...f,
+            max: 4,
+            value: 4,
+            superficialDamage: 0,
+            aggravatedDamage: 0,
+          };
+        }
+        if (f.id === 'f_willpower' || k === 'willpower') {
+          return {
+            ...f,
+            max: 2,
+            value: 2,
+            superficialDamage: 0,
+            aggravatedDamage: 0,
+          };
+        }
+        if (f.id === 'f_hunger' || k === 'hunger') {
+          return { ...f, value: 1 };
+        }
+        if (f.id === 'f_humanity' || k === 'humanity') {
+          return { ...f, value: 7 };
+        }
+        return f;
+      });
+    }
+
+    return {
+      ...card,
+      fields: nextFields.map((f) => {
+        const isSoak = Boolean(f.isSoak || f.id === 'f_soak' || f.key === 'soak_roll');
+        if (f.kind !== 'roll' || isSoak) return f;
+        const normalizedExpr =
+          typeof f.rollExpr === 'string' && /^pool\(.+,\s*\d+\s*\)$/i.test(f.rollExpr.trim())
+            ? f.rollExpr.trim().replace(/,\s*\d+\s*\)$/, ', 2)')
+            : f.rollExpr;
+        return {
+          ...f,
+          rollExpr: normalizedExpr,
+          rollDifficulty: 2,
+          rollDifficultyV5: 2,
+          rollSpecialty: false,
+        };
+      }),
+    };
+  });
 }
 
 export function createNewSheetForSystem(
@@ -2802,7 +3036,11 @@ export function createNewSheetForSystem(
     : isV5System
       ? 'wod'
       : 'blank';
-  const defaultXpRulePreset: XpRulePreset = isV5System ? 'vampire-v5' : 'storyteller-v20';
+  const defaultXpRulePreset: XpRulePreset = identity?.rulePreset
+    ? normalizeRulePreset(identity.rulePreset)
+    : isV5System
+      ? 'vampire-v5'
+      : 'storyteller-v20';
   const customCharName = identity?.characterName?.trim() ?? '';
   const customSecondaryTrait = identity?.secondaryTrait?.trim() ?? '';
   const defaultNewName = identity?.localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM';
@@ -2820,6 +3058,88 @@ export function createNewSheetForSystem(
   }
 
   const preset = createPresetBySystemId(resolvedId);
+  const freshCards = preset.cards.map((card) => ({
+    ...card,
+    fields: card.fields.map((field) => {
+      const k = (field.key ?? '').trim().toLowerCase();
+
+      if (field.kind === 'text') {
+        const sample = typeof field.value === 'string' ? field.value.trim() : '';
+        const shouldHint =
+          sample.length > 0 && sample.length <= 48 && field.key !== 'notas_campanha';
+        let nextTextVal = '';
+        if (
+          customCharName &&
+          (field.id === 'f_nome' || k === 'character_name' || k === 'nome_personagem')
+        ) {
+          nextTextVal = customCharName;
+        } else if (
+          customSecondaryTrait &&
+          (field.id === 'f_clan' ||
+            field.id === 'f_classe' ||
+            field.id === 'f_arquetipo' ||
+            k === 'clan' ||
+            k === 'class_race' ||
+            k === 'arquetipo')
+        ) {
+          nextTextVal = customSecondaryTrait;
+        }
+        return {
+          ...field,
+          value: nextTextVal,
+          placeholder: shouldHint ? sample : field.placeholder,
+        };
+      }
+
+      if (field.kind === 'number') {
+        let nextNum = 0;
+        if (resolvedId === 'wod') {
+          if (k === 'generation') nextNum = 13;
+          else if (WOD_BASE_ONE_KEYS.has(k)) nextNum = 1;
+          else nextNum = 0;
+        } else if (resolvedId === 'cyberpunk') {
+          if (k === 'nivel' || k === 'level') nextNum = 1;
+          else if (DND_ABILITY_KEYS.has(k)) nextNum = 5;
+          else nextNum = 0;
+        } else {
+          if (k === 'level' || k === 'nivel') nextNum = 1;
+          else if (DND_ABILITY_KEYS.has(k)) nextNum = 10;
+          else nextNum = 0;
+        }
+        return { ...field, value: nextNum };
+      }
+
+      if (field.kind === 'resource') {
+        const max = Math.max(1, field.max ?? 10);
+        if (field.damageTrack) {
+          return {
+            ...field,
+            value: max,
+            superficialDamage: 0,
+            aggravatedDamage: 0,
+          };
+        }
+        if (k === 'hunger') {
+          return { ...field, value: 1 };
+        }
+        if (k === 'humanity') {
+          return { ...field, value: Math.min(max, 7) };
+        }
+        return { ...field, value: max };
+      }
+
+      if (field.kind === 'boolean') {
+        return { ...field, value: false };
+      }
+
+      if (field.kind === 'repeatable') {
+        return { ...field, rows: [] };
+      }
+
+      return field;
+    }),
+  }));
+
   return {
     ...preset,
     systemId: resolvedId,
@@ -2829,87 +3149,10 @@ export function createNewSheetForSystem(
     deviceId: getOrCreateDeviceId(),
     rulePreset: defaultXpRulePreset,
     xpRulePreset: defaultXpRulePreset,
-    cards: preset.cards.map((card) => ({
-      ...card,
-      fields: card.fields.map((field) => {
-        const k = (field.key ?? '').trim().toLowerCase();
-
-        if (field.kind === 'text') {
-          const sample = typeof field.value === 'string' ? field.value.trim() : '';
-          const shouldHint =
-            sample.length > 0 && sample.length <= 48 && field.key !== 'notas_campanha';
-          let nextTextVal = '';
-          if (
-            customCharName &&
-            (field.id === 'f_nome' || k === 'character_name' || k === 'nome_personagem')
-          ) {
-            nextTextVal = customCharName;
-          } else if (
-            customSecondaryTrait &&
-            (field.id === 'f_clan' ||
-              field.id === 'f_classe' ||
-              field.id === 'f_arquetipo' ||
-              k === 'clan' ||
-              k === 'class_race' ||
-              k === 'arquetipo')
-          ) {
-            nextTextVal = customSecondaryTrait;
-          }
-          return {
-            ...field,
-            value: nextTextVal,
-            placeholder: shouldHint ? sample : field.placeholder,
-          };
-        }
-
-        if (field.kind === 'number') {
-          let nextNum = 0;
-          if (resolvedId === 'wod') {
-            if (k === 'generation') nextNum = 13;
-            else if (WOD_BASE_ONE_KEYS.has(k)) nextNum = 1;
-            else nextNum = 0;
-          } else if (resolvedId === 'cyberpunk') {
-            if (k === 'nivel' || k === 'level') nextNum = 1;
-            else if (DND_ABILITY_KEYS.has(k)) nextNum = 5;
-            else nextNum = 0;
-          } else {
-            if (k === 'level' || k === 'nivel') nextNum = 1;
-            else if (DND_ABILITY_KEYS.has(k)) nextNum = 10;
-            else nextNum = 0;
-          }
-          return { ...field, value: nextNum };
-        }
-
-        if (field.kind === 'resource') {
-          const max = Math.max(1, field.max ?? 10);
-          if (field.damageTrack) {
-            return {
-              ...field,
-              value: max,
-              superficialDamage: 0,
-              aggravatedDamage: 0,
-            };
-          }
-          if (k === 'hunger') {
-            return { ...field, value: 1 };
-          }
-          if (k === 'humanity') {
-            return { ...field, value: Math.min(max, 7) };
-          }
-          return { ...field, value: max };
-        }
-
-        if (field.kind === 'boolean') {
-          return { ...field, value: false };
-        }
-
-        if (field.kind === 'repeatable') {
-          return { ...field, rows: [] };
-        }
-
-        return field;
-      }),
-    })),
+    cards:
+      resolvedId === 'wod' && defaultXpRulePreset === 'vampire-v5'
+        ? buildWodV5EditionCards(freshCards)
+        : freshCards,
     rollLogs: [],
     xp: {
       totalEarned: 0,

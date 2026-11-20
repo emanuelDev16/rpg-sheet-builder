@@ -568,3 +568,107 @@ test('V5 Health halving/overflow, Impaired (-2) wound penalty, V5 WP Superficial
   assert.equal(localVal.valid, true, `validateSheetPayload errors: ${localVal.errors.join('; ')}`);
 });
 
+test('WoD V20 and V5 expose full 9-attribute 3x3 grids, chronicle identity fields, and V5 derived Health/Willpower maxes', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. Default WoD V20 sheet has all 9 V20 attributes and V20 chronicle identity
+  const v20 = createDefaultSheet();
+  const v20AttrKeys = v20.cards
+    .find((c) => c.id === 'card_atributos')!
+    .fields.filter((f) => f.kind === 'number')
+    .map((f) => f.key);
+  assert.deepEqual(v20AttrKeys, [
+    'strength',
+    'dexterity',
+    'stamina',
+    'charisma',
+    'manipulation',
+    'appearance',
+    'perception',
+    'intelligence',
+    'wits',
+  ]);
+  const v20IdKeys = v20.cards
+    .find((c) => c.id === 'card_identidade')!
+    .fields.map((f) => f.key);
+  for (const key of ['concept', 'sire', 'chronicle', 'nature', 'demeanor', 'clan_weakness']) {
+    assert.ok(v20IdKeys.includes(key), `Missing V20 identity key: ${key}`);
+  }
+  assert.equal(validateAjv(v20), true, `V20 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v20).valid, true);
+
+  // 2. Fresh V5 sheet via rulePreset has all 9 V5 attributes, V5 identity fields, derived maxes & diff 2
+  let v5 = createNewSheetForSystem('wod', {
+    rulePreset: 'vampire-v5',
+    characterName: 'Nadia Voss',
+    secondaryTrait: 'Lasombra',
+  });
+  assert.equal(resolveRulePreset(v5), 'vampire-v5');
+  assert.equal(v5.xpRulePreset, 'vampire-v5');
+
+  const v5AttrFields = v5.cards
+    .find((c) => c.id === 'card_atributos')!
+    .fields.filter((f) => f.kind === 'number');
+  assert.deepEqual(
+    v5AttrFields.map((f) => f.key),
+    [
+      'strength',
+      'dexterity',
+      'stamina',
+      'charisma',
+      'manipulation',
+      'composure',
+      'intelligence',
+      'wits',
+      'resolve',
+    ],
+  );
+  assert.equal(
+    v5AttrFields.every((f) => f.value === 1),
+    true,
+  );
+  assert.equal(v5AttrFields.some((f) => f.key === 'appearance' || f.key === 'perception'), false);
+
+  const v5IdKeys = v5.cards
+    .find((c) => c.id === 'card_identidade')!
+    .fields.map((f) => f.key);
+  for (const key of ['concept', 'sire', 'chronicle', 'predator_type', 'ambition', 'desire', 'clan_bane', 'clan_compulsion']) {
+    assert.ok(v5IdKeys.includes(key), `Missing V5 identity key: ${key}`);
+  }
+  assert.equal(v5IdKeys.includes('nature'), false);
+
+  const v5Combat = v5.cards.find((c) => c.id === 'card_combate')!.fields;
+  const v5HealthInit = v5Combat.find((f) => f.id === 'f_health');
+  const v5WpInit = v5Combat.find((f) => f.id === 'f_willpower');
+  assert.equal(v5HealthInit?.max, 4);
+  assert.equal(v5HealthInit?.value, 4);
+  assert.equal(v5WpInit?.max, 2);
+  assert.equal(v5WpInit?.value, 2);
+
+  const nonSoakRoll = v5.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.kind === 'roll' && !f.isSoak);
+  assert.equal(nonSoakRoll?.rollDifficulty, 2);
+  assert.equal(nonSoakRoll?.rollDifficultyV5, 2);
+  assert.equal(evaluateSheet(v5).formulaErrors.length, 0);
+  assert.equal(validateAjv(v5), true, `V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v5).valid, true);
+
+  // 3. Updating Stamina, Composure, and Resolve updates V5 derived Health and Willpower maxes
+  v5 = updateFieldValue(v5, 'f_stamina', 3);
+  v5 = updateFieldValue(v5, 'f_composure', 3);
+  v5 = updateFieldValue(v5, 'f_resolve', 2);
+  const v5CombatUpdated = v5.cards.find((c) => c.id === 'card_combate')!.fields;
+  assert.equal(v5CombatUpdated.find((f) => f.id === 'f_health')?.max, 6);
+  assert.equal(v5CombatUpdated.find((f) => f.id === 'f_health')?.value, 6);
+  assert.equal(v5CombatUpdated.find((f) => f.id === 'f_willpower')?.max, 5);
+  assert.equal(v5CombatUpdated.find((f) => f.id === 'f_willpower')?.value, 5);
+});
+

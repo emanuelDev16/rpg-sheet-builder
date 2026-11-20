@@ -47,6 +47,48 @@
               "kind": "calculated",
               "formula": "max(1, 13 - generation)",
               "showPlus": false
+            },
+            {
+              "id": "f_concept",
+              "key": "concept",
+              "label": "CONCEPT",
+              "kind": "text",
+              "value": "Corporate Fixer"
+            },
+            {
+              "id": "f_sire",
+              "key": "sire",
+              "label": "SIRE",
+              "kind": "text",
+              "value": "Helena Vance"
+            },
+            {
+              "id": "f_chronicle",
+              "key": "chronicle",
+              "label": "CHRONICLE",
+              "kind": "text",
+              "value": "Nocturne Harbor"
+            },
+            {
+              "id": "f_nature",
+              "key": "nature",
+              "label": "NATURE",
+              "kind": "text",
+              "value": "Director"
+            },
+            {
+              "id": "f_demeanor",
+              "key": "demeanor",
+              "label": "DEMEANOR",
+              "kind": "text",
+              "value": "Architect"
+            },
+            {
+              "id": "f_clan_weakness",
+              "key": "clan_weakness",
+              "label": "CLAN WEAKNESS",
+              "kind": "text",
+              "value": "Refined Palate (Specific Vessel Type)"
             }
           ]
         },
@@ -91,6 +133,27 @@
               "label": "MANIPULATION",
               "kind": "number",
               "value": 4
+            },
+            {
+              "id": "f_appearance",
+              "key": "appearance",
+              "label": "APPEARANCE",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_perception",
+              "key": "perception",
+              "label": "PERCEPTION",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_intelligence",
+              "key": "intelligence",
+              "label": "INTELLIGENCE",
+              "kind": "number",
+              "value": 3
             },
             {
               "id": "f_wits",
