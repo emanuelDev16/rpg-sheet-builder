@@ -226,7 +226,7 @@ class CoreEngineTest {
 
         val bundleObj = Json.parseToJsonElement(bundleFile!!.readText()).jsonObject
         val presetsObj = bundleObj["presets"]!!.jsonObject
-        assertEquals(5, presetsObj.size)
+        assertEquals(6, presetsObj.size)
         for ((presetName, presetElem) in presetsObj) {
             val res = SheetPayloadValidator.validateElement(presetElem)
             assertTrue("Preset $presetName falhou na validação: ${res.errors}", res.valid)
@@ -241,6 +241,14 @@ class CoreEngineTest {
         val badBoundsRes = SheetPayloadValidator.validateRawJson(badBoundsJson)
         assertFalse(badBoundsRes.valid)
         assertTrue(badBoundsRes.errors.size >= 3)
+
+        val badContractJson = """{"systemName":"WOD","systemCode":"/WOD","characterName":"X","unknownRoot":1,"virtues":{"conscience":3,"extraVirtue":1},"cards":[{"id":"c1","tab":"geral","code":"//A","title":"C","colSpan":1,"fields":[{"id":"f1","key":"strength","label":"STR","kind":"number","attributeGroup":"arcane","unknownField":true}]}]}"""
+        val badContractRes = SheetPayloadValidator.validateRawJson(badContractJson)
+        assertFalse(badContractRes.valid)
+        assertTrue(badContractRes.errors.any { it.contains("unknownRoot") })
+        assertTrue(badContractRes.errors.any { it.contains("extraVirtue") })
+        assertTrue(badContractRes.errors.any { it.contains("attributeGroup") })
+        assertTrue(badContractRes.errors.any { it.contains("unknownField") })
     }
 
     @Test
@@ -1609,5 +1617,125 @@ class CoreEngineTest {
         assertEquals(listOf(1), clearedBestial.hungerDice)
         assertEquals(1, clearedBestial.total)
         assertFalse(clearedBestial.isBestialFailure)
+    }
+
+    @Test
+    fun wodV20AndV5PresetsMigrationAndDerivedTracksParity() {
+        val bundleFile = resolveSharedPresetFile("presets.v2.json")
+        assertNotNull("presets.v2.json deve existir", bundleFile)
+        val namedPresets = Presets.loadNamedPresetsFromJson(bundleFile!!.readText(), deviceId = "parity-device")
+        assertTrue(namedPresets.containsKey("wod"))
+        assertTrue(namedPresets.containsKey("wod_v5"))
+
+        val v20 = namedPresets["wod"]!!
+        val v20Attrs = v20.cards.first { it.id == "card_atributos" }.fields.filter { it.kind == FieldKind.NUMBER }
+        assertEquals(
+            listOf(
+                "strength:physical",
+                "dexterity:physical",
+                "stamina:physical",
+                "charisma:social",
+                "manipulation:social",
+                "appearance:social",
+                "perception:mental",
+                "intelligence:mental",
+                "wits:mental"
+            ),
+            v20Attrs.map { "${it.key}:${it.attributeGroup}" }
+        )
+        val v20IdKeys = v20.cards.first { it.id == "card_identidade" }.fields.map { it.key }
+        assertTrue(listOf("concept", "sire", "chronicle", "nature", "demeanor", "clan_weakness").all { it in v20IdKeys })
+
+        var v5 = namedPresets["wod_v5"]!!
+        assertEquals(XpRulePreset.VAMPIRE_V5, XpSystem.resolveRulePreset(v5))
+        val v5Attrs = v5.cards.first { it.id == "card_atributos" }.fields.filter { it.kind == FieldKind.NUMBER }
+        assertEquals(
+            listOf(
+                "strength:physical",
+                "dexterity:physical",
+                "stamina:physical",
+                "charisma:social",
+                "manipulation:social",
+                "composure:social",
+                "intelligence:mental",
+                "wits:mental",
+                "resolve:mental"
+            ),
+            v5Attrs.map { "${it.key}:${it.attributeGroup}" }
+        )
+        val v5IdKeys = v5.cards.first { it.id == "card_identidade" }.fields.map { it.key }
+        assertTrue(
+            listOf("concept", "sire", "chronicle", "predator_type", "ambition", "desire", "clan_bane", "clan_compulsion")
+                .all { it in v5IdKeys }
+        )
+
+        val v5Eval = SheetEvaluator.evaluateSheet(v5)
+        assertTrue(v5Eval.formulaErrors.isEmpty())
+        assertEquals(6.0, v5Eval.variables["health_max"] ?: 0.0, 0.01)
+        assertEquals(5.0, v5Eval.variables["willpower_max"] ?: 0.0, 0.01)
+
+        // Updating Stamina, Composure, and Resolve updates Health and Willpower derived maxes cleanly
+        v5 = SheetMutators.updateNumberField(v5, "f_stamina", 4.0)
+        v5 = SheetMutators.updateNumberField(v5, "f_composure", 4.0)
+        v5 = SheetMutators.updateNumberField(v5, "f_resolve", 3.0)
+        val v5Combat = v5.cards.first { it.id == "card_combate" }.fields
+        assertEquals(7, v5Combat.first { it.id == "f_health" }.max)
+        assertEquals(7, v5Combat.first { it.id == "f_willpower" }.max)
+
+        // Safe legacy migration preserves existing 6 attributes and upcasts missing 9th/identity/maxFormula fields
+        val legacyBase = Presets.createWorldOfDarknessSheet()
+        val legacyV5 = legacyBase.copy(
+            rulePreset = XpRulePreset.VAMPIRE_V5,
+            xpRulePreset = XpRulePreset.VAMPIRE_V5,
+            cards = listOf(
+                SheetCard(
+                    id = "card_identidade",
+                    tab = TabId.GERAL,
+                    code = "//ID",
+                    title = "IDENTITY",
+                    fields = listOf(
+                        SheetField(id = "f_nome", key = "character_name", label = "NAME", kind = FieldKind.TEXT, textValue = "Nadia"),
+                        SheetField(id = "f_clan", key = "clan", label = "CLAN", kind = FieldKind.TEXT, textValue = "Lasombra")
+                    )
+                ),
+                SheetCard(
+                    id = "card_atributos",
+                    tab = TabId.GERAL,
+                    code = "//ATTR",
+                    title = "ATTRIBUTES",
+                    fields = listOf(
+                        SheetField(id = "f_strength", key = "strength", label = "STRENGTH", kind = FieldKind.NUMBER, numValue = 4.0),
+                        SheetField(id = "f_dexterity", key = "dexterity", label = "DEXTERITY", kind = FieldKind.NUMBER, numValue = 3.0),
+                        SheetField(id = "f_stamina", key = "stamina", label = "STAMINA", kind = FieldKind.NUMBER, numValue = 3.0),
+                        SheetField(id = "f_charisma", key = "charisma", label = "CHARISMA", kind = FieldKind.NUMBER, numValue = 2.0),
+                        SheetField(id = "f_manipulation", key = "manipulation", label = "MANIPULATION", kind = FieldKind.NUMBER, numValue = 2.0),
+                        SheetField(id = "f_wits", key = "wits", label = "WITS", kind = FieldKind.NUMBER, numValue = 3.0)
+                    )
+                ),
+                SheetCard(
+                    id = "card_combate",
+                    tab = TabId.GERAL,
+                    code = "//VITAL",
+                    title = "HEALTH",
+                    fields = listOf(
+                        SheetField(id = "f_health", key = "health", label = "HEALTH", kind = FieldKind.RESOURCE, numValue = 5.0, max = 6, damageTrack = true),
+                        SheetField(id = "f_willpower", key = "willpower", label = "WILLPOWER", kind = FieldKind.RESOURCE, numValue = 4.0, max = 5)
+                    )
+                )
+            )
+        )
+        val migratedV5 = Presets.migrateLegacyWodSheet(legacyV5, deviceId = "test-dev")
+        val migV5Attrs = migratedV5.cards.first { it.id == "card_atributos" }.fields
+        assertEquals(4.0, migV5Attrs.first { it.key == "strength" }.numValue ?: 0.0, 0.01)
+        assertEquals(1.0, migV5Attrs.first { it.key == "composure" }.numValue ?: 0.0, 0.01)
+        assertEquals("social", migV5Attrs.first { it.key == "composure" }.attributeGroup)
+        assertEquals(1.0, migV5Attrs.first { it.key == "resolve" }.numValue ?: 0.0, 0.01)
+        assertEquals("mental", migV5Attrs.first { it.key == "resolve" }.attributeGroup)
+        assertFalse(migV5Attrs.any { it.key == "appearance" || it.key == "perception" })
+        val migV5Combat = migratedV5.cards.first { it.id == "card_combate" }.fields
+        assertEquals("stamina + 3", migV5Combat.first { it.id == "f_health" }.maxFormula)
+        assertEquals("composure + resolve", migV5Combat.first { it.id == "f_willpower" }.maxFormula)
+        assertEquals(6, migV5Combat.first { it.id == "f_health" }.max)
+        assertEquals(5, migV5Combat.first { it.id == "f_willpower" }.max)
     }
 }
