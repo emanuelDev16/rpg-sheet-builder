@@ -23,6 +23,7 @@ import {
   createGenericD20Preset,
   createNewSheetForSystem,
   createPresetBySystemId,
+  createWorldOfDarknessV5Sheet,
   cycleV20HealthCell,
   detectSystemId,
   evaluateSheet,
@@ -315,7 +316,7 @@ test('shared/presets/presets.v2.json presets pass shared/presets/schema.v2.json 
 
   assert.equal(bundleRaw.version, '2.0');
   const presetEntries = Object.entries(bundleRaw.presets);
-  assert.equal(presetEntries.length, 5);
+  assert.equal(presetEntries.length, 6);
 
   for (const [presetKey, presetPayload] of presetEntries) {
     const ajvOk = validateAjv(presetPayload);
@@ -332,11 +333,97 @@ test('shared/presets/presets.v2.json presets pass shared/presets/schema.v2.json 
     );
   }
 
-  // Rejects Prototype Pollution and unknown properties (additionalProperties: false)
+  const v20Preset = bundleRaw.presets.wod as { cards: Array<{ id: string; fields: Array<{ id: string; key: string; kind: string; attributeGroup?: string }> }> };
+  const v20PresetAttrs = v20Preset.cards
+    .find((c) => c.id === 'card_atributos')!
+    .fields.filter((f) => f.kind === 'number');
+  assert.deepEqual(
+    v20PresetAttrs.map((f) => `${f.key}:${f.attributeGroup}`),
+    [
+      'strength:physical',
+      'dexterity:physical',
+      'stamina:physical',
+      'charisma:social',
+      'manipulation:social',
+      'appearance:social',
+      'perception:mental',
+      'intelligence:mental',
+      'wits:mental',
+    ],
+  );
+  const v20PresetIdKeys = v20Preset.cards.find((c) => c.id === 'card_identidade')!.fields.map((f) => f.key);
+  for (const k of ['concept', 'sire', 'chronicle', 'nature', 'demeanor', 'clan_weakness']) {
+    assert.ok(v20PresetIdKeys.includes(k), `Missing presets.wod identity key: ${k}`);
+  }
+
+  const v5Preset = bundleRaw.presets.wod_v5 as {
+    cards: Array<{ id: string; fields: Array<{ id: string; key: string; kind: string; attributeGroup?: string; maxFormula?: string }> }>;
+  };
+  const v5PresetAttrs = v5Preset.cards
+    .find((c) => c.id === 'card_atributos')!
+    .fields.filter((f) => f.kind === 'number');
+  assert.deepEqual(
+    v5PresetAttrs.map((f) => `${f.key}:${f.attributeGroup}`),
+    [
+      'strength:physical',
+      'dexterity:physical',
+      'stamina:physical',
+      'charisma:social',
+      'manipulation:social',
+      'composure:social',
+      'intelligence:mental',
+      'wits:mental',
+      'resolve:mental',
+    ],
+  );
+  const v5PresetIdKeys = v5Preset.cards.find((c) => c.id === 'card_identidade')!.fields.map((f) => f.key);
+  for (const k of ['concept', 'sire', 'chronicle', 'predator_type', 'ambition', 'desire', 'clan_bane', 'clan_compulsion']) {
+    assert.ok(v5PresetIdKeys.includes(k), `Missing presets.wod_v5 identity key: ${k}`);
+  }
+  const v5PresetCombat = v5Preset.cards.find((c) => c.id === 'card_combate')!.fields;
+  assert.equal(v5PresetCombat.find((f) => f.id === 'f_health')?.maxFormula, 'stamina + 3');
+  assert.equal(v5PresetCombat.find((f) => f.id === 'f_willpower')?.maxFormula, 'composure + resolve');
+
+  // Rejects Prototype Pollution and unknown properties (additionalProperties: false) on root, card, field
   const polluted = JSON.parse('{"systemName":"WOD","systemCode":"/WOD","characterName":"X","cards":[],"__proto__":{"polluted":true}}') as unknown;
   const pollutedRes = validateSheetPayload(polluted);
   assert.equal(pollutedRes.valid, false);
   assert.ok(pollutedRes.errors.some((e) => e.includes('__proto__') || e.includes('não permitida')));
+
+  const unknownPropsAndBadGroup = {
+    systemName: 'WOD',
+    systemCode: '/WOD',
+    characterName: 'X',
+    unexpectedRootProp: true,
+    cards: [
+      {
+        id: 'c1',
+        tab: 'geral',
+        code: '//A',
+        title: 'CARD',
+        colSpan: 1,
+        unexpectedCardProp: 42,
+        fields: [
+          {
+            id: 'f_strength',
+            key: 'strength',
+            label: 'STRENGTH',
+            kind: 'number',
+            value: 3,
+            attributeGroup: 'arcane',
+            unexpectedFieldProp: 'nope',
+          },
+        ],
+      },
+    ],
+  };
+  assert.equal(validateAjv(unknownPropsAndBadGroup), false);
+  const unknownPropsRes = validateSheetPayload(unknownPropsAndBadGroup);
+  assert.equal(unknownPropsRes.valid, false);
+  assert.ok(unknownPropsRes.errors.some((e) => e.includes('unexpectedRootProp')));
+  assert.ok(unknownPropsRes.errors.some((e) => e.includes('unexpectedCardProp')));
+  assert.ok(unknownPropsRes.errors.some((e) => e.includes('attributeGroup')));
+  assert.ok(unknownPropsRes.errors.some((e) => e.includes('unexpectedFieldProp')));
 
   // Rejects invalid bounds (revision: 0, rollDifficulty: 99, colSpan: 8)
   const invalidBounds = {
@@ -648,9 +735,41 @@ test('WoD V20 and V5 expose full 9-attribute 3x3 grids, chronicle identity field
   const v5HealthInit = v5Combat.find((f) => f.id === 'f_health');
   const v5WpInit = v5Combat.find((f) => f.id === 'f_willpower');
   assert.equal(v5HealthInit?.max, 4);
+  assert.equal(v5HealthInit?.maxFormula, 'stamina + 3');
   assert.equal(v5HealthInit?.value, 4);
   assert.equal(v5WpInit?.max, 2);
+  assert.equal(v5WpInit?.maxFormula, 'composure + resolve');
   assert.equal(v5WpInit?.value, 2);
+
+  const v5EvalInit = evaluateSheet(v5);
+  assert.equal(v5EvalInit.variables.health_max, 4);
+  assert.equal(v5EvalInit.variables.willpower_max, 2);
+  assert.equal(v5EvalInit.formulaErrors.length, 0);
+
+  // Sample V5 sheet helper matches presets.wod_v5 contract and computes health_max / willpower_max
+  const v5Sample = createWorldOfDarknessV5Sheet();
+  const v5SampleEval = evaluateSheet(v5Sample);
+  assert.equal(v5SampleEval.variables.health_max, 6);
+  assert.equal(v5SampleEval.variables.willpower_max, 5);
+  assert.equal(v5SampleEval.formulaErrors.length, 0);
+  assert.equal(validateAjv(v5Sample), true, `V5 sample AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v5Sample).valid, true);
+
+  // Broken maxFormula surfaces formula error without throwing
+  const brokenMaxSheet = {
+    ...v5Sample,
+    cards: v5Sample.cards.map((card) =>
+      card.id === 'card_combate'
+        ? {
+            ...card,
+            fields: card.fields.map((f) =>
+              f.id === 'f_health' ? { ...f, maxFormula: 'stamina + missing_var' } : f,
+            ),
+          }
+        : card,
+    ),
+  };
+  assert.ok(evaluateSheet(brokenMaxSheet).formulaErrors.some((e) => e.fieldId === 'f_health'));
 
   const nonSoakRoll = v5.cards
     .flatMap((c) => c.fields)
@@ -670,5 +789,106 @@ test('WoD V20 and V5 expose full 9-attribute 3x3 grids, chronicle identity field
   assert.equal(v5CombatUpdated.find((f) => f.id === 'f_health')?.value, 6);
   assert.equal(v5CombatUpdated.find((f) => f.id === 'f_willpower')?.max, 5);
   assert.equal(v5CombatUpdated.find((f) => f.id === 'f_willpower')?.value, 5);
+  const v5UpdatedEval = evaluateSheet(v5);
+  assert.equal(v5UpdatedEval.variables.health_max, 6);
+  assert.equal(v5UpdatedEval.variables.willpower_max, 5);
+});
+
+test('migrateLegacyWodSheet safely upcasts legacy 6-attribute V20 and V5 sheets without overwriting user data', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. Legacy 6-attribute V20 sheet missing appearance/perception/intelligence and chronicle identity fields
+  const legacyV20 = createDefaultSheet();
+  const v20IdentCard = legacyV20.cards.find((c) => c.id === 'card_identidade')!;
+  v20IdentCard.fields = [
+    { id: 'f_nome', key: 'character_name', label: 'NAME', kind: 'text', value: 'Viktor Drakon' },
+    { id: 'f_clan', key: 'clan', label: 'CLAN / FACTION', kind: 'text', value: 'Tzimisce' },
+    { id: 'f_generation', key: 'generation', label: 'GENERATION', kind: 'number', value: 8 },
+  ];
+  const v20AttrCard = legacyV20.cards.find((c) => c.id === 'card_atributos')!;
+  v20AttrCard.fields = [
+    { id: 'f_strength', key: 'strength', label: 'STRENGTH', kind: 'number', value: 5 },
+    { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', kind: 'number', value: 2 },
+    { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', value: 4 },
+    { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', value: 3 },
+    { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', value: 4 },
+    { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', value: 3 },
+    { id: 'f_initiative', key: 'initiative', label: 'INITIATIVE_MOD', kind: 'calculated', formula: 'dexterity + wits', showPlus: true },
+  ];
+
+  const migratedV20 = migrateLegacyWodSheet(legacyV20, { storage: null });
+  const migV20Attrs = migratedV20.cards.find((c) => c.id === 'card_atributos')!.fields;
+  assert.equal(migV20Attrs.find((f) => f.key === 'strength')?.value, 5);
+  assert.equal(migV20Attrs.find((f) => f.key === 'appearance')?.value, 1);
+  assert.equal(migV20Attrs.find((f) => f.key === 'perception')?.value, 1);
+  assert.equal(migV20Attrs.find((f) => f.key === 'intelligence')?.value, 1);
+  assert.equal(migV20Attrs[migV20Attrs.length - 1]?.id, 'f_initiative');
+  const migV20Ident = migratedV20.cards.find((c) => c.id === 'card_identidade')!.fields;
+  assert.equal(migV20Ident.find((f) => f.key === 'clan')?.value, 'Tzimisce');
+  for (const k of ['concept', 'sire', 'chronicle', 'nature', 'demeanor', 'clan_weakness']) {
+    assert.ok(migV20Ident.some((f) => f.key === k), `Missing upcast V20 identity key: ${k}`);
+  }
+  assert.equal(validateAjv(migratedV20), true, `Migrated V20 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(migratedV20).valid, true);
+
+  // 2. Legacy 6-attribute V5 sheet without maxFormula or V5 chronicle identity fields
+  const legacyV5 = createDefaultSheet();
+  legacyV5.rulePreset = 'vampire-v5';
+  legacyV5.xpRulePreset = 'vampire-v5';
+  const v5IdentCard = legacyV5.cards.find((c) => c.id === 'card_identidade')!;
+  v5IdentCard.fields = [
+    { id: 'f_nome', key: 'character_name', label: 'NAME', kind: 'text', value: 'Soren Reyes' },
+    { id: 'f_clan', key: 'clan', label: 'CLAN / FACTION', kind: 'text', value: 'Brujah' },
+  ];
+  const v5AttrCard = legacyV5.cards.find((c) => c.id === 'card_atributos')!;
+  v5AttrCard.fields = [
+    { id: 'f_strength', key: 'strength', label: 'STRENGTH', kind: 'number', value: 4 },
+    { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', kind: 'number', value: 3 },
+    { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', value: 3 },
+    { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', value: 3 },
+    { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', value: 2 },
+    { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', value: 3 },
+  ];
+  const v5CombatCard = legacyV5.cards.find((c) => c.id === 'card_combate')!;
+  v5CombatCard.fields = [
+    { id: 'f_health', key: 'health', label: 'HEALTH', kind: 'resource', value: 5, max: 6, damageTrack: true, superficialDamage: 1, aggravatedDamage: 0 },
+    { id: 'f_willpower', key: 'willpower', label: 'WILLPOWER', kind: 'resource', value: 4, max: 5, superficialDamage: 1, aggravatedDamage: 0 },
+  ];
+
+  const migratedV5 = migrateLegacyWodSheet(legacyV5, { storage: null });
+  const migV5Attrs = migratedV5.cards.find((c) => c.id === 'card_atributos')!.fields;
+  assert.equal(migV5Attrs.find((f) => f.key === 'strength')?.value, 4);
+  assert.equal(migV5Attrs.find((f) => f.key === 'composure')?.value, 1);
+  assert.equal(migV5Attrs.find((f) => f.key === 'composure')?.attributeGroup, 'social');
+  assert.equal(migV5Attrs.find((f) => f.key === 'intelligence')?.value, 1);
+  assert.equal(migV5Attrs.find((f) => f.key === 'resolve')?.value, 1);
+  assert.equal(migV5Attrs.find((f) => f.key === 'resolve')?.attributeGroup, 'mental');
+  assert.equal(migV5Attrs.some((f) => f.key === 'appearance' || f.key === 'perception'), false);
+
+  const migV5Combat = migratedV5.cards.find((c) => c.id === 'card_combate')!.fields;
+  const migV5Health = migV5Combat.find((f) => f.id === 'f_health');
+  const migV5Wp = migV5Combat.find((f) => f.id === 'f_willpower');
+  assert.equal(migV5Health?.max, 6);
+  assert.equal(migV5Health?.value, 5);
+  assert.equal(migV5Health?.maxFormula, 'stamina + 3');
+  assert.equal(migV5Wp?.max, 5);
+  assert.equal(migV5Wp?.value, 4);
+  assert.equal(migV5Wp?.maxFormula, 'composure + resolve');
+
+  const migV5Ident = migratedV5.cards.find((c) => c.id === 'card_identidade')!.fields;
+  assert.equal(migV5Ident.find((f) => f.key === 'character_name')?.value, 'Soren Reyes');
+  for (const k of ['concept', 'sire', 'chronicle', 'predator_type', 'ambition', 'desire', 'clan_bane', 'clan_compulsion']) {
+    assert.ok(migV5Ident.some((f) => f.key === k), `Missing upcast V5 identity key: ${k}`);
+  }
+  assert.equal(validateAjv(migratedV5), true, `Migrated V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(migratedV5).valid, true);
+  assert.deepEqual(migrateLegacyWodSheet(migratedV5, { storage: null }), migratedV5);
 });
 

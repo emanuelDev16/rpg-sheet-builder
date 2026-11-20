@@ -125,6 +125,8 @@ export type FieldKind =
   | 'roll'
   | 'repeatable';
 
+export type AttributeGroup = 'physical' | 'social' | 'mental';
+
 export interface RepeatableRow {
   id: string;
   col1: string;
@@ -136,8 +138,10 @@ export interface SheetField {
   key: string; // variable identifier used in formulas (e.g. 'forca', 'mod_forca')
   label: string;
   kind: FieldKind;
+  attributeGroup?: AttributeGroup;
   value?: number | string | boolean;
   max?: number;
+  maxFormula?: string;
   damageTrack?: boolean;
   bashingDamage?: number;
   lethalDamage?: number;
@@ -337,6 +341,64 @@ export interface SheetEvaluation {
   totalCargoWeight: number;
 }
 
+interface WodAttributeSpec {
+  id: string;
+  key: string;
+  label: string;
+  attributeGroup: AttributeGroup;
+}
+
+interface WodIdentitySpec {
+  id: string;
+  key: string;
+  label: string;
+  placeholder?: string;
+}
+
+const WOD_V20_ATTRIBUTE_SPECS: readonly WodAttributeSpec[] = [
+  { id: 'f_strength', key: 'strength', label: 'STRENGTH', attributeGroup: 'physical' },
+  { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', attributeGroup: 'physical' },
+  { id: 'f_stamina', key: 'stamina', label: 'STAMINA', attributeGroup: 'physical' },
+  { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', attributeGroup: 'social' },
+  { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', attributeGroup: 'social' },
+  { id: 'f_appearance', key: 'appearance', label: 'APPEARANCE', attributeGroup: 'social' },
+  { id: 'f_perception', key: 'perception', label: 'PERCEPTION', attributeGroup: 'mental' },
+  { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', attributeGroup: 'mental' },
+  { id: 'f_wits', key: 'wits', label: 'WITS', attributeGroup: 'mental' },
+];
+
+const WOD_V5_ATTRIBUTE_SPECS: readonly WodAttributeSpec[] = [
+  { id: 'f_strength', key: 'strength', label: 'STRENGTH', attributeGroup: 'physical' },
+  { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', attributeGroup: 'physical' },
+  { id: 'f_stamina', key: 'stamina', label: 'STAMINA', attributeGroup: 'physical' },
+  { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', attributeGroup: 'social' },
+  { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', attributeGroup: 'social' },
+  { id: 'f_composure', key: 'composure', label: 'COMPOSURE', attributeGroup: 'social' },
+  { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', attributeGroup: 'mental' },
+  { id: 'f_wits', key: 'wits', label: 'WITS', attributeGroup: 'mental' },
+  { id: 'f_resolve', key: 'resolve', label: 'RESOLVE', attributeGroup: 'mental' },
+];
+
+const WOD_V20_IDENTITY_SPECS: readonly WodIdentitySpec[] = [
+  { id: 'f_concept', key: 'concept', label: 'CONCEPT' },
+  { id: 'f_sire', key: 'sire', label: 'SIRE' },
+  { id: 'f_chronicle', key: 'chronicle', label: 'CHRONICLE' },
+  { id: 'f_nature', key: 'nature', label: 'NATURE' },
+  { id: 'f_demeanor', key: 'demeanor', label: 'DEMEANOR' },
+  { id: 'f_clan_weakness', key: 'clan_weakness', label: 'CLAN WEAKNESS' },
+];
+
+const WOD_V5_IDENTITY_SPECS: readonly WodIdentitySpec[] = [
+  { id: 'f_concept', key: 'concept', label: 'CONCEPT' },
+  { id: 'f_sire', key: 'sire', label: 'SIRE' },
+  { id: 'f_chronicle', key: 'chronicle', label: 'CHRONICLE' },
+  { id: 'f_predator_type', key: 'predator_type', label: 'PREDATOR TYPE', placeholder: 'Siren' },
+  { id: 'f_ambition', key: 'ambition', label: 'AMBITION', placeholder: 'Control the Harbor Elysium' },
+  { id: 'f_desire', key: 'desire', label: 'DESIRE', placeholder: 'Expose the rival Primogen' },
+  { id: 'f_clan_bane', key: 'clan_bane', label: 'CLAN BANE', placeholder: 'Rarefied Tastes' },
+  { id: 'f_clan_compulsion', key: 'clan_compulsion', label: 'CLAN COMPULSION', placeholder: 'Arrogance' },
+];
+
 export function createWorldOfDarknessSheet(): CharacterSheetState {
   return {
     id: 'sheet_wod',
@@ -409,15 +471,15 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
         title: 'PHYSICAL · SOCIAL · MENTAL',
         colSpan: 1,
         fields: [
-          { id: 'f_strength', key: 'strength', label: 'STRENGTH', kind: 'number', value: 3 },
-          { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', kind: 'number', value: 4 },
-          { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', value: 3 },
-          { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', value: 3 },
-          { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', value: 4 },
-          { id: 'f_appearance', key: 'appearance', label: 'APPEARANCE', kind: 'number', value: 3 },
-          { id: 'f_perception', key: 'perception', label: 'PERCEPTION', kind: 'number', value: 3 },
-          { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', kind: 'number', value: 3 },
-          { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', value: 3 },
+          { id: 'f_strength', key: 'strength', label: 'STRENGTH', kind: 'number', attributeGroup: 'physical', value: 3 },
+          { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', kind: 'number', attributeGroup: 'physical', value: 4 },
+          { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', attributeGroup: 'physical', value: 3 },
+          { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', attributeGroup: 'social', value: 3 },
+          { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', attributeGroup: 'social', value: 4 },
+          { id: 'f_appearance', key: 'appearance', label: 'APPEARANCE', kind: 'number', attributeGroup: 'social', value: 3 },
+          { id: 'f_perception', key: 'perception', label: 'PERCEPTION', kind: 'number', attributeGroup: 'mental', value: 3 },
+          { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', kind: 'number', attributeGroup: 'mental', value: 3 },
+          { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', attributeGroup: 'mental', value: 3 },
           {
             id: 'f_initiative',
             key: 'initiative',
@@ -732,6 +794,116 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
 
 export function createDefaultSheet(): CharacterSheetState {
   return createWorldOfDarknessSheet();
+}
+
+export function createWorldOfDarknessV5Sheet(): CharacterSheetState {
+  const base = createWorldOfDarknessSheet();
+  const v5Samples: Record<string, number> = {
+    strength: 2,
+    dexterity: 3,
+    stamina: 3,
+    charisma: 3,
+    manipulation: 4,
+    composure: 3,
+    intelligence: 3,
+    wits: 3,
+    resolve: 2,
+  };
+  const v5IdentityValues: Record<string, string> = {
+    character_name: 'Nadia Voss',
+    clan: 'Lasombra',
+    concept: 'Harbor Broker',
+    sire: 'Marcus Vane',
+    chronicle: 'Nocturne Harbor',
+    predator_type: 'Siren',
+    ambition: 'Control the Harbor Elysium',
+    desire: 'Expose the rival Primogen',
+    clan_bane: 'Distorted Reflection',
+    clan_compulsion: 'Ruthlessness',
+  };
+
+  const transformedCards = buildWodV5EditionCards(base.cards).map((card) => {
+    if (card.id === 'card_identidade') {
+      return {
+        ...card,
+        fields: card.fields.map((f) => {
+          const k = (f.key ?? '').trim().toLowerCase();
+          if (k === 'generation') return { ...f, value: 12 };
+          if (Object.prototype.hasOwnProperty.call(v5IdentityValues, k)) {
+            return { ...f, value: v5IdentityValues[k], placeholder: undefined };
+          }
+          return f;
+        }),
+      };
+    }
+    if (card.id === 'card_atributos') {
+      return {
+        ...card,
+        fields: card.fields.map((f) => {
+          const k = (f.key ?? '').trim().toLowerCase();
+          return f.kind === 'number' && Object.prototype.hasOwnProperty.call(v5Samples, k)
+            ? { ...f, value: v5Samples[k] }
+            : f;
+        }),
+      };
+    }
+    if (card.id === 'card_combate') {
+      const healthMax = Math.max(4, v5Samples.stamina + 3);
+      const wpMax = Math.max(2, v5Samples.composure + v5Samples.resolve);
+      return {
+        ...card,
+        fields: card.fields.map((f) => {
+          if (f.id === 'f_health' || f.key === 'health') {
+            return { ...f, max: healthMax, value: healthMax };
+          }
+          if (f.id === 'f_willpower' || f.key === 'willpower') {
+            return { ...f, max: wpMax, value: wpMax };
+          }
+          return f;
+        }),
+      };
+    }
+    if (card.id === 'card_grimorio') {
+      return {
+        ...card,
+        fields: card.fields.map((f) => {
+          if (f.id === 'f_lista_magias' && Array.isArray(f.rows)) {
+            return {
+              ...f,
+              rows: f.rows.map((r) =>
+                r.id === 'm_2' || r.id === 'm_3' ? { ...r, col2: '1 ROUSE' } : r,
+              ),
+            };
+          }
+          if (f.id === 'f_frenzy_check') {
+            return { ...f, value: false };
+          }
+          return f;
+        }),
+      };
+    }
+    return card;
+  });
+
+  const { bloodPool: _droppedBloodPool, virtues: _droppedVirtues, ...baseClean } = base;
+
+  return {
+    ...baseClean,
+    id: 'sheet_wod_v5',
+    systemId: 'wod',
+    systemName: 'VAMPIRE: THE MASQUERADE // V5',
+    systemCode: '/SYS: WORLD OF DARKNESS · VAMPIRE V5',
+    characterName: 'NADIA VOSS · NEONATE (LASOMBRA)',
+    rulePreset: 'vampire-v5',
+    xpRulePreset: 'vampire-v5',
+    cards: transformedCards,
+    rollLogs: [],
+    xp: {
+      totalEarned: 15,
+      spent: 0,
+      ledger: [],
+    },
+  };
 }
 
 export function createDnd5ePreset(): CharacterSheetState {
@@ -1556,6 +1728,26 @@ export function evaluateSheet(sheet: CharacterSheetState): SheetEvaluation {
   variables['carga_total'] = Number(totalCargoWeight.toFixed(2));
   variables['wound_penalty'] = computeWoundPenalty(sheet);
 
+  // Resolve dynamic resource maxFormula expressions (e.g. V5 health = stamina + 3, willpower = composure + resolve)
+  for (const card of sheet.cards) {
+    for (const field of card.fields) {
+      if (field.kind !== 'resource' || !field.maxFormula?.trim()) continue;
+      const key = field.key.trim().toLowerCase();
+      const maxRes = evaluateFormula(field.maxFormula, variables, false);
+      if (maxRes.ok && Number.isFinite(maxRes.value)) {
+        if (key) {
+          variables[`${key}_max`] = Math.max(1, Math.round(maxRes.value));
+        }
+      } else {
+        formulaErrors.push({
+          fieldId: field.id,
+          label: field.label,
+          error: maxRes.error ?? 'Fórmula de máximo inválida',
+        });
+      }
+    }
+  }
+
   // Pass 2: evaluate calculated fields with formulaMap, cycle detection, and memoization
   const calcFields = sheet.cards.flatMap((c) => c.fields).filter((f) => f.kind === 'calculated');
   const formulaMap: Record<string, string> = {};
@@ -1802,40 +1994,45 @@ function syncV5DerivedTrackMaxes(
   const isWillpowerAttrEdit = editedKey === 'composure' || editedKey === 'resolve';
   if (!isStaminaEdit && !isWillpowerAttrEdit) return sheet;
 
-  let nextHealthMax: number | null = null;
-  if (isStaminaEdit) {
-    nextHealthMax = Math.max(4, editedVal + 3);
-  }
-
-  let nextWillpowerMax: number | null = null;
-  if (isWillpowerAttrEdit) {
-    const composureField = allFields.find(
-      (f) => f.kind === 'number' && (f.key ?? '').trim().toLowerCase() === 'composure',
-    );
-    const resolveField = allFields.find(
-      (f) => f.kind === 'number' && (f.key ?? '').trim().toLowerCase() === 'resolve',
-    );
-    if (composureField && resolveField) {
-      const compVal =
-        typeof composureField.value === 'number' && Number.isFinite(composureField.value)
-          ? Math.round(composureField.value)
-          : 1;
-      const resVal =
-        typeof resolveField.value === 'number' && Number.isFinite(resolveField.value)
-          ? Math.round(resolveField.value)
-          : 1;
-      nextWillpowerMax = Math.max(2, compVal + resVal);
+  const attrVars: VariableMap = {};
+  for (const f of allFields) {
+    if (f.kind !== 'number') continue;
+    const fk = (f.key ?? '').trim().toLowerCase();
+    if (fk && typeof f.value === 'number' && Number.isFinite(f.value)) {
+      attrVars[fk] = Math.round(f.value);
     }
   }
 
-  if (nextHealthMax === null && nextWillpowerMax === null) return sheet;
+  const evalDerivedMax = (
+    maxFormula: string | undefined,
+    defaultFormula: string,
+    minFloor: number,
+  ): number => {
+    const expr = maxFormula?.trim() || defaultFormula;
+    const res = evaluateFormula(expr, attrVars, false);
+    if (res.ok && Number.isFinite(res.value)) {
+      return Math.max(minFloor, Math.round(res.value));
+    }
+    const fallbackRes = evaluateFormula(defaultFormula, attrVars, false);
+    return fallbackRes.ok && Number.isFinite(fallbackRes.value)
+      ? Math.max(minFloor, Math.round(fallbackRes.value))
+      : minFloor;
+  };
+
+  const hasComposure = allFields.some(
+    (f) => f.kind === 'number' && (f.key ?? '').trim().toLowerCase() === 'composure',
+  );
+  const hasResolve = allFields.some(
+    (f) => f.kind === 'number' && (f.key ?? '').trim().toLowerCase() === 'resolve',
+  );
 
   return {
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
       fields: card.fields.map((f) => {
-        if (nextHealthMax !== null && f.kind === 'resource' && (f.id === 'f_health' || f.key === 'health')) {
+        if (isStaminaEdit && f.kind === 'resource' && (f.id === 'f_health' || f.key === 'health')) {
+          const nextHealthMax = evalDerivedMax(f.maxFormula, 'stamina + 3', 4);
           const agg = Math.min(nextHealthMax, Math.max(0, f.aggravatedDamage ?? 0));
           const sup = Math.min(nextHealthMax - agg, Math.max(0, f.superficialDamage ?? 0));
           return {
@@ -1847,10 +2044,13 @@ function syncV5DerivedTrackMaxes(
           };
         }
         if (
-          nextWillpowerMax !== null &&
+          isWillpowerAttrEdit &&
+          hasComposure &&
+          hasResolve &&
           f.kind === 'resource' &&
           (f.id === 'f_willpower' || f.key === 'willpower')
         ) {
+          const nextWillpowerMax = evalDerivedMax(f.maxFormula, 'composure + resolve', 2);
           const agg = Math.min(nextWillpowerMax, Math.max(0, f.aggravatedDamage ?? 0));
           const sup = Math.min(nextWillpowerMax - agg, Math.max(0, f.superficialDamage ?? 0));
           const hasDamageTracking =
@@ -2455,6 +2655,10 @@ export function migrateLegacyWodSheet(
 ): CharacterSheetState {
   const withMeta = migrateLegacySheetMetadata(sheet, options);
   if (detectSystemId(withMeta) !== 'wod') return withMeta;
+  const isV5 = resolveRulePreset(withMeta) === 'vampire-v5';
+  const expectedAttrs = isV5 ? WOD_V5_ATTRIBUTE_SPECS : WOD_V20_ATTRIBUTE_SPECS;
+  const attrGroupByKey = new Map(expectedAttrs.map((spec) => [spec.key, spec.attributeGroup]));
+  const expectedIdentity = isV5 ? WOD_V5_IDENTITY_SPECS : WOD_V20_IDENTITY_SPECS;
   let changed = false;
 
   const cards = withMeta.cards.map((card) => {
@@ -2467,7 +2671,8 @@ export function migrateLegacyWodSheet(
     }
 
     let fields = card.fields.map((field) => {
-      if (card.id === 'card_combate' && (field.id === 'f_blood_pool' || field.key === 'blood_pool')) {
+      const fk = (field.key ?? '').trim().toLowerCase();
+      if (card.id === 'card_combate' && (field.id === 'f_blood_pool' || fk === 'blood_pool')) {
         cardChanged = true;
         return {
           id: 'f_hunger',
@@ -2489,10 +2694,48 @@ export function migrateLegacyWodSheet(
           damageTrack: true,
           superficialDamage: field.superficialDamage ?? 0,
           aggravatedDamage: field.aggravatedDamage ?? Math.max(0, max - currVal),
+          ...(isV5 && !field.maxFormula ? { maxFormula: 'stamina + 3' } : {}),
         };
       }
       if (
-        (field.id === 'f_wp_boost' || field.key === 'wp_boost') &&
+        card.id === 'card_combate' &&
+        isV5 &&
+        field.kind === 'resource' &&
+        (field.id === 'f_health' || fk === 'health') &&
+        !field.maxFormula
+      ) {
+        cardChanged = true;
+        return {
+          ...field,
+          maxFormula: 'stamina + 3',
+        };
+      }
+      if (
+        card.id === 'card_combate' &&
+        isV5 &&
+        field.kind === 'resource' &&
+        (field.id === 'f_willpower' || fk === 'willpower') &&
+        !field.maxFormula
+      ) {
+        cardChanged = true;
+        return {
+          ...field,
+          maxFormula: 'composure + resolve',
+        };
+      }
+      if (
+        card.id === 'card_atributos' &&
+        field.attributeGroup === undefined &&
+        attrGroupByKey.has(fk)
+      ) {
+        cardChanged = true;
+        return {
+          ...field,
+          attributeGroup: attrGroupByKey.get(fk),
+        };
+      }
+      if (
+        (field.id === 'f_wp_boost' || fk === 'wp_boost') &&
         field.label !== 'WILLPOWER (+1 AUTO SUCCESS)'
       ) {
         cardChanged = true;
@@ -2525,6 +2768,52 @@ export function migrateLegacyWodSheet(
       }
       return field;
     });
+
+    if (card.id === 'card_atributos') {
+      const existingIds = new Set(fields.map((f) => f.id));
+      const existingKeys = new Set(fields.map((f) => (f.key ?? '').trim().toLowerCase()));
+      const missingAttrs: SheetField[] = expectedAttrs
+        .filter((spec) => !existingIds.has(spec.id) && !existingKeys.has(spec.key))
+        .map((spec) => ({
+          id: spec.id,
+          key: spec.key,
+          label: spec.label,
+          kind: 'number' as const,
+          attributeGroup: spec.attributeGroup,
+          value: 1,
+        }));
+      if (missingAttrs.length > 0) {
+        cardChanged = true;
+        const firstCalcIdx = fields.findIndex((f) => f.kind === 'calculated');
+        if (firstCalcIdx !== -1) {
+          fields = [
+            ...fields.slice(0, firstCalcIdx),
+            ...missingAttrs,
+            ...fields.slice(firstCalcIdx),
+          ];
+        } else {
+          fields = [...fields, ...missingAttrs];
+        }
+      }
+    }
+
+    if (card.id === 'card_identidade') {
+      const existingIds = new Set(fields.map((f) => f.id));
+      const existingKeys = new Set(fields.map((f) => (f.key ?? '').trim().toLowerCase()));
+      const missingIdentity: SheetField[] = expectedIdentity
+        .filter((spec) => !existingIds.has(spec.id) && !existingKeys.has(spec.key))
+        .map((spec) => ({
+          id: spec.id,
+          key: spec.key,
+          label: spec.label,
+          kind: 'text' as const,
+          value: '',
+        }));
+      if (missingIdentity.length > 0) {
+        cardChanged = true;
+        fields = [...fields, ...missingIdentity];
+      }
+    }
 
     if (
       card.id === 'card_combate' &&
@@ -2906,60 +3195,31 @@ export interface NewSheetIdentityInput {
 const V20_ONLY_IDENTITY_IDS = new Set(['f_nature', 'f_demeanor', 'f_clan_weakness']);
 
 function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
-  const v5IdentityExtras: SheetField[] = [
-    {
-      id: 'f_predator_type',
-      key: 'predator_type',
-      label: 'PREDATOR TYPE',
-      kind: 'text',
+  const v5IdentityExtras: SheetField[] = WOD_V5_IDENTITY_SPECS
+    .filter((spec) => !['concept', 'sire', 'chronicle'].includes(spec.key))
+    .map((spec) => ({
+      id: spec.id,
+      key: spec.key,
+      label: spec.label,
+      kind: 'text' as const,
       value: '',
-      placeholder: 'Siren',
-    },
-    {
-      id: 'f_ambition',
-      key: 'ambition',
-      label: 'AMBITION',
-      kind: 'text',
-      value: '',
-      placeholder: 'Control the Harbor Elysium',
-    },
-    {
-      id: 'f_desire',
-      key: 'desire',
-      label: 'DESIRE',
-      kind: 'text',
-      value: '',
-      placeholder: 'Expose the rival Primogen',
-    },
-    {
-      id: 'f_clan_bane',
-      key: 'clan_bane',
-      label: 'CLAN BANE',
-      kind: 'text',
-      value: '',
-      placeholder: 'Rarefied Tastes',
-    },
-    {
-      id: 'f_clan_compulsion',
-      key: 'clan_compulsion',
-      label: 'CLAN COMPULSION',
-      kind: 'text',
-      value: '',
-      placeholder: 'Arrogance',
-    },
-  ];
+      ...(spec.placeholder ? { placeholder: spec.placeholder } : {}),
+    }));
 
-  const v5Attributes: SheetField[] = [
-    { id: 'f_strength', key: 'strength', label: 'STRENGTH', kind: 'number', value: 1 },
-    { id: 'f_dexterity', key: 'dexterity', label: 'DEXTERITY', kind: 'number', value: 1 },
-    { id: 'f_stamina', key: 'stamina', label: 'STAMINA', kind: 'number', value: 1 },
-    { id: 'f_charisma', key: 'charisma', label: 'CHARISMA', kind: 'number', value: 1 },
-    { id: 'f_manipulation', key: 'manipulation', label: 'MANIPULATION', kind: 'number', value: 1 },
-    { id: 'f_composure', key: 'composure', label: 'COMPOSURE', kind: 'number', value: 1 },
-    { id: 'f_intelligence', key: 'intelligence', label: 'INTELLIGENCE', kind: 'number', value: 1 },
-    { id: 'f_wits', key: 'wits', label: 'WITS', kind: 'number', value: 1 },
-    { id: 'f_resolve', key: 'resolve', label: 'RESOLVE', kind: 'number', value: 1 },
-  ];
+  const v5Attributes: SheetField[] = WOD_V5_ATTRIBUTE_SPECS.map((spec) => ({
+    id: spec.id,
+    key: spec.key,
+    label: spec.label,
+    kind: 'number' as const,
+    attributeGroup: spec.attributeGroup,
+    value: 1,
+  }));
+
+  const staminaInit = Number(v5Attributes.find((a) => a.key === 'stamina')?.value ?? 1);
+  const composureInit = Number(v5Attributes.find((a) => a.key === 'composure')?.value ?? 1);
+  const resolveInit = Number(v5Attributes.find((a) => a.key === 'resolve')?.value ?? 1);
+  const initialHealthMax = Math.max(4, staminaInit + 3);
+  const initialWillpowerMax = Math.max(2, composureInit + resolveInit);
 
   return cards.map((card) => {
     let nextFields = card.fields;
@@ -2978,8 +3238,9 @@ function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
         if (f.id === 'f_health' || k === 'health') {
           return {
             ...f,
-            max: 4,
-            value: 4,
+            max: initialHealthMax,
+            maxFormula: 'stamina + 3',
+            value: initialHealthMax,
             superficialDamage: 0,
             aggravatedDamage: 0,
           };
@@ -2987,8 +3248,9 @@ function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
         if (f.id === 'f_willpower' || k === 'willpower') {
           return {
             ...f,
-            max: 2,
-            value: 2,
+            max: initialWillpowerMax,
+            maxFormula: 'composure + resolve',
+            value: initialWillpowerMax,
             superficialDamage: 0,
             aggravatedDamage: 0,
           };
@@ -3318,6 +3580,7 @@ const ALLOWED_FIELD_KINDS = new Set([
   'repeatable',
 ]);
 const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline', 'virtue']);
+const ALLOWED_ATTRIBUTE_GROUPS = new Set(['physical', 'social', 'mental']);
 const ALLOWED_XP_RULE_PRESETS = new Set([
   'storyteller-v20',
   'storyteller_v20',
@@ -3357,6 +3620,8 @@ const FIELD_KEYS = new Set([
   'textValue',
   'boolValue',
   'max',
+  'maxFormula',
+  'attributeGroup',
   'damageTrack',
   'bashingDamage',
   'lethalDamage',
@@ -3617,6 +3882,18 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           (typeof field.max !== 'number' || !Number.isInteger(field.max) || field.max < 1 || field.max > 100000)
         ) {
           errors.push(`${fPath}.max: deve ser inteiro entre 1 e 100000.`);
+        }
+        if (
+          field.maxFormula !== undefined &&
+          (typeof field.maxFormula !== 'string' || field.maxFormula.length > 256)
+        ) {
+          errors.push(`${fPath}.maxFormula: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.attributeGroup !== undefined &&
+          !ALLOWED_ATTRIBUTE_GROUPS.has(String(field.attributeGroup))
+        ) {
+          errors.push(`${fPath}.attributeGroup: grupo inválido "${String(field.attributeGroup)}".`);
         }
         if (
           field.rollDifficulty !== undefined &&

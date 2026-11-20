@@ -104,6 +104,7 @@
               "key": "strength",
               "label": "STRENGTH",
               "kind": "number",
+              "attributeGroup": "physical",
               "value": 3
             },
             {
@@ -111,6 +112,7 @@
               "key": "dexterity",
               "label": "DEXTERITY",
               "kind": "number",
+              "attributeGroup": "physical",
               "value": 4
             },
             {
@@ -118,6 +120,7 @@
               "key": "stamina",
               "label": "STAMINA",
               "kind": "number",
+              "attributeGroup": "physical",
               "value": 3
             },
             {
@@ -125,6 +128,7 @@
               "key": "charisma",
               "label": "CHARISMA",
               "kind": "number",
+              "attributeGroup": "social",
               "value": 3
             },
             {
@@ -132,6 +136,7 @@
               "key": "manipulation",
               "label": "MANIPULATION",
               "kind": "number",
+              "attributeGroup": "social",
               "value": 4
             },
             {
@@ -139,6 +144,7 @@
               "key": "appearance",
               "label": "APPEARANCE",
               "kind": "number",
+              "attributeGroup": "social",
               "value": 3
             },
             {
@@ -146,6 +152,7 @@
               "key": "perception",
               "label": "PERCEPTION",
               "kind": "number",
+              "attributeGroup": "mental",
               "value": 3
             },
             {
@@ -153,6 +160,7 @@
               "key": "intelligence",
               "label": "INTELLIGENCE",
               "kind": "number",
+              "attributeGroup": "mental",
               "value": 3
             },
             {
@@ -160,6 +168,7 @@
               "key": "wits",
               "label": "WITS",
               "kind": "number",
+              "attributeGroup": "mental",
               "value": 3
             },
             {
@@ -566,6 +575,556 @@
             "label": "CHRONICLE SESSION AWARD"
           }
         ]
+      }
+    },
+    "wod_v5": {
+      "id": "sheet_wod_v5",
+      "systemId": "wod",
+      "systemName": "VAMPIRE: THE MASQUERADE // V5",
+      "systemCode": "/SYS: WORLD OF DARKNESS · VAMPIRE V5",
+      "characterName": "NADIA VOSS · NEONATE (LASOMBRA)",
+      "revision": 1,
+      "updatedAt": "2026-11-14T23:57:19.810Z",
+      "deviceId": "aa4fc9e5-b5ad-483c-885b-400abc32a23a",
+      "rulePreset": "vampire_v5",
+      "xpRulePreset": "vampire_v5",
+      "cards": [
+        {
+          "id": "card_identidade",
+          "tab": "geral",
+          "code": "//CHRONICLE_ID",
+          "title": "IDENTITY & LINEAGE",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_nome",
+              "key": "character_name",
+              "label": "NAME",
+              "kind": "text",
+              "value": "Nadia Voss"
+            },
+            {
+              "id": "f_clan",
+              "key": "clan",
+              "label": "CLAN / FACTION",
+              "kind": "text",
+              "value": "Lasombra"
+            },
+            {
+              "id": "f_generation",
+              "key": "generation",
+              "label": "GENERATION",
+              "kind": "number",
+              "value": 12
+            },
+            {
+              "id": "f_blood_potency",
+              "key": "blood_potency",
+              "label": "BLOOD_POTENCY",
+              "kind": "calculated",
+              "formula": "max(1, 13 - generation)",
+              "showPlus": false
+            },
+            {
+              "id": "f_concept",
+              "key": "concept",
+              "label": "CONCEPT",
+              "kind": "text",
+              "value": "Harbor Broker"
+            },
+            {
+              "id": "f_sire",
+              "key": "sire",
+              "label": "SIRE",
+              "kind": "text",
+              "value": "Marcus Vane"
+            },
+            {
+              "id": "f_chronicle",
+              "key": "chronicle",
+              "label": "CHRONICLE",
+              "kind": "text",
+              "value": "Nocturne Harbor"
+            },
+            {
+              "id": "f_predator_type",
+              "key": "predator_type",
+              "label": "PREDATOR TYPE",
+              "kind": "text",
+              "value": "Siren"
+            },
+            {
+              "id": "f_ambition",
+              "key": "ambition",
+              "label": "AMBITION",
+              "kind": "text",
+              "value": "Control the Harbor Elysium"
+            },
+            {
+              "id": "f_desire",
+              "key": "desire",
+              "label": "DESIRE",
+              "kind": "text",
+              "value": "Expose the rival Primogen"
+            },
+            {
+              "id": "f_clan_bane",
+              "key": "clan_bane",
+              "label": "CLAN BANE",
+              "kind": "text",
+              "value": "Distorted Reflection"
+            },
+            {
+              "id": "f_clan_compulsion",
+              "key": "clan_compulsion",
+              "label": "CLAN COMPULSION",
+              "kind": "text",
+              "value": "Ruthlessness"
+            }
+          ]
+        },
+        {
+          "id": "card_atributos",
+          "tab": "geral",
+          "code": "//ATTRIBUTES",
+          "title": "PHYSICAL · SOCIAL · MENTAL",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_strength",
+              "key": "strength",
+              "label": "STRENGTH",
+              "kind": "number",
+              "attributeGroup": "physical",
+              "value": 2
+            },
+            {
+              "id": "f_dexterity",
+              "key": "dexterity",
+              "label": "DEXTERITY",
+              "kind": "number",
+              "attributeGroup": "physical",
+              "value": 3
+            },
+            {
+              "id": "f_stamina",
+              "key": "stamina",
+              "label": "STAMINA",
+              "kind": "number",
+              "attributeGroup": "physical",
+              "value": 3
+            },
+            {
+              "id": "f_charisma",
+              "key": "charisma",
+              "label": "CHARISMA",
+              "kind": "number",
+              "attributeGroup": "social",
+              "value": 3
+            },
+            {
+              "id": "f_manipulation",
+              "key": "manipulation",
+              "label": "MANIPULATION",
+              "kind": "number",
+              "attributeGroup": "social",
+              "value": 4
+            },
+            {
+              "id": "f_composure",
+              "key": "composure",
+              "label": "COMPOSURE",
+              "kind": "number",
+              "attributeGroup": "social",
+              "value": 3
+            },
+            {
+              "id": "f_intelligence",
+              "key": "intelligence",
+              "label": "INTELLIGENCE",
+              "kind": "number",
+              "attributeGroup": "mental",
+              "value": 3
+            },
+            {
+              "id": "f_wits",
+              "key": "wits",
+              "label": "WITS",
+              "kind": "number",
+              "attributeGroup": "mental",
+              "value": 3
+            },
+            {
+              "id": "f_resolve",
+              "key": "resolve",
+              "label": "RESOLVE",
+              "kind": "number",
+              "attributeGroup": "mental",
+              "value": 2
+            },
+            {
+              "id": "f_initiative",
+              "key": "initiative",
+              "label": "INITIATIVE_MOD",
+              "kind": "calculated",
+              "formula": "dexterity + wits",
+              "showPlus": true
+            },
+            {
+              "id": "f_defense",
+              "key": "defense",
+              "label": "DEFENSE",
+              "kind": "calculated",
+              "formula": "min(dexterity, wits)",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_combate",
+          "tab": "geral",
+          "code": "//VITAL_STATUS",
+          "title": "HEALTH · WILLPOWER · HUNGER",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_health",
+              "key": "health",
+              "label": "HEALTH",
+              "kind": "resource",
+              "value": 6,
+              "max": 6,
+              "maxFormula": "stamina + 3",
+              "damageTrack": true,
+              "superficialDamage": 0,
+              "aggravatedDamage": 0
+            },
+            {
+              "id": "f_willpower",
+              "key": "willpower",
+              "label": "WILLPOWER",
+              "kind": "resource",
+              "value": 5,
+              "max": 5,
+              "maxFormula": "composure + resolve",
+              "superficialDamage": 0,
+              "aggravatedDamage": 0
+            },
+            {
+              "id": "f_hunger",
+              "key": "hunger",
+              "label": "HUNGER",
+              "kind": "resource",
+              "value": 1,
+              "max": 5
+            },
+            {
+              "id": "f_humanity",
+              "key": "humanity",
+              "label": "HUMANITY",
+              "kind": "resource",
+              "value": 7,
+              "max": 10
+            },
+            {
+              "id": "f_fortitude_armor",
+              "key": "fortitude_armor",
+              "label": "FORTITUDE / ARMOR",
+              "kind": "number",
+              "value": 0
+            },
+            {
+              "id": "f_wp_boost",
+              "key": "wp_boost",
+              "label": "WILLPOWER (+1 AUTO SUCCESS)",
+              "kind": "boolean",
+              "value": false,
+              "hint": "SPENT ON NEXT ROLL"
+            },
+            {
+              "id": "f_soak",
+              "key": "soak_roll",
+              "label": "SOAK DAMAGE",
+              "kind": "roll",
+              "rollLabel": "ROLL SOAK",
+              "rollExpr": "pool(stamina + fortitude_armor, 6)",
+              "rollDifficulty": 6,
+              "rollSpecialty": false,
+              "rollMod": 0,
+              "isSoak": true
+            }
+          ]
+        },
+        {
+          "id": "card_skills",
+          "tab": "geral",
+          "code": "//SKILLS_&_POOLS",
+          "title": "ABILITIES & DICE POOLS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_brawl",
+              "key": "brawl",
+              "label": "BRAWL",
+              "kind": "number",
+              "value": 2
+            },
+            {
+              "id": "f_firearms",
+              "key": "firearms",
+              "label": "FIREARMS",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_stealth",
+              "key": "stealth",
+              "label": "STEALTH",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_subterfuge",
+              "key": "subterfuge",
+              "label": "SUBTERFUGE",
+              "kind": "number",
+              "value": 4
+            },
+            {
+              "id": "f_roll_brawl",
+              "key": "roll_brawl",
+              "label": "MELEE / BRAWL",
+              "kind": "roll",
+              "rollLabel": "ROLL BRAWL",
+              "rollExpr": "pool(strength + brawl, 2)",
+              "rollDifficulty": 2,
+              "rollDifficultyV5": 2,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_firearms",
+              "key": "roll_firearms",
+              "label": "RANGED ATTACK",
+              "kind": "roll",
+              "rollLabel": "ROLL FIREARMS",
+              "rollExpr": "pool(dexterity + firearms, 2)",
+              "rollDifficulty": 2,
+              "rollDifficultyV5": 2,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_stealth",
+              "key": "roll_stealth",
+              "label": "STEALTH / SNEAK",
+              "kind": "roll",
+              "rollLabel": "ROLL STEALTH",
+              "rollExpr": "pool(dexterity + stealth, 2)",
+              "rollDifficulty": 2,
+              "rollDifficultyV5": 2,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_subterfuge",
+              "key": "roll_subterfuge",
+              "label": "SOCIAL MANIPULATION",
+              "kind": "roll",
+              "rollLabel": "ROLL SUBTERFUGE",
+              "rollExpr": "pool(manipulation + subterfuge, 2)",
+              "rollDifficulty": 2,
+              "rollDifficultyV5": 2,
+              "rollSpecialty": false,
+              "rollMod": 0
+            }
+          ]
+        },
+        {
+          "id": "card_inventario",
+          "tab": "geral",
+          "code": "//INVENTORY",
+          "title": "GEAR & CONCEALMENT",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_mochila",
+              "key": "gear",
+              "label": "EQUIPMENT",
+              "kind": "repeatable",
+              "columns": [
+                "ITEM",
+                "WEIGHT (KG)"
+              ],
+              "col2Type": "number",
+              "rows": [
+                {
+                  "id": "r_1",
+                  "col1": "Heavy Pistol (9mm)",
+                  "col2": 1.2
+                },
+                {
+                  "id": "r_2",
+                  "col1": "Kevlar Trench Coat",
+                  "col2": 2.5
+                },
+                {
+                  "id": "r_3",
+                  "col1": "Silver Dagger",
+                  "col2": 0.5
+                },
+                {
+                  "id": "r_4",
+                  "col1": "Encrypted Burner Phone",
+                  "col2": 0.3
+                }
+              ]
+            },
+            {
+              "id": "f_carga_max",
+              "key": "carry_limit",
+              "label": "CARRY_CAPACITY",
+              "kind": "calculated",
+              "formula": "strength * 15",
+              "showPlus": false
+            }
+          ]
+        },
+        {
+          "id": "card_arcano",
+          "tab": "magias",
+          "code": "//DISCIPLINES",
+          "title": "DISCIPLINES & OCCULT",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_dominate",
+              "key": "dominate",
+              "label": "DOMINATE",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_presence",
+              "key": "presence",
+              "label": "PRESENCE",
+              "kind": "number",
+              "value": 2
+            },
+            {
+              "id": "f_occult",
+              "key": "occult",
+              "label": "OCCULT",
+              "kind": "number",
+              "value": 3
+            },
+            {
+              "id": "f_dominate_pool",
+              "key": "dominate_pool",
+              "label": "DOMINATE_POOL",
+              "kind": "calculated",
+              "formula": "manipulation + dominate",
+              "showPlus": false
+            },
+            {
+              "id": "f_roll_dominate",
+              "key": "roll_dominate",
+              "label": "MESMERIZE / COMMAND",
+              "kind": "roll",
+              "rollLabel": "ROLL DOMINATE",
+              "rollExpr": "pool(manipulation + dominate, 2)",
+              "rollDifficulty": 2,
+              "rollDifficultyV5": 2,
+              "rollSpecialty": false,
+              "rollMod": 0
+            },
+            {
+              "id": "f_roll_occult",
+              "key": "roll_occult",
+              "label": "ARCANE LORE CHECK",
+              "kind": "roll",
+              "rollLabel": "ROLL OCCULT",
+              "rollExpr": "pool(wits + occult, 2)",
+              "rollDifficulty": 2,
+              "rollDifficultyV5": 2,
+              "rollSpecialty": false,
+              "rollMod": 0
+            }
+          ]
+        },
+        {
+          "id": "card_grimorio",
+          "tab": "magias",
+          "code": "//MERITS_&_POWERS",
+          "title": "DISCIPLINE POWERS & MERITS",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_lista_magias",
+              "key": "powers",
+              "label": "ACTIVE POWERS & BACKGROUNDS",
+              "kind": "repeatable",
+              "columns": [
+                "POWER / MERIT",
+                "COST / DOTS"
+              ],
+              "col2Type": "text",
+              "rows": [
+                {
+                  "id": "m_1",
+                  "col1": "Command (Dominate 1)",
+                  "col2": "FREE"
+                },
+                {
+                  "id": "m_2",
+                  "col1": "Mesmerize (Dominate 3)",
+                  "col2": "1 ROUSE"
+                },
+                {
+                  "id": "m_3",
+                  "col1": "Awe (Presence 1)",
+                  "col2": "1 ROUSE"
+                },
+                {
+                  "id": "m_4",
+                  "col1": "Haven: Old Observatory",
+                  "col2": "•••"
+                }
+              ]
+            },
+            {
+              "id": "f_frenzy_check",
+              "key": "frenzy_resisted",
+              "label": "FRENZY RESISTED",
+              "kind": "boolean",
+              "value": false,
+              "hint": "BEAST CALMED THIS SCENE"
+            }
+          ]
+        },
+        {
+          "id": "card_notas",
+          "tab": "magias",
+          "code": "//CHRONICLE_LOG",
+          "title": "COTERIE & SESSION NOTES",
+          "colSpan": 2,
+          "fields": [
+            {
+              "id": "f_notas",
+              "key": "notas_campanha",
+              "label": "CHRONICLE RECORDS",
+              "kind": "text",
+              "value": "Elysium meeting confirmed at 02:00. Sheriff suspects Masquerade breach in the Harbor District; secure the obsidian ledger before sunrise."
+            }
+          ]
+        }
+      ],
+      "rollLogs": [],
+      "xp": {
+        "totalEarned": 15,
+        "spent": 0,
+        "ledger": [],
+        "xpRulePreset": "vampire_v5"
       }
     },
     "dnd5e": {
