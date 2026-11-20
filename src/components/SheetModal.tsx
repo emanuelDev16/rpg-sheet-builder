@@ -17,6 +17,7 @@ import {
   CharacterSheetState,
   NewSheetIdentityInput,
   parseAndValidateImportPayload,
+  RulePreset,
   Sheet,
   SystemId,
 } from '../core/sheetModel';
@@ -67,6 +68,25 @@ interface SheetModalProps {
 
 const DEFAULT_MODAL_T = getTranslations('pt-BR').modal;
 
+const WOD_CLAN_SUGGESTIONS = [
+  'Banu Haqim',
+  'Brujah',
+  'Gangrel',
+  'Hecata',
+  'Lasombra',
+  'Malkavian',
+  'Ministry',
+  'Nosferatu',
+  'Ravnos',
+  'Salubri',
+  'Toreador',
+  'Tremere',
+  'Tzimisce',
+  'Ventrue',
+  'Caitiff',
+  'Thin-Blood',
+] as const;
+
 export const SheetModal: React.FC<SheetModalProps> = ({
   mode,
   sheet,
@@ -104,6 +124,9 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<SystemId>(activeSystemId);
+  const [selectedWodEdition, setSelectedWodEdition] = useState<'vampire-v5' | 'storyteller-v20'>(
+    () => (sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20'),
+  );
   const [charName, setCharName] = useState('');
   const [secondaryTrait, setSecondaryTrait] = useState('');
   const [templateName, setTemplateName] = useState('');
@@ -126,6 +149,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   useEffect(() => {
     if (mode === 'new') {
       setSelectedSystem(activeSystemId);
+      setSelectedWodEdition(sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20');
       setCharName('');
       setSecondaryTrait('');
     } else if (mode === 'save') {
@@ -135,7 +159,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       setImportSuccess(null);
       void refreshSnapshots();
     }
-  }, [mode, activeSystemId, sheet.characterName]);
+  }, [mode, activeSystemId, sheet.characterName, sheet.rulePreset]);
 
   if (!mode) return null;
 
@@ -285,6 +309,8 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 onCreateNewSheet(selectedSystem, {
                   characterName: charName,
                   secondaryTrait: selectedSystem === 'blank' ? undefined : secondaryTrait,
+                  rulePreset:
+                    selectedSystem === 'wod' ? (selectedWodEdition as RulePreset) : undefined,
                 });
                 onClose();
               }}
@@ -361,6 +387,62 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 </div>
               </div>
 
+              {selectedSystem === 'wod' && (
+                <div className="flex flex-col gap-1.5">
+                  <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
+                    {t.t('modal.wodEditionLabel')}
+                  </span>
+                  <div
+                    role="radiogroup"
+                    aria-label={t.t('modal.wodEditionLabel')}
+                    className="grid grid-cols-1 sm:grid-cols-2 gap-2"
+                  >
+                    {(
+                      [
+                        {
+                          id: 'vampire-v5' as const,
+                          testId: 'new-sheet-wod-edition-v5',
+                          title: t.t('modal.wodEditionV5'),
+                          hint: t.t('modal.wodEditionV5Hint'),
+                        },
+                        {
+                          id: 'storyteller-v20' as const,
+                          testId: 'new-sheet-wod-edition-v20',
+                          title: t.t('modal.wodEditionV20'),
+                          hint: t.t('modal.wodEditionV20Hint'),
+                        },
+                      ] as const
+                    ).map((ed) => {
+                      const active = selectedWodEdition === ed.id;
+                      return (
+                        <button
+                          key={ed.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={active}
+                          data-testid={ed.testId}
+                          onClick={() => setSelectedWodEdition(ed.id)}
+                          className={`cyber-btn-outline !rounded-[var(--radius-card)] p-2.5 text-left flex flex-col gap-0.5 cursor-pointer ${
+                            active ? 'cyber-active-tint' : ''
+                          }`}
+                        >
+                          <span
+                            className={`font-mono-tech text-xs font-extrabold uppercase ${
+                              active ? 'cyber-active-title' : 'text-[var(--ink-primary)]'
+                            }`}
+                          >
+                            {ed.title}
+                          </span>
+                          <span className="cyber-active-muted font-mono-tech text-[10px] text-[var(--ink-muted)]">
+                            {ed.hint}
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
               <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2.5">
                 <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
                   {t.newIdentityHeading}
@@ -408,6 +490,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       id="new-sheet-secondary-trait"
                       data-testid="new-sheet-trait-input"
                       type="text"
+                      list={selectedSystem === 'wod' ? 'wod-clan-suggestions' : undefined}
                       value={secondaryTrait}
                       onChange={(e) => setSecondaryTrait(e.target.value)}
                       placeholder={
@@ -421,6 +504,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       }
                       className="cyber-input mobile-touch-input px-2.5 py-2 text-xs font-semibold w-full"
                     />
+                    {selectedSystem === 'wod' && (
+                      <datalist id="wod-clan-suggestions">
+                        {WOD_CLAN_SUGGESTIONS.map((clan) => (
+                          <option key={clan} value={clan} />
+                        ))}
+                      </datalist>
+                    )}
                   </div>
                 )}
               </div>

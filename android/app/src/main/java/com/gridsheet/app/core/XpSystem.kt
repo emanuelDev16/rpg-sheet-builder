@@ -52,8 +52,8 @@ object XpSystem {
 
     private val ATTRIBUTE_KEYS = setOf(
         "strength", "dexterity", "stamina", "constitution", "charisma",
-        "manipulation", "appearance", "perception", "intelligence", "wisdom", "wits",
-        "forca", "destreza", "constituicao", "intelecto", "sabedoria", "carisma"
+        "manipulation", "appearance", "composure", "perception", "intelligence", "wisdom", "wits", "resolve",
+        "forca", "destreza", "constituicao", "intelecto", "sabedoria", "carisma", "determinacao"
     )
 
     private val SKILL_KEYS = setOf(

@@ -82,7 +82,13 @@ object Presets {
                     SheetField(id = "f_nome", key = "character_name", label = "NAME", kind = FieldKind.TEXT, textValue = "Julian Cross"),
                     SheetField(id = "f_clan", key = "clan", label = "CLAN / FACTION", kind = FieldKind.TEXT, textValue = "Ventrue"),
                     SheetField(id = "f_generation", key = "generation", label = "GENERATION", kind = FieldKind.NUMBER, numValue = 10.0),
-                    SheetField(id = "f_blood_potency", key = "blood_potency", label = "BLOOD_POTENCY", kind = FieldKind.CALCULATED, formula = "max(1, 13 - generation)", showPlus = false)
+                    SheetField(id = "f_blood_potency", key = "blood_potency", label = "BLOOD_POTENCY", kind = FieldKind.CALCULATED, formula = "max(1, 13 - generation)", showPlus = false),
+                    SheetField(id = "f_concept", key = "concept", label = "CONCEPT", kind = FieldKind.TEXT, textValue = "Corporate Fixer"),
+                    SheetField(id = "f_sire", key = "sire", label = "SIRE", kind = FieldKind.TEXT, textValue = "Helena Vance"),
+                    SheetField(id = "f_chronicle", key = "chronicle", label = "CHRONICLE", kind = FieldKind.TEXT, textValue = "Nocturne Harbor"),
+                    SheetField(id = "f_nature", key = "nature", label = "NATURE", kind = FieldKind.TEXT, textValue = "Director"),
+                    SheetField(id = "f_demeanor", key = "demeanor", label = "DEMEANOR", kind = FieldKind.TEXT, textValue = "Architect"),
+                    SheetField(id = "f_clan_weakness", key = "clan_weakness", label = "CLAN WEAKNESS", kind = FieldKind.TEXT, textValue = "Refined Palate (Specific Vessel Type)")
                 )
             ),
             SheetCard(
@@ -92,12 +98,15 @@ object Presets {
                 title = "PHYSICAL · SOCIAL · MENTAL",
                 colSpan = 1,
                 fields = listOf(
-                    SheetField(id = "f_strength", key = "strength", label = "STRENGTH", kind = FieldKind.NUMBER, numValue = 3.0),
-                    SheetField(id = "f_dexterity", key = "dexterity", label = "DEXTERITY", kind = FieldKind.NUMBER, numValue = 4.0),
-                    SheetField(id = "f_stamina", key = "stamina", label = "STAMINA", kind = FieldKind.NUMBER, numValue = 3.0),
-                    SheetField(id = "f_charisma", key = "charisma", label = "CHARISMA", kind = FieldKind.NUMBER, numValue = 3.0),
-                    SheetField(id = "f_manipulation", key = "manipulation", label = "MANIPULATION", kind = FieldKind.NUMBER, numValue = 4.0),
-                    SheetField(id = "f_wits", key = "wits", label = "WITS", kind = FieldKind.NUMBER, numValue = 3.0),
+                    SheetField(id = "f_strength", key = "strength", label = "STRENGTH", kind = FieldKind.NUMBER, attributeGroup = "physical", numValue = 3.0),
+                    SheetField(id = "f_dexterity", key = "dexterity", label = "DEXTERITY", kind = FieldKind.NUMBER, attributeGroup = "physical", numValue = 4.0),
+                    SheetField(id = "f_stamina", key = "stamina", label = "STAMINA", kind = FieldKind.NUMBER, attributeGroup = "physical", numValue = 3.0),
+                    SheetField(id = "f_charisma", key = "charisma", label = "CHARISMA", kind = FieldKind.NUMBER, attributeGroup = "social", numValue = 3.0),
+                    SheetField(id = "f_manipulation", key = "manipulation", label = "MANIPULATION", kind = FieldKind.NUMBER, attributeGroup = "social", numValue = 4.0),
+                    SheetField(id = "f_appearance", key = "appearance", label = "APPEARANCE", kind = FieldKind.NUMBER, attributeGroup = "social", numValue = 3.0),
+                    SheetField(id = "f_perception", key = "perception", label = "PERCEPTION", kind = FieldKind.NUMBER, attributeGroup = "mental", numValue = 3.0),
+                    SheetField(id = "f_intelligence", key = "intelligence", label = "INTELLIGENCE", kind = FieldKind.NUMBER, attributeGroup = "mental", numValue = 3.0),
+                    SheetField(id = "f_wits", key = "wits", label = "WITS", kind = FieldKind.NUMBER, attributeGroup = "mental", numValue = 3.0),
                     SheetField(id = "f_initiative", key = "initiative", label = "INITIATIVE_MOD", kind = FieldKind.CALCULATED, formula = "dexterity + wits", showPlus = true),
                     SheetField(id = "f_defense", key = "defense", label = "DEFENSE", kind = FieldKind.CALCULATED, formula = "min(dexterity, wits)", showPlus = false)
                 )
@@ -235,6 +244,61 @@ object Presets {
             )
         )
     )
+
+    fun createWorldOfDarknessV5Sheet(deviceId: String = "local-device"): CharacterSheetState {
+        val base = createWorldOfDarknessSheet(deviceId)
+        val v5IdentityFields = listOf(
+            SheetField(id = "f_nome", key = "character_name", label = "NAME", kind = FieldKind.TEXT, textValue = "Nadia Voss"),
+            SheetField(id = "f_clan", key = "clan", label = "CLAN / FACTION", kind = FieldKind.TEXT, textValue = "Lasombra"),
+            SheetField(id = "f_generation", key = "generation", label = "GENERATION", kind = FieldKind.NUMBER, numValue = 12.0),
+            SheetField(id = "f_blood_potency", key = "blood_potency", label = "BLOOD_POTENCY", kind = FieldKind.CALCULATED, formula = "max(1, 13 - generation)", showPlus = false),
+            SheetField(id = "f_concept", key = "concept", label = "CONCEPT", kind = FieldKind.TEXT, textValue = "Harbor Broker"),
+            SheetField(id = "f_sire", key = "sire", label = "SIRE", kind = FieldKind.TEXT, textValue = "Marcus Vane"),
+            SheetField(id = "f_chronicle", key = "chronicle", label = "CHRONICLE", kind = FieldKind.TEXT, textValue = "Nocturne Harbor"),
+            SheetField(id = "f_predator_type", key = "predator_type", label = "PREDATOR TYPE", kind = FieldKind.TEXT, textValue = "Siren"),
+            SheetField(id = "f_ambition", key = "ambition", label = "AMBITION", kind = FieldKind.TEXT, textValue = "Control the Harbor Elysium"),
+            SheetField(id = "f_desire", key = "desire", label = "DESIRE", kind = FieldKind.TEXT, textValue = "Expose the rival Primogen"),
+            SheetField(id = "f_clan_bane", key = "clan_bane", label = "CLAN BANE", kind = FieldKind.TEXT, textValue = "Distorted Reflection"),
+            SheetField(id = "f_clan_compulsion", key = "clan_compulsion", label = "CLAN COMPULSION", kind = FieldKind.TEXT, textValue = "Ruthlessness")
+        )
+        val v5AttributeFields = listOf(
+            SheetField(id = "f_strength", key = "strength", label = "STRENGTH", kind = FieldKind.NUMBER, attributeGroup = "physical", numValue = 2.0),
+            SheetField(id = "f_dexterity", key = "dexterity", label = "DEXTERITY", kind = FieldKind.NUMBER, attributeGroup = "physical", numValue = 3.0),
+            SheetField(id = "f_stamina", key = "stamina", label = "STAMINA", kind = FieldKind.NUMBER, attributeGroup = "physical", numValue = 3.0),
+            SheetField(id = "f_charisma", key = "charisma", label = "CHARISMA", kind = FieldKind.NUMBER, attributeGroup = "social", numValue = 3.0),
+            SheetField(id = "f_manipulation", key = "manipulation", label = "MANIPULATION", kind = FieldKind.NUMBER, attributeGroup = "social", numValue = 4.0),
+            SheetField(id = "f_composure", key = "composure", label = "COMPOSURE", kind = FieldKind.NUMBER, attributeGroup = "social", numValue = 3.0),
+            SheetField(id = "f_intelligence", key = "intelligence", label = "INTELLIGENCE", kind = FieldKind.NUMBER, attributeGroup = "mental", numValue = 3.0),
+            SheetField(id = "f_wits", key = "wits", label = "WITS", kind = FieldKind.NUMBER, attributeGroup = "mental", numValue = 3.0),
+            SheetField(id = "f_resolve", key = "resolve", label = "RESOLVE", kind = FieldKind.NUMBER, attributeGroup = "mental", numValue = 2.0)
+        )
+        return base.copy(
+            id = "sheet_wod_v5",
+            systemName = "VAMPIRE: THE MASQUERADE // V5",
+            systemCode = "/SYS: WORLD OF DARKNESS · VAMPIRE V5",
+            characterName = "NADIA VOSS · NEONATE (LASOMBRA)",
+            rulePreset = XpRulePreset.VAMPIRE_V5,
+            xpRulePreset = XpRulePreset.VAMPIRE_V5,
+            cards = base.cards.map { card ->
+                when (card.id) {
+                    "card_identidade" -> card.copy(fields = v5IdentityFields)
+                    "card_atributos" -> card.copy(fields = v5AttributeFields + card.fields.filter { it.kind == FieldKind.CALCULATED })
+                    "card_combate" -> card.copy(
+                        fields = card.fields.map { f ->
+                            when (f.id) {
+                                "f_health" -> f.copy(max = 6, maxFormula = "stamina + 3", numValue = 6.0, superficialDamage = 0, aggravatedDamage = 0)
+                                "f_willpower" -> f.copy(max = 5, maxFormula = "composure + resolve", numValue = 5.0, superficialDamage = 0, aggravatedDamage = 0)
+                                else -> f
+                            }
+                        }
+                    )
+                    else -> card
+                }
+            },
+            rollLogs = emptyList(),
+            xp = XpState(totalEarned = 15, spent = 0, ledger = emptyList(), xpRulePreset = XpRulePreset.VAMPIRE_V5)
+        )
+    }
 
     fun createDnd5ePreset(deviceId: String = "local-device"): CharacterSheetState = CharacterSheetState(
         id = "sheet_dnd5e",
@@ -626,6 +690,63 @@ object Presets {
         )
     }
 
+    private data class WodAttrSpec(
+        val id: String,
+        val key: String,
+        val label: String,
+        val attributeGroup: String
+    )
+
+    private data class WodIdSpec(
+        val id: String,
+        val key: String,
+        val label: String
+    )
+
+    private val WOD_V20_ATTR_SPECS = listOf(
+        WodAttrSpec("f_strength", "strength", "STRENGTH", "physical"),
+        WodAttrSpec("f_dexterity", "dexterity", "DEXTERITY", "physical"),
+        WodAttrSpec("f_stamina", "stamina", "STAMINA", "physical"),
+        WodAttrSpec("f_charisma", "charisma", "CHARISMA", "social"),
+        WodAttrSpec("f_manipulation", "manipulation", "MANIPULATION", "social"),
+        WodAttrSpec("f_appearance", "appearance", "APPEARANCE", "social"),
+        WodAttrSpec("f_perception", "perception", "PERCEPTION", "mental"),
+        WodAttrSpec("f_intelligence", "intelligence", "INTELLIGENCE", "mental"),
+        WodAttrSpec("f_wits", "wits", "WITS", "mental")
+    )
+
+    private val WOD_V5_ATTR_SPECS = listOf(
+        WodAttrSpec("f_strength", "strength", "STRENGTH", "physical"),
+        WodAttrSpec("f_dexterity", "dexterity", "DEXTERITY", "physical"),
+        WodAttrSpec("f_stamina", "stamina", "STAMINA", "physical"),
+        WodAttrSpec("f_charisma", "charisma", "CHARISMA", "social"),
+        WodAttrSpec("f_manipulation", "manipulation", "MANIPULATION", "social"),
+        WodAttrSpec("f_composure", "composure", "COMPOSURE", "social"),
+        WodAttrSpec("f_intelligence", "intelligence", "INTELLIGENCE", "mental"),
+        WodAttrSpec("f_wits", "wits", "WITS", "mental"),
+        WodAttrSpec("f_resolve", "resolve", "RESOLVE", "mental")
+    )
+
+    private val WOD_V20_IDENTITY_SPECS = listOf(
+        WodIdSpec("f_concept", "concept", "CONCEPT"),
+        WodIdSpec("f_sire", "sire", "SIRE"),
+        WodIdSpec("f_chronicle", "chronicle", "CHRONICLE"),
+        WodIdSpec("f_nature", "nature", "NATURE"),
+        WodIdSpec("f_demeanor", "demeanor", "DEMEANOR"),
+        WodIdSpec("f_clan_weakness", "clan_weakness", "CLAN WEAKNESS")
+    )
+
+    private val WOD_V5_IDENTITY_SPECS = listOf(
+        WodIdSpec("f_concept", "concept", "CONCEPT"),
+        WodIdSpec("f_sire", "sire", "SIRE"),
+        WodIdSpec("f_chronicle", "chronicle", "CHRONICLE"),
+        WodIdSpec("f_predator_type", "predator_type", "PREDATOR TYPE"),
+        WodIdSpec("f_ambition", "ambition", "AMBITION"),
+        WodIdSpec("f_desire", "desire", "DESIRE"),
+        WodIdSpec("f_clan_bane", "clan_bane", "CLAN BANE"),
+        WodIdSpec("f_clan_compulsion", "clan_compulsion", "CLAN COMPULSION")
+    )
+
     fun migrateLegacyWodSheet(
         sheet: CharacterSheetState,
         deviceId: String = "local-device",
@@ -633,19 +754,24 @@ object Presets {
     ): CharacterSheetState {
         val withMeta = migrateSheetMetadata(sheet, deviceId, nowIso)
         if (detectSystemId(withMeta) != SystemId.WOD) return withMeta
+        val isV5 = XpSystem.resolveRulePreset(withMeta) == XpRulePreset.VAMPIRE_V5
+        val expectedAttrs = if (isV5) WOD_V5_ATTR_SPECS else WOD_V20_ATTR_SPECS
+        val attrGroupByKey = expectedAttrs.associate { it.key to it.attributeGroup }
+        val expectedIdentity = if (isV5) WOD_V5_IDENTITY_SPECS else WOD_V20_IDENTITY_SPECS
+
         var changed = false
         val updatedCards = withMeta.cards.map { card ->
-            if (card.id != "card_combate") return@map card
             var cardChanged = false
-            val nextTitle = if (card.title == "HEALTH · WILLPOWER · BLOOD") {
+            val nextTitle = if (card.id == "card_combate" && card.title == "HEALTH · WILLPOWER · BLOOD") {
                 cardChanged = true
                 "HEALTH · WILLPOWER · HUNGER"
             } else {
                 card.title
             }
-            val nextFields = card.fields.map { field ->
+            var nextFields = card.fields.map { field ->
+                val fk = field.key.trim().lowercase()
                 when {
-                    field.id == "f_blood_pool" || field.key == "blood_pool" -> {
+                    card.id == "card_combate" && (field.id == "f_blood_pool" || fk == "blood_pool") -> {
                         cardChanged = true
                         SheetField(
                             id = "f_hunger",
@@ -656,19 +782,76 @@ object Presets {
                             max = 5
                         )
                     }
-                    field.id == "f_health" && field.damageTrack != true -> {
+                    card.id == "card_combate" && field.id == "f_health" && field.damageTrack != true -> {
                         cardChanged = true
                         val maxVal = kotlin.math.max(1, field.max ?: 7)
                         val curr = kotlin.math.max(0, kotlin.math.min(maxVal, (field.numValue ?: maxVal.toDouble()).toInt()))
                         field.copy(
                             max = maxVal,
+                            maxFormula = if (isV5 && field.maxFormula.isNullOrBlank()) "stamina + 3" else field.maxFormula,
                             numValue = curr.toDouble(),
                             damageTrack = true,
                             superficialDamage = field.superficialDamage ?: 0,
                             aggravatedDamage = field.aggravatedDamage ?: kotlin.math.max(0, maxVal - curr)
                         )
                     }
+                    card.id == "card_combate" && isV5 && field.kind == FieldKind.RESOURCE && (field.id == "f_health" || fk == "health") && field.maxFormula.isNullOrBlank() -> {
+                        cardChanged = true
+                        field.copy(maxFormula = "stamina + 3")
+                    }
+                    card.id == "card_combate" && isV5 && field.kind == FieldKind.RESOURCE && (field.id == "f_willpower" || fk == "willpower") && field.maxFormula.isNullOrBlank() -> {
+                        cardChanged = true
+                        field.copy(maxFormula = "composure + resolve")
+                    }
+                    card.id == "card_atributos" && field.attributeGroup == null && attrGroupByKey.containsKey(fk) -> {
+                        cardChanged = true
+                        field.copy(attributeGroup = attrGroupByKey[fk])
+                    }
                     else -> field
+                }
+            }
+            if (card.id == "card_atributos") {
+                val existingIds = nextFields.map { it.id }.toSet()
+                val existingKeys = nextFields.map { it.key.trim().lowercase() }.toSet()
+                val missingAttrs = expectedAttrs
+                    .filter { it.id !in existingIds && it.key !in existingKeys }
+                    .map { spec ->
+                        SheetField(
+                            id = spec.id,
+                            key = spec.key,
+                            label = spec.label,
+                            kind = FieldKind.NUMBER,
+                            attributeGroup = spec.attributeGroup,
+                            numValue = 1.0
+                        )
+                    }
+                if (missingAttrs.isNotEmpty()) {
+                    cardChanged = true
+                    val firstCalcIdx = nextFields.indexOfFirst { it.kind == FieldKind.CALCULATED }
+                    nextFields = if (firstCalcIdx != -1) {
+                        nextFields.subList(0, firstCalcIdx) + missingAttrs + nextFields.subList(firstCalcIdx, nextFields.size)
+                    } else {
+                        nextFields + missingAttrs
+                    }
+                }
+            }
+            if (card.id == "card_identidade") {
+                val existingIds = nextFields.map { it.id }.toSet()
+                val existingKeys = nextFields.map { it.key.trim().lowercase() }.toSet()
+                val missingIdentity = expectedIdentity
+                    .filter { it.id !in existingIds && it.key !in existingKeys }
+                    .map { spec ->
+                        SheetField(
+                            id = spec.id,
+                            key = spec.key,
+                            label = spec.label,
+                            kind = FieldKind.TEXT,
+                            textValue = ""
+                        )
+                    }
+                if (missingIdentity.isNotEmpty()) {
+                    cardChanged = true
+                    nextFields = nextFields + missingIdentity
                 }
             }
             if (cardChanged) {
@@ -682,7 +865,8 @@ object Presets {
     }
 
     private val WOD_BASE_ONE_KEYS = setOf(
-        "strength", "dexterity", "stamina", "charisma", "manipulation", "wits"
+        "strength", "dexterity", "stamina", "charisma", "manipulation",
+        "appearance", "composure", "perception", "intelligence", "wits", "resolve"
     )
 
     private val DND_ABILITY_KEYS = setOf(
@@ -858,6 +1042,28 @@ object Presets {
         }
     }
 
+    fun loadNamedPresetsFromJson(
+        rawJson: String,
+        deviceId: String = "local-device"
+    ): Map<String, CharacterSheetState> = runCatching {
+        val bundle = presetJson.decodeFromString(PresetBundleV2.serializer(), rawJson)
+        val decodedMap = LinkedHashMap<String, CharacterSheetState>()
+        for ((key, rawSheet) in bundle.presets) {
+            val normalized = normalizePresetSheetElement(rawSheet)
+            val sheet = runCatching {
+                presetJson.decodeFromJsonElement(CharacterSheetState.serializer(), normalized)
+            }.getOrNull() ?: continue
+            val resolvedSysId = sheet.systemId
+                ?: enumValues<SystemId>().firstOrNull { it.name.equals(key, ignoreCase = true) }
+                ?: detectSystemId(sheet)
+            decodedMap[key] = migrateLegacyWodSheet(
+                sheet.copy(systemId = resolvedSysId, deviceId = deviceId),
+                deviceId
+            )
+        }
+        decodedMap
+    }.getOrDefault(emptyMap())
+
     fun loadPresetsFromJson(
         rawJson: String,
         deviceId: String = "local-device"
@@ -912,13 +1118,33 @@ object Presets {
         )
     }
 
+    private fun normalizeRulePresetString(raw: String): String = when (raw) {
+        "storyteller-v20" -> "storyteller_v20"
+        "vampire-v5" -> "vampire_v5"
+        else -> raw
+    }
+
     /**
-     * Converts v2 web-style preset fields (`"value": 10|"text"|true` and numeric `row.col2`)
-     * into typed Android `SheetField` properties (`numValue`/`textValue`/`boolValue`).
+     * Converts v2 web-style preset fields (`"value": 10|"text"|true`, numeric `row.col2`,
+     * and hyphenated `rulePreset`/`xpRulePreset`) into typed Android `SheetField` properties.
      */
     internal fun normalizePresetSheetElement(element: JsonElement): JsonObject {
         val sheetObj = element as? JsonObject ?: return JsonObject(emptyMap())
-        val rawCards = sheetObj["cards"] as? JsonArray ?: return sheetObj
+        val sheetMutable = sheetObj.toMutableMap()
+        (sheetMutable["rulePreset"] as? JsonPrimitive)?.takeIf { it.isString }?.let { prim ->
+            sheetMutable["rulePreset"] = JsonPrimitive(normalizeRulePresetString(prim.content))
+        }
+        (sheetMutable["xpRulePreset"] as? JsonPrimitive)?.takeIf { it.isString }?.let { prim ->
+            sheetMutable["xpRulePreset"] = JsonPrimitive(normalizeRulePresetString(prim.content))
+        }
+        (sheetMutable["xp"] as? JsonObject)?.let { xpObj ->
+            val xpMutable = xpObj.toMutableMap()
+            (xpMutable["xpRulePreset"] as? JsonPrimitive)?.takeIf { it.isString }?.let { prim ->
+                xpMutable["xpRulePreset"] = JsonPrimitive(normalizeRulePresetString(prim.content))
+            }
+            sheetMutable["xp"] = JsonObject(xpMutable)
+        }
+        val rawCards = sheetMutable["cards"] as? JsonArray ?: return JsonObject(sheetMutable)
         val normalizedCards = JsonArray(rawCards.map { cardElem ->
             val cardObj = cardElem as? JsonObject ?: return@map cardElem
             val rawFields = cardObj["fields"] as? JsonArray ?: return@map cardObj
@@ -956,6 +1182,7 @@ object Presets {
             })
             JsonObject(cardObj.toMutableMap().apply { put("fields", normalizedFields) })
         })
-        return JsonObject(sheetObj.toMutableMap().apply { put("cards", normalizedCards) })
+        sheetMutable["cards"] = normalizedCards
+        return JsonObject(sheetMutable)
     }
 }

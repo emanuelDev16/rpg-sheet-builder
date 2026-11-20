@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { AppLanguage, createTranslator } from '../core/i18n';
+import type { RulePreset } from '../core/sheetModel';
 import { ThemeMode } from '../utils/theme';
 import { ThemeSelector } from './ThemeSelector';
 
@@ -38,7 +39,7 @@ export interface HomeViewProps {
   onChangeTheme?: (theme: ThemeMode) => void;
   onContinueSheet: () => void;
   onSelectSheet: (id: string) => void;
-  onCreateSheet: (systemId: string, customName?: string) => void;
+  onCreateSheet: (systemId: string, customName?: string, rulePreset?: RulePreset) => void;
   onDuplicateSheet: (id: string) => void;
   onDeleteSheet: (id: string) => void;
   onOpenImportExport: () => void;
@@ -271,15 +272,38 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 </p>
               </div>
 
-              <button
-                type="button"
-                onClick={() => onCreateSheet(sys.id)}
-                className="cyber-btn-outline flex min-h-[40px] w-full items-center justify-center gap-2 px-3 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
-              >
-                <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-                <span>{t('home.createInSystem', { system: sys.id.toUpperCase() })}</span>
-                <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
-              </button>
+              {sys.id === 'wod' ? (
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    data-testid="home-create-wod-v5"
+                    onClick={() => onCreateSheet('wod', undefined, 'vampire-v5')}
+                    className="cyber-roll-btn flex min-h-[40px] w-full items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{t('home.createWodV5')}</span>
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="home-create-wod-v20"
+                    onClick={() => onCreateSheet('wod', undefined, 'storyteller-v20')}
+                    className="cyber-btn-outline flex min-h-[40px] w-full items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+                  >
+                    <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                    <span>{t('home.createWodV20')}</span>
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => onCreateSheet(sys.id)}
+                  className="cyber-btn-outline flex min-h-[40px] w-full items-center justify-center gap-2 px-3 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+                >
+                  <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                  <span>{t('home.createInSystem', { system: sys.id.toUpperCase() })}</span>
+                  <ArrowRight className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
+                </button>
+              )}
             </article>
           ))}
 

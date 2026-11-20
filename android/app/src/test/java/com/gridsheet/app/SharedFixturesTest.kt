@@ -175,4 +175,27 @@ class SharedFixturesTest {
         val abusivePool = FormulaEngine.rollDiceExpression("pool(500000, 6)", emptyMap())
         assertFalse(abusivePool.ok)
     }
+
+    @Test
+    fun transferRoundTripsV5SheetWithOptionalContractFieldsCleanly() {
+        val v5Base = com.gridsheet.app.core.Presets.createWorldOfDarknessV5Sheet("roundtrip-dev")
+        val enriched = v5Base.copy(
+            bloodSurge = true,
+            virtues = com.gridsheet.app.core.VirtuesState(conscience = 3, selfControl = 4, courage = 5)
+        )
+        val encoded = SheetTransfer.encodeEnvelope(listOf(enriched), "2026-11-20T14:00:00Z")
+        val webStyleJson = encoded.replace("\"vampire_v5\"", "\"vampire-v5\"")
+        val roundTripped = SheetTransfer.parseImportPayload(webStyleJson, deviceId = "roundtrip-dev")
+
+        assertEquals(1, roundTripped.size)
+        val sheet = roundTripped.single()
+        assertEquals(XpRulePreset.VAMPIRE_V5, sheet.rulePreset)
+        assertEquals(XpRulePreset.VAMPIRE_V5, sheet.xpRulePreset)
+        assertEquals(true, sheet.bloodSurge)
+        assertEquals(4, sheet.virtues?.selfControl)
+        val health = sheet.cards.first { it.id == "card_combate" }.fields.first { it.id == "f_health" }
+        assertEquals("stamina + 3", health.maxFormula)
+        val composure = sheet.cards.first { it.id == "card_atributos" }.fields.first { it.id == "f_composure" }
+        assertEquals("social", composure.attributeGroup)
+    }
 }

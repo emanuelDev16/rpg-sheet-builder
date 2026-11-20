@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.intOrNull
 import java.io.ByteArrayOutputStream
 import java.io.InputStream
@@ -152,30 +153,46 @@ data class RepeatableRow(
 )
 
 @Serializable
+data class VirtuesState(
+    val conscience: Int? = null,
+    val selfControl: Int? = null,
+    val courage: Int? = null
+)
+
+@Serializable
 data class SheetField(
     val id: String,
     val key: String,
     val label: String,
     val kind: FieldKind,
+    val attributeGroup: String? = null,
     val numValue: Double? = null,
     val textValue: String? = null,
     val boolValue: Boolean? = null,
     val max: Int? = null,
+    val maxFormula: String? = null,
     val damageTrack: Boolean? = null,
     val superficialDamage: Int? = null,
     val aggravatedDamage: Int? = null,
     val bashingDamage: Int? = null,
     val lethalDamage: Int? = null,
+    val soakDamageType: String? = null,
     val formula: String? = null,
     val showPlus: Boolean? = null,
     val rollLabel: String? = null,
     val rollExpr: String? = null,
     val rollDifficulty: Int? = null,
+    val rollDifficultyV5: Int? = null,
+    val rollMod: Int? = null,
     val rollSpecialty: Boolean? = null,
+    val useWillpower: Boolean? = null,
+    val isSoak: Boolean? = null,
+    val xpCategory: XpUpgradeCategory? = null,
     val columns: List<String>? = null,
     val col2Type: String? = null, // "number" | "text"
     val rows: List<RepeatableRow>? = null,
-    val hint: String? = null
+    val hint: String? = null,
+    val placeholder: String? = null
 )
 
 @Serializable
@@ -246,7 +263,12 @@ data class CharacterSheetState(
     val cards: List<SheetCard>,
     val rollLogs: List<RollLogEntry> = emptyList(),
     val xp: XpState = XpState(),
-    val rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20
+    val rulePreset: XpRulePreset = XpRulePreset.STORYTELLER_V20,
+    val xpRulePreset: XpRulePreset? = null,
+    val customUseNewLevelBase: Boolean? = null,
+    val bloodPool: Int? = null,
+    val bloodSurge: Boolean? = null,
+    val virtues: VirtuesState? = null
 )
 
 typealias Sheet = CharacterSheetState
@@ -377,6 +399,34 @@ object SheetEvaluator {
         val roundedCargo = ((totalCargoWeight * 100.0).roundToInt() / 100.0)
         variables["carga_total"] = roundedCargo
 
+        // Resolve dynamic resource maxFormula expressions (e.g. V5 health = stamina + 3, willpower = composure + resolve)
+        for (card in sheet.cards) {
+            for (field in card.fields) {
+                if (field.kind != FieldKind.RESOURCE) continue
+                val maxFormula = field.maxFormula?.trim()
+                if (maxFormula.isNullOrEmpty()) continue
+                val key = field.key.trim().lowercase()
+                val maxRes = FormulaEngine.evaluateFormula(
+                    expression = maxFormula,
+                    vars = variables,
+                    showPlus = false
+                )
+                if (maxRes.ok && maxRes.value.isFinite()) {
+                    if (key.isNotEmpty()) {
+                        variables["${key}_max"] = max(1, maxRes.value.roundToInt()).toDouble()
+                    }
+                } else {
+                    formulaErrors.add(
+                        FormulaErrorInfo(
+                            fieldId = field.id,
+                            label = field.label,
+                            error = maxRes.error ?: "Fórmula de máximo inválida"
+                        )
+                    )
+                }
+            }
+        }
+
         val activeRulePreset = XpSystem.resolveRulePreset(sheet)
         var woundPenalty = 0
         if (XpSystem.isWodSystem(sheet)) {
@@ -477,8 +527,91 @@ object SheetEvaluator {
 }
 
 object SheetMutators {
-    fun updateNumberField(sheet: CharacterSheetState, fieldId: String, value: Double): CharacterSheetState =
-        mapField(sheet, fieldId) { it.copy(numValue = value) }
+    private fun syncV5DerivedTrackMaxes(
+        sheet: CharacterSheetState,
+        changedFieldId: String
+    ): CharacterSheetState {
+        if (XpSystem.resolveRulePreset(sheet) != XpRulePreset.VAMPIRE_V5) return sheet
+        val allFields = sheet.cards.flatMap { it.fields }
+        val editedField = allFields.find { it.id == changedFieldId } ?: return sheet
+        if (editedField.kind != FieldKind.NUMBER) return sheet
+
+        val editedKey = editedField.key.trim().lowercase()
+        val isStaminaEdit = editedField.id == "f_stamina" || editedKey == "stamina"
+        val isWillpowerAttrEdit = editedKey == "composure" || editedKey == "resolve"
+        if (!isStaminaEdit && !isWillpowerAttrEdit) return sheet
+
+        val attrVars = LinkedHashMap<String, Double>()
+        for (f in allFields) {
+            if (f.kind != FieldKind.NUMBER) continue
+            val fk = f.key.trim().lowercase()
+            val num = f.numValue
+            if (fk.isNotEmpty() && num != null && num.isFinite()) {
+                attrVars[fk] = num.roundToInt().toDouble()
+            }
+        }
+
+        fun evalDerivedMax(maxFormula: String?, fallbackFormula: String, minFloor: Int): Int {
+            val expr = maxFormula?.trim()?.takeIf { it.isNotEmpty() } ?: fallbackFormula
+            val res = FormulaEngine.evaluateFormula(expr, attrVars, showPlus = false)
+            if (res.ok && res.value.isFinite()) {
+                return max(minFloor, res.value.roundToInt())
+            }
+            val fallback = FormulaEngine.evaluateFormula(fallbackFormula, attrVars, showPlus = false)
+            return if (fallback.ok && fallback.value.isFinite()) {
+                max(minFloor, fallback.value.roundToInt())
+            } else {
+                minFloor
+            }
+        }
+
+        val hasComposure = allFields.any {
+            it.kind == FieldKind.NUMBER && it.key.trim().lowercase() == "composure"
+        }
+        val hasResolve = allFields.any {
+            it.kind == FieldKind.NUMBER && it.key.trim().lowercase() == "resolve"
+        }
+
+        return sheet.copy(
+            cards = sheet.cards.map { card ->
+                card.copy(
+                    fields = card.fields.map { f ->
+                        val fk = f.key.trim().lowercase()
+                        when {
+                            isStaminaEdit && f.kind == FieldKind.RESOURCE && (f.id == "f_health" || fk == "health") -> {
+                                val nextHealthMax = evalDerivedMax(f.maxFormula, "stamina + 3", 4)
+                                val agg = (f.aggravatedDamage ?: 0).coerceIn(0, nextHealthMax)
+                                val sup = (f.superficialDamage ?: 0).coerceIn(0, nextHealthMax - agg)
+                                f.copy(
+                                    max = nextHealthMax,
+                                    aggravatedDamage = agg,
+                                    superficialDamage = sup,
+                                    numValue = max(0, nextHealthMax - agg - sup).toDouble()
+                                )
+                            }
+                            isWillpowerAttrEdit && hasComposure && hasResolve && f.kind == FieldKind.RESOURCE && (f.id == "f_willpower" || fk == "willpower") -> {
+                                val nextWpMax = evalDerivedMax(f.maxFormula, "composure + resolve", 2)
+                                val agg = (f.aggravatedDamage ?: 0).coerceIn(0, nextWpMax)
+                                val sup = (f.superficialDamage ?: 0).coerceIn(0, nextWpMax - agg)
+                                f.copy(
+                                    max = nextWpMax,
+                                    superficialDamage = if (f.superficialDamage != null || f.aggravatedDamage != null) sup else null,
+                                    aggravatedDamage = if (f.superficialDamage != null || f.aggravatedDamage != null) agg else null,
+                                    numValue = max(0, nextWpMax - agg - sup).toDouble()
+                                )
+                            }
+                            else -> f
+                        }
+                    }
+                )
+            }
+        )
+    }
+
+    fun updateNumberField(sheet: CharacterSheetState, fieldId: String, value: Double): CharacterSheetState {
+        val updated = mapField(sheet, fieldId) { it.copy(numValue = value) }
+        return if (value.isFinite()) syncV5DerivedTrackMaxes(updated, fieldId) else updated
+    }
 
     fun updateTextField(sheet: CharacterSheetState, fieldId: String, value: String): CharacterSheetState =
         mapField(sheet, fieldId) { it.copy(textValue = value) }
@@ -873,6 +1006,10 @@ object SheetPayloadValidator {
     private val allowedRulePresets = setOf(
         "storyteller_v20", "storyteller-v20", "vampire_v5", "vampire-v5", "custom"
     )
+    private val allowedAttributeGroups = setOf("physical", "social", "mental")
+    private val allowedSoakDamageTypes = setOf("bashing", "lethal", "aggravated")
+    private val allowedXpCategories = setOf("attribute", "skill", "discipline", "virtue")
+    private val virtueKeys = setOf("conscience", "selfControl", "courage")
     val rootKeys = setOf(
         "id", "systemId", "systemName", "systemCode", "characterName",
         "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp", "rulePreset",
@@ -881,10 +1018,10 @@ object SheetPayloadValidator {
     val cardKeys = setOf("id", "tab", "code", "title", "colSpan", "fields")
     val fieldKeys = setOf(
         "id", "key", "label", "kind", "value", "numValue", "textValue", "boolValue",
-        "max", "damageTrack", "superficialDamage", "aggravatedDamage", "bashingDamage", "lethalDamage",
-        "soakDamageType", "formula", "showPlus", "rollLabel", "rollExpr", "rollDifficulty",
-        "rollDifficultyV5", "rollMod", "rollSpecialty", "useWillpower", "isSoak", "xpCategory",
-        "columns", "col2Type", "rows", "hint", "placeholder"
+        "max", "maxFormula", "attributeGroup", "damageTrack", "superficialDamage", "aggravatedDamage",
+        "bashingDamage", "lethalDamage", "soakDamageType", "formula", "showPlus", "rollLabel", "rollExpr",
+        "rollDifficulty", "rollDifficultyV5", "rollMod", "rollSpecialty", "useWillpower", "isSoak",
+        "xpCategory", "columns", "col2Type", "rows", "hint", "placeholder"
     )
     private val rowKeys = setOf("id", "col1", "col2")
 
@@ -932,6 +1069,42 @@ object SheetPayloadValidator {
             val rev = prim.intOrNull
             if (rev == null || rev < 1) {
                 errors.add("$.revision: deve ser inteiro >= 1.")
+            }
+        }
+        root["customUseNewLevelBase"]?.let { elem ->
+            val prim = elem as? JsonPrimitive
+            if (prim == null || prim.isString || prim.booleanOrNull == null) {
+                errors.add("$.customUseNewLevelBase: deve ser booleano.")
+            }
+        }
+        root["bloodPool"]?.let { elem ->
+            val prim = elem as? JsonPrimitive
+            val bp = if (prim != null && !prim.isString) prim.intOrNull else null
+            if (bp == null || bp !in 0..50) {
+                errors.add("$.bloodPool: deve ser inteiro entre 0 e 50.")
+            }
+        }
+        root["bloodSurge"]?.let { elem ->
+            val prim = elem as? JsonPrimitive
+            if (prim == null || prim.isString || prim.booleanOrNull == null) {
+                errors.add("$.bloodSurge: deve ser booleano.")
+            }
+        }
+        root["virtues"]?.let { elem ->
+            val virtuesObj = elem as? JsonObject
+            if (virtuesObj == null) {
+                errors.add("$.virtues: esperado objeto JSON.")
+            } else {
+                checkObjectKeys(virtuesObj, "$.virtues", virtueKeys, errors)
+                for (vk in virtueKeys) {
+                    virtuesObj[vk]?.let { vElem ->
+                        val prim = vElem as? JsonPrimitive
+                        val vv = if (prim != null && !prim.isString) prim.intOrNull else null
+                        if (vv == null || vv !in 1..5) {
+                            errors.add("$.virtues.$vk: deve ser inteiro entre 1 e 5.")
+                        }
+                    }
+                }
             }
         }
 
@@ -983,6 +1156,37 @@ object SheetPayloadValidator {
                         val maxVal = maxPrim.intOrNull
                         if (maxVal == null || maxVal !in 1..100000) {
                             errors.add("$fPath.max: deve ser inteiro entre 1 e 100000.")
+                        }
+                    }
+                    fieldObj["maxFormula"]?.let { elem ->
+                        val prim = elem as? JsonPrimitive
+                        if (prim == null || !prim.isString || prim.content.length > 256) {
+                            errors.add("$fPath.maxFormula: deve ser string (máx 256 caracteres).")
+                        }
+                    }
+                    fieldObj["attributeGroup"]?.let { elem ->
+                        val prim = elem as? JsonPrimitive
+                        if (prim == null || !prim.isString || prim.content !in allowedAttributeGroups) {
+                            errors.add("$fPath.attributeGroup: grupo inválido '${prim?.content}'.")
+                        }
+                    }
+                    fieldObj["soakDamageType"]?.let { elem ->
+                        val prim = elem as? JsonPrimitive
+                        if (prim == null || !prim.isString || prim.content !in allowedSoakDamageTypes) {
+                            errors.add("$fPath.soakDamageType: tipo inválido '${prim?.content}'.")
+                        }
+                    }
+                    fieldObj["xpCategory"]?.let { elem ->
+                        val prim = elem as? JsonPrimitive
+                        if (prim == null || !prim.isString || prim.content !in allowedXpCategories) {
+                            errors.add("$fPath.xpCategory: categoria inválida '${prim?.content}'.")
+                        }
+                    }
+                    fieldObj["rollMod"]?.let { elem ->
+                        val prim = elem as? JsonPrimitive
+                        val modVal = if (prim != null && !prim.isString) prim.intOrNull else null
+                        if (modVal == null || modVal !in -100..100) {
+                            errors.add("$fPath.rollMod: deve ser inteiro entre -100 e 100.")
                         }
                     }
                     (fieldObj["rollDifficulty"] as? JsonPrimitive)?.let { diffPrim ->
@@ -1192,6 +1396,9 @@ object SheetTransfer {
         val resolvedRule = (rawRule ?: rawXpRule)?.let(::normalizeRulePresetToken)
         if (resolvedRule != null) {
             mutable["rulePreset"] = JsonPrimitive(resolvedRule)
+        }
+        if (rawXpRule != null) {
+            mutable["xpRulePreset"] = JsonPrimitive(normalizeRulePresetToken(rawXpRule))
         }
         (mutable["xp"] as? JsonObject)?.let { xpObj ->
             val xpMutable = xpObj.toMutableMap()

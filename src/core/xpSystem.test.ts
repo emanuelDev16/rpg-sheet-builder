@@ -291,3 +291,27 @@ test('buyBackgroundWithXp auto-creates card, allows subsequent upgrade, and undo
   assert.equal(getAvailableXp(undo1.sheet.xp), 14);
   assert.equal(undo1.sheet.cards.some((c) => c.id === 'card_backgrounds'), false);
 });
+
+test('extractAllTraits classifies all 9 V5 attributes and all 9 V20 attributes with accurate pricing', () => {
+  const v5 = createNewSheetForSystem('wod', { rulePreset: 'vampire-v5' });
+  const v5Traits = extractAllTraits(v5);
+  const v5AttrTraits = v5Traits.filter((t) => t.category === 'attribute');
+  assert.equal(v5AttrTraits.length, 9);
+  for (const key of ['composure', 'resolve', 'intelligence']) {
+    const trait = v5AttrTraits.find((t) => t.key === key);
+    assert.ok(trait, `Expected V5 attribute ${key} to classify as attribute`);
+    assert.equal(trait.currentValue, 1);
+    assert.equal(trait.cost, 10); // nextLevel (2) * 5
+  }
+
+  const v20 = createDefaultSheet();
+  const v20Traits = extractAllTraits(v20);
+  const v20AttrTraits = v20Traits.filter((t) => t.category === 'attribute');
+  assert.equal(v20AttrTraits.length, 9);
+  for (const key of ['appearance', 'perception', 'intelligence']) {
+    const trait = v20AttrTraits.find((t) => t.key === key);
+    assert.ok(trait, `Expected V20 attribute ${key} to classify as attribute`);
+    assert.equal(trait.currentValue, 3);
+    assert.equal(trait.cost, 12); // currentLevel (3) * 4
+  }
+});

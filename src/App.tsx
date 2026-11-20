@@ -1510,15 +1510,19 @@ function HydratedAppWorkspace({
                 setActiveView('sheet');
               }}
               onSelectSheet={(id) => void handleSelectHomeSheet(id)}
-              onCreateSheet={(systemId, customName) => {
+              onCreateSheet={(systemId, customName, rulePreset) => {
                 const validIds: SystemId[] = ['wod', 'dnd5e', 'cyberpunk', 'default', 'blank'];
                 const resolvedSys = (
                   validIds.includes(systemId as SystemId) ? systemId : 'blank'
                 ) as SystemId;
-                handleCreateNewSheet(
-                  resolvedSys,
-                  customName ? { characterName: customName } : undefined,
-                );
+                const identityInput =
+                  customName || rulePreset
+                    ? {
+                        ...(customName ? { characterName: customName } : {}),
+                        ...(rulePreset ? { rulePreset } : {}),
+                      }
+                    : undefined;
+                handleCreateNewSheet(resolvedSys, identityInput);
               }}
               onDuplicateSheet={(id) => void handleDuplicateHomeSheet(id)}
               onDeleteSheet={(id) => void handleDeleteHomeSheet(id)}

@@ -225,10 +225,12 @@ const ATTRIBUTE_KEYS = new Set([
   'charisma',
   'manipulation',
   'appearance',
+  'composure',
   'perception',
   'intelligence',
   'wisdom',
   'wits',
+  'resolve',
   'forca',
   'destreza',
   'constituicao',
@@ -236,8 +238,10 @@ const ATTRIBUTE_KEYS = new Set([
   'sabedoria',
   'carisma',
   'aparencia',
+  'percepcao',
   'raciocinio',
   'inteligencia',
+  'determinacao',
   'vigor',
 ]);
 
