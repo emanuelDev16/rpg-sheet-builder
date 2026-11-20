@@ -3,6 +3,7 @@ import { Trash2, X } from 'lucide-react';
 import { RollLogEntry, SystemId } from '../core/sheetModel';
 import { AppLanguage, AppTranslations } from '../core/i18n';
 import { RulesSearchPanel } from './RulesSearchPanel';
+import { useFocusTrap } from '../utils/useFocusTrap';
 
 export type SidebarTab = 'logs' | 'rules';
 
@@ -19,6 +20,8 @@ interface RollLogSidebarProps {
   onCancelReroll?: () => void;
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
+  requestedTab?: SidebarTab;
+  requestedTabSeq?: number;
   isMobileOpen?: boolean;
   onCloseMobile?: () => void;
 }
@@ -239,17 +242,23 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   onCancelReroll,
   onQuickRoll,
   onClearLogs,
+  requestedTab,
+  requestedTabSeq = 0,
   isMobileOpen = false,
   onCloseMobile,
 }) => {
-  const [sidebarTab, setSidebarTab] = useState<SidebarTab>('logs');
+  const [sidebarTab, setSidebarTab] = useState<SidebarTab>(requestedTab ?? 'logs');
   const quickDice = useMemo(() => getQuickDicePresets(systemId), [systemId]);
   const [customExpr, setCustomExpr] = useState(systemId === 'wod' ? '5d10@6' : quickDice[0]);
   const [selectedRerollIndices, setSelectedRerollIndices] = useState<number[]>([]);
+  const mobileDrawerRef = useRef<HTMLElement>(null);
   const mobileCloseBtnRef = useRef<HTMLButtonElement>(null);
-  const previousFocusRef = useRef<HTMLElement | null>(null);
-  const onCloseMobileRef = useRef(onCloseMobile);
-  onCloseMobileRef.current = onCloseMobile;
+
+  useEffect(() => {
+    if (requestedTab && requestedTabSeq > 0) {
+      setSidebarTab(requestedTab);
+    }
+  }, [requestedTab, requestedTabSeq]);
 
   useEffect(() => {
     setSelectedRerollIndices([]);
@@ -262,29 +271,12 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
     setCustomExpr(systemId === 'wod' ? '5d10@6' : getQuickDicePresets(systemId)[0]);
   }, [systemId]);
 
-  useEffect(() => {
-    if (!isMobileOpen || !onCloseMobileRef.current) return;
-    previousFocusRef.current =
-      document.activeElement instanceof HTMLElement ? document.activeElement : null;
-
-    const rafId = window.requestAnimationFrame(() => {
-      mobileCloseBtnRef.current?.focus();
-    });
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        e.preventDefault();
-        onCloseMobileRef.current?.();
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => {
-      window.cancelAnimationFrame(rafId);
-      window.removeEventListener('keydown', handleKeyDown);
-      previousFocusRef.current?.focus?.();
-      previousFocusRef.current = null;
-    };
-  }, [isMobileOpen]);
+  useFocusTrap(
+    Boolean(isMobileOpen && onCloseMobile),
+    mobileDrawerRef,
+    onCloseMobile,
+    mobileCloseBtnRef,
+  );
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
@@ -884,11 +876,12 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
           }}
         >
           <aside
+            ref={mobileDrawerRef}
             role="dialog"
             aria-modal="true"
             aria-label={t.ariaAside}
             data-testid="mobile-sidebar-drawer"
-            className="mobile-drawer-panel w-[min(92vw,360px)] bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] shadow-[var(--shadow-drawer)] flex flex-col min-h-0"
+            className="mobile-drawer-panel overscroll-contain w-[min(92vw,360px)] bg-[var(--bg-card)] border-l-[length:var(--border-width)] border-[var(--border-color)] shadow-[var(--shadow-drawer)] flex flex-col min-h-0"
           >
             {renderPanelContent(true)}
           </aside>

@@ -89,172 +89,6 @@ type GuidedFieldTemplateId =
 
 const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
 
-function inferLang(t: AppTranslations['cards']): AppLanguage {
-  if (t.addFieldHeading === '+ ADD FIELD') return 'en';
-  if (t.addFieldHeading === '+ AÑADIR CAMPO') return 'es';
-  return 'pt-BR';
-}
-
-const GUIDED_COPY: Record<
-  AppLanguage,
-  {
-    addFirstField: string;
-    addFieldCta: string;
-    selectTemplate: string;
-    createFieldBtn: string;
-    cancelBtn: string;
-    templates: Record<GuidedFieldTemplateId, { label: string; hint: string; fallbackName: string }>;
-  }
-> = {
-  'pt-BR': {
-    addFirstField: '+ ADICIONAR PRIMEIRO CAMPO',
-    addFieldCta: '+ ADICIONAR CAMPO',
-    selectTemplate: 'TEMPLATE DO CAMPO',
-    createFieldBtn: 'CRIAR CAMPO ↗',
-    cancelBtn: 'FECHAR',
-    templates: {
-      skill_d10: {
-        label: 'Habilidade / Perícia d10',
-        hint: 'Cria perícia + rolagem d10 com DIFF 6 automático',
-        fallbackName: 'NOVA PERÍCIA',
-      },
-      attribute: {
-        label: 'Atributo',
-        hint: 'Campo numérico de atributo (1–5)',
-        fallbackName: 'NOVO ATRIBUTO',
-      },
-      discipline: {
-        label: 'Disciplina / Poder',
-        hint: 'Campo numérico para disciplina ou poder',
-        fallbackName: 'NOVA DISCIPLINA',
-      },
-      resource: {
-        label: 'Recurso (Barra)',
-        hint: 'Barra segmentada com + e -',
-        fallbackName: 'NOVO RECURSO',
-      },
-      calculated: {
-        label: 'Calculado',
-        hint: 'Campo derivado somente leitura',
-        fallbackName: 'DERIVADO',
-      },
-      text: {
-        label: 'Texto/Notas',
-        hint: 'Texto curto ou notas',
-        fallbackName: 'ANOTAÇÃO',
-      },
-      boolean: {
-        label: 'Marcador',
-        hint: 'Caixa de seleção (Ativo/Inativo)',
-        fallbackName: 'MARCADOR',
-      },
-      repeatable: {
-        label: 'Lista / Tabela',
-        hint: 'Tabela com linhas adicionáveis',
-        fallbackName: 'LISTA',
-      },
-    },
-  },
-  en: {
-    addFirstField: '+ ADD FIRST FIELD',
-    addFieldCta: '+ ADD FIELD',
-    selectTemplate: 'FIELD TEMPLATE',
-    createFieldBtn: 'CREATE FIELD ↗',
-    cancelBtn: 'CLOSE',
-    templates: {
-      skill_d10: {
-        label: 'Skill / Roll d10',
-        hint: 'Creates skill + d10 pool roll with automatic DIFF 6',
-        fallbackName: 'NEW SKILL',
-      },
-      attribute: {
-        label: 'Attribute',
-        hint: 'Numeric attribute rating (1–5)',
-        fallbackName: 'NEW ATTRIBUTE',
-      },
-      discipline: {
-        label: 'Discipline / Power',
-        hint: 'Numeric rating for discipline or power',
-        fallbackName: 'NEW DISCIPLINE',
-      },
-      resource: {
-        label: 'Resource (Bar)',
-        hint: 'Segmented bar with + and -',
-        fallbackName: 'NEW RESOURCE',
-      },
-      calculated: {
-        label: 'Calculated',
-        hint: 'Read-only formula field',
-        fallbackName: 'DERIVED',
-      },
-      text: {
-        label: 'Text/Notes',
-        hint: 'Short text or notes',
-        fallbackName: 'NOTE',
-      },
-      boolean: {
-        label: 'Toggle',
-        hint: 'Checkbox flag (Active/Inactive)',
-        fallbackName: 'FLAG',
-      },
-      repeatable: {
-        label: 'List / Table',
-        hint: 'Repeatable row table',
-        fallbackName: 'LIST',
-      },
-    },
-  },
-  es: {
-    addFirstField: '+ AÑADIR PRIMER CAMPO',
-    addFieldCta: '+ AÑADIR CAMPO',
-    selectTemplate: 'PLANTILLA DEL CAMPO',
-    createFieldBtn: 'CREAR CAMPO ↗',
-    cancelBtn: 'CERRAR',
-    templates: {
-      skill_d10: {
-        label: 'Habilidad / Pericia d10',
-        hint: 'Crea habilidad + tirada d10 con DIF 6 automático',
-        fallbackName: 'NUEVA HABILIDAD',
-      },
-      attribute: {
-        label: 'Atributo',
-        hint: 'Valor numérico de atributo (1–5)',
-        fallbackName: 'NUEVO ATRIBUTO',
-      },
-      discipline: {
-        label: 'Disciplina / Poder',
-        hint: 'Valor numérico de disciplina o poder',
-        fallbackName: 'NUEVA DISCIPLINA',
-      },
-      resource: {
-        label: 'Recurso (Barra)',
-        hint: 'Barra segmentada con + y -',
-        fallbackName: 'NUEVO RECURSO',
-      },
-      calculated: {
-        label: 'Calculado',
-        hint: 'Campo calculado de solo lectura',
-        fallbackName: 'DERIVADO',
-      },
-      text: {
-        label: 'Texto/Notas',
-        hint: 'Texto corto o notas',
-        fallbackName: 'NOTA',
-      },
-      boolean: {
-        label: 'Marcador',
-        hint: 'Casilla de verificación',
-        fallbackName: 'MARCADOR',
-      },
-      repeatable: {
-        label: 'Lista / Tabla',
-        hint: 'Tabla con filas repetibles',
-        fallbackName: 'LISTA',
-      },
-    },
-  },
-};
-
 const TEMPLATE_ORDER: GuidedFieldTemplateId[] = [
   'skill_d10',
   'attribute',
@@ -332,8 +166,29 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     }
   }, [mode]);
 
-  const lang = inferLang(t);
-  const guided = GUIDED_COPY[lang];
+  const lang: AppLanguage = t.language ?? 'pt-BR';
+  const getTemplateMeta = (tplId: GuidedFieldTemplateId) => ({
+    label: t.t(`cards.guided.${tplId}.label`),
+    hint: t.t(`cards.guided.${tplId}.hint`),
+    fallbackName: t.t(`cards.guided.${tplId}.fallbackName`),
+  });
+  const guided = {
+    addFirstField: t.t('cards.guided.addFirstField'),
+    addFieldCta: t.t('cards.guided.addFieldCta'),
+    selectTemplate: t.t('cards.guided.selectTemplate'),
+    createFieldBtn: t.t('cards.guided.createFieldBtn'),
+    cancelBtn: t.t('cards.guided.cancelBtn'),
+    templates: {
+      skill_d10: getTemplateMeta('skill_d10'),
+      attribute: getTemplateMeta('attribute'),
+      discipline: getTemplateMeta('discipline'),
+      resource: getTemplateMeta('resource'),
+      calculated: getTemplateMeta('calculated'),
+      text: getTemplateMeta('text'),
+      boolean: getTemplateMeta('boolean'),
+      repeatable: getTemplateMeta('repeatable'),
+    },
+  };
   const selectedMeta = guided.templates[selectedTemplate];
 
   const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
@@ -367,6 +222,27 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           return true;
         })
       : rawFieldsToRender;
+
+  // Pair numeric skill/stat fields with their matching roll button in Play mode
+  const pairedRollByNumberId = new Map<string, SheetField>();
+  const consumedRollIds = new Set<string>();
+  if (mode === 'jogo') {
+    const rollFields = fieldsToRender.filter((f) => f.kind === 'roll');
+    for (const numField of fieldsToRender) {
+      if (numField.kind !== 'number') continue;
+      const numKey = numField.key.trim().toLowerCase();
+      if (!numKey) continue;
+      const match = rollFields.find(
+        (rf) =>
+          !consumedRollIds.has(rf.id) &&
+          (rf.key.trim().toLowerCase() === `roll_${numKey}` || rf.id === `f_roll_${numKey}`),
+      );
+      if (match) {
+        pairedRollByNumberId.set(numField.id, match);
+        consumedRollIds.add(match.id);
+      }
+    }
+  }
 
   const canUseTwoColBody =
     card.colSpan === 2 &&
@@ -507,7 +383,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       <div
         className={`bento-card-body p-4 flex-1 ${
           useTwoColBody
-            ? 'grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 items-center'
+            ? `grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 ${
+                consumedRollIds.size > 0 ? 'items-start' : 'items-center'
+              }`
             : 'flex flex-col gap-3'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
@@ -534,6 +412,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
         )}
 
         {fieldsToRender.map((field) => {
+          if (consumedRollIds.has(field.id)) {
+            return null;
+          }
           const realIdx = card.fields.findIndex((f) => f.id === field.id);
           const showV20BloodAfterWillpower =
             isWodCombatCard &&
@@ -619,6 +500,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 
               <FieldPrimitive
                 field={field}
+                pairedRollField={pairedRollByNumberId.get(field.id)}
                 mode={mode}
                 systemId={systemId}
                 rulePreset={rulePreset}
@@ -724,6 +606,18 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                         style={{
                           width: `${Math.max(0, Math.min(100, (bloodPool.current / bloodPool.max) * 100))}%`,
                         }}
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-[25%] w-[1.5px] bg-[var(--border-color)]/55"
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-[50%] w-[1.5px] bg-[var(--border-color)]/55"
+                      />
+                      <span
+                        aria-hidden="true"
+                        className="pointer-events-none absolute inset-y-0 left-[75%] w-[1.5px] bg-[var(--border-color)]/55"
                       />
                     </div>
                   ) : (
@@ -886,7 +780,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                     <div className="max-h-64 overflow-y-auto pr-0.5 flex flex-col gap-2.5">
                       {catalogGroups.length === 0 ? (
                         <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
-                          {t.t('cards.catalog.emptySearch')}
+                          {t.t('cards.catalog.emptySearch', { query: catalogQuery })}
                         </p>
                       ) : (
                         catalogGroups.map((group) => (

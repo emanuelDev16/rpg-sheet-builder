@@ -27,7 +27,7 @@ import {
   SoakDamageType,
   VariableMap,
 } from '../core/formula';
-import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { AppTranslations, getTranslations } from '../core/i18n';
 import { AnimatedCounter } from './AnimatedCounter';
 
 interface ClampedNumberInputProps {
@@ -95,52 +95,17 @@ const ClampedNumberInput: React.FC<ClampedNumberInputProps> = ({
   );
 };
 
-function inferLangFromCardsT(t: AppTranslations['cards']): AppLanguage {
-  if (t.addFieldHeading === '+ ADD FIELD') return 'en';
-  if (t.addFieldHeading === '+ AÑADIR CAMPO') return 'es';
-  return 'pt-BR';
+function getEditCtrlLabels(t: AppTranslations['cards']) {
+  return {
+    moveUp: t.t('cards.edit.moveUp'),
+    moveDown: t.t('cards.edit.moveDown'),
+    editField: t.t('cards.edit.editField'),
+    closeEdit: t.t('cards.edit.closeEdit'),
+    editingTag: t.t('cards.edit.editingTag'),
+    diffMinus: t.t('cards.edit.diffMinus'),
+    diffPlus: t.t('cards.edit.diffPlus'),
+  };
 }
-
-const EDIT_CTRL_LABELS: Record<
-  AppLanguage,
-  {
-    moveUp: string;
-    moveDown: string;
-    editField: string;
-    closeEdit: string;
-    editingTag: string;
-    diffMinus: string;
-    diffPlus: string;
-  }
-> = {
-  'pt-BR': {
-    moveUp: 'Mover campo para cima',
-    moveDown: 'Mover campo para baixo',
-    editField: 'Configurar campo',
-    closeEdit: 'Fechar edição do campo',
-    editingTag: 'EDITANDO',
-    diffMinus: 'Diminuir dificuldade',
-    diffPlus: 'Aumentar dificuldade',
-  },
-  en: {
-    moveUp: 'Move field up',
-    moveDown: 'Move field down',
-    editField: 'Edit field',
-    closeEdit: 'Close field editor',
-    editingTag: 'EDITING',
-    diffMinus: 'Decrease difficulty',
-    diffPlus: 'Increase difficulty',
-  },
-  es: {
-    moveUp: 'Subir campo',
-    moveDown: 'Bajar campo',
-    editField: 'Configurar campo',
-    closeEdit: 'Cerrar edición del campo',
-    editingTag: 'EDITANDO',
-    diffMinus: 'Reducir dificultad',
-    diffPlus: 'Aumentar dificultad',
-  },
-};
 
 interface WodPoolRollFieldProps {
   field: SheetField;
@@ -150,6 +115,7 @@ interface WodPoolRollFieldProps {
   woundPenalty: number;
   bloodSurge: boolean;
   lastSoakTotal?: number | null;
+  compactHeader?: boolean;
   t: AppTranslations['cards'];
   onRoll: (field: SheetField) => void;
   onUpdateSchema: (fieldId: string, patch: Partial<SheetField>) => void;
@@ -165,14 +131,14 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   woundPenalty,
   bloodSurge,
   lastSoakTotal = null,
+  compactHeader = false,
   t,
   onRoll,
   onUpdateSchema,
 }) => {
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [rawSoakIncoming, setRawSoakIncoming] = useState(4);
-  const lang = inferLangFromCardsT(t);
-  const ctrlLabels = EDIT_CTRL_LABELS[lang];
+  const ctrlLabels = getEditCtrlLabels(t);
 
   const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
   const isV5 = rulePreset === 'vampire-v5';
@@ -236,35 +202,37 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   };
 
   return (
-    <div className="py-0.5">
-      <button
-        type="button"
-        data-testid={`roll-btn-${field.id}`}
-        onClick={() => onRoll(isV5Pool ? { ...field, rollDifficulty: difficulty } : field)}
-        className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
-      >
-        <span className="text-left break-words whitespace-normal leading-snug min-w-0">
-          {displayLabel}
-        </span>
-        <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
-          {effectiveWoundPenalty < 0 && (
-            <span
-              data-testid={`roll-wound-badge-${field.id}`}
-              className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase"
-            >
-              {t.t('cards.pool.woundBadge', { penalty: effectiveWoundPenalty })}
-            </span>
-          )}
-          {wpArmed && (
-            <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)]">
-              {t.t('cards.pool.wpBadge')}
-            </span>
-          )}
-          <span className="text-sm leading-none" aria-hidden="true">
-            ↗
+    <div className={compactHeader ? 'pt-1' : 'py-0.5'}>
+      {!compactHeader && (
+        <button
+          type="button"
+          data-testid={`roll-btn-${field.id}`}
+          onClick={() => onRoll(isV5Pool ? { ...field, rollDifficulty: difficulty } : field)}
+          className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
+        >
+          <span className="text-left break-words whitespace-normal leading-snug min-w-0">
+            {displayLabel}
           </span>
-        </div>
-      </button>
+          <div className="flex items-center gap-1.5 shrink-0 flex-wrap justify-end">
+            {effectiveWoundPenalty < 0 && (
+              <span
+                data-testid={`roll-wound-badge-${field.id}`}
+                className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase"
+              >
+                {t.t('cards.pool.woundBadge', { penalty: effectiveWoundPenalty })}
+              </span>
+            )}
+            {wpArmed && (
+              <span className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--accent-contrast)]/45 rounded-[var(--radius-pill)]">
+                {t.t('cards.pool.wpBadge')}
+              </span>
+            )}
+            <span className="text-sm leading-none" aria-hidden="true">
+              ↗
+            </span>
+          </div>
+        </button>
+      )}
 
       {isSoak && !isV5 && (
         <div
@@ -452,6 +420,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
 
 interface FieldPrimitiveProps {
   field: SheetField;
+  pairedRollField?: SheetField;
   mode: AppMode;
   systemId?: SystemId;
   rulePreset?: RulePreset;
@@ -501,6 +470,7 @@ const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
 
 export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   field,
+  pairedRollField,
   mode,
   systemId = 'wod',
   rulePreset = 'storyteller-v20',
@@ -536,8 +506,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const [v5RawSupDamage, setV5RawSupDamage] = useState(2);
   const inputId = `field_${field.id}`;
   const isCustomSystem = systemId === 'blank';
-  const lang = inferLangFromCardsT(t);
-  const ctrlLabels = EDIT_CTRL_LABELS[lang];
+  const ctrlLabels = getEditCtrlLabels(t);
   const prefersReducedMotion = useReducedMotion();
   const isEinkTheme =
     typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
@@ -696,6 +665,103 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const renderFieldBody = (): React.ReactNode => {
     // 1. Número e Texto
     if (field.kind === 'number') {
+      if (pairedRollField && mode === 'jogo') {
+        const parsedPairedPool = parseWodPoolExpression(pairedRollField.rollExpr ?? '');
+        const pairedIsSoak = Boolean(
+          pairedRollField.isSoak ||
+            pairedRollField.id === 'f_soak' ||
+            pairedRollField.key === 'soak_roll',
+        );
+        const pairedIsV5 = rulePreset === 'vampire-v5';
+        const pairedIsV5Pool = pairedIsV5 && !pairedIsSoak;
+        const pairedSoakType: SoakDamageType = pairedRollField.soakDamageType ?? 'lethal';
+        const pairedDefaultDiff = parsedPairedPool
+          ? Number.isFinite(Number(parsedPairedPool.diffExpr))
+            ? Number(parsedPairedPool.diffExpr)
+            : 6
+          : 6;
+        const pairedDiff = pairedIsV5Pool
+          ? Math.max(1, Math.min(10, Math.round(pairedRollField.rollDifficultyV5 ?? 2)))
+          : Math.max(2, Math.min(10, Math.round(pairedRollField.rollDifficulty ?? pairedDefaultDiff)));
+        const pairedMod =
+          typeof pairedRollField.rollMod === 'number' && Number.isFinite(pairedRollField.rollMod)
+            ? Math.round(pairedRollField.rollMod)
+            : 0;
+        const pairedSpec = pairedIsV5 ? false : Boolean(pairedRollField.rollSpecialty);
+        const pairedWound = pairedIsSoak ? 0 : woundPenalty;
+        const preview = resolveRollPreview(pairedRollField.rollExpr ?? '1d20', variables, {
+          difficulty: pairedDiff,
+          modifier: pairedMod,
+          specialty: pairedSpec,
+          rulePreset,
+          woundPenalty: pairedWound,
+          isSoak: pairedIsSoak,
+          soakDamageType: pairedSoakType,
+          bloodSurge,
+        });
+        const pairedWpArmed =
+          !(pairedIsV5 || (pairedIsSoak && pairedSoakType === 'aggravated')) &&
+          Boolean(variables.wp_boost) &&
+          (variables.willpower ?? 0) > 0;
+
+        return (
+          <div
+            data-testid={`paired-skill-row-${field.id}`}
+            className="py-1 flex flex-col gap-1 border-b border-[var(--border-subtle)]/45 last:border-b-0"
+          >
+            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 min-w-0">
+              <label
+                htmlFor={inputId}
+                className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
+              >
+                {field.label}
+              </label>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <input
+                  id={inputId}
+                  type="number"
+                  value={typeof field.value === 'number' ? field.value : 0}
+                  onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
+                  className="cyber-input mobile-touch-input w-16 px-2 py-1 text-sm font-bold text-right tabular-nums shrink-0"
+                />
+                <button
+                  type="button"
+                  data-testid={`roll-btn-${pairedRollField.id}`}
+                  aria-label={`${pairedRollField.rollLabel ?? pairedRollField.label} (${preview})`}
+                  onClick={() =>
+                    onRoll(pairedIsV5Pool ? { ...pairedRollField, rollDifficulty: pairedDiff } : pairedRollField)
+                  }
+                  className="cyber-roll-btn min-h-[36px] px-2.5 py-1.5 text-[10px] font-bold tracking-wider uppercase inline-flex items-center gap-1.5 shrink-0 cursor-pointer whitespace-nowrap"
+                >
+                  <span>{preview}</span>
+                  {pairedWpArmed && (
+                    <span className="font-mono-tech text-[9px] font-extrabold px-1 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] rounded-[var(--radius-pill)]">
+                      {t.t('cards.pool.wpBadge')}
+                    </span>
+                  )}
+                  <span aria-hidden="true">↗</span>
+                </button>
+              </div>
+            </div>
+            {parsedPairedPool && (
+              <WodPoolRollField
+                field={pairedRollField}
+                variables={variables}
+                defaultDifficulty={pairedDefaultDiff}
+                rulePreset={rulePreset}
+                woundPenalty={woundPenalty}
+                bloodSurge={bloodSurge}
+                lastSoakTotal={lastSoakTotal}
+                compactHeader
+                t={t}
+                onRoll={onRoll}
+                onUpdateSchema={onUpdateSchema}
+              />
+            )}
+          </div>
+        );
+      }
+
       return (
         <div className="py-1 flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <label
@@ -883,9 +949,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         : undefined
                   }
                   className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
-                    state === 'healthy'
-                      ? 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
-                      : ''
+                    state === 'aggravated'
+                      ? 'eink-health-solid'
+                      : state === 'superficial'
+                        ? 'eink-health-slash'
+                        : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
                   }`}
                 >
                   {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
@@ -1082,9 +1150,13 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 onClick={() => onCycleV20HealthCell?.(field.id, idx)}
                 style={v20CellStyle(state)}
                 className={`seg-block min-h-[36px] sm:min-h-[26px] flex items-center justify-center font-mono-tech text-xs font-extrabold select-none cursor-pointer ${
-                  state === 'healthy'
-                    ? 'bg-[var(--bg-card)] border-[var(--border-ink)]/45 text-transparent hover:border-[var(--border-ink)]'
-                    : ''
+                  state === 'aggravated'
+                    ? 'eink-health-solid'
+                    : state === 'lethal'
+                      ? 'eink-health-cross'
+                      : state === 'bashing'
+                        ? 'eink-health-slash'
+                        : 'bg-[var(--bg-card)] border-[var(--border-ink)]/45 text-transparent hover:border-[var(--border-ink)]'
                 }`}
               >
                 {state === 'aggravated'
@@ -1272,6 +1344,18 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     ? { duration: 0 }
                     : { duration: 0.38, ease: [0.22, 1, 0.36, 1] }
                 }
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-[25%] w-[1.5px] bg-[var(--border-color)]/55"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-[50%] w-[1.5px] bg-[var(--border-color)]/55"
+              />
+              <span
+                aria-hidden="true"
+                className="pointer-events-none absolute inset-y-0 left-[75%] w-[1.5px] bg-[var(--border-color)]/55"
               />
             </div>
           ) : (

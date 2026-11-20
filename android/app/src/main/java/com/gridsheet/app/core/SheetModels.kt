@@ -405,24 +405,37 @@ object SheetEvaluator {
         }
         variables["wound_penalty"] = woundPenalty.toDouble()
 
-        // Pass 2 & 3: evaluate calculated fields in 2 passes for chained formulas
+        // Pass 2: evaluate calculated fields with formulaMap, cycle detection, and memoization
         val calcFields = sheet.cards.flatMap { it.fields }.filter { it.kind == FieldKind.CALCULATED }
-        repeat(2) {
-            for (field in calcFields) {
-                val res = FormulaEngine.evaluateFormula(
-                    expression = field.formula ?: "0",
-                    vars = variables,
-                    showPlus = field.showPlus ?: true
-                )
-                computedByFieldId[field.id] = ComputedFieldInfo(
-                    value = res.value,
-                    formatted = res.formatted,
-                    ok = res.ok,
-                    error = res.error
-                )
-                if (res.ok && field.key.trim().isNotEmpty()) {
-                    variables[field.key.trim().lowercase()] = res.value
-                }
+        val formulaMap = LinkedHashMap<String, String>()
+        for (field in calcFields) {
+            val key = field.key.trim().lowercase()
+            if (key.isNotEmpty()) {
+                formulaMap[key] = field.formula ?: "0"
+            }
+        }
+        val resolvedMemo = LinkedHashMap<String, Double>()
+        for (field in calcFields) {
+            val key = field.key.trim().lowercase()
+            val visited = if (key.isNotEmpty()) setOf(key) else emptySet()
+            val res = FormulaEngine.evaluateFormula(
+                expression = field.formula ?: "0",
+                vars = variables,
+                showPlus = field.showPlus ?: true,
+                formulaMap = formulaMap,
+                visited = visited,
+                depth = 0,
+                resolvedMemo = resolvedMemo
+            )
+            computedByFieldId[field.id] = ComputedFieldInfo(
+                value = res.value,
+                formatted = res.formatted,
+                ok = res.ok,
+                error = res.error
+            )
+            if (res.ok && key.isNotEmpty()) {
+                variables[key] = res.value
+                resolvedMemo[key] = res.value
             }
         }
 
@@ -857,17 +870,21 @@ object SheetPayloadValidator {
     private val allowedFieldKinds = setOf(
         "number", "text", "calculated", "resource", "boolean", "roll", "repeatable"
     )
-    private val allowedRulePresets = setOf("storyteller_v20", "vampire_v5", "custom")
+    private val allowedRulePresets = setOf(
+        "storyteller_v20", "storyteller-v20", "vampire_v5", "vampire-v5", "custom"
+    )
     val rootKeys = setOf(
         "id", "systemId", "systemName", "systemCode", "characterName",
-        "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp", "rulePreset"
+        "revision", "updatedAt", "deviceId", "tabs", "cards", "rollLogs", "xp", "rulePreset",
+        "xpRulePreset", "customUseNewLevelBase", "bloodPool", "bloodSurge", "virtues"
     )
     val cardKeys = setOf("id", "tab", "code", "title", "colSpan", "fields")
     val fieldKeys = setOf(
         "id", "key", "label", "kind", "value", "numValue", "textValue", "boolValue",
         "max", "damageTrack", "superficialDamage", "aggravatedDamage", "bashingDamage", "lethalDamage",
-        "formula", "showPlus", "rollLabel", "rollExpr", "rollDifficulty", "rollMod",
-        "rollSpecialty", "useWillpower", "isSoak", "columns", "col2Type", "rows", "hint"
+        "soakDamageType", "formula", "showPlus", "rollLabel", "rollExpr", "rollDifficulty",
+        "rollDifficultyV5", "rollMod", "rollSpecialty", "useWillpower", "isSoak", "xpCategory",
+        "columns", "col2Type", "rows", "hint", "placeholder"
     )
     private val rowKeys = setOf("id", "col1", "col2")
 
@@ -903,6 +920,11 @@ object SheetPayloadValidator {
         (root["rulePreset"] as? JsonPrimitive)?.let { prim ->
             if (!prim.isString || prim.content !in allowedRulePresets) {
                 errors.add("$.rulePreset: preset inválido '${prim.content}'.")
+            }
+        }
+        (root["xpRulePreset"] as? JsonPrimitive)?.let { prim ->
+            if (!prim.isString || prim.content !in allowedRulePresets) {
+                errors.add("$.xpRulePreset: preset de XP inválido '${prim.content}'.")
             }
         }
 
@@ -965,8 +987,14 @@ object SheetPayloadValidator {
                     }
                     (fieldObj["rollDifficulty"] as? JsonPrimitive)?.let { diffPrim ->
                         val diffVal = diffPrim.intOrNull
-                        if (diffVal == null || diffVal !in 2..10) {
-                            errors.add("$fPath.rollDifficulty: deve ser inteiro entre 2 e 10.")
+                        if (diffVal == null || diffVal !in 1..10) {
+                            errors.add("$fPath.rollDifficulty: deve ser inteiro entre 1 e 10.")
+                        }
+                    }
+                    (fieldObj["rollDifficultyV5"] as? JsonPrimitive)?.let { diffV5Prim ->
+                        val diffV5Val = diffV5Prim.intOrNull
+                        if (diffV5Val == null || diffV5Val !in 1..10) {
+                            errors.add("$fPath.rollDifficultyV5: deve ser inteiro entre 1 e 10.")
                         }
                     }
                     (fieldObj["rows"] as? JsonArray)?.forEachIndexed { rIdx, rowElem ->
@@ -1140,13 +1168,41 @@ object SheetTransfer {
                     "$label inválida (schema v2): ${errors.take(3).joinToString(" | ")}"
                 )
             }
+            val normalizedElem = normalizeForAndroidDecoding(elem)
             val decoded = runCatching {
-                transferJson.decodeFromJsonElement(CharacterSheetState.serializer(), elem)
+                transferJson.decodeFromJsonElement(CharacterSheetState.serializer(), normalizedElem)
             }.getOrElse {
                 throw SheetTransferException("$label com estrutura incompatível: campos obrigatórios ausentes.", it)
             }
             Presets.migrateLegacyWodSheet(decoded, deviceId, nowIso)
         }
+    }
+
+    private fun normalizeRulePresetToken(raw: String): String = when (raw) {
+        "storyteller-v20" -> "storyteller_v20"
+        "vampire-v5" -> "vampire_v5"
+        else -> raw
+    }
+
+    private fun normalizeForAndroidDecoding(elem: JsonElement): JsonObject {
+        val obj = Presets.normalizePresetSheetElement(elem)
+        val mutable = obj.toMutableMap()
+        val rawRule = (mutable["rulePreset"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val rawXpRule = (mutable["xpRulePreset"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+        val resolvedRule = (rawRule ?: rawXpRule)?.let(::normalizeRulePresetToken)
+        if (resolvedRule != null) {
+            mutable["rulePreset"] = JsonPrimitive(resolvedRule)
+        }
+        (mutable["xp"] as? JsonObject)?.let { xpObj ->
+            val xpMutable = xpObj.toMutableMap()
+            val xpPreset = (xpMutable["xpRulePreset"] as? JsonPrimitive)?.takeIf { it.isString }?.content
+                ?: resolvedRule
+            if (xpPreset != null) {
+                xpMutable["xpRulePreset"] = JsonPrimitive(normalizeRulePresetToken(xpPreset))
+            }
+            mutable["xp"] = JsonObject(xpMutable)
+        }
+        return JsonObject(mutable)
     }
 
     /**

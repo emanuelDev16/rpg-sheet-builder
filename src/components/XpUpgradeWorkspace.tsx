@@ -41,94 +41,6 @@ type CategoryFilter = 'all' | XpUpgradeCategory;
 
 const DEFAULT_XP_T = getTranslations('pt-BR').xp;
 
-const LOCALIZED_XP_EXTRAS: Record<
-  AppLanguage,
-  {
-    virtuesTab: string;
-    virtueCat: string;
-    willpowerCat: string;
-    humanityCat: string;
-    showAllTraits: string;
-    onlyAffordable: string;
-    rulesEditorBtn: string;
-    rulesEditorTitle: string;
-    resetRulesBtn: string;
-    customCostBtn: string;
-    customCostAria: string;
-    clearCustomCost: string;
-    applyCustomCost: string;
-    insufficientBadge: (missing: number) => string;
-    insufficientClickError: (label: string, cost: number, available: number) => string;
-    maxBadge: string;
-    catalogCount: (possible: number, total: number) => string;
-    multiplierLabel: string;
-  }
-> = {
-  'pt-BR': {
-    virtuesTab: 'Virtudes / Vontade',
-    virtueCat: 'VIRTUDE',
-    willpowerCat: 'FORÇA DE VONTADE',
-    humanityCat: 'HUMANIDADE / TRILHA',
-    showAllTraits: 'VER: TODOS',
-    onlyAffordable: 'VER: COMPRÁVEIS',
-    rulesEditorBtn: 'Multiplicadores',
-    rulesEditorTitle: 'SOBRESCREVER MULTIPLICADORES POR CATEGORIA',
-    resetRulesBtn: 'RESTAURAR PADRÃO',
-    customCostBtn: 'Custo',
-    customCostAria: 'Sobrescrever custo de XP',
-    clearCustomCost: 'Padrão',
-    applyCustomCost: 'Aplicar',
-    insufficientBadge: (missing) => `FALTA ${missing} XP`,
-    insufficientClickError: (label, cost, available) =>
-      `XP insuficiente para ${label} (custo: ${cost} XP, disponível: ${available} XP).`,
-    maxBadge: 'MÁXIMO',
-    catalogCount: (possible, total) => `${possible} COMPRÁVEIS · ${total} TOTAL`,
-    multiplierLabel: '×',
-  },
-  en: {
-    virtuesTab: 'Virtues / Willpower',
-    virtueCat: 'VIRTUE',
-    willpowerCat: 'WILLPOWER',
-    humanityCat: 'HUMANITY / PATH',
-    showAllTraits: 'SHOW: ALL',
-    onlyAffordable: 'SHOW: AFFORDABLE',
-    rulesEditorBtn: 'Multipliers',
-    rulesEditorTitle: 'OVERRIDE MULTIPLIERS BY CATEGORY',
-    resetRulesBtn: 'RESET DEFAULTS',
-    customCostBtn: 'Cost',
-    customCostAria: 'Override XP cost',
-    clearCustomCost: 'Default',
-    applyCustomCost: 'Apply',
-    insufficientBadge: (missing) => `NEED ${missing} XP`,
-    insufficientClickError: (label, cost, available) =>
-      `Insufficient XP for ${label} (cost: ${cost} XP, available: ${available} XP).`,
-    maxBadge: 'MAXED',
-    catalogCount: (possible, total) => `${possible} AFFORDABLE · ${total} TOTAL`,
-    multiplierLabel: '×',
-  },
-  es: {
-    virtuesTab: 'Virtudes / Voluntad',
-    virtueCat: 'VIRTUD',
-    willpowerCat: 'VOLUNTAD',
-    humanityCat: 'HUMANIDAD / SENDA',
-    showAllTraits: 'VER: TODOS',
-    onlyAffordable: 'VER: COMPRABLES',
-    rulesEditorBtn: 'Multiplicadores',
-    rulesEditorTitle: 'SOBRESCRIBIR MULTIPLICADORES POR CATEGORÍA',
-    resetRulesBtn: 'RESTAURAR',
-    customCostBtn: 'Costo',
-    customCostAria: 'Sobrescribir costo XP',
-    clearCustomCost: 'Estándar',
-    applyCustomCost: 'Aplicar',
-    insufficientBadge: (missing) => `FALTA ${missing} XP`,
-    insufficientClickError: (label, cost, available) =>
-      `XP insuficiente para ${label} (costo: ${cost} XP, disponible: ${available} XP).`,
-    maxBadge: 'MÁXIMO',
-    catalogCount: (possible, total) => `${possible} COMPRABLES · ${total} TOTAL`,
-    multiplierLabel: '×',
-  },
-};
-
 export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   sheet,
   language = 'pt-BR',
@@ -160,7 +72,28 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const [bgName, setBgName] = useState('');
   const [bgCost, setBgCost] = useState(String(DEFAULT_BACKGROUND_XP_COST));
 
-  const ext = LOCALIZED_XP_EXTRAS[language] ?? LOCALIZED_XP_EXTRAS['pt-BR'];
+  const ext = {
+    virtuesTab: t.t('xp.virtuesTab'),
+    virtueCat: t.t('xp.virtueCat'),
+    willpowerCat: t.t('xp.willpowerCat'),
+    humanityCat: t.t('xp.humanityCat'),
+    showAllTraits: t.t('xp.showAllTraits'),
+    onlyAffordable: t.t('xp.onlyAffordable'),
+    rulesEditorBtn: t.t('xp.rulesEditorBtn'),
+    rulesEditorTitle: t.t('xp.rulesEditorTitle'),
+    resetRulesBtn: t.t('xp.resetRulesBtn'),
+    customCostBtn: t.t('xp.customCostBtn'),
+    customCostAria: t.t('xp.customCostAria'),
+    clearCustomCost: t.t('xp.clearCustomCost'),
+    applyCustomCost: t.t('xp.applyCustomCost'),
+    insufficientBadge: (missing: number) => t.t('xp.insufficientBadge', { missing }),
+    insufficientClickError: (label: string, cost: number, available: number) =>
+      t.t('xp.insufficientClickError', { label, cost, available }),
+    maxBadge: t.t('xp.maxBadge'),
+    catalogCount: (possible: number, total: number) =>
+      t.t('xp.catalogCount', { possible, total }),
+    multiplierLabel: t.t('xp.multiplierLabel'),
+  };
 
   const xpState = useMemo(() => normalizeXpState(sheet.xp), [sheet.xp]);
   const availableXp = useMemo(() => getAvailableXp(xpState), [xpState]);

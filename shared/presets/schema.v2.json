@@ -62,7 +62,31 @@
     "xp": { "$ref": "#/$defs/XpState" },
     "rulePreset": {
       "type": "string",
-      "enum": ["storyteller_v20", "vampire_v5", "custom"]
+      "enum": ["storyteller_v20", "storyteller-v20", "vampire_v5", "vampire-v5", "custom"]
+    },
+    "xpRulePreset": {
+      "type": "string",
+      "enum": ["storyteller_v20", "storyteller-v20", "vampire_v5", "vampire-v5", "custom"]
+    },
+    "customUseNewLevelBase": {
+      "type": "boolean"
+    },
+    "bloodPool": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 50
+    },
+    "bloodSurge": {
+      "type": "boolean"
+    },
+    "virtues": {
+      "type": "object",
+      "additionalProperties": false,
+      "properties": {
+        "conscience": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "selfControl": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "courage": { "type": "integer", "minimum": 1, "maximum": 5 }
+      }
     }
   },
   "$defs": {
@@ -129,15 +153,18 @@
         "aggravatedDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "bashingDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "lethalDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "soakDamageType": { "type": "string", "enum": ["bashing", "lethal", "aggravated"] },
         "formula": { "type": "string", "maxLength": 256 },
         "showPlus": { "type": "boolean" },
         "rollLabel": { "type": "string", "maxLength": 80 },
         "rollExpr": { "type": "string", "maxLength": 256 },
-        "rollDifficulty": { "type": "integer", "minimum": 2, "maximum": 10 },
+        "rollDifficulty": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "rollDifficultyV5": { "type": "integer", "minimum": 1, "maximum": 10 },
         "rollMod": { "type": "integer", "minimum": -100, "maximum": 100 },
         "rollSpecialty": { "type": "boolean" },
         "useWillpower": { "type": "boolean" },
         "isSoak": { "type": "boolean" },
+        "xpCategory": { "type": "string", "enum": ["attribute", "skill", "discipline", "virtue"] },
         "columns": {
           "type": "array",
           "maxItems": 4,
@@ -149,7 +176,8 @@
           "maxItems": 200,
           "items": { "$ref": "#/$defs/RepeatableRow" }
         },
-        "hint": { "type": "string", "maxLength": 240 }
+        "hint": { "type": "string", "maxLength": 240 },
+        "placeholder": { "type": "string", "maxLength": 240 }
       }
     },
     "RollLogEntry": {
@@ -170,10 +198,50 @@
           "type": "array",
           "items": { "type": "integer" }
         },
-        "difficulty": { "type": "integer", "minimum": 2, "maximum": 10 },
+        "difficulty": { "type": "integer", "minimum": 1, "maximum": 10 },
+        "specialty": { "type": "boolean" },
+        "willpowerUsed": { "type": "boolean" },
+        "isSoak": { "type": "boolean" },
+        "soakDamageType": { "type": "string", "enum": ["bashing", "lethal", "aggravated"] },
+        "doubledTensCount": { "type": "integer", "minimum": 0 },
         "onesCount": { "type": "integer", "minimum": 0 },
         "canceledOnes": { "type": "integer", "minimum": 0 },
-        "outcome": { "type": "string", "maxLength": 80 }
+        "outcome": { "type": "string", "maxLength": 80 },
+        "status": {
+          "type": "string",
+          "enum": ["success", "critical", "messy_critical", "failure", "bestial_failure"]
+        },
+        "margin": { "type": "integer" },
+        "rulePreset": {
+          "type": "string",
+          "enum": ["storyteller_v20", "storyteller-v20", "vampire_v5", "vampire-v5", "custom"]
+        },
+        "woundPenalty": { "type": "integer" },
+        "hungerDice": { "type": ["integer", "array"] },
+        "normalDice": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "normalRolls": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "hungerRolls": {
+          "type": "array",
+          "items": { "type": "integer" }
+        },
+        "messyCritical": { "type": "boolean" },
+        "isMessyCritical": { "type": "boolean" },
+        "bestialFailure": { "type": "boolean" },
+        "isBestialFailure": { "type": "boolean" },
+        "critPairsCount": { "type": "integer", "minimum": 0 },
+        "isRouseCheck": { "type": "boolean" },
+        "isBloodSurge": { "type": "boolean" },
+        "isWillpowerReroll": { "type": "boolean" },
+        "rerolledIndices": {
+          "type": "array",
+          "items": { "type": "integer" }
+        }
       }
     },
     "XpLedgerEntry": {
@@ -185,11 +253,16 @@
         "timestamp": { "type": "string", "minLength": 1, "maxLength": 40 },
         "kind": { "type": "string", "enum": ["award", "upgrade"] },
         "delta": { "type": "integer" },
+        "xpSpent": { "type": "integer", "minimum": 0 },
         "label": { "type": "string", "minLength": 1, "maxLength": 120 },
         "fieldId": { "type": "string", "maxLength": 64 },
-        "category": { "type": "string", "enum": ["attribute", "skill", "discipline"] },
+        "category": { "type": "string", "enum": ["attribute", "skill", "discipline", "virtue"] },
         "fromValue": { "type": "integer" },
-        "toValue": { "type": "integer" }
+        "toValue": { "type": "integer" },
+        "createdField": { "type": "boolean" },
+        "createdCardId": { "type": "string", "maxLength": 64 },
+        "prevSpecialtyLabel": { "type": "string", "maxLength": 120 },
+        "prevRollSpecialty": { "type": "boolean" }
       }
     },
     "XpState": {
@@ -203,6 +276,21 @@
           "type": "array",
           "maxItems": 500,
           "items": { "$ref": "#/$defs/XpLedgerEntry" }
+        },
+        "outOfClanFieldIds": {
+          "type": "array",
+          "items": { "type": "string", "maxLength": 64 }
+        },
+        "customMultipliers": {
+          "type": "object",
+          "additionalProperties": { "type": "integer", "minimum": 1 }
+        },
+        "xpRulePreset": {
+          "type": "string",
+          "enum": ["storyteller_v20", "storyteller-v20", "vampire_v5", "vampire-v5", "custom"]
+        },
+        "customUseNewLevelBase": {
+          "type": "boolean"
         }
       }
     }

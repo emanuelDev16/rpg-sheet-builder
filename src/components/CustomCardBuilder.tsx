@@ -33,162 +33,6 @@ type StarterTemplateId =
 
 const DEFAULT_BUILDER_T = getTranslations('pt-BR').customBuilder;
 
-function inferLang(t: AppTranslations['customBuilder']): AppLanguage {
-  if (t.createBtn === 'CREATE CARD') return 'en';
-  if (t.createBtn === 'CREAR BLOQUE') return 'es';
-  return 'pt-BR';
-}
-
-const TEMPLATE_LABELS: Record<
-  AppLanguage,
-  {
-    heading: string;
-    options: Record<StarterTemplateId, { label: string; hint: string; defaultTitle: string; defaultCode: string }>;
-  }
-> = {
-  'pt-BR': {
-    heading: 'TEMPLATE INICIAL',
-    options: {
-      empty: {
-        label: 'Bloco Vazio',
-        hint: 'Começar sem campos',
-        defaultTitle: 'NOVO BLOCO',
-        defaultCode: '//BLOCO',
-      },
-      skill_d10: {
-        label: 'Habilidade / Perícia d10',
-        hint: 'Perícia + Rolagem d10 (DIFF 6)',
-        defaultTitle: 'HABILIDADES',
-        defaultCode: '//SKILLS_D10',
-      },
-      attribute: {
-        label: 'Atributo',
-        hint: 'Valor numérico (1–5)',
-        defaultTitle: 'ATRIBUTOS',
-        defaultCode: '//ATTRIBUTES',
-      },
-      discipline: {
-        label: 'Disciplina / Poder',
-        hint: 'Poder / Disciplina (XP)',
-        defaultTitle: 'DISCIPLINAS',
-        defaultCode: '//DISCIPLINES',
-      },
-      resource: {
-        label: 'Recurso (Barra)',
-        hint: 'Barra segmentada (ex: Sangue)',
-        defaultTitle: 'RECURSOS',
-        defaultCode: '//RESOURCES',
-      },
-      calculated: {
-        label: 'Calculado',
-        hint: 'Fórmula automática',
-        defaultTitle: 'DERIVADOS',
-        defaultCode: '//DERIVED',
-      },
-      text: {
-        label: 'Texto/Notas',
-        hint: 'Anotações e histórico',
-        defaultTitle: 'ANOTAÇÕES',
-        defaultCode: '//NOTES',
-      },
-    },
-  },
-  en: {
-    heading: 'STARTER TEMPLATE',
-    options: {
-      empty: {
-        label: 'Empty Card',
-        hint: 'Start with no fields',
-        defaultTitle: 'NEW CARD',
-        defaultCode: '//CARD',
-      },
-      skill_d10: {
-        label: 'Skill / Roll d10',
-        hint: 'Skill + d10 Pool (DIFF 6)',
-        defaultTitle: 'SKILLS',
-        defaultCode: '//SKILLS_D10',
-      },
-      attribute: {
-        label: 'Attribute',
-        hint: 'Numeric rating (1–5)',
-        defaultTitle: 'ATTRIBUTES',
-        defaultCode: '//ATTRIBUTES',
-      },
-      discipline: {
-        label: 'Discipline / Power',
-        hint: 'Power / Discipline (XP)',
-        defaultTitle: 'DISCIPLINES',
-        defaultCode: '//DISCIPLINES',
-      },
-      resource: {
-        label: 'Resource (Bar)',
-        hint: 'Segmented bar (e.g. Energy)',
-        defaultTitle: 'RESOURCES',
-        defaultCode: '//RESOURCES',
-      },
-      calculated: {
-        label: 'Calculated',
-        hint: 'Automatic formula',
-        defaultTitle: 'DERIVED',
-        defaultCode: '//DERIVED',
-      },
-      text: {
-        label: 'Text/Notes',
-        hint: 'Notes & biography',
-        defaultTitle: 'NOTES',
-        defaultCode: '//NOTES',
-      },
-    },
-  },
-  es: {
-    heading: 'PLANTILLA INICIAL',
-    options: {
-      empty: {
-        label: 'Bloque Vacío',
-        hint: 'Comenzar sin campos',
-        defaultTitle: 'NUEVO BLOQUE',
-        defaultCode: '//BLOQUE',
-      },
-      skill_d10: {
-        label: 'Habilidad / Pericia d10',
-        hint: 'Habilidad + Tirada d10 (DIF 6)',
-        defaultTitle: 'HABILIDADES',
-        defaultCode: '//SKILLS_D10',
-      },
-      attribute: {
-        label: 'Atributo',
-        hint: 'Valor numérico (1–5)',
-        defaultTitle: 'ATRIBUTOS',
-        defaultCode: '//ATTRIBUTES',
-      },
-      discipline: {
-        label: 'Disciplina / Poder',
-        hint: 'Poder / Disciplina (XP)',
-        defaultTitle: 'DISCIPLINAS',
-        defaultCode: '//DISCIPLINES',
-      },
-      resource: {
-        label: 'Recurso (Barra)',
-        hint: 'Barra segmentada',
-        defaultTitle: 'RECURSOS',
-        defaultCode: '//RESOURCES',
-      },
-      calculated: {
-        label: 'Calculado',
-        hint: 'Fórmula automática',
-        defaultTitle: 'DERIVADOS',
-        defaultCode: '//DERIVED',
-      },
-      text: {
-        label: 'Texto/Notas',
-        hint: 'Notas e historia',
-        defaultTitle: 'NOTAS',
-        defaultCode: '//NOTES',
-      },
-    },
-  },
-};
-
 const TEMPLATE_ORDER: StarterTemplateId[] = [
   'empty',
   'skill_d10',
@@ -199,15 +43,16 @@ const TEMPLATE_ORDER: StarterTemplateId[] = [
   'text',
 ];
 
-function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): SheetField[] {
+function buildStarterFields(
+  template: StarterTemplateId,
+  tFn: AppTranslations['customBuilder']['t'],
+): SheetField[] {
   const uid = `${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`;
   switch (template) {
     case 'skill_d10': {
       const skillKey = `pericia_${uid.slice(0, 4)}`;
-      const skillLabel =
-        lang === 'en' ? 'NEW SKILL' : lang === 'es' ? 'NUEVA HABILIDAD' : 'NOVA PERÍCIA';
-      const rollLabel =
-        lang === 'en' ? 'ROLL SKILL' : lang === 'es' ? 'TIRAR HABILIDAD' : 'ROLAR PERÍCIA';
+      const skillLabel = tFn('customBuilder.starterField.skill');
+      const rollLabel = tFn('customBuilder.starterField.rollSkill');
       return [
         {
           id: `f_${uid}_num`,
@@ -234,7 +79,7 @@ function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): She
         {
           id: `f_${uid}`,
           key: `attr_${uid.slice(0, 4)}`,
-          label: lang === 'en' ? 'NEW ATTRIBUTE' : lang === 'es' ? 'NUEVO ATRIBUTO' : 'NOVO ATRIBUTO',
+          label: tFn('customBuilder.starterField.attribute'),
           kind: 'number',
           value: 2,
         },
@@ -244,12 +89,7 @@ function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): She
         {
           id: `f_${uid}`,
           key: `disc_${uid.slice(0, 4)}`,
-          label:
-            lang === 'en'
-              ? 'NEW DISCIPLINE'
-              : lang === 'es'
-                ? 'NUEVA DISCIPLINA'
-                : 'NOVA DISCIPLINA',
+          label: tFn('customBuilder.starterField.discipline'),
           kind: 'number',
           value: 1,
         },
@@ -259,7 +99,7 @@ function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): She
         {
           id: `f_${uid}`,
           key: `res_${uid.slice(0, 4)}`,
-          label: lang === 'en' ? 'NEW RESOURCE' : lang === 'es' ? 'NUEVO RECURSO' : 'NOVO RECURSO',
+          label: tFn('customBuilder.starterField.resource'),
           kind: 'resource',
           value: 4,
           max: 6,
@@ -270,8 +110,7 @@ function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): She
         {
           id: `f_${uid}`,
           key: `calc_${uid.slice(0, 4)}`,
-          label:
-            lang === 'en' ? 'CALCULATED STAT' : lang === 'es' ? 'CAMPO CALCULADO' : 'DERIVADO',
+          label: tFn('customBuilder.starterField.calculated'),
           kind: 'calculated',
           formula: '0',
           showPlus: true,
@@ -282,7 +121,7 @@ function buildStarterFields(template: StarterTemplateId, lang: AppLanguage): She
         {
           id: `f_${uid}`,
           key: `txt_${uid.slice(0, 4)}`,
-          label: lang === 'en' ? 'NOTES' : lang === 'es' ? 'NOTAS' : 'NOTAS',
+          label: tFn('customBuilder.starterField.text'),
           kind: 'text',
           value: '',
         },
@@ -310,9 +149,25 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
   const [catalogQuery, setCatalogQuery] = useState('');
   const [selectedSkillIds, setSelectedSkillIds] = useState<string[]>([]);
 
-  const lang = inferLang(t);
-  const fullT = getTranslations(lang);
-  const copy = TEMPLATE_LABELS[lang];
+  const lang: AppLanguage = t.language ?? 'pt-BR';
+  const getTemplateMeta = (tplId: StarterTemplateId) => ({
+    label: t.t(`customBuilder.tpl.${tplId}.label`),
+    hint: t.t(`customBuilder.tpl.${tplId}.hint`),
+    defaultTitle: t.t(`customBuilder.tpl.${tplId}.defaultTitle`),
+    defaultCode: t.t(`customBuilder.tpl.${tplId}.defaultCode`),
+  });
+  const copy = {
+    heading: t.t('customBuilder.starterHeading'),
+    options: {
+      empty: getTemplateMeta('empty'),
+      skill_d10: getTemplateMeta('skill_d10'),
+      attribute: getTemplateMeta('attribute'),
+      discipline: getTemplateMeta('discipline'),
+      resource: getTemplateMeta('resource'),
+      calculated: getTemplateMeta('calculated'),
+      text: getTemplateMeta('text'),
+    },
+  };
   const selectedMeta = copy.options[starterTemplate];
 
   const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
@@ -356,7 +211,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
       });
     } else if (showOfficialSkillCatalog && officialEdition) {
       // If user clicks Create Card without selecting from catalog, still respect edition difficulty & xpCategory
-      starterFields = buildStarterFields(starterTemplate, lang).map((field) =>
+      starterFields = buildStarterFields(starterTemplate, t.t).map((field) =>
         field.kind === 'roll'
           ? {
               ...field,
@@ -368,7 +223,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
           : { ...field, xpCategory: 'skill' },
       );
     } else {
-      starterFields = buildStarterFields(starterTemplate, lang);
+      starterFields = buildStarterFields(starterTemplate, t.t);
     }
 
     onCreateCard({
@@ -461,12 +316,12 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <span className="font-mono-tech text-[10px] font-extrabold text-[var(--accent-wine)] uppercase">
                 {officialEdition === 'vampire-v5'
-                  ? fullT.t('cards.catalog.headingV5')
-                  : fullT.t('cards.catalog.headingV20')}
+                  ? t.t('cards.catalog.headingV5')
+                  : t.t('cards.catalog.headingV20')}
               </span>
               {selectedSkillIds.length > 0 && (
                 <span className="font-mono-tech text-[10px] font-bold px-2 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] rounded-[var(--radius-pill)] uppercase">
-                  {fullT.t('cards.catalog.selectedCount', { count: selectedSkillIds.length })}
+                  {t.t('cards.catalog.selectedCount', { count: selectedSkillIds.length })}
                 </span>
               )}
             </div>
@@ -479,10 +334,10 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
               <input
                 type="search"
                 data-testid="builder-catalog-search"
-                aria-label={fullT.t('cards.catalog.searchAria')}
+                aria-label={t.t('cards.catalog.searchAria')}
                 value={catalogQuery}
                 onChange={(e) => setCatalogQuery(e.target.value)}
-                placeholder={fullT.t('cards.catalog.searchPlaceholder')}
+                placeholder={t.t('cards.catalog.searchPlaceholder')}
                 className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[11px] w-full"
               />
             </div>
@@ -490,7 +345,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
             <div className="max-h-52 overflow-y-auto pr-0.5 flex flex-col gap-2.5">
               {catalogGroups.length === 0 ? (
                 <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
-                  {fullT.t('cards.catalog.emptySearch')}
+                  {t.t('cards.catalog.emptySearch', { query: catalogQuery })}
                 </p>
               ) : (
                 catalogGroups.map((group) => (
@@ -520,7 +375,7 @@ export const CustomCardBuilder: React.FC<CustomCardBuilderProps> = ({
                             <span className="truncate">{skill.labels[lang]}</span>
                             {alreadyOnSheet ? (
                               <span className="text-[8px] font-extrabold px-1 py-0.5 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-ink)]/40 rounded-[var(--radius-pill)] shrink-0">
-                                {fullT.t('cards.catalog.alreadyOnSheet')}
+                                {t.t('cards.catalog.alreadyOnSheet')}
                               </span>
                             ) : isSelected ? (
                               <Check className="w-3 h-3 shrink-0" aria-hidden="true" />

@@ -695,7 +695,7 @@ private fun RulesModeContent(
                             border = BorderStroke(1.dp, theme.borderColor)
                         ) {
                             Text(
-                                text = "BUSCAR ONLINE (GEMINI) ↗",
+                                text = "BUSCAR ONLINE ↗",
                                 fontFamily = FontFamily.Monospace,
                                 fontWeight = FontWeight.Bold,
                                 fontSize = 10.sp,
@@ -769,7 +769,7 @@ private fun RulesModeContent(
             item(key = "rules_hint") {
                 Spacer(Modifier.height(4.dp))
                 Text(
-                    text = "Importe um manual PDF para consulta instantânea 100% offline via SQLite FTS5, ou pesquise online via Google Search Grounding.",
+                    text = "Importe um manual PDF para consulta instantânea 100% offline via SQLite FTS5, ou pesquise online pelo servidor configurado.",
                     fontFamily = FontFamily.Monospace,
                     fontSize = 11.sp,
                     color = theme.textMuted

@@ -1,10 +1,18 @@
 -keepattributes *Annotation*,Signature,InnerClasses,EnclosingMethod,SourceFile,LineNumberTable
 
-# App domain models & repositories
+# App domain models, presets, sync & crash recovery
 -keep class com.gridsheet.app.core.** { *; }
 -keepclassmembers class com.gridsheet.app.core.** { *; }
+-keep class com.gridsheet.app.core.SheetModelsKt { *; }
+-keep class com.gridsheet.app.core.PresetsKt { *; }
+-keep class com.gridsheet.app.core.SheetExportEnvelope { *; }
 -keep class com.gridsheet.app.data.** { *; }
 -keepclassmembers class com.gridsheet.app.data.** { *; }
+-keep class com.gridsheet.app.data.RoomSyncBridge { *; }
+-keep class com.gridsheet.app.data.WorkspaceSyncEngine { *; }
+-keep class com.gridsheet.app.data.RemoteWorkspaceMirrorDto { *; }
+-keep class com.gridsheet.app.CrashRecoveryManager { *; }
+-keep class com.gridsheet.app.GridSheetApplication { *; }
 
 # kotlinx.serialization
 -keepattributes RuntimeVisibleAnnotations,AnnotationDefault

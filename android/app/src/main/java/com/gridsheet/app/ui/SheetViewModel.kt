@@ -918,7 +918,8 @@ class SheetViewModel(application: Application) : AndroidViewModel(application) {
             vars = vars,
             rulePreset = rulePreset,
             hunger = hunger,
-            woundPenalty = woundPenalty
+            woundPenalty = woundPenalty,
+            isSoak = isSoak
         )
         if (!res.ok) {
             controller.setStatusMessage("ERRO NA ROLAGEM: ${res.error ?: "Fórmula inválida"}")

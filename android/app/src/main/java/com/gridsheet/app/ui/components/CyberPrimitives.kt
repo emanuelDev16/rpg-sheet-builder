@@ -1437,45 +1437,73 @@ private fun FieldRenderer(
                         }
                     }
 
-                    // Segmented bar (max 22 blocks displayed proportionally if max > 22)
-                    val displaySegments = maxVal.coerceAtMost(22)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(3.dp)
-                    ) {
-                        for (idx in 1..displaySegments) {
-                            val threshold = ((idx.toFloat() / displaySegments.toFloat()) * maxVal).roundToInt()
-                            val filled = current >= threshold && current > 0
+                    if (maxVal > 20) {
+                        val fillRatio = (current.toFloat() / maxVal.toFloat()).coerceIn(0f, 1f)
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(16.dp)
+                                .clip(blockShape)
+                                .background(if (theme.isEink) theme.bgCard else theme.accentWineSoft)
+                                .border(1.5.dp, theme.borderColor, blockShape)
+                        ) {
                             Box(
                                 modifier = Modifier
-                                    .weight(1f)
-                                    .height(14.dp)
-                                    .clip(blockShape)
-                                    .background(
-                                        when {
-                                            filled -> theme.accentPrimary
-                                            theme.isEink -> theme.bgCard
-                                            else -> theme.accentWineSoft
-                                        }
-                                    )
-                                    .border(
-                                        1.dp,
-                                        when {
-                                            filled -> theme.accentPrimary
-                                            theme.isEink -> theme.borderColor
-                                            else -> theme.accentPrimary.copy(alpha = 0.28f)
-                                        },
-                                        blockShape
-                                    )
-                                    .clickable {
-                                        val target = if (displaySegments == maxVal) {
-                                            if (current == idx) idx - 1 else idx
-                                        } else {
-                                            threshold
-                                        }
-                                        onSetResource(field.id, target)
-                                    }
+                                    .fillMaxWidth(fraction = fillRatio)
+                                    .height(16.dp)
+                                    .background(theme.accentPrimary)
                             )
+                            Canvas(modifier = Modifier.fillMaxSize()) {
+                                val tickColor = if (theme.isEink) {
+                                    theme.borderColor
+                                } else {
+                                    theme.borderColor.copy(alpha = 0.55f)
+                                }
+                                listOf(0.25f, 0.50f, 0.75f).forEach { fraction ->
+                                    val x = size.width * fraction
+                                    drawLine(
+                                        color = tickColor,
+                                        start = Offset(x, 0f),
+                                        end = Offset(x, size.height),
+                                        strokeWidth = 1.5.dp.toPx()
+                                    )
+                                }
+                            }
+                        }
+                    } else {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(3.dp)
+                        ) {
+                            for (idx in 1..maxVal) {
+                                val filled = idx <= current
+                                Box(
+                                    modifier = Modifier
+                                        .weight(1f)
+                                        .height(14.dp)
+                                        .clip(blockShape)
+                                        .background(
+                                            when {
+                                                filled -> theme.accentPrimary
+                                                theme.isEink -> theme.bgCard
+                                                else -> theme.accentWineSoft
+                                            }
+                                        )
+                                        .border(
+                                            1.dp,
+                                            when {
+                                                filled -> theme.accentPrimary
+                                                theme.isEink -> theme.borderColor
+                                                else -> theme.accentPrimary.copy(alpha = 0.28f)
+                                            },
+                                            blockShape
+                                        )
+                                        .clickable {
+                                            val target = if (current == idx) idx - 1 else idx
+                                            onSetResource(field.id, target)
+                                        }
+                                )
+                            }
                         }
                     }
 

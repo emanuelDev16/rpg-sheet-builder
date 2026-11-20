@@ -1,0 +1,40 @@
+{
+  "app": "gridsheet",
+  "schemaVersion": 1,
+  "exportedAt": "2025-01-01T00:00:00Z",
+  "sheets": [
+    {
+      "systemId": "wod",
+      "systemName": "WORLD OF DARKNESS",
+      "systemCode": "/SYS: STORYTELLER v20",
+      "characterName": "Viktor V1",
+      "cards": [
+        {
+          "id": "card_combate",
+          "tab": "geral",
+          "code": "//STATUS",
+          "title": "HEALTH · WILLPOWER · BLOOD",
+          "colSpan": 1,
+          "fields": [
+            {
+              "id": "f_health",
+              "key": "health",
+              "label": "HEALTH",
+              "kind": "resource",
+              "value": 5,
+              "max": 7
+            },
+            {
+              "id": "f_blood_pool",
+              "key": "blood_pool",
+              "label": "BLOOD POOL",
+              "kind": "resource",
+              "value": 6,
+              "max": 13
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

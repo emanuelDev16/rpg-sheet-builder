@@ -23,7 +23,7 @@ export const QSS_VARIABLES_GUIDE = `/* =========================================
   /* Tipografia & Tinta */
   --ink-primary: #0B0B0B;
   --ink-secondary: #3D332D;
-  --ink-muted: #6E6258;
+  --ink-muted: #574D45;
   --ink-inverse: #F8F1E7;
   --font-display: 'Barlow Condensed', 'Arial Narrow', sans-serif;
   --font-mono: 'JetBrains Mono', 'Consolas', monospace;
@@ -60,13 +60,46 @@ QPushButton.ModeEditActive {
 }
 */`;
 
-function escapeHtml(text: string): string {
+export function escapeHtml(text: string): string {
   return text
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
-    .replace(/"/g, '&quot;');
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#39;');
 }
+
+const DATA_IMAGE_BASE64_REGEX = /^data:image\/(?:png|jpeg|jpg|gif|webp|avif);base64,[A-Za-z0-9+/=]+$/i;
+
+export function sanitizeUrl(raw: string): string {
+  const trimmed = raw.trim();
+  if (!trimmed) return '';
+  if (DATA_IMAGE_BASE64_REGEX.test(trimmed)) {
+    return trimmed;
+  }
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.protocol === 'http:' || parsed.protocol === 'https:') {
+      return parsed.href;
+    }
+  } catch {
+    // Reject malformed or dangerous URLs (javascript:, vbscript:, data:text/html, data:image/svg+xml, etc.)
+  }
+  return '';
+}
+
+export function serializeSafeEmbeddedJson(data: unknown): string {
+  const raw = JSON.stringify(data) ?? 'null';
+  return raw
+    .replace(/</g, '\\u003c')
+    .replace(/>/g, '\\u003e')
+    .replace(/&/g, '\\u0026')
+    .replace(/\u2028/g, '\\u2028')
+    .replace(/\u2029/g, '\\u2029');
+}
+
+const EXPORT_CSP_CONTENT =
+  "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; font-src https: data:;";
 
 export function generateSingleFilePureHtml(
   sheet: CharacterSheetState,
@@ -83,10 +116,20 @@ export function generateSingleFilePureHtml(
       const fieldsHtml = card.fields
         .map((field) => {
           if (field.kind === 'number' || field.kind === 'text') {
+            const rawStr = String(field.value ?? '');
+            const looksLikeUrl = /^(?:https?:\/\/|data:|javascript:|vbscript:)/i.test(rawStr.trim());
+            const safeUrl = looksLikeUrl ? sanitizeUrl(rawStr) : '';
+            const linkHtml =
+              field.kind === 'text' && safeUrl
+                ? `<a class="field-link" href="${escapeHtml(safeUrl)}" rel="noopener noreferrer">↗</a>`
+                : '';
             return `
           <div class="field-row">
             <label class="field-label">${escapeHtml(field.label)}</label>
-            <input class="cyber-input" type="${field.kind === 'number' ? 'number' : 'text'}" value="${escapeHtml(String(field.value ?? ''))}" />
+            <div class="field-input-wrap">
+              <input class="cyber-input" type="${field.kind === 'number' ? 'number' : 'text'}" value="${escapeHtml(rawStr)}" />
+              ${linkHtml}
+            </div>
           </div>`;
           }
           if (field.kind === 'calculated') {
@@ -101,12 +144,21 @@ export function generateSingleFilePureHtml(
           </div>`;
           }
           if (field.kind === 'resource') {
-            const val = Number(field.value ?? 0);
-            const max = field.max ?? 12;
-            const blocks = Array.from({ length: max }, (_, idx) => {
-              const filled = idx < val ? 'seg-block filled' : 'seg-block';
-              return `<span class="${filled}"></span>`;
-            }).join('');
+            const val = Math.max(0, Number(field.value ?? 0));
+            const max = Math.max(1, field.max ?? 12);
+            const trackHtml =
+              max > 20
+                ? (() => {
+                    const pct = Math.max(0, Math.min(100, (val / max) * 100));
+                    return `<div class="cont-track"><div class="cont-fill" style="width:${pct.toFixed(1)}%"></div><span class="tick t25"></span><span class="tick t50"></span><span class="tick t75"></span></div>`;
+                  })()
+                : (() => {
+                    const blocks = Array.from({ length: max }, (_, idx) => {
+                      const filled = idx < val ? 'seg-block filled' : 'seg-block';
+                      return `<span class="${filled}"></span>`;
+                    }).join('');
+                    return `<div class="seg-track">${blocks}</div>`;
+                  })();
             return `
           <div class="resource-box">
             <div class="resource-head">
@@ -117,7 +169,7 @@ export function generateSingleFilePureHtml(
                 <button class="mini-btn" type="button">+</button>
               </div>
             </div>
-            <div class="seg-track">${blocks}</div>
+            ${trackHtml}
           </div>`;
           }
           if (field.kind === 'boolean') {
@@ -171,7 +223,7 @@ export function generateSingleFilePureHtml(
         .join('\n');
 
       return `
-        <section class="${spanClass}" data-tab="${card.tab}">
+        <section class="${spanClass}" data-tab="${escapeHtml(card.tab)}">
           <header class="card-header">
             <span class="card-code">${escapeHtml(card.code)}</span>
             <h2 class="card-title">${escapeHtml(card.title)}</h2>
@@ -191,7 +243,7 @@ export function generateSingleFilePureHtml(
           <span class="log-label">${escapeHtml(log.label)}</span>
           <span class="log-time">${escapeHtml(log.timestamp)}</span>
         </div>
-        <div class="log-total">${log.total}</div>
+        <div class="log-total">${escapeHtml(String(log.total))}</div>
         <div class="log-formula">${escapeHtml(log.breakdown)}</div>
       </div>`,
     )
@@ -201,11 +253,9 @@ export function generateSingleFilePureHtml(
 <html lang="${escapeHtml(htmlLang)}">
 <head>
   <meta charset="UTF-8" />
+  <meta http-equiv="Content-Security-Policy" content="${EXPORT_CSP_CONTENT}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>${escapeHtml(sheet.systemName)} — ${escapeHtml(t('print.pureHtmlTitleSuffix'))}</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com" />
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  <link href="https://fonts.googleapis.com/css2?family=Barlow+Condensed:wght@700;800&family=DM+Sans:wght@500;700&family=JetBrains+Mono:wght@400;600;700&display=swap" rel="stylesheet" />
   <style>
 ${QSS_VARIABLES_GUIDE}
 
@@ -310,6 +360,8 @@ ${QSS_VARIABLES_GUIDE}
     .card-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
     .field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
     .field-label { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--ink-secondary); }
+    .field-input-wrap { display: inline-flex; align-items: center; gap: 6px; }
+    .field-link { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent-wine); text-decoration: none; }
     .cyber-input {
       font-family: var(--font-mono);
       font-size: 13px;
@@ -342,6 +394,12 @@ ${QSS_VARIABLES_GUIDE}
     .seg-track { display: flex; gap: 3px; height: 14px; }
     .seg-block { flex: 1; background: var(--accent-wine-soft); border: 1px solid rgba(91,15,24,0.28); border-radius: 2px; }
     .seg-block.filled { background: var(--accent-wine); border-color: var(--accent-wine); }
+    .cont-track { position: relative; height: 14px; background: var(--accent-wine-soft); border: 1.5px solid var(--border-ink); border-radius: 3px; overflow: hidden; }
+    .cont-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-wine); }
+    .cont-track .tick { position: absolute; top: 0; bottom: 0; width: 1.5px; background: rgba(11,11,11,0.45); pointer-events: none; }
+    .cont-track .t25 { left: 25%; }
+    .cont-track .t50 { left: 50%; }
+    .cont-track .t75 { left: 75%; }
     .bool-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
     .bool-native { display: none; }
     .bool-box { width: 22px; height: 22px; border: 2px solid var(--border-ink); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: var(--accent-wine); color: var(--ink-inverse); }
@@ -433,6 +491,7 @@ ${QSS_VARIABLES_GUIDE}
     <span class="status-access">${escapeHtml(i18n.statusBar.accessGranted)}</span>
     <span>${escapeHtml(i18n.statusBar.cargo)} ${evaluation.totalCargoWeight} KG</span>
   </footer>
+  <script type="application/json" id="gridsheet-data">${serializeSafeEmbeddedJson(sheet)}</script>
 </body>
 </html>`;
 }

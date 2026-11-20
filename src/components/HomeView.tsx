@@ -145,9 +145,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
       {onChangeTheme && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--bg-card)] px-3.5 py-2 shadow-[var(--shadow-btn)]">
           <span className="font-mono-tech text-[11px] font-bold tracking-[0.14em] text-[var(--accent-primary)] uppercase">
-            GRID//SHEET · THEME
+            {t('home.themeBadge')}
           </span>
-          <ThemeSelector theme={theme} onChangeTheme={onChangeTheme} />
+          <ThemeSelector theme={theme} language={language} onChangeTheme={onChangeTheme} />
         </div>
       )}
 

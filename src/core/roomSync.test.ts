@@ -462,10 +462,12 @@ test('requireSyncAuth validates Bearer token with timingSafeEqual and rejects in
   assert.deepEqual(origins, ['https://app.example.com', 'http://localhost:3000']);
   assert.equal(origins.includes('*'), false);
 
-  // Cloud Run / production binds 0.0.0.0 even when ALLOW_LAN_SYNC is false or unset
-  assert.equal(resolveBindHost({ NODE_ENV: 'production', ALLOW_LAN_SYNC: 'false' }), '0.0.0.0');
-  assert.equal(resolveBindHost({ K_SERVICE: 'grid-sheet', ALLOW_LAN_SYNC: 'false' }), '0.0.0.0');
-  assert.equal(resolveBindHost({ PORT: '8080' }), '0.0.0.0');
+  // Binds 127.0.0.1 by default and opens 0.0.0.0 only when ALLOW_LAN_SYNC === 'true'
+  assert.equal(resolveBindHost({}), '127.0.0.1');
+  assert.equal(resolveBindHost({ NODE_ENV: 'production', ALLOW_LAN_SYNC: 'false' }), '127.0.0.1');
+  assert.equal(resolveBindHost({ K_SERVICE: 'grid-sheet', ALLOW_LAN_SYNC: 'false' }), '127.0.0.1');
+  assert.equal(resolveBindHost({ PORT: '8080' }), '127.0.0.1');
   assert.equal(resolveBindHost({ ALLOW_LAN_SYNC: 'false' }), '127.0.0.1');
   assert.equal(resolveBindHost({ ALLOW_LAN_SYNC: 'true' }), '0.0.0.0');
+  assert.equal(resolveBindHost({ ALLOW_LAN_SYNC: 'true', PORT: '8080' }), '0.0.0.0');
 });

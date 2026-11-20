@@ -503,6 +503,29 @@ select:focus-visible,
   box-shadow: inset 0 0 0 2px #FFFFFF;
 }
 
+[data-theme="eink"] .eink-health-slash {
+  background-image: repeating-linear-gradient(45deg, transparent 0 3px, #1A1A1A 3px 4.5px) !important;
+  background-color: #F8F8F8 !important;
+  color: #0B0B0B !important;
+  border-color: #1A1A1A !important;
+}
+
+[data-theme="eink"] .eink-health-cross {
+  background-image:
+    repeating-linear-gradient(45deg, transparent 0 3px, #1A1A1A 3px 4.5px),
+    repeating-linear-gradient(-45deg, transparent 0 3px, #1A1A1A 3px 4.5px) !important;
+  background-color: #F8F8F8 !important;
+  color: #0B0B0B !important;
+  border-color: #1A1A1A !important;
+}
+
+[data-theme="eink"] .eink-health-solid {
+  background-image: none !important;
+  background-color: #1A1A1A !important;
+  color: #FFFFFF !important;
+  border-color: #1A1A1A !important;
+}
+
 /* Seleção ativa: creme/vinho em light/dark, inversão binária pura (#1A1A1A / #F8F8F8) em E-Ink */
 .cyber-active-tint {
   background-color: var(--accent-cream-badge);
@@ -559,6 +582,33 @@ select:focus-visible,
 }
 
 @media print {
+  :root,
+  [data-theme="light"],
+  [data-theme="dark"],
+  [data-theme="eink"] {
+    --bg-base: #FFFFFF !important;
+    --bg-canvas: #FFFFFF !important;
+    --bg-card: #FFFFFF !important;
+    --bg-card-alt: #F5F5F5 !important;
+    --bg-strip: #F0F0F0 !important;
+    --bg-header-strip: #F0F0F0 !important;
+    --ink-primary: #0B0B0B !important;
+    --ink-secondary: #1F1F1F !important;
+    --ink-muted: #333333 !important;
+    --text-primary: #0B0B0B !important;
+    --text-secondary: #1F1F1F !important;
+    --text-muted: #333333 !important;
+    --border-color: #0B0B0B !important;
+    --border-ink: #0B0B0B !important;
+    --accent-black: #0B0B0B !important;
+    --shadow-card: none !important;
+    --shadow-btn: none !important;
+    --shadow-btn-hover: none !important;
+    --shadow-drawer: none !important;
+    --shadow-modal: none !important;
+    color-scheme: light !important;
+  }
+
   * {
     -webkit-print-color-adjust: exact !important;
     print-color-adjust: exact !important;
@@ -570,7 +620,13 @@ select:focus-visible,
     height: auto !important;
     min-height: 0 !important;
     overflow: visible !important;
-    background-color: var(--bg-base) !important;
+    background-color: #FFFFFF !important;
+    color: #0B0B0B !important;
+  }
+
+  .cyber-grid-canvas {
+    background-image: none !important;
+    background-color: #FFFFFF !important;
   }
 
   .print-shell {
@@ -584,7 +640,7 @@ select:focus-visible,
     overflow: visible !important;
     height: auto !important;
     padding: 0 !important;
-    background-color: var(--bg-base) !important;
+    background-color: #FFFFFF !important;
   }
 
   .bento-print-grid {
@@ -610,7 +666,13 @@ select:focus-visible,
     break-inside: avoid !important;
     page-break-inside: avoid !important;
     box-shadow: none !important;
-    background-color: var(--bg-card) !important;
+    background-color: #FFFFFF !important;
+  }
+
+  .cyber-btn,
+  .cyber-btn-outline,
+  .cyber-roll-btn {
+    box-shadow: none !important;
   }
 
   .no-print {
