@@ -1,9 +1,15 @@
-name: Build & Deploy Demo (Web + Android APK)
+name: Build & Deploy Demo (Web · Android Opt-In)
 
 on:
   push:
     branches: [ main ]
   workflow_dispatch:
+    inputs:
+      build_android:
+        description: 'Compilar e publicar APK Android (pausado por padrão)'
+        type: boolean
+        required: false
+        default: false
 
 permissions:
   contents: write
@@ -59,6 +65,7 @@ jobs:
 
   # 2. Compilação do APK Android (Gradle 8.10.2 / JDK 17)
   build-android:
+    if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android == true }}
     runs-on: ubuntu-latest
     steps:
       - name: Checkout do código
