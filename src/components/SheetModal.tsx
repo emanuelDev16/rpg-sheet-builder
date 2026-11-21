@@ -15,11 +15,12 @@ import {
 } from 'lucide-react';
 import {
   CharacterSheetState,
+  getWodClansForEdition,
   NewSheetIdentityInput,
   parseAndValidateImportPayload,
-  RulePreset,
   Sheet,
   SystemId,
+  WodEdition,
 } from '../core/sheetModel';
 import {
   createWorkspaceSnapshot,
@@ -35,6 +36,7 @@ import {
   type AppTranslations,
   getLocalizedSystemOptions,
   getTranslations,
+  type TranslateFn,
 } from '../core/i18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 import { useFocusTrap } from '../utils/useFocusTrap';
@@ -68,24 +70,202 @@ interface SheetModalProps {
 
 const DEFAULT_MODAL_T = getTranslations('pt-BR').modal;
 
-const WOD_CLAN_SUGGESTIONS = [
-  'Banu Haqim',
-  'Brujah',
-  'Gangrel',
-  'Hecata',
-  'Lasombra',
-  'Malkavian',
-  'Ministry',
-  'Nosferatu',
-  'Ravnos',
-  'Salubri',
-  'Toreador',
-  'Tremere',
-  'Tzimisce',
-  'Ventrue',
-  'Caitiff',
-  'Thin-Blood',
-] as const;
+export const WOD_CUSTOM_CLAN_VALUE = '__custom__';
+
+export function getNextClanPresetForEdition(
+  nextEdition: WodEdition,
+  currentPreset: string,
+): string {
+  if (!currentPreset || currentPreset === WOD_CUSTOM_CLAN_VALUE) {
+    return currentPreset;
+  }
+  const stillAvailable = getWodClansForEdition(nextEdition).some(
+    (clan) => clan.id === currentPreset,
+  );
+  return stillAvailable ? currentPreset : '';
+}
+
+export function resolveWodClanSelection(
+  edition: WodEdition,
+  clanPreset: string,
+  customClan: string,
+  language: AppLanguage,
+): string {
+  if (clanPreset === WOD_CUSTOM_CLAN_VALUE) {
+    return customClan.trim();
+  }
+  const match = getWodClansForEdition(edition).find((clan) => clan.id === clanPreset);
+  return match ? match.labels[language] : '';
+}
+
+interface WodEditionFieldsetProps {
+  edition: WodEdition;
+  radioGroupName: string;
+  testIdPrefix: string;
+  t: TranslateFn;
+  onSelectEdition: (edition: WodEdition) => void;
+}
+
+export const WodEditionFieldset: React.FC<WodEditionFieldsetProps> = ({
+  edition,
+  radioGroupName,
+  testIdPrefix,
+  t,
+  onSelectEdition,
+}) => (
+  <fieldset className="border-0 p-0 m-0 flex flex-col gap-1.5">
+    <legend className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)] mb-1.5">
+      {t('modal.wodEditionLabel')}
+    </legend>
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+      {(
+        [
+          {
+            id: 'vampire-v5' as const,
+            suffix: 'v5',
+            title: t('modal.wodEditionV5'),
+            hint: t('modal.wodEditionV5Hint'),
+          },
+          {
+            id: 'storyteller-v20' as const,
+            suffix: 'v20',
+            title: t('modal.wodEditionV20'),
+            hint: t('modal.wodEditionV20Hint'),
+          },
+        ] as const
+      ).map((ed) => {
+        const active = edition === ed.id;
+        return (
+          <label
+            key={ed.id}
+            data-testid={`${testIdPrefix}-${ed.suffix}`}
+            className={`wod-edition-segment cyber-btn-outline min-h-[44px] !rounded-[var(--radius-card)] p-2.5 text-left flex items-start justify-between gap-2 cursor-pointer ${
+              active ? 'cyber-active-tint' : ''
+            }`}
+          >
+            <input
+              type="radio"
+              name={radioGroupName}
+              value={ed.id}
+              checked={active}
+              onChange={() => onSelectEdition(ed.id)}
+              className="sr-only"
+            />
+            <div className="min-w-0 flex flex-col gap-0.5">
+              <span
+                className={`font-mono-tech text-xs font-extrabold uppercase ${
+                  active ? 'cyber-active-title' : 'text-[var(--ink-primary)]'
+                }`}
+              >
+                {ed.title}
+              </span>
+              <span className="cyber-active-muted font-mono-tech text-[10px] leading-snug text-[var(--ink-muted)]">
+                {ed.hint}
+              </span>
+            </div>
+            <span
+              aria-hidden="true"
+              className={`cyber-radio-ring mt-0.5 w-4 h-4 rounded-full border-2 shrink-0 flex items-center justify-center ${
+                active
+                  ? 'border-[var(--accent-wine)] bg-[var(--accent-wine)]'
+                  : 'border-[var(--border-ink)] bg-[var(--bg-card)]'
+              }`}
+            >
+              {active && (
+                <span className="cyber-radio-dot w-1.5 h-1.5 rounded-full bg-[var(--ink-inverse)]" />
+              )}
+            </span>
+          </label>
+        );
+      })}
+    </div>
+  </fieldset>
+);
+
+interface WodClanFieldProps {
+  edition: WodEdition;
+  clanPreset: string;
+  customClan: string;
+  language: AppLanguage;
+  selectId: string;
+  selectTestId: string;
+  hintId: string;
+  customInputId: string;
+  customTestId: string;
+  t: TranslateFn;
+  onChangeClanPreset: (presetId: string) => void;
+  onChangeCustomClan: (value: string) => void;
+}
+
+export const WodClanField: React.FC<WodClanFieldProps> = ({
+  edition,
+  clanPreset,
+  customClan,
+  language,
+  selectId,
+  selectTestId,
+  hintId,
+  customInputId,
+  customTestId,
+  t,
+  onChangeClanPreset,
+  onChangeCustomClan,
+}) => {
+  const editionClans = getWodClansForEdition(edition);
+
+  return (
+    <div className="flex flex-col gap-1.5">
+      <label
+        htmlFor={selectId}
+        className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]"
+      >
+        {t('modal.newClanFactionLabel')}
+      </label>
+      <select
+        id={selectId}
+        name="wodClanPreset"
+        data-testid={selectTestId}
+        aria-describedby={hintId}
+        value={clanPreset}
+        onChange={(e) => onChangeClanPreset(e.target.value)}
+        className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+      >
+        <option value="">{t('modal.wodClanPlaceholder')}</option>
+        {editionClans.map((clan) => (
+          <option key={clan.id} value={clan.id}>
+            {clan.labels[language]}
+          </option>
+        ))}
+        <option value={WOD_CUSTOM_CLAN_VALUE}>{t('modal.wodClanCustomOption')}</option>
+      </select>
+      <span id={hintId} className="font-mono-tech text-[10px] text-[var(--ink-muted)]">
+        {t('modal.wodClanCountHint', { count: editionClans.length })}
+      </span>
+
+      {clanPreset === WOD_CUSTOM_CLAN_VALUE && (
+        <div className="flex flex-col gap-1 pt-1">
+          <label
+            htmlFor={customInputId}
+            className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]"
+          >
+            {t('modal.wodClanCustomLabel')}
+          </label>
+          <input
+            id={customInputId}
+            name="customWodClan"
+            data-testid={customTestId}
+            type="text"
+            value={customClan}
+            onChange={(e) => onChangeCustomClan(e.target.value)}
+            placeholder={t('modal.wodClanCustomPlaceholder')}
+            enterKeyHint="done"
+            className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+          />
+        </div>
+      )}
+    </div>
+  );
+};
 
 export const SheetModal: React.FC<SheetModalProps> = ({
   mode,
@@ -124,17 +304,25 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<SystemId>(activeSystemId);
-  const [selectedWodEdition, setSelectedWodEdition] = useState<'vampire-v5' | 'storyteller-v20'>(
-    () => (sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20'),
+  const [selectedWodEdition, setSelectedWodEdition] = useState<WodEdition>(() =>
+    sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20',
   );
+  const [selectedWodClanPreset, setSelectedWodClanPreset] = useState('');
+  const [customWodClan, setCustomWodClan] = useState('');
   const [charName, setCharName] = useState('');
   const [secondaryTrait, setSecondaryTrait] = useState('');
   const [templateName, setTemplateName] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const overlayPointerDownRef = useRef(false);
 
   useFocusTrap(Boolean(mode), dialogRef, onClose, closeButtonRef);
+
+  const handleSelectWodEdition = (nextEdition: WodEdition) => {
+    setSelectedWodEdition(nextEdition);
+    setSelectedWodClanPreset((prev) => getNextClanPresetForEdition(nextEdition, prev));
+  };
 
   const refreshSnapshots = async () => {
     try {
@@ -150,6 +338,8 @@ export const SheetModal: React.FC<SheetModalProps> = ({
     if (mode === 'new') {
       setSelectedSystem(activeSystemId);
       setSelectedWodEdition(sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20');
+      setSelectedWodClanPreset('');
+      setCustomWodClan('');
       setCharName('');
       setSecondaryTrait('');
     } else if (mode === 'save') {
@@ -267,15 +457,19 @@ export const SheetModal: React.FC<SheetModalProps> = ({
     <div
       className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--overlay-backdrop)]"
       role="presentation"
+      onPointerDown={(e) => {
+        overlayPointerDownRef.current = e.target === e.currentTarget;
+      }}
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (overlayPointerDownRef.current && e.target === e.currentTarget) onClose();
+        overlayPointerDownRef.current = false;
       }}
     >
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
-        aria-label={mode === 'new' ? t.newTitle : mode === 'open' ? t.openTitle : t.saveTitle}
+        aria-labelledby="sheet-modal-title"
         className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto overscroll-contain bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
       >
         <header className="bento-card-header sticky top-0 z-10">
@@ -285,7 +479,10 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 {mode === 'open' ? t.t('modal.openTag') : t.t('modal.saveTag')}
               </span>
             )}
-            <h2 className="font-display text-lg sm:text-xl font-extrabold uppercase leading-tight">
+            <h2
+              id="sheet-modal-title"
+              className="font-display text-lg sm:text-xl font-extrabold uppercase leading-tight"
+            >
               {mode === 'new' ? t.newTitle : mode === 'open' ? t.openTitle : t.saveTitle}
             </h2>
           </div>
@@ -294,7 +491,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
             type="button"
             onClick={onClose}
             aria-label={t.closeAria}
-            className="cyber-btn-outline mobile-touch-stepper w-8 h-8 sm:w-7 sm:h-7 flex items-center justify-center shrink-0 cursor-pointer"
+            className="cyber-btn-outline mobile-touch-stepper min-h-[36px] min-w-[36px] w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center shrink-0 cursor-pointer"
           >
             <X className="w-4 h-4" aria-hidden="true" />
           </button>
@@ -303,14 +500,32 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         <div className="p-4 flex flex-col gap-3">
           {mode === 'new' ? (
             <form
+              aria-labelledby="sheet-modal-title"
               className="flex flex-col gap-4"
               onSubmit={(e) => {
                 e.preventDefault();
+                const resolvedWodClan =
+                  selectedSystem === 'wod'
+                    ? resolveWodClanSelection(
+                        selectedWodEdition,
+                        selectedWodClanPreset,
+                        customWodClan,
+                        language,
+                      )
+                    : '';
                 onCreateNewSheet(selectedSystem, {
                   characterName: charName,
-                  secondaryTrait: selectedSystem === 'blank' ? undefined : secondaryTrait,
-                  rulePreset:
-                    selectedSystem === 'wod' ? (selectedWodEdition as RulePreset) : undefined,
+                  ...(selectedSystem === 'wod'
+                    ? {
+                        edition: selectedWodEdition,
+                        rulePreset: selectedWodEdition,
+                        ...(resolvedWodClan
+                          ? { clan: resolvedWodClan, secondaryTrait: resolvedWodClan }
+                          : {}),
+                      }
+                    : selectedSystem === 'blank'
+                      ? {}
+                      : { secondaryTrait }),
                 });
                 onClose();
               }}
@@ -388,59 +603,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
               </div>
 
               {selectedSystem === 'wod' && (
-                <div className="flex flex-col gap-1.5">
-                  <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
-                    {t.t('modal.wodEditionLabel')}
-                  </span>
-                  <div
-                    role="radiogroup"
-                    aria-label={t.t('modal.wodEditionLabel')}
-                    className="grid grid-cols-1 sm:grid-cols-2 gap-2"
-                  >
-                    {(
-                      [
-                        {
-                          id: 'vampire-v5' as const,
-                          testId: 'new-sheet-wod-edition-v5',
-                          title: t.t('modal.wodEditionV5'),
-                          hint: t.t('modal.wodEditionV5Hint'),
-                        },
-                        {
-                          id: 'storyteller-v20' as const,
-                          testId: 'new-sheet-wod-edition-v20',
-                          title: t.t('modal.wodEditionV20'),
-                          hint: t.t('modal.wodEditionV20Hint'),
-                        },
-                      ] as const
-                    ).map((ed) => {
-                      const active = selectedWodEdition === ed.id;
-                      return (
-                        <button
-                          key={ed.id}
-                          type="button"
-                          role="radio"
-                          aria-checked={active}
-                          data-testid={ed.testId}
-                          onClick={() => setSelectedWodEdition(ed.id)}
-                          className={`cyber-btn-outline !rounded-[var(--radius-card)] p-2.5 text-left flex flex-col gap-0.5 cursor-pointer ${
-                            active ? 'cyber-active-tint' : ''
-                          }`}
-                        >
-                          <span
-                            className={`font-mono-tech text-xs font-extrabold uppercase ${
-                              active ? 'cyber-active-title' : 'text-[var(--ink-primary)]'
-                            }`}
-                          >
-                            {ed.title}
-                          </span>
-                          <span className="cyber-active-muted font-mono-tech text-[10px] text-[var(--ink-muted)]">
-                            {ed.hint}
-                          </span>
-                        </button>
-                      );
-                    })}
-                  </div>
-                </div>
+                <WodEditionFieldset
+                  edition={selectedWodEdition}
+                  radioGroupName="sheetModalWodEdition"
+                  testIdPrefix="new-sheet-wod-edition"
+                  t={t.t}
+                  onSelectEdition={handleSelectWodEdition}
+                />
               )}
 
               <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2.5">
@@ -453,72 +622,81 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     htmlFor="new-sheet-char-name"
                     className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]"
                   >
-                    {t.newCharNameLabel}
+                    {t.t('modal.newCharNameOptionalLabel')}
                   </label>
                   <input
                     id="new-sheet-char-name"
+                    name="characterName"
                     data-testid="new-sheet-name-input"
                     type="text"
                     value={charName}
                     onChange={(e) => setCharName(e.target.value)}
                     placeholder={
                       selectedSystem === 'wod'
-                        ? 'Julian Cross'
+                        ? selectedWodEdition === 'vampire-v5'
+                          ? 'Nadia Voss'
+                          : 'Julian Cross'
                         : selectedSystem === 'dnd5e'
                           ? 'Lyra Vance'
                           : selectedSystem === 'cyberpunk'
                             ? 'Zero_K'
                             : t.newCharacterName
                     }
-                    className="cyber-input mobile-touch-input px-2.5 py-2 text-xs font-semibold w-full"
+                    enterKeyHint="done"
+                    className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
                   />
                 </div>
 
-                {selectedSystem !== 'blank' && (
+                {selectedSystem === 'wod' ? (
+                  <WodClanField
+                    edition={selectedWodEdition}
+                    clanPreset={selectedWodClanPreset}
+                    customClan={customWodClan}
+                    language={language}
+                    selectId="new-sheet-wod-clan-select"
+                    selectTestId="new-sheet-wod-clan-select"
+                    hintId="new-sheet-wod-clan-hint"
+                    customInputId="new-sheet-wod-clan-custom"
+                    customTestId="new-sheet-wod-clan-custom-input"
+                    t={t.t}
+                    onChangeClanPreset={setSelectedWodClanPreset}
+                    onChangeCustomClan={setCustomWodClan}
+                  />
+                ) : selectedSystem !== 'blank' ? (
                   <div className="flex flex-col gap-1">
                     <label
                       htmlFor="new-sheet-secondary-trait"
                       className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]"
                     >
-                      {selectedSystem === 'wod'
-                        ? t.newClanFactionLabel
-                        : selectedSystem === 'dnd5e'
-                          ? t.newClassAncestryLabel
-                          : t.newArchetypeLabel}
+                      {selectedSystem === 'dnd5e'
+                        ? t.newClassAncestryLabel
+                        : t.newArchetypeLabel}
                     </label>
                     <input
                       id="new-sheet-secondary-trait"
+                      name="secondaryTrait"
                       data-testid="new-sheet-trait-input"
                       type="text"
-                      list={selectedSystem === 'wod' ? 'wod-clan-suggestions' : undefined}
                       value={secondaryTrait}
                       onChange={(e) => setSecondaryTrait(e.target.value)}
                       placeholder={
-                        selectedSystem === 'wod'
-                          ? 'Ventrue'
-                          : selectedSystem === 'dnd5e'
-                            ? 'Fighter · Half-Elf'
-                            : selectedSystem === 'cyberpunk'
-                              ? 'Netrunner'
-                              : t.t('modal.defaultTraitPlaceholder')
+                        selectedSystem === 'dnd5e'
+                          ? 'Fighter · Half-Elf'
+                          : selectedSystem === 'cyberpunk'
+                            ? 'Netrunner'
+                            : t.t('modal.defaultTraitPlaceholder')
                       }
-                      className="cyber-input mobile-touch-input px-2.5 py-2 text-xs font-semibold w-full"
+                      enterKeyHint="done"
+                      className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
                     />
-                    {selectedSystem === 'wod' && (
-                      <datalist id="wod-clan-suggestions">
-                        {WOD_CLAN_SUGGESTIONS.map((clan) => (
-                          <option key={clan} value={clan} />
-                        ))}
-                      </datalist>
-                    )}
                   </div>
-                )}
+                ) : null}
               </div>
 
               <button
                 type="submit"
                 data-testid="new-sheet-submit-btn"
-                className="cyber-roll-btn mobile-touch-input w-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                className="cyber-roll-btn mobile-touch-input min-h-[40px] w-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
               >
                 {t.createAction}
               </button>

@@ -20,6 +20,7 @@ import {
   createBlankSheet,
   createDefaultSheet,
   createDnd5ePreset,
+  createFreshSheetForSystem,
   createGenericD20Preset,
   createNewSheetForSystem,
   createPresetBySystemId,
@@ -34,6 +35,7 @@ import {
   getSheetVirtues,
   getV20HealthBreakdown,
   getV5HealthBreakdown,
+  getWodClansForEdition,
   isValidIsoDateTime,
   migrateLegacySheetMetadata,
   migrateLegacyWodSheet,
@@ -890,5 +892,215 @@ test('migrateLegacyWodSheet safely upcasts legacy 6-attribute V20 and V5 sheets 
   assert.equal(validateAjv(migratedV5), true, `Migrated V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
   assert.equal(validateSheetPayload(migratedV5).valid, true);
   assert.deepEqual(migrateLegacyWodSheet(migratedV5, { storage: null }), migratedV5);
+});
+
+test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attributes, tracks, clan, identity fields, and preserves non-WoD/blank sheets', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. Edition-filtered Clan rosters
+  const v20Clans = getWodClansForEdition('storyteller-v20');
+  assert.equal(v20Clans.length, 14);
+  for (const id of ['assamite', 'followers_of_set', 'giovanni', 'caitiff']) {
+    assert.ok(v20Clans.some((c) => c.id === id), `Expected V20 clan ${id}`);
+  }
+  for (const id of ['banu_haqim', 'hecata', 'ministry', 'salubri', 'thin_blood']) {
+    assert.equal(v20Clans.some((c) => c.id === id), false, `Unexpected V5-only clan ${id} in V20`);
+  }
+  for (const clan of v20Clans) {
+    assert.ok(clan.labels['pt-BR'].trim().length > 0);
+    assert.ok(clan.labels.en.trim().length > 0);
+    assert.ok(clan.labels.es.trim().length > 0);
+  }
+
+  const v5Clans = getWodClansForEdition('vampire-v5');
+  assert.equal(v5Clans.length, 16);
+  for (const id of ['banu_haqim', 'hecata', 'ministry', 'salubri', 'caitiff', 'thin_blood']) {
+    assert.ok(v5Clans.some((c) => c.id === id), `Expected V5 clan ${id}`);
+  }
+  for (const id of ['assamite', 'followers_of_set', 'giovanni']) {
+    assert.equal(v5Clans.some((c) => c.id === id), false, `Unexpected V20-only clan ${id} in V5`);
+  }
+  for (const clan of v5Clans) {
+    assert.ok(clan.labels['pt-BR'].trim().length > 0);
+    assert.ok(clan.labels.en.trim().length > 0);
+    assert.ok(clan.labels.es.trim().length > 0);
+  }
+
+  // 2. Fresh WoD V5 sheet with selected Clan & optional Name
+  const v5 = createFreshSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Sangue-Fraco',
+    name: 'Nadia Voss',
+  });
+  assert.equal(detectSystemId(v5), 'wod');
+  assert.equal(resolveRulePreset(v5), 'vampire-v5');
+  assert.equal(v5.xpRulePreset, 'vampire-v5');
+  assert.equal(v5.systemName, 'VAMPIRE: THE MASQUERADE // V5');
+  assert.equal(v5.systemCode, '/SYS: WORLD OF DARKNESS · VAMPIRE V5');
+  assert.equal(v5.characterName, 'NADIA VOSS');
+  assert.equal(v5.bloodPool, undefined);
+  assert.equal(v5.virtues, undefined);
+
+  const v5AttrKeys = v5.cards
+    .find((c) => c.id === 'card_atributos')!
+    .fields.filter((f) => f.kind === 'number')
+    .map((f) => f.key);
+  assert.deepEqual(v5AttrKeys, [
+    'strength',
+    'dexterity',
+    'stamina',
+    'charisma',
+    'manipulation',
+    'composure',
+    'intelligence',
+    'wits',
+    'resolve',
+  ]);
+
+  const v5Combat = v5.cards.find((c) => c.id === 'card_combate')!.fields;
+  const v5Health = v5Combat.find((f) => f.id === 'f_health');
+  const v5Wp = v5Combat.find((f) => f.id === 'f_willpower');
+  const v5Hunger = v5Combat.find((f) => f.id === 'f_hunger');
+  assert.equal(v5Health?.maxFormula, 'stamina + 3');
+  assert.equal(v5Health?.max, 4);
+  assert.equal(v5Health?.value, 4);
+  assert.equal(v5Health?.superficialDamage, 0);
+  assert.equal(v5Health?.aggravatedDamage, 0);
+  assert.equal(v5Health?.bashingDamage, undefined);
+  assert.equal(v5Health?.lethalDamage, undefined);
+  assert.equal(v5Wp?.maxFormula, 'composure + resolve');
+  assert.equal(v5Wp?.max, 2);
+  assert.equal(v5Wp?.value, 2);
+  assert.equal(v5Hunger?.value, 1);
+  assert.equal(v5Hunger?.max, 5);
+
+  const v5Ident = v5.cards.find((c) => c.id === 'card_identidade')!.fields;
+  assert.equal(v5Ident.find((f) => f.key === 'character_name')?.value, 'Nadia Voss');
+  assert.equal(v5Ident.find((f) => f.key === 'clan')?.value, 'Sangue-Fraco');
+  for (const key of ['predator_type', 'ambition', 'desire', 'clan_bane', 'clan_compulsion', 'sire', 'concept', 'chronicle']) {
+    assert.ok(v5Ident.some((f) => f.key === key), `Missing V5 identity key ${key}`);
+  }
+  for (const key of ['nature', 'demeanor', 'clan_weakness']) {
+    assert.equal(v5Ident.some((f) => f.key === key), false, `Unexpected V20 identity key ${key} in V5`);
+  }
+  assert.equal(evaluateSheet(v5).formulaErrors.length, 0);
+  assert.equal(validateAjv(v5), true, `V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v5).valid, true);
+
+  // V5 free-text custom clan + empty name fallback
+  const v5Custom = createFreshSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Baali',
+  });
+  assert.equal(v5Custom.characterName, 'NOVO PERSONAGEM');
+  assert.equal(
+    v5Custom.cards.find((c) => c.id === 'card_identidade')!.fields.find((f) => f.key === 'clan')?.value,
+    'Baali',
+  );
+  assert.equal(validateAjv(v5Custom), true);
+  assert.equal(validateSheetPayload(v5Custom).valid, true);
+
+  // 3. Fresh WoD V20 sheet with selected Clan & optional Name
+  const v20 = createFreshSheetForSystem('wod', {
+    edition: 'storyteller-v20',
+    clan: 'Giovanni',
+    name: 'Lorenzo',
+  });
+  assert.equal(detectSystemId(v20), 'wod');
+  assert.equal(resolveRulePreset(v20), 'storyteller-v20');
+  assert.equal(v20.xpRulePreset, 'storyteller-v20');
+  assert.equal(v20.characterName, 'LORENZO');
+  assert.equal(v20.bloodPool, 10);
+  assert.deepEqual(v20.virtues, { conscience: 1, selfControl: 1, courage: 1 });
+
+  const v20AttrKeys = v20.cards
+    .find((c) => c.id === 'card_atributos')!
+    .fields.filter((f) => f.kind === 'number')
+    .map((f) => f.key);
+  assert.deepEqual(v20AttrKeys, [
+    'strength',
+    'dexterity',
+    'stamina',
+    'charisma',
+    'manipulation',
+    'appearance',
+    'perception',
+    'intelligence',
+    'wits',
+  ]);
+
+  const v20Health = v20.cards.find((c) => c.id === 'card_combate')!.fields.find((f) => f.id === 'f_health');
+  assert.equal(v20Health?.max, 7);
+  assert.equal(v20Health?.value, 7);
+  assert.equal(v20Health?.maxFormula, undefined);
+  assert.equal(v20Health?.bashingDamage, 0);
+  assert.equal(v20Health?.lethalDamage, 0);
+  assert.equal(v20Health?.aggravatedDamage, 0);
+  assert.equal(v20Health?.superficialDamage, 0);
+
+  const v20Ident = v20.cards.find((c) => c.id === 'card_identidade')!.fields;
+  assert.equal(v20Ident.find((f) => f.key === 'character_name')?.value, 'Lorenzo');
+  assert.equal(v20Ident.find((f) => f.key === 'clan')?.value, 'Giovanni');
+  for (const key of ['nature', 'demeanor', 'clan_weakness', 'sire', 'concept', 'chronicle']) {
+    assert.ok(v20Ident.some((f) => f.key === key), `Missing V20 identity key ${key}`);
+  }
+  for (const key of ['predator_type', 'ambition', 'desire', 'clan_bane', 'clan_compulsion']) {
+    assert.equal(v20Ident.some((f) => f.key === key), false, `Unexpected V5 identity key ${key} in V20`);
+  }
+  assert.equal(evaluateSheet(v20).formulaErrors.length, 0);
+  assert.equal(validateAjv(v20), true, `V20 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v20).valid, true);
+
+  const v20Empty = createFreshSheetForSystem('wod', {
+    edition: 'storyteller-v20',
+    localeOptions: { newCharacterName: 'NEW CHARACTER' },
+  });
+  assert.equal(v20Empty.characterName, 'NEW CHARACTER');
+  assert.equal(
+    v20Empty.cards.find((c) => c.id === 'card_identidade')!.fields.find((f) => f.key === 'clan')?.value,
+    '',
+  );
+  assert.equal(validateAjv(v20Empty), true);
+
+  // 4. Non-WoD and Blank sheets ignore Vampire options and preserve their clean structures
+  const dnd = createFreshSheetForSystem('dnd5e', {
+    name: 'Lyra',
+    secondaryTrait: 'Wizard',
+    clan: 'Ventrue',
+    edition: 'vampire-v5',
+  });
+  assert.equal(detectSystemId(dnd), 'dnd5e');
+  assert.equal(dnd.characterName, 'LYRA');
+  assert.equal(dnd.bloodPool, undefined);
+  assert.equal(dnd.virtues, undefined);
+  const dndFields = dnd.cards.flatMap((c) => c.fields);
+  assert.equal(dndFields.find((f) => f.id === 'f_classe')?.value, 'Wizard');
+  for (const forbiddenKey of ['clan', 'hunger', 'predator_type', 'clan_bane']) {
+    assert.equal(dndFields.some((f) => f.key === forbiddenKey), false, `Unexpected WoD field ${forbiddenKey} in D&D 5e`);
+  }
+  assert.equal(evaluateSheet(dnd).formulaErrors.length, 0);
+  assert.equal(validateAjv(dnd), true);
+  assert.equal(validateSheetPayload(dnd).valid, true);
+
+  const blankNamed = createFreshSheetForSystem('blank', { name: 'Homebrew' });
+  assert.equal(detectSystemId(blankNamed), 'blank');
+  assert.equal(blankNamed.characterName, 'HOMEBREW');
+  assert.equal(blankNamed.cards.length, 0);
+  assert.equal(blankNamed.bloodPool, undefined);
+  assert.equal(blankNamed.virtues, undefined);
+  assert.equal(validateAjv(blankNamed), true);
+  assert.equal(validateSheetPayload(blankNamed).valid, true);
+
+  const blankEmpty = createFreshSheetForSystem('blank');
+  assert.equal(detectSystemId(blankEmpty), 'blank');
+  assert.equal(blankEmpty.characterName, 'NOVO PERSONAGEM');
+  assert.equal(blankEmpty.cards.length, 0);
 });
 

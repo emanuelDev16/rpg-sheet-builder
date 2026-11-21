@@ -537,8 +537,17 @@ select:focus-visible,
   color: var(--accent-primary);
 }
 
+[data-theme="dark"] .cyber-active-tint .cyber-active-title {
+  color: var(--accent-hover);
+}
+
 .cyber-active-tint .cyber-active-muted {
   color: var(--text-secondary);
+}
+
+.wod-edition-segment:has(input:focus-visible) {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
 }
 
 [data-theme="eink"] .cyber-active-tint {
@@ -763,7 +772,10 @@ select:focus-visible,
 @media (max-width: 932px) {
   .print-shell input,
   .print-shell select,
-  .print-shell textarea {
+  .print-shell textarea,
+  .mobile-modal-dialog input,
+  .mobile-modal-dialog select,
+  .mobile-modal-dialog textarea {
     font-size: 16px !important;
     scroll-margin-bottom: 120px;
   }
