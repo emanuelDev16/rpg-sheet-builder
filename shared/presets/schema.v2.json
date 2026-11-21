@@ -173,6 +173,7 @@
             "skill",
             "discipline",
             "virtue",
+            "advantage",
             "discipline_clan",
             "discipline_out_of_clan",
             "discipline_caitiff"
@@ -273,6 +274,11 @@
         "fromValue": { "type": "integer" },
         "toValue": { "type": "integer" },
         "createdField": { "type": "boolean" },
+        "createdFieldIds": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 64 }
+        },
         "createdCardId": { "type": "string", "maxLength": 64 },
         "prevSpecialtyLabel": { "type": "string", "maxLength": 120 },
         "prevRollSpecialty": { "type": "boolean" }
