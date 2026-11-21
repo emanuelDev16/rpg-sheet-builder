@@ -350,6 +350,52 @@ select:focus-visible,
   transform: translateY(0);
 }
 
+/* Botão compacto de acionamento direto de poderes (Rouse V5 / Gasto de Sangue V20) */
+.wod-power-trigger-btn {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-height: 36px;
+  padding: 4px 10px;
+  font-size: 10px;
+  font-weight: 800;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  white-space: nowrap;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: var(--border-width) solid var(--hunger-border);
+  border-radius: var(--radius-pill);
+  box-shadow: var(--shadow-btn);
+  cursor: pointer;
+  transition: background-color 140ms ease, transform 100ms ease;
+}
+
+.wod-power-trigger-btn:hover:not(:disabled) {
+  background-color: var(--accent-hover);
+  color: var(--accent-contrast);
+  transform: translateY(-1px);
+}
+
+.wod-power-trigger-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+
+.wod-power-trigger-btn:disabled {
+  background-color: var(--bg-strip);
+  color: var(--text-secondary);
+  border: var(--border-width) dashed var(--border-subtle);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.wod-power-trigger-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
 /* Caixa Calculada (Somente Leitura) */
 .cyber-calc-box {
   font-family: var(--font-mono);
@@ -434,9 +480,19 @@ select:focus-visible,
 }
 
 [data-theme="eink"] .cyber-btn-outline:hover,
-[data-theme="eink"] .cyber-roll-btn:hover {
+[data-theme="eink"] .cyber-roll-btn:hover,
+[data-theme="eink"] .wod-power-trigger-btn:hover:not(:disabled) {
   transform: none;
   box-shadow: none;
+}
+
+[data-theme="eink"] .wod-power-trigger-btn,
+[data-theme="eink"] .wod-power-trigger-btn:disabled {
+  box-shadow: none;
+}
+
+[data-theme="eink"] .wod-power-trigger-btn:disabled {
+  border-color: var(--border-color);
 }
 
 [data-theme="eink"] .seg-block {

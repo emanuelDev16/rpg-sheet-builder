@@ -938,6 +938,7 @@ test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attribut
     edition: 'vampire-v5',
     clan: 'Sangue-Fraco',
     name: 'Nadia Voss',
+    language: 'pt-BR',
   });
   assert.equal(detectSystemId(v5), 'wod');
   assert.equal(resolveRulePreset(v5), 'vampire-v5');
@@ -984,6 +985,11 @@ test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attribut
   const v5Ident = v5.cards.find((c) => c.id === 'card_identidade')!.fields;
   assert.equal(v5Ident.find((f) => f.key === 'character_name')?.value, 'Nadia Voss');
   assert.equal(v5Ident.find((f) => f.key === 'clan')?.value, 'Sangue-Fraco');
+  assert.match(String(v5Ident.find((f) => f.key === 'clan_bane')?.value ?? ''), /Sangue Ralo/i);
+  assert.match(
+    String(v5Ident.find((f) => f.key === 'clan_compulsion')?.value ?? ''),
+    /Instabilidade Crepuscular/i,
+  );
   for (const key of ['predator_type', 'ambition', 'desire', 'clan_bane', 'clan_compulsion', 'sire', 'concept', 'chronicle']) {
     assert.ok(v5Ident.some((f) => f.key === key), `Missing V5 identity key ${key}`);
   }
@@ -994,24 +1000,46 @@ test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attribut
   assert.equal(validateAjv(v5), true, `V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
   assert.equal(validateSheetPayload(v5).valid, true);
 
-  // V5 free-text custom clan + empty name fallback
+  // V5 English & Spanish clan auto-fill + custom clan preservation
+  const v5LasombraEn = createFreshSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Lasombra',
+    language: 'en',
+  });
+  const v5LasombraIdent = v5LasombraEn.cards.find((c) => c.id === 'card_identidade')!.fields;
+  assert.match(
+    String(v5LasombraIdent.find((f) => f.key === 'clan_bane')?.value ?? ''),
+    /Distorted Reflection/i,
+  );
+  assert.match(
+    String(v5LasombraIdent.find((f) => f.key === 'clan_compulsion')?.value ?? ''),
+    /Ruthlessness/i,
+  );
+
+  // V5 free-text custom clan + empty name fallback (preserves custom bane/compulsion without overwriting)
   const v5Custom = createFreshSheetForSystem('wod', {
     edition: 'vampire-v5',
     clan: 'Baali',
+    clanBane: 'Repelled by True Faith',
+    clanCompulsion: 'Infernal Curiosity',
   });
   assert.equal(v5Custom.characterName, 'NOVO PERSONAGEM');
+  const v5CustomIdent = v5Custom.cards.find((c) => c.id === 'card_identidade')!.fields;
+  assert.equal(v5CustomIdent.find((f) => f.key === 'clan')?.value, 'Baali');
+  assert.equal(v5CustomIdent.find((f) => f.key === 'clan_bane')?.value, 'Repelled by True Faith');
   assert.equal(
-    v5Custom.cards.find((c) => c.id === 'card_identidade')!.fields.find((f) => f.key === 'clan')?.value,
-    'Baali',
+    v5CustomIdent.find((f) => f.key === 'clan_compulsion')?.value,
+    'Infernal Curiosity',
   );
   assert.equal(validateAjv(v5Custom), true);
   assert.equal(validateSheetPayload(v5Custom).valid, true);
 
-  // 3. Fresh WoD V20 sheet with selected Clan & optional Name
+  // 3. Fresh WoD V20 sheet with selected Clan & optional Name (auto-fills clan_weakness)
   const v20 = createFreshSheetForSystem('wod', {
     edition: 'storyteller-v20',
     clan: 'Giovanni',
     name: 'Lorenzo',
+    language: 'es',
   });
   assert.equal(detectSystemId(v20), 'wod');
   assert.equal(resolveRulePreset(v20), 'storyteller-v20');
@@ -1048,6 +1076,24 @@ test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attribut
   const v20Ident = v20.cards.find((c) => c.id === 'card_identidade')!.fields;
   assert.equal(v20Ident.find((f) => f.key === 'character_name')?.value, 'Lorenzo');
   assert.equal(v20Ident.find((f) => f.key === 'clan')?.value, 'Giovanni');
+  assert.match(String(v20Ident.find((f) => f.key === 'clan_weakness')?.value ?? ''), /Beso Doloroso/i);
+
+  // V20 explicit field xpCategory override validates cleanly against schema v2.0
+  const v20WithXpOverride = {
+    ...v20,
+    cards: v20.cards.map((c) =>
+      c.id === 'card_arcano'
+        ? {
+            ...c,
+            fields: c.fields.map((f) =>
+              f.id === 'f_dominate' ? { ...f, xpCategory: 'discipline_out_of_clan' as const } : f,
+            ),
+          }
+        : c,
+    ),
+  };
+  assert.equal(validateAjv(v20WithXpOverride), true);
+  assert.equal(validateSheetPayload(v20WithXpOverride).valid, true);
   for (const key of ['nature', 'demeanor', 'clan_weakness', 'sire', 'concept', 'chronicle']) {
     assert.ok(v20Ident.some((f) => f.key === key), `Missing V20 identity key ${key}`);
   }

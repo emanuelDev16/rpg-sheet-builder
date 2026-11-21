@@ -166,7 +166,18 @@
         "rollSpecialty": { "type": "boolean" },
         "useWillpower": { "type": "boolean" },
         "isSoak": { "type": "boolean" },
-        "xpCategory": { "type": "string", "enum": ["attribute", "skill", "discipline", "virtue"] },
+        "xpCategory": {
+          "type": "string",
+          "enum": [
+            "attribute",
+            "skill",
+            "discipline",
+            "virtue",
+            "discipline_clan",
+            "discipline_out_of_clan",
+            "discipline_caitiff"
+          ]
+        },
         "columns": {
           "type": "array",
           "maxItems": 4,

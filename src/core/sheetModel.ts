@@ -10,6 +10,12 @@ import {
   type VariableMap,
   type WodOutcome,
 } from './formula.ts';
+import type { AppLanguage } from './i18n.ts';
+import {
+  type DisciplineAffinity,
+  findClanByIdOrName,
+  getClansForEdition,
+} from './wodClansDisciplinesCatalog.ts';
 
 export type { RulePreset, SoakDamageType };
 
@@ -157,7 +163,7 @@ export interface SheetField {
   rollSpecialty?: boolean;
   rollMod?: number;
   isSoak?: boolean;
-  xpCategory?: XpUpgradeCategory;
+  xpCategory?: FieldXpCategory;
   columns?: [string, string];
   col2Type?: 'number' | 'text';
   rows?: RepeatableRow[];
@@ -214,6 +220,7 @@ export interface RollLogEntry {
 }
 
 export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
+export type FieldXpCategory = XpUpgradeCategory | DisciplineAffinity;
 export type XpRulePreset = RulePreset;
 
 export interface VirtuesState {
@@ -3187,116 +3194,20 @@ export interface WodClanPreset {
   id: string;
   editions: readonly WodEdition[];
   labels: Record<'pt-BR' | 'en' | 'es', string>;
+  clanDisciplines: readonly string[];
+  isCaitiff: boolean;
+  isThinBlood?: boolean;
 }
 
-/**
- * Core Vampire clan roster partitioned by edition so Phase 2 catalogs can extend
- * entries with Clan Disciplines, Banes, and Compulsions without breaking creation UI imports.
- */
-export const WOD_CLAN_PRESETS: readonly WodClanPreset[] = [
-  {
-    id: 'assamite',
-    editions: ['storyteller-v20'],
-    labels: { 'pt-BR': 'Assamita', en: 'Assamite', es: 'Assamita' },
-  },
-  {
-    id: 'banu_haqim',
-    editions: ['vampire-v5'],
-    labels: { 'pt-BR': 'Banu Haqim', en: 'Banu Haqim', es: 'Banu Haqim' },
-  },
-  {
-    id: 'brujah',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Brujah', en: 'Brujah', es: 'Brujah' },
-  },
-  {
-    id: 'followers_of_set',
-    editions: ['storyteller-v20'],
-    labels: {
-      'pt-BR': 'Seguidores de Set',
-      en: 'Followers of Set',
-      es: 'Seguidores de Set',
-    },
-  },
-  {
-    id: 'gangrel',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Gangrel', en: 'Gangrel', es: 'Gangrel' },
-  },
-  {
-    id: 'giovanni',
-    editions: ['storyteller-v20'],
-    labels: { 'pt-BR': 'Giovanni', en: 'Giovanni', es: 'Giovanni' },
-  },
-  {
-    id: 'hecata',
-    editions: ['vampire-v5'],
-    labels: { 'pt-BR': 'Hecata', en: 'Hecata', es: 'Hecata' },
-  },
-  {
-    id: 'lasombra',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Lasombra', en: 'Lasombra', es: 'Lasombra' },
-  },
-  {
-    id: 'malkavian',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Malkavian', en: 'Malkavian', es: 'Malkavian' },
-  },
-  {
-    id: 'ministry',
-    editions: ['vampire-v5'],
-    labels: { 'pt-BR': 'Ministério', en: 'The Ministry', es: 'El Ministerio' },
-  },
-  {
-    id: 'nosferatu',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Nosferatu', en: 'Nosferatu', es: 'Nosferatu' },
-  },
-  {
-    id: 'ravnos',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Ravnos', en: 'Ravnos', es: 'Ravnos' },
-  },
-  {
-    id: 'salubri',
-    editions: ['vampire-v5'],
-    labels: { 'pt-BR': 'Salubri', en: 'Salubri', es: 'Salubri' },
-  },
-  {
-    id: 'toreador',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Toreador', en: 'Toreador', es: 'Toreador' },
-  },
-  {
-    id: 'tremere',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Tremere', en: 'Tremere', es: 'Tremere' },
-  },
-  {
-    id: 'tzimisce',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Tzimisce', en: 'Tzimisce', es: 'Tzimisce' },
-  },
-  {
-    id: 'ventrue',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Ventrue', en: 'Ventrue', es: 'Ventrue' },
-  },
-  {
-    id: 'caitiff',
-    editions: ['storyteller-v20', 'vampire-v5'],
-    labels: { 'pt-BR': 'Caitiff', en: 'Caitiff', es: 'Caitiff' },
-  },
-  {
-    id: 'thin_blood',
-    editions: ['vampire-v5'],
-    labels: { 'pt-BR': 'Sangue-Fraco', en: 'Thin-Blood', es: 'Sangre Débil' },
-  },
-];
-
 export function getWodClansForEdition(edition: WodEdition): readonly WodClanPreset[] {
-  return WOD_CLAN_PRESETS.filter((clan) => clan.editions.includes(edition));
+  return getClansForEdition(edition).map((clan) => ({
+    id: clan.id,
+    editions: [clan.edition] as const,
+    labels: { ...clan.name },
+    clanDisciplines: clan.clanDisciplines,
+    isCaitiff: clan.isCaitiff,
+    ...('isThinBlood' in clan ? { isThinBlood: clan.isThinBlood } : {}),
+  }));
 }
 
 export interface NewSheetIdentityInput {
@@ -3306,6 +3217,10 @@ export interface NewSheetIdentityInput {
   clan?: string;
   rulePreset?: RulePreset;
   edition?: WodEdition;
+  language?: AppLanguage;
+  clanWeakness?: string;
+  clanBane?: string;
+  clanCompulsion?: string;
   localeOptions?: {
     newCharacterName?: string;
     customSystemName?: string;
@@ -3540,6 +3455,50 @@ export function createNewSheetForSystem(
   const { bloodPool: _dropBloodPool, virtues: _dropVirtues, ...presetWithoutV20 } = preset;
   const basePreset = isWodV5 ? presetWithoutV20 : preset;
 
+  const editionCards = isWodV5 ? buildWodV5EditionCards(freshCards) : freshCards;
+  const wodEdition =
+    resolvedId === 'wod' &&
+    (defaultXpRulePreset === 'storyteller-v20' || defaultXpRulePreset === 'vampire-v5')
+      ? defaultXpRulePreset
+      : null;
+  const lang: AppLanguage = identity?.language ?? 'pt-BR';
+  const matchedClan =
+    wodEdition && customSecondaryTrait
+      ? findClanByIdOrName(customSecondaryTrait, wodEdition)
+      : null;
+  const customWeakness = identity?.clanWeakness?.trim();
+  const customBane = identity?.clanBane?.trim();
+  const customCompulsion = identity?.clanCompulsion?.trim();
+
+  const resolvedCards = wodEdition
+    ? editionCards.map((card) => {
+        if (card.id !== 'card_identidade') return card;
+        return {
+          ...card,
+          fields: card.fields.map((f) => {
+            const fk = (f.key ?? '').trim().toLowerCase();
+            if (fk === 'clan_weakness') {
+              if (customWeakness) return { ...f, value: customWeakness };
+              if (matchedClan?.edition === 'storyteller-v20') {
+                return { ...f, value: matchedClan.weakness[lang] };
+              }
+            } else if (fk === 'clan_bane') {
+              if (customBane) return { ...f, value: customBane };
+              if (matchedClan?.edition === 'vampire-v5') {
+                return { ...f, value: matchedClan.bane[lang] };
+              }
+            } else if (fk === 'clan_compulsion') {
+              if (customCompulsion) return { ...f, value: customCompulsion };
+              if (matchedClan?.edition === 'vampire-v5') {
+                return { ...f, value: matchedClan.compulsion[lang] };
+              }
+            }
+            return f;
+          }),
+        };
+      })
+    : editionCards;
+
   return {
     ...basePreset,
     ...(isWodV5
@@ -3561,7 +3520,7 @@ export function createNewSheetForSystem(
     deviceId: getOrCreateDeviceId(),
     rulePreset: defaultXpRulePreset,
     xpRulePreset: defaultXpRulePreset,
-    cards: isWodV5 ? buildWodV5EditionCards(freshCards) : freshCards,
+    cards: resolvedCards,
     rollLogs: [],
     xp: {
       totalEarned: 0,
@@ -3727,6 +3686,15 @@ const ALLOWED_FIELD_KINDS = new Set([
   'repeatable',
 ]);
 const ALLOWED_XP_CATEGORIES = new Set(['attribute', 'skill', 'discipline', 'virtue']);
+const ALLOWED_FIELD_XP_CATEGORIES = new Set([
+  'attribute',
+  'skill',
+  'discipline',
+  'virtue',
+  'discipline_clan',
+  'discipline_out_of_clan',
+  'discipline_caitiff',
+]);
 const ALLOWED_ATTRIBUTE_GROUPS = new Set(['physical', 'social', 'mental']);
 const ALLOWED_XP_RULE_PRESETS = new Set([
   'storyteller-v20',
@@ -4065,6 +4033,12 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         }
         if (field.useWillpower !== undefined && typeof field.useWillpower !== 'boolean') {
           errors.push(`${fPath}.useWillpower: deve ser booleano.`);
+        }
+        if (
+          field.xpCategory !== undefined &&
+          !ALLOWED_FIELD_XP_CATEGORIES.has(String(field.xpCategory))
+        ) {
+          errors.push(`${fPath}.xpCategory: categoria XP inválida "${String(field.xpCategory)}".`);
         }
         if (field.rows !== undefined) {
           if (!Array.isArray(field.rows) || field.rows.length > 200) {

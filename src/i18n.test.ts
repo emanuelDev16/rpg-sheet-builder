@@ -62,5 +62,8 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('es', 'modal.wodClanCountHint', { count: 16 })).toBe(
       '16 clanes de la edición + entrada libre',
     );
+    expect(translate('pt-BR', 'cards.powers.spendBloodBtn', { cost: 2 })).toBe('-2 SANGUE');
+    expect(translate('en', 'cards.powers.rouseBtn')).toBe('ROUSE');
+    expect(translate('es', 'xp.caitiffTag', { mult: 6 })).toBe('CAITIFF (×6)');
   });
 });

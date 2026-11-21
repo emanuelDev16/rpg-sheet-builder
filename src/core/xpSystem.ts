@@ -8,6 +8,12 @@ import type {
   XpUpgradeCategory,
 } from './sheetModel.ts';
 import { type AppLanguage, createTranslator } from './i18n.ts';
+import {
+  type DisciplineAffinity,
+  findClanByIdOrName,
+  findDisciplineByIdOrName,
+  resolveDisciplineAffinity,
+} from './wodClansDisciplinesCatalog.ts';
 
 export type VirtueSubtype = 'willpower' | 'humanity' | 'virtue';
 
@@ -15,6 +21,7 @@ export interface XpPricingConfig {
   xpRulePreset?: XpRulePreset;
   customUseNewLevelBase?: boolean;
   outOfClanFieldIds?: Record<string, boolean>;
+  disciplineAffinityOverrides?: Record<string, DisciplineAffinity>;
   categoryMultipliers?: Partial<Record<XpUpgradeCategory, number>>;
   fieldCustomCosts?: Record<string, number>;
 }
@@ -32,6 +39,7 @@ export interface UpgradableTrait {
   cost: number | null;
   defaultCost: number | null;
   formulaLabel: string;
+  disciplineAffinity?: DisciplineAffinity;
   isOutOfClan?: boolean;
   isCustomCost?: boolean;
   isBlockedByRule?: boolean;
@@ -105,12 +113,37 @@ export function setTraitOutOfClan(
 ): XpPricingConfig {
   return updateSheetPricingConfig(sheet, (prev) => {
     const nextMap = { ...(prev.outOfClanFieldIds ?? {}) };
-    if (isOutOfClan) {
-      nextMap[fieldId] = true;
-    } else {
+    nextMap[fieldId] = Boolean(isOutOfClan);
+    const nextAffinities = { ...(prev.disciplineAffinityOverrides ?? {}) };
+    nextAffinities[fieldId] = isOutOfClan ? 'discipline_out_of_clan' : 'discipline_clan';
+    return {
+      ...prev,
+      outOfClanFieldIds: nextMap,
+      disciplineAffinityOverrides: nextAffinities,
+    };
+  });
+}
+
+export function setTraitDisciplineAffinity(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  affinity: DisciplineAffinity | null,
+): XpPricingConfig {
+  return updateSheetPricingConfig(sheet, (prev) => {
+    const nextAffinities = { ...(prev.disciplineAffinityOverrides ?? {}) };
+    const nextMap = { ...(prev.outOfClanFieldIds ?? {}) };
+    if (affinity === null) {
+      delete nextAffinities[fieldId];
       delete nextMap[fieldId];
+    } else {
+      nextAffinities[fieldId] = affinity;
+      nextMap[fieldId] = affinity === 'discipline_out_of_clan';
     }
-    return { ...prev, outOfClanFieldIds: nextMap };
+    return {
+      ...prev,
+      outOfClanFieldIds: nextMap,
+      disciplineAffinityOverrides: nextAffinities,
+    };
   });
 }
 
@@ -386,6 +419,7 @@ export function classifyTraitField(card: SheetCard, field: SheetField): XpUpgrad
     );
 
   if (field.kind === 'resource') {
+    if (field.xpCategory === 'virtue') return 'virtue';
     if (getVirtueSubtype(field) !== undefined || isVirtueCard) {
       return 'virtue';
     }
@@ -393,6 +427,22 @@ export function classifyTraitField(card: SheetCard, field: SheetField): XpUpgrad
   }
 
   if (field.kind !== 'number') return null;
+
+  if (
+    field.xpCategory === 'attribute' ||
+    field.xpCategory === 'skill' ||
+    field.xpCategory === 'virtue'
+  ) {
+    return field.xpCategory;
+  }
+  if (
+    field.xpCategory === 'discipline' ||
+    field.xpCategory === 'discipline_clan' ||
+    field.xpCategory === 'discipline_out_of_clan' ||
+    field.xpCategory === 'discipline_caitiff'
+  ) {
+    return 'discipline';
+  }
 
   const isSkillCard =
     card.id === 'card_skills' ||
@@ -403,7 +453,7 @@ export function classifyTraitField(card: SheetCard, field: SheetField): XpUpgrad
   if (getVirtueSubtype(field) !== undefined) return 'virtue';
   if (ATTRIBUTE_KEYS.has(key)) return 'attribute';
   if (SKILL_KEYS.has(key)) return 'skill';
-  if (DISCIPLINE_KEYS.has(key)) return 'discipline';
+  if (DISCIPLINE_KEYS.has(key) || findDisciplineByIdOrName(key) !== null) return 'discipline';
 
   if (
     card.id === 'card_atributos' ||
@@ -436,6 +486,7 @@ export function isWodSystem(sheet: CharacterSheetState): boolean {
 
 export interface CalculateCostOptions {
   isOutOfClan?: boolean;
+  disciplineAffinity?: DisciplineAffinity;
   virtueSubtype?: VirtueSubtype;
   customMultiplier?: number;
   customCost?: number;
@@ -449,6 +500,12 @@ export interface CalculateCostDetails {
   multiplier: number;
   isBlocked: boolean;
   blockedReason?: string;
+}
+
+function resolveDisciplineMultiplier(options?: CalculateCostOptions): number {
+  if (options?.disciplineAffinity === 'discipline_caitiff') return 6;
+  if (options?.disciplineAffinity === 'discipline_out_of_clan' || options?.isOutOfClan) return 7;
+  return 5;
 }
 
 function resolveDefaultMultiplier(
@@ -469,13 +526,13 @@ function resolveDefaultMultiplier(
     if (category === 'attribute') return 5;
     if (category === 'skill') return 3;
     if (category === 'virtue') return 3;
-    return options?.isOutOfClan ? 7 : 5;
+    return resolveDisciplineMultiplier(options);
   }
 
   if (category === 'attribute') return 4;
   if (category === 'skill') return 2;
   if (category === 'virtue') return options?.virtueSubtype === 'willpower' ? 1 : 2;
-  return options?.isOutOfClan ? 7 : 5;
+  return resolveDisciplineMultiplier(options);
 }
 
 function normalizeCustomOverride(
@@ -718,6 +775,61 @@ function getTraitCurrentRating(field: SheetField, virtueSubtype?: VirtueSubtype)
   return Number.isFinite(rawVal) ? Math.max(0, Math.round(rawVal)) : 0;
 }
 
+export function getSheetClanName(sheet: CharacterSheetState): string {
+  for (const card of sheet.cards) {
+    for (const field of card.fields) {
+      const fk = (field.key ?? '').trim().toLowerCase();
+      if ((field.id === 'f_clan' || fk === 'clan') && typeof field.value === 'string') {
+        return field.value.trim();
+      }
+    }
+  }
+  return '';
+}
+
+function resolveTraitDisciplineAffinity(
+  sheet: CharacterSheetState,
+  field: SheetField,
+  pricing: XpPricingConfig,
+  preset: XpRulePreset,
+): DisciplineAffinity {
+  const workspaceOverride = pricing.disciplineAffinityOverrides?.[field.id];
+  if (workspaceOverride) {
+    return workspaceOverride;
+  }
+  if (
+    pricing.outOfClanFieldIds &&
+    Object.prototype.hasOwnProperty.call(pricing.outOfClanFieldIds, field.id)
+  ) {
+    return pricing.outOfClanFieldIds[field.id] ? 'discipline_out_of_clan' : 'discipline_clan';
+  }
+  if (
+    field.xpCategory === 'discipline_clan' ||
+    field.xpCategory === 'discipline_out_of_clan' ||
+    field.xpCategory === 'discipline_caitiff'
+  ) {
+    return field.xpCategory;
+  }
+  if (
+    isWodSystem(sheet) &&
+    (preset === 'storyteller-v20' || preset === 'vampire-v5')
+  ) {
+    const sheetClan = getSheetClanName(sheet);
+    const matchedClan = sheetClan ? findClanByIdOrName(sheetClan, preset) : null;
+    if (matchedClan) {
+      const discByKey = findDisciplineByIdOrName(field.key, preset);
+      const discByLabel = !discByKey ? findDisciplineByIdOrName(field.label, preset) : null;
+      const discToken = discByKey
+        ? field.key
+        : discByLabel
+          ? field.label
+          : field.key || field.label;
+      return resolveDisciplineAffinity(sheetClan, discToken, preset);
+    }
+  }
+  return 'discipline_clan';
+}
+
 export function extractAllTraits(
   sheet: CharacterSheetState,
   lang: AppLanguage = 'pt-BR',
@@ -741,19 +853,24 @@ export function extractAllTraits(
       const maxCap = getTraitMaxCap(sheet, currentValue, category, virtueSubtype, field.max);
       const isMaxed = currentValue >= maxCap;
 
-      const isOutOfClan =
-        category === 'discipline' ? Boolean(pricing.outOfClanFieldIds?.[field.id]) : false;
+      const disciplineAffinity =
+        category === 'discipline'
+          ? resolveTraitDisciplineAffinity(sheet, field, pricing, preset)
+          : undefined;
+      const isOutOfClan = disciplineAffinity === 'discipline_out_of_clan';
       const customCost = pricing.fieldCustomCosts?.[field.id];
       const customMultiplier = pricing.categoryMultipliers?.[category];
 
       const defaultCalc = calculateUpgradeCostDetails(currentValue, category, preset, lang, {
         isOutOfClan,
+        disciplineAffinity,
         virtueSubtype,
         useNewLevelBase: customUseNewLevelBase,
         useD20Scale,
       });
       const effectiveCalc = calculateUpgradeCostDetails(currentValue, category, preset, lang, {
         isOutOfClan,
+        disciplineAffinity,
         virtueSubtype,
         customMultiplier,
         customCost,
@@ -781,6 +898,7 @@ export function extractAllTraits(
         cost: effectiveCalc.cost,
         defaultCost: defaultCalc.cost,
         formulaLabel: effectiveCalc.formulaLabel,
+        ...(disciplineAffinity ? { disciplineAffinity } : {}),
         isOutOfClan,
         isCustomCost,
         isBlockedByRule,
@@ -961,12 +1079,16 @@ export function upgradeTraitWithXp(
 
   const currentXp = normalizeXpState(sheet.xp);
   const clanTag =
-    trait.category === 'discipline' && trait.isOutOfClan
-      ? lang === 'en'
-        ? ' [OUT]'
-        : lang === 'es'
-          ? ' [EXT]'
-          : ' [FORA]'
+    trait.category === 'discipline'
+      ? trait.disciplineAffinity === 'discipline_caitiff'
+        ? ' [CAITIFF]'
+        : trait.isOutOfClan
+          ? lang === 'en'
+            ? ' [OUT]'
+            : lang === 'es'
+              ? ' [EXT]'
+              : ' [FORA]'
+          : ''
       : '';
   const entry: XpLedgerEntry = {
     id: entryId,
