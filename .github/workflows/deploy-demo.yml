@@ -17,15 +17,9 @@ permissions:
   id-token: write
 
 jobs:
-  # 1. Build da Demo Web (React + Vite) e publicação no GitHub Pages
-  deploy-web:
+  # 1. Build e validação da Demo Web (React + Vite)
+  build-web:
     runs-on: ubuntu-latest
-    concurrency:
-      group: github-pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout do código
         uses: actions/checkout@v7
@@ -59,11 +53,22 @@ jobs:
         with:
           path: './dist'
 
+  # 2. Publicação no GitHub Pages em job separado (evita race condition na API de artefatos)
+  deploy-web:
+    needs: build-web
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Publicar no GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
 
-  # 2. Compilação do APK Android (Gradle 8.10.2 / JDK 17)
+  # 3. Compilação do APK Android (Gradle 8.10.2 / JDK 17)
   build-android:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android == true }}
     runs-on: ubuntu-latest
