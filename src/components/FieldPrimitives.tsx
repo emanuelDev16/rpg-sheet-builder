@@ -17,6 +17,7 @@ import {
   getV20HealthBreakdown,
   getV5HealthBreakdown,
   resolveRollPreview,
+  SheetCard,
   SheetField,
   SystemId,
 } from '../core/sheetModel';
@@ -28,7 +29,11 @@ import {
   VariableMap,
 } from '../core/formula';
 import { AppTranslations, getTranslations } from '../core/i18n';
+import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
+import { parsePowerActivationCost } from '../core/wodClansDisciplinesCatalog';
+import { resolveWodDotRatingConfig } from '../utils/dotRating';
 import { AnimatedCounter } from './AnimatedCounter';
+import { DotRating } from './DotRating';
 
 interface ClampedNumberInputProps {
   value: number;
@@ -420,11 +425,14 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
 
 interface FieldPrimitiveProps {
   field: SheetField;
+  card?: SheetCard;
   pairedRollField?: SheetField;
   mode: AppMode;
   systemId?: SystemId;
   rulePreset?: RulePreset;
+  compactDots?: boolean;
   woundPenalty?: number;
+  bloodPool?: { current: number; max: number };
   bloodSurge?: boolean;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
@@ -457,6 +465,8 @@ interface FieldPrimitiveProps {
     delta: number,
   ) => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
+  onRouseCheck?: (options?: { label?: string; count?: number }) => void;
+  onSpendPowerBlood?: (cost: number, powerName: string) => void;
   onTriggerWillpowerSurge?: () => void;
   onRoll: (field: SheetField) => void;
   onAddRow: (fieldId: string) => void;
@@ -470,11 +480,14 @@ const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
 
 export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   field,
+  card,
   pairedRollField,
   mode,
   systemId = 'wod',
   rulePreset = 'storyteller-v20',
+  compactDots = false,
   woundPenalty = 0,
+  bloodPool,
   bloodSurge = false,
   lastSoakTotal = null,
   canWillpowerSurge = false,
@@ -495,6 +508,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onAdjustV20HealthDamage,
   onAdjustV5HealthDamage,
   onApplyV5SuperficialHalving,
+  onRouseCheck,
+  onSpendPowerBlood,
   onTriggerWillpowerSurge,
   onRoll,
   onAddRow,
@@ -513,6 +528,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const shouldReduceMotion = Boolean(prefersReducedMotion || isEinkTheme);
   const shouldShowEditStrip =
     mode === 'edicao' && (onToggleEdit ? Boolean(isEditOpen) : true);
+  const dotConfig = resolveWodDotRatingConfig(field, card, rulePreset, systemId);
+  const useWodDots = mode === 'jogo' && dotConfig.enabled;
 
   const renderEditStrip = () => {
     if (!shouldShowEditStrip) return null;
@@ -665,6 +682,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const renderFieldBody = (): React.ReactNode => {
     // 1. Número e Texto
     if (field.kind === 'number') {
+      const numericValue = typeof field.value === 'number' ? field.value : 0;
+
       if (pairedRollField && mode === 'jogo') {
         const parsedPairedPool = parseWodPoolExpression(pairedRollField.rollExpr ?? '');
         const pairedIsSoak = Boolean(
@@ -709,21 +728,44 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             data-testid={`paired-skill-row-${field.id}`}
             className="py-1 flex flex-col gap-1 border-b border-[var(--border-subtle)]/45 last:border-b-0"
           >
-            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 min-w-0">
-              <label
-                htmlFor={inputId}
-                className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
-              >
-                {field.label}
-              </label>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <input
-                  id={inputId}
-                  type="number"
-                  value={typeof field.value === 'number' ? field.value : 0}
-                  onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
-                  className="cyber-input mobile-touch-input w-16 px-2 py-1 text-sm font-bold text-right tabular-nums shrink-0"
-                />
+            <div
+              className={`flex items-center justify-between gap-2 min-w-0 ${
+                useWodDots ? 'flex-wrap gap-y-1' : 'flex-wrap sm:flex-nowrap'
+              }`}
+            >
+              {useWodDots ? (
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words">
+                  {field.label}
+                </span>
+              ) : (
+                <label
+                  htmlFor={inputId}
+                  className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
+                >
+                  {field.label}
+                </label>
+              )}
+              <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 max-w-full shrink-0">
+                {useWodDots ? (
+                  <DotRating
+                    label={field.label}
+                    value={numericValue}
+                    min={dotConfig.min}
+                    max={dotConfig.max}
+                    onChange={(next) => onChangeValue(field.id, next)}
+                    t={t}
+                    compact={compactDots}
+                    testId={`dot-rating-${field.id}`}
+                  />
+                ) : (
+                  <input
+                    id={inputId}
+                    type="number"
+                    value={numericValue}
+                    onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
+                    className="cyber-input mobile-touch-input w-16 px-2 py-1 text-sm font-bold text-right tabular-nums shrink-0"
+                  />
+                )}
                 <button
                   type="button"
                   data-testid={`roll-btn-${pairedRollField.id}`}
@@ -762,6 +804,30 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         );
       }
 
+      if (useWodDots) {
+        return (
+          <div
+            className={`py-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0 ${
+              compactDots ? 'wod-attr-dot-row' : ''
+            }`}
+          >
+            <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words">
+              {field.label}
+            </span>
+            <DotRating
+              label={field.label}
+              value={numericValue}
+              min={dotConfig.min}
+              max={dotConfig.max}
+              onChange={(next) => onChangeValue(field.id, next)}
+              t={t}
+              compact={compactDots}
+              testId={`dot-rating-${field.id}`}
+            />
+          </div>
+        );
+      }
+
       return (
         <div className="py-1 flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <label
@@ -773,7 +839,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <input
             id={inputId}
             type="number"
-            value={typeof field.value === 'number' ? field.value : 0}
+            value={numericValue}
             onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
             className="cyber-input mobile-touch-input w-24 px-2.5 py-1.5 text-sm font-bold text-right shrink-0"
           />
@@ -1358,6 +1424,17 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 className="pointer-events-none absolute inset-y-0 left-[75%] w-[1.5px] bg-[var(--border-color)]/55"
               />
             </div>
+          ) : useWodDots && max === dotConfig.max ? (
+            <DotRating
+              label={field.label}
+              value={current}
+              min={dotConfig.min}
+              max={dotConfig.max}
+              onChange={(next) => onChangeValue(field.id, next)}
+              t={t}
+              showQuickEdit={false}
+              testId={`resource-dot-rating-${field.id}`}
+            />
           ) : (
             <div
               data-testid={`resource-segmented-bar-${field.id}`}
@@ -1591,6 +1668,20 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       const rows = field.rows ?? [];
       const col1Title = field.columns?.[0] ?? t.t('cards.defaultItemCol');
       const col2Title = field.columns?.[1] ?? t.t('cards.defaultValueCol');
+      const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
+      const parsedCostByRowId = new Map(
+        mode === 'jogo' && officialEdition && field.col2Type !== 'number'
+          ? rows.map((row) => [row.id, parsePowerActivationCost(row.col2, officialEdition)])
+          : [],
+      );
+      const hasAnyPowerTrigger = Array.from(parsedCostByRowId.values()).some(
+        (cost) =>
+          (officialEdition === 'vampire-v5' && cost.costType === 'rouse' && cost.costAmount > 0) ||
+          (officialEdition === 'storyteller-v20' &&
+            cost.costType === 'blood_point' &&
+            cost.costAmount > 0),
+      );
+      const currentBlood = bloodPool?.current ?? 0;
 
       return (
         <div className="flex flex-col gap-2">
@@ -1609,62 +1700,146 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <table className="w-full min-w-[280px] border-collapse font-mono-tech text-xs">
               <thead>
                 <tr className="bg-[var(--bg-header-strip)] border-b-[1.5px] border-[var(--border-ink)] text-[10px] text-[var(--ink-muted)] uppercase">
-                  <th className="text-left py-2 px-2.5 font-bold">{col1Title}</th>
-                  <th className="text-right py-2 px-2.5 font-bold w-28">{col2Title}</th>
-                  <th className="w-9 no-print print:hidden" aria-label={t.t('cards.actionsColAria')} />
+                  <th scope="col" className="text-left py-2 px-2.5 font-bold">
+                    {col1Title}
+                  </th>
+                  <th scope="col" className="text-right py-2 px-2.5 font-bold w-28">
+                    {col2Title}
+                  </th>
+                  {hasAnyPowerTrigger && (
+                    <th
+                      scope="col"
+                      aria-label={t.t('cards.powers.actionColAria')}
+                      className="w-24 text-right py-2 px-2 font-bold no-print print:hidden"
+                    >
+                      <span className="sr-only">{t.t('cards.powers.actionColAria')}</span>
+                    </th>
+                  )}
+                  <th
+                    scope="col"
+                    className="w-9 no-print print:hidden"
+                    aria-label={t.t('cards.actionsColAria')}
+                  />
                 </tr>
               </thead>
               <tbody>
                 {rows.length === 0 ? (
                   <tr>
-                    <td colSpan={3} className="py-4 px-3 text-center text-[11px] text-[var(--ink-muted)]">
+                    <td
+                      colSpan={hasAnyPowerTrigger ? 4 : 3}
+                      className="py-4 px-3 text-center text-[11px] text-[var(--ink-muted)]"
+                    >
                       {t.emptyTable}
                     </td>
                   </tr>
                 ) : (
-                  rows.map((row) => (
-                    <tr
-                      key={row.id}
-                      className="border-b border-[var(--border-subtle)] last:border-b-0 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)]"
-                    >
-                      <td className="p-1.5">
-                        <input
-                          type="text"
-                          aria-label={t.t('cards.rowColAria', { col: col1Title, row: row.col1 })}
-                          value={row.col1}
-                          onChange={(e) => onUpdateRow(field.id, row.id, 'col1', e.target.value)}
-                          className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[var(--radius-pill)]"
-                        />
-                      </td>
-                      <td className="p-1.5">
-                        <input
-                          type={field.col2Type === 'number' ? 'number' : 'text'}
-                          step={field.col2Type === 'number' ? '0.5' : undefined}
-                          aria-label={t.t('cards.rowColAria', { col: col2Title, row: row.col1 })}
-                          value={row.col2}
-                          onChange={(e) =>
-                            onUpdateRow(
-                              field.id,
-                              row.id,
-                              'col2',
-                              field.col2Type === 'number' ? Number(e.target.value) : e.target.value,
-                            )
-                          }
-                          className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[var(--radius-pill)]"
-                        />
-                      </td>
-                      <td className="p-1.5 text-center no-print print:hidden">
-                        <button
-                          type="button"
-                          aria-label={t.t('cards.removeRowAria', { row: row.col1 })}
-                          onClick={() => onRemoveRow(field.id, row.id)}
-                          className="mobile-touch-stepper w-6 h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
-                        >
-                          <X className="w-3.5 h-3.5" aria-hidden="true" />
-                        </button>
-                      </td>
-                    </tr>
-                  ))
+                  rows.map((row) => {
+                    const costInfo = parsedCostByRowId.get(row.id);
+                    const isV5Rouse =
+                      officialEdition === 'vampire-v5' &&
+                      costInfo?.costType === 'rouse' &&
+                      costInfo.costAmount > 0;
+                    const isV20Blood =
+                      officialEdition === 'storyteller-v20' &&
+                      costInfo?.costType === 'blood_point' &&
+                      costInfo.costAmount > 0;
+                    const rouseBtnText =
+                      isV5Rouse && costInfo
+                        ? costInfo.costAmount > 1
+                          ? t.t('cards.powers.rouseMultiBtn', { count: costInfo.costAmount })
+                          : t.t('cards.powers.rouseBtn')
+                        : '';
+                    const hasEnoughBlood =
+                      isV20Blood && costInfo ? currentBlood >= costInfo.costAmount : true;
+
+                    return (
+                      <tr
+                        key={row.id}
+                        className="border-b border-[var(--border-subtle)] last:border-b-0 bg-[var(--bg-card)] hover:bg-[var(--bg-hover)]"
+                      >
+                        <td className="p-1.5">
+                          <input
+                            type="text"
+                            aria-label={t.t('cards.rowColAria', { col: col1Title, row: row.col1 })}
+                            value={row.col1}
+                            onChange={(e) => onUpdateRow(field.id, row.id, 'col1', e.target.value)}
+                            className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-medium text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[var(--radius-pill)]"
+                          />
+                        </td>
+                        <td className="p-1.5">
+                          <input
+                            type={field.col2Type === 'number' ? 'number' : 'text'}
+                            step={field.col2Type === 'number' ? '0.5' : undefined}
+                            aria-label={t.t('cards.rowColAria', { col: col2Title, row: row.col1 })}
+                            value={row.col2}
+                            onChange={(e) =>
+                              onUpdateRow(
+                                field.id,
+                                row.id,
+                                'col2',
+                                field.col2Type === 'number' ? Number(e.target.value) : e.target.value,
+                              )
+                            }
+                            className="mobile-touch-input w-full bg-transparent px-1.5 py-1 text-xs font-bold text-right text-[var(--ink-primary)] focus:outline-none focus:bg-[var(--bg-card-alt)] rounded-[var(--radius-pill)]"
+                          />
+                        </td>
+                        {hasAnyPowerTrigger && (
+                          <td className="p-1.5 text-right no-print print:hidden">
+                            {isV5Rouse && costInfo ? (
+                              <button
+                                type="button"
+                                data-testid={`power-rouse-btn-${row.id}`}
+                                aria-label={t.t('cards.powers.rouseAria', {
+                                  btn: rouseBtnText,
+                                  power: row.col1,
+                                })}
+                                onClick={() =>
+                                  onRouseCheck?.({ label: row.col1, count: costInfo.costAmount })
+                                }
+                                className="wod-power-trigger-btn"
+                              >
+                                {rouseBtnText}
+                              </button>
+                            ) : isV20Blood && costInfo ? (
+                              <button
+                                type="button"
+                                data-testid={`power-blood-btn-${row.id}`}
+                                disabled={!hasEnoughBlood}
+                                title={
+                                  !hasEnoughBlood
+                                    ? t.t('cards.powers.insufficientBloodHint', {
+                                        cost: costInfo.costAmount,
+                                        current: currentBlood,
+                                      })
+                                    : undefined
+                                }
+                                aria-label={t.t('cards.powers.spendBloodAria', {
+                                  cost: costInfo.costAmount,
+                                  power: row.col1,
+                                })}
+                                onClick={() =>
+                                  onSpendPowerBlood?.(costInfo.costAmount, row.col1)
+                                }
+                                className="wod-power-trigger-btn"
+                              >
+                                {t.t('cards.powers.spendBloodBtn', { cost: costInfo.costAmount })}
+                              </button>
+                            ) : null}
+                          </td>
+                        )}
+                        <td className="p-1.5 text-center no-print print:hidden">
+                          <button
+                            type="button"
+                            aria-label={t.t('cards.removeRowAria', { row: row.col1 })}
+                            onClick={() => onRemoveRow(field.id, row.id)}
+                            className="mobile-touch-stepper w-6 h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-transparent hover:border-[var(--border-ink)] hover:bg-[var(--accent-danger-soft)] hover:text-[var(--accent-danger)] text-[var(--ink-muted)] cursor-pointer transition-colors"
+                          >
+                            <X className="w-3.5 h-3.5" aria-hidden="true" />
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })
                 )}
               </tbody>
             </table>

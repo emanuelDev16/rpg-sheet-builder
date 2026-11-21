@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  addFieldToCard,
   createDefaultSheet,
   createDnd5ePreset,
   createGenericD20Preset,
@@ -17,6 +18,8 @@ import {
   getCheapestBlockedUpgrade,
   getPossibleUpgrades,
   resetXpPricingConfig,
+  setTraitDisciplineAffinity,
+  setTraitOutOfClan,
   setXpRulePreset,
   undoLastUpgrade,
   upgradeTraitWithXp,
@@ -314,4 +317,178 @@ test('extractAllTraits classifies all 9 V5 attributes and all 9 V20 attributes w
     assert.equal(trait.currentValue, 3);
     assert.equal(trait.cost, 12); // currentLevel (3) * 4
   }
+});
+
+test('extractAllTraits auto-resolves In-Clan (×5), Out-of-Clan (×7), and Caitiff (×6) Discipline XP across V20 and V5', () => {
+  // 1. V20 Brujah: Potence = In-Clan (×5), Dominate = Out-of-Clan (×7), 0->1 = 10 XP
+  let v20Brujah = createNewSheetForSystem('wod', {
+    edition: 'storyteller-v20',
+    clan: 'Brujah',
+  });
+  resetXpPricingConfig(v20Brujah);
+  v20Brujah = addFieldToCard(v20Brujah, 'card_arcano', {
+    id: 'f_potence',
+    key: 'potence',
+    label: 'POTÊNCIA',
+    kind: 'number',
+    value: 2,
+  });
+  v20Brujah = updateFieldValue(v20Brujah, 'f_dominate', 2);
+  v20Brujah = addFieldToCard(v20Brujah, 'card_arcano', {
+    id: 'f_auspex_zero',
+    key: 'auspex',
+    label: 'AUSPÍCIOS',
+    kind: 'number',
+    value: 0,
+  });
+
+  const v20Traits = extractAllTraits(v20Brujah);
+  const potV20 = v20Traits.find((t) => t.key === 'potence');
+  const domV20 = v20Traits.find((t) => t.key === 'dominate');
+  const ausZeroV20 = v20Traits.find((t) => t.key === 'auspex');
+  assert.equal(potV20?.disciplineAffinity, 'discipline_clan');
+  assert.equal(potV20?.multiplier, 5);
+  assert.equal(potV20?.cost, 10); // 2 * 5
+  assert.equal(domV20?.disciplineAffinity, 'discipline_out_of_clan');
+  assert.equal(domV20?.isOutOfClan, true);
+  assert.equal(domV20?.multiplier, 7);
+  assert.equal(domV20?.cost, 14); // 2 * 7
+  assert.equal(ausZeroV20?.cost, 10); // V20 0 -> 1 always 10 XP
+
+  // 2. V5 Hecata: Oblivion = In-Clan (×5), Dominate = Out-of-Clan (×7), New Level × Mult
+  let v5Hecata = createNewSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Hecata',
+  });
+  resetXpPricingConfig(v5Hecata);
+  v5Hecata = addFieldToCard(v5Hecata, 'card_arcano', {
+    id: 'f_oblivion',
+    key: 'oblivion',
+    label: 'OBLITERAÇÃO',
+    kind: 'number',
+    value: 2,
+  });
+  v5Hecata = updateFieldValue(v5Hecata, 'f_dominate', 2);
+
+  const v5HecataTraits = extractAllTraits(v5Hecata);
+  const oblV5 = v5HecataTraits.find((t) => t.key === 'oblivion');
+  const domV5 = v5HecataTraits.find((t) => t.key === 'dominate');
+  assert.equal(oblV5?.disciplineAffinity, 'discipline_clan');
+  assert.equal(oblV5?.multiplier, 5);
+  assert.equal(oblV5?.cost, 15); // (2 + 1) * 5
+  assert.equal(domV5?.disciplineAffinity, 'discipline_out_of_clan');
+  assert.equal(domV5?.multiplier, 7);
+  assert.equal(domV5?.cost, 21); // (2 + 1) * 7
+
+  // 3. Caitiff in V20 and V5: all disciplines ×6
+  let v20Caitiff = createNewSheetForSystem('wod', {
+    edition: 'storyteller-v20',
+    clan: 'Caitiff',
+  });
+  resetXpPricingConfig(v20Caitiff);
+  v20Caitiff = updateFieldValue(v20Caitiff, 'f_dominate', 3);
+  const caitiffV20Dom = extractAllTraits(v20Caitiff).find((t) => t.key === 'dominate');
+  assert.equal(caitiffV20Dom?.disciplineAffinity, 'discipline_caitiff');
+  assert.equal(caitiffV20Dom?.multiplier, 6);
+  assert.equal(caitiffV20Dom?.cost, 18); // 3 * 6
+
+  let v5Caitiff = createNewSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Caitiff',
+  });
+  resetXpPricingConfig(v5Caitiff);
+  v5Caitiff = updateFieldValue(v5Caitiff, 'f_presence', 0);
+  const caitiffV5Pres = extractAllTraits(v5Caitiff).find((t) => t.key === 'presence');
+  assert.equal(caitiffV5Pres?.disciplineAffinity, 'discipline_caitiff');
+  assert.equal(caitiffV5Pres?.multiplier, 6);
+  assert.equal(caitiffV5Pres?.cost, 6); // (0 + 1) * 6
+});
+
+test('Manual field xpCategory and workspace overrides take precedence over automatic clan affinity, with legacy fallbacks', () => {
+  // 1. Explicit field.xpCategory override on Brujah (Dominate forced to clan, Potence forced to out-of-clan)
+  let sheet = createNewSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Brujah',
+  });
+  resetXpPricingConfig(sheet);
+  sheet = {
+    ...sheet,
+    cards: sheet.cards.map((card) =>
+      card.id === 'card_arcano'
+        ? {
+            ...card,
+            fields: [
+              {
+                id: 'f_dominate',
+                key: 'dominate',
+                label: 'DOMINATE',
+                kind: 'number',
+                value: 1,
+                xpCategory: 'discipline_clan',
+              },
+              {
+                id: 'f_potence_manual',
+                key: 'potence',
+                label: 'POTENCE',
+                kind: 'number',
+                value: 1,
+                xpCategory: 'discipline_out_of_clan',
+              },
+              {
+                id: 'f_legacy_manual_disc',
+                key: 'disc_x9a1',
+                label: 'Rapidez',
+                kind: 'number',
+                value: 2,
+              },
+            ],
+          }
+        : card,
+    ),
+  };
+
+  const traits = extractAllTraits(sheet);
+  const dom = traits.find((t) => t.fieldId === 'f_dominate');
+  const pot = traits.find((t) => t.fieldId === 'f_potence_manual');
+  const legacyCelerity = traits.find((t) => t.fieldId === 'f_legacy_manual_disc');
+  assert.equal(dom?.disciplineAffinity, 'discipline_clan');
+  assert.equal(dom?.cost, 10); // 2 * 5
+  assert.equal(pot?.disciplineAffinity, 'discipline_out_of_clan');
+  assert.equal(pot?.cost, 14); // 2 * 7
+  // Legacy fallback: random generated key matches localized label 'Rapidez' -> Brujah In-Clan ×5
+  assert.equal(legacyCelerity?.disciplineAffinity, 'discipline_clan');
+  assert.equal(legacyCelerity?.cost, 15); // 3 * 5
+
+  // 2. Workspace toggle overrides auto-out-of-clan to in-clan without snapping back
+  let brujahAuto = createNewSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Brujah',
+  });
+  resetXpPricingConfig(brujahAuto);
+  brujahAuto = updateFieldValue(brujahAuto, 'f_dominate', 1);
+  assert.equal(
+    extractAllTraits(brujahAuto).find((t) => t.fieldId === 'f_dominate')?.disciplineAffinity,
+    'discipline_out_of_clan',
+  );
+
+  setTraitOutOfClan(brujahAuto, 'f_dominate', false);
+  const overriddenInClan = extractAllTraits(brujahAuto).find((t) => t.fieldId === 'f_dominate');
+  assert.equal(overriddenInClan?.disciplineAffinity, 'discipline_clan');
+  assert.equal(overriddenInClan?.cost, 10);
+
+  setTraitDisciplineAffinity(brujahAuto, 'f_dominate', 'discipline_caitiff');
+  const overriddenCaitiff = extractAllTraits(brujahAuto).find((t) => t.fieldId === 'f_dominate');
+  assert.equal(overriddenCaitiff?.disciplineAffinity, 'discipline_caitiff');
+  assert.equal(overriddenCaitiff?.cost, 12); // 2 * 6
+
+  // 3. Unknown/custom clan falls back to default ×5
+  let customClanSheet = createNewSheetForSystem('wod', {
+    edition: 'vampire-v5',
+    clan: 'Baali',
+  });
+  resetXpPricingConfig(customClanSheet);
+  customClanSheet = updateFieldValue(customClanSheet, 'f_dominate', 1);
+  const customTrait = extractAllTraits(customClanSheet).find((t) => t.fieldId === 'f_dominate');
+  assert.equal(customTrait?.disciplineAffinity, 'discipline_clan');
+  assert.equal(customTrait?.cost, 10);
 });

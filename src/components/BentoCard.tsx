@@ -17,9 +17,24 @@ import {
   getGroupedWodSkillsCatalog,
   isCatalogSkillPresent,
   isOfficialVampireSheet,
+  normalizeCatalogText,
   WodCatalogSkill,
 } from '../core/wodSkillsCatalog';
+import {
+  buildCatalogDisciplineField,
+  buildCatalogPowerRow,
+  findClanByIdOrName,
+  formatPowerCostLabel,
+  getDisciplinesForEdition,
+  isCatalogDisciplinePresent,
+  isCatalogPowerPresent,
+  resolveDisciplineAffinity,
+  WodDisciplineCatalogEntry,
+  WodDisciplinePower,
+  WodPowerCostType,
+} from '../core/wodClansDisciplinesCatalog';
 import { AnimatedCounter } from './AnimatedCounter';
+import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
 
 interface BentoCardProps {
@@ -29,6 +44,7 @@ interface BentoCardProps {
   mode: AppMode;
   systemId?: SystemId;
   rulePreset?: RulePreset;
+  clan?: string;
   woundPenalty?: number;
   bloodPool?: { current: number; max: number };
   virtues?: VirtuesState;
@@ -60,7 +76,8 @@ interface BentoCardProps {
   onAdjustBloodPool?: (delta: number) => void;
   onSetBloodPool?: (nextVal: number) => void;
   onUpdateVirtue?: (virtue: keyof VirtuesState, nextVal: number) => void;
-  onRouseCheck?: () => void;
+  onRouseCheck?: (options?: { label?: string; count?: number }) => void;
+  onSpendPowerBlood?: (cost: number, powerName: string) => void;
   onToggleBloodSurge?: () => void;
   onTriggerWillpowerSurge?: () => void;
   onRoll: (field: SheetField) => void;
@@ -101,9 +118,10 @@ const TEMPLATE_ORDER: GuidedFieldTemplateId[] = [
 ];
 
 function inferDefaultTemplateForCard(card: SheetCard): GuidedFieldTemplateId {
+  if (card.id === 'card_arcano' || card.id === 'card_grimorio') return 'discipline';
   const sig = `${card.code} ${card.title}`.toUpperCase();
   if (/ATTRIBUTE|ATRIBUTO/.test(sig)) return 'attribute';
-  if (/DISCIPLIN|PODER|POWER|ARCANO/.test(sig)) return 'discipline';
+  if (/DISCIPLIN|PODER|POWER|ARCANO|GRIMOR|MERIT/.test(sig)) return 'discipline';
   if (/VITAL|RECURS|RESOURCE|STATUS/.test(sig)) return 'resource';
   if (/NOTE|NOTA|LOG/.test(sig)) return 'text';
   return 'skill_d10';
@@ -116,6 +134,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   mode,
   systemId = 'wod',
   rulePreset = 'storyteller-v20',
+  clan = '',
   woundPenalty = 0,
   bloodPool,
   virtues,
@@ -136,6 +155,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onSetBloodPool,
   onUpdateVirtue,
   onRouseCheck,
+  onSpendPowerBlood,
   onToggleBloodSurge,
   onTriggerWillpowerSurge,
   onRoll,
@@ -150,6 +170,14 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
+  const [discCatalogTab, setDiscCatalogTab] = useState<'disciplines' | 'powers'>(() =>
+    card.fields.some((f) => f.kind === 'repeatable' && f.col2Type !== 'number')
+      ? 'powers'
+      : 'disciplines',
+  );
+  const [customDiscName, setCustomDiscName] = useState('');
+  const [customPowerName, setCustomPowerName] = useState('');
+  const [customPowerCost, setCustomPowerCost] = useState('free');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<GuidedFieldTemplateId>(() =>
@@ -163,6 +191,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       setEditingFieldId(null);
       setComposerOpen(false);
       setCatalogQuery('');
+      setCustomDiscName('');
+      setCustomPowerName('');
     }
   }, [mode]);
 
@@ -193,11 +223,13 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 
   const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
   const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
+  const showOfficialDisciplineCatalog =
+    Boolean(officialEdition) && selectedTemplate === 'discipline';
 
   const existingSheetKeys = useMemo(
     () => [
       ...Object.keys(evaluation.variables),
-      ...card.fields.map((f) => f.key),
+      ...card.fields.flatMap((f) => [f.key, f.label]),
     ],
     [evaluation.variables, card.fields],
   );
@@ -206,6 +238,87 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     () => (officialEdition ? getGroupedWodSkillsCatalog(officialEdition, catalogQuery) : []),
     [officialEdition, catalogQuery],
   );
+
+  const matchedClanEntry = useMemo(
+    () => (officialEdition && clan ? findClanByIdOrName(clan, officialEdition) : null),
+    [officialEdition, clan],
+  );
+
+  const powersTargetField = useMemo(
+    () => card.fields.find((f) => f.kind === 'repeatable' && f.col2Type !== 'number') ?? null,
+    [card.fields],
+  );
+
+  const existingPowerRows = useMemo(
+    () => card.fields.filter((f) => f.kind === 'repeatable').flatMap((f) => f.rows ?? []),
+    [card.fields],
+  );
+
+  const disciplineCatalogList = useMemo(() => {
+    if (!officialEdition) return [];
+    const list = getDisciplinesForEdition(officialEdition);
+    const normQ = normalizeCatalogText(catalogQuery);
+    const filtered = normQ
+      ? list.filter((disc) =>
+          [
+            disc.id,
+            disc.varName,
+            disc.name['pt-BR'],
+            disc.name.en,
+            disc.name.es,
+            ...(disc.aliases ?? []),
+          ]
+            .map(normalizeCatalogText)
+            .some((item) => item.includes(normQ)),
+        )
+      : list;
+    return [...filtered].sort((a, b) => {
+      const aClan = matchedClanEntry ? matchedClanEntry.clanDisciplines.includes(a.id) : false;
+      const bClan = matchedClanEntry ? matchedClanEntry.clanDisciplines.includes(b.id) : false;
+      if (aClan !== bClan) return aClan ? -1 : 1;
+      return a.name[lang].localeCompare(b.name[lang]);
+    });
+  }, [officialEdition, catalogQuery, matchedClanEntry, lang]);
+
+  const powerCatalogGroups = useMemo(() => {
+    if (!officialEdition) return [];
+    const list = getDisciplinesForEdition(officialEdition);
+    const normQ = normalizeCatalogText(catalogQuery);
+    const groups = list
+      .map((disc) => {
+        const discMatches =
+          !normQ ||
+          [
+            disc.id,
+            disc.varName,
+            disc.name['pt-BR'],
+            disc.name.en,
+            disc.name.es,
+            ...(disc.aliases ?? []),
+          ]
+            .map(normalizeCatalogText)
+            .some((item) => item.includes(normQ));
+        const powers = discMatches
+          ? disc.powers
+          : disc.powers.filter((power) =>
+              [power.name['pt-BR'], power.name.en, power.name.es]
+                .map(normalizeCatalogText)
+                .some((item) => item.includes(normQ)),
+            );
+        return { discipline: disc, powers };
+      })
+      .filter((group) => group.powers.length > 0);
+    return groups.sort((a, b) => {
+      const aClan = matchedClanEntry
+        ? matchedClanEntry.clanDisciplines.includes(a.discipline.id)
+        : false;
+      const bClan = matchedClanEntry
+        ? matchedClanEntry.clanDisciplines.includes(b.discipline.id)
+        : false;
+      if (aClan !== bClan) return aClan ? -1 : 1;
+      return a.discipline.name[lang].localeCompare(b.discipline.name[lang]);
+    });
+  }, [officialEdition, catalogQuery, matchedClanEntry, lang]);
 
   const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
@@ -244,19 +357,56 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     }
   }
 
+  const wodAttributeGroups = useMemo(() => {
+    if (mode !== 'jogo' || !officialEdition) return null;
+    const physical = fieldsToRender.filter(
+      (f) => f.kind === 'number' && f.attributeGroup === 'physical',
+    );
+    const social = fieldsToRender.filter(
+      (f) => f.kind === 'number' && f.attributeGroup === 'social',
+    );
+    const mental = fieldsToRender.filter(
+      (f) => f.kind === 'number' && f.attributeGroup === 'mental',
+    );
+    if (physical.length === 0 || social.length === 0 || mental.length === 0) {
+      return null;
+    }
+    const groupedIds = new Set([...physical, ...social, ...mental].map((f) => f.id));
+    const trailingFields = fieldsToRender.filter((f) => !groupedIds.has(f.id));
+    return {
+      groups: [
+        { id: 'physical' as const, label: t.t('cards.attributes.physical'), fields: physical },
+        { id: 'social' as const, label: t.t('cards.attributes.social'), fields: social },
+        { id: 'mental' as const, label: t.t('cards.attributes.mental'), fields: mental },
+      ],
+      trailingFields,
+    };
+  }, [mode, officialEdition, fieldsToRender, t]);
+
   const canUseTwoColBody =
     card.colSpan === 2 &&
     fieldsToRender.length >= 2 &&
     fieldsToRender.every((f) => f.kind !== 'repeatable' && f.key !== 'notas_campanha');
-  const useTwoColBody = mode === 'jogo' && canUseTwoColBody;
+  const useTwoColBody = mode === 'jogo' && canUseTwoColBody && !wodAttributeGroups;
 
   const openGuidedComposer = () => {
     const defaultTpl = inferDefaultTemplateForCard(card);
     setSelectedTemplate(defaultTpl);
     setCatalogQuery('');
+    const hasPowerTable = card.fields.some((f) => f.kind === 'repeatable' && f.col2Type !== 'number');
+    setDiscCatalogTab(hasPowerTable ? 'powers' : 'disciplines');
+    setCustomDiscName('');
+    setCustomPowerName('');
+    setCustomPowerCost(
+      officialEdition === 'vampire-v5'
+        ? 'rouse_1'
+        : officialEdition === 'storyteller-v20'
+          ? 'blood_1'
+          : 'free',
+    );
     setComposerOpen(true);
     window.setTimeout(() => {
-      if (officialEdition && defaultTpl === 'skill_d10') {
+      if (officialEdition && (defaultTpl === 'skill_d10' || defaultTpl === 'discipline')) {
         catalogSearchRef.current?.focus();
       } else {
         labelInputRef.current?.focus();
@@ -278,9 +428,89 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     });
   };
 
+  const handleAddOfficialDiscipline = (disc: WodDisciplineCatalogEntry) => {
+    if (!officialEdition) return;
+    if (isCatalogDisciplinePresent(disc, existingSheetKeys)) return;
+    const baseField = buildCatalogDisciplineField(disc, lang);
+    const idExists = card.fields.some((f) => f.id === baseField.id);
+    const resolvedField = idExists
+      ? { ...baseField, id: `${baseField.id}_${Date.now().toString(36).slice(-4)}` }
+      : baseField;
+    onUpdateCard(card.id, {
+      fields: [...card.fields, resolvedField],
+    });
+  };
+
+  const appendPowerRowToCard = (newRow: ReturnType<typeof buildCatalogPowerRow>) => {
+    if (powersTargetField) {
+      onUpdateCard(card.id, {
+        fields: card.fields.map((f) =>
+          f.id === powersTargetField.id ? { ...f, rows: [...(f.rows ?? []), newRow] } : f,
+        ),
+      });
+      return;
+    }
+    const newTableField: SheetField = {
+      id: `f_powers_${card.id}_${Date.now().toString(36).slice(-4)}`,
+      key: `powers_${card.fields.length + 1}`,
+      label: t.t('cards.disciplines.powersTableLabel'),
+      kind: 'repeatable',
+      columns: [t.t('cards.disciplines.powersColPower'), t.t('cards.disciplines.powersColCost')],
+      col2Type: 'text',
+      rows: [newRow],
+    };
+    onUpdateCard(card.id, {
+      fields: [...card.fields, newTableField],
+    });
+  };
+
+  const handleAddOfficialPower = (
+    disc: WodDisciplineCatalogEntry,
+    power: WodDisciplinePower,
+  ) => {
+    if (!officialEdition) return;
+    if (isCatalogPowerPresent(power, existingPowerRows)) return;
+    appendPowerRowToCard(buildCatalogPowerRow(disc, power, lang));
+  };
+
+  const handleAddCustomDiscipline = () => {
+    const clean = customDiscName.trim();
+    const resolved = clean || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
+    onAddField(card.id, 'number', resolved);
+    setCustomDiscName('');
+  };
+
+  const handleAddCustomPower = () => {
+    const clean = customPowerName.trim();
+    if (!clean) return;
+    let costType: WodPowerCostType = 'free';
+    let costAmount = 0;
+    if (customPowerCost.startsWith('rouse_')) {
+      costType = 'rouse';
+      costAmount = Math.max(1, Number(customPowerCost.split('_')[1]) || 1);
+    } else if (customPowerCost.startsWith('blood_')) {
+      costType = 'blood_point';
+      costAmount = Math.max(1, Number(customPowerCost.split('_')[1]) || 1);
+    }
+    appendPowerRowToCard({
+      id: `pwr_custom_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 5)}`,
+      col1: clean,
+      col2: formatPowerCostLabel(costType, costAmount, lang),
+    });
+    setCustomPowerName('');
+  };
+
   const handleCreateGuidedField = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (showOfficialSkillCatalog) return;
+    if (showOfficialDisciplineCatalog) {
+      if (discCatalogTab === 'disciplines' && customDiscName.trim()) {
+        handleAddCustomDiscipline();
+      } else if (discCatalogTab === 'powers' && customPowerName.trim()) {
+        handleAddCustomPower();
+      }
+      return;
+    }
     const trimmed = newFieldLabel.trim();
     const resolvedLabel =
       trimmed || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
@@ -296,6 +526,296 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 
     setNewFieldLabel('');
     setComposerOpen(false);
+  };
+
+  const renderFieldEntry = (field: SheetField, compactDots = false) => {
+    if (consumedRollIds.has(field.id)) {
+      return null;
+    }
+    const realIdx = card.fields.findIndex((f) => f.id === field.id);
+    const showV20BloodAfterWillpower =
+      isWodCombatCard &&
+      mode === 'jogo' &&
+      rulePreset === 'storyteller-v20' &&
+      (field.id === 'f_willpower' || field.key === 'willpower') &&
+      Boolean(bloodPool);
+    const showV20VirtuesBeforeHumanity =
+      isWodCombatCard &&
+      mode === 'jogo' &&
+      rulePreset === 'storyteller-v20' &&
+      (field.id === 'f_humanity' || field.key === 'humanity') &&
+      Boolean(virtues);
+    const showV5FuelAfterHunger =
+      isWodCombatCard &&
+      mode === 'jogo' &&
+      rulePreset === 'vampire-v5' &&
+      (field.id === 'f_hunger' || field.key === 'hunger');
+
+    return (
+      <React.Fragment key={field.id}>
+        {showV20VirtuesBeforeHumanity && virtues && (
+          <div
+            data-testid="v20-virtues-panel"
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] flex flex-col gap-2"
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono-tech text-[10px] font-bold tracking-wider uppercase text-[var(--accent-wine)]">
+                {t.t('cards.vital.virtuesHeading')}
+              </span>
+            </div>
+            <div className="grid grid-cols-1 gap-1.5">
+              {(
+                [
+                  ['conscience', t.t('cards.vital.virtueConscience')],
+                  ['selfControl', t.t('cards.vital.virtueSelfControl')],
+                  ['courage', t.t('cards.vital.virtueCourage')],
+                ] as const
+              ).map(([vKey, vLabel]) => {
+                const val = virtues[vKey];
+                return (
+                  <div
+                    key={vKey}
+                    className="flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0"
+                  >
+                    <span className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)] truncate">
+                      {vLabel}
+                    </span>
+                    <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-full">
+                      <DotRating
+                        label={vLabel}
+                        value={val}
+                        min={1}
+                        max={5}
+                        onChange={(next) => onUpdateVirtue?.(vKey, next)}
+                        t={t}
+                        showQuickEdit={false}
+                        testId={`v20-virtue-${vKey}-dots`}
+                      />
+                      <div className="flex items-center gap-1 shrink-0">
+                        <button
+                          type="button"
+                          data-testid={`v20-virtue-${vKey}-dec`}
+                          aria-label={`${vLabel} -`}
+                          disabled={val <= 1}
+                          onClick={() => onUpdateVirtue?.(vKey, val - 1)}
+                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                        >
+                          -
+                        </button>
+                        <span
+                          data-testid={`v20-virtue-${vKey}-value`}
+                          className="font-mono-tech text-xs font-bold min-w-[34px] text-center tabular-nums text-[var(--ink-primary)]"
+                        >
+                          {val} / 5
+                        </span>
+                        <button
+                          type="button"
+                          data-testid={`v20-virtue-${vKey}-inc`}
+                          aria-label={`${vLabel} +`}
+                          disabled={val >= 5}
+                          onClick={() => onUpdateVirtue?.(vKey, val + 1)}
+                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                        >
+                          +
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        <FieldPrimitive
+          field={field}
+          card={card}
+          pairedRollField={pairedRollByNumberId.get(field.id)}
+          mode={mode}
+          systemId={systemId}
+          rulePreset={rulePreset}
+          compactDots={compactDots}
+          woundPenalty={woundPenalty}
+          bloodPool={bloodPool}
+          bloodSurge={bloodSurge}
+          lastSoakTotal={lastSoakTotal}
+          canWillpowerSurge={canWillpowerSurge}
+          variables={evaluation.variables}
+          computed={evaluation.computedByFieldId[field.id]}
+          totalCargoWeight={evaluation.totalCargoWeight}
+          t={t}
+          isEditOpen={mode === 'edicao' && editingFieldId === field.id}
+          onToggleEdit={() =>
+            setEditingFieldId((prev) => (prev === field.id ? null : field.id))
+          }
+          canMoveUp={realIdx > 0}
+          canMoveDown={realIdx !== -1 && realIdx < card.fields.length - 1}
+          onMoveUp={() =>
+            onUpdateCard(card.id, {
+              fields: reorderFieldInCard(card.fields, field.id, 'up'),
+            })
+          }
+          onMoveDown={() =>
+            onUpdateCard(card.id, {
+              fields: reorderFieldInCard(card.fields, field.id, 'down'),
+            })
+          }
+          onChangeValue={onChangeValue}
+          onAdjustResource={onAdjustResource}
+          onAdjustHealthDamage={onAdjustHealthDamage}
+          onCycleV20HealthCell={onCycleV20HealthCell}
+          onAdjustV20HealthDamage={onAdjustV20HealthDamage}
+          onAdjustV5HealthDamage={onAdjustV5HealthDamage}
+          onApplyV5SuperficialHalving={onApplyV5SuperficialHalving}
+          onRouseCheck={onRouseCheck}
+          onSpendPowerBlood={
+            onSpendPowerBlood ?? ((cost) => onAdjustBloodPool?.(-cost))
+          }
+          onTriggerWillpowerSurge={onTriggerWillpowerSurge}
+          onRoll={onRoll}
+          onAddRow={onAddRow}
+          onUpdateRow={onUpdateRow}
+          onRemoveRow={onRemoveRow}
+          onUpdateSchema={onUpdateSchema}
+          onRemoveField={(fid) => {
+            if (editingFieldId === fid) setEditingFieldId(null);
+            onRemoveField(card.id, fid);
+          }}
+        />
+
+        {showV20BloodAfterWillpower && bloodPool && (
+          <div
+            data-testid="v20-blood-pool-panel"
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] flex flex-col gap-2"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                {t.t('cards.vital.bloodPoolLabel')}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-testid="v20-spend-blood-btn"
+                  disabled={bloodPool.current <= 0}
+                  onClick={() => onAdjustBloodPool?.(-1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                >
+                  {t.t('cards.vital.spendBloodBtn')}
+                </button>
+                <span
+                  data-testid="v20-blood-pool-value"
+                  className="font-mono-tech text-xs font-bold px-1.5 min-w-[52px] text-center tabular-nums"
+                  aria-live="polite"
+                >
+                  <AnimatedCounter value={bloodPool.current} /> /{' '}
+                  <AnimatedCounter value={bloodPool.max} pulseOnChange={false} />
+                </span>
+                <button
+                  type="button"
+                  data-testid="v20-blood-pool-inc"
+                  aria-label={`${t.t('cards.vital.bloodPoolLabel')} +`}
+                  disabled={bloodPool.current >= bloodPool.max}
+                  onClick={() => onAdjustBloodPool?.(1)}
+                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-40"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+            {bloodPool.max > 20 ? (
+              <div
+                className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer overflow-hidden"
+                role="meter"
+                aria-label={t.t('cards.vital.bloodPoolLabel')}
+                aria-valuemin={0}
+                aria-valuemax={bloodPool.max}
+                aria-valuenow={bloodPool.current}
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  if (rect.width <= 0) return;
+                  const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
+                  onSetBloodPool?.(Math.round(ratio * bloodPool.max));
+                }}
+              >
+                <div
+                  className="h-full bg-[var(--accent-primary)]"
+                  style={{
+                    width: `${Math.max(0, Math.min(100, (bloodPool.current / bloodPool.max) * 100))}%`,
+                  }}
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 left-[25%] w-[1.5px] bg-[var(--border-color)]/55"
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 left-[50%] w-[1.5px] bg-[var(--border-color)]/55"
+                />
+                <span
+                  aria-hidden="true"
+                  className="pointer-events-none absolute inset-y-0 left-[75%] w-[1.5px] bg-[var(--border-color)]/55"
+                />
+              </div>
+            ) : (
+              <div
+                className="seg-meter-track flex items-center gap-[3px]"
+                role="meter"
+                aria-label={t.t('cards.vital.bloodPoolLabel')}
+                aria-valuemin={0}
+                aria-valuemax={bloodPool.max}
+                aria-valuenow={bloodPool.current}
+              >
+                {Array.from({ length: bloodPool.max }, (_, idx) => {
+                  const filled = idx < bloodPool.current;
+                  return (
+                    <button
+                      key={idx}
+                      type="button"
+                      aria-label={t.t('cards.setResourceAria', {
+                        label: t.t('cards.vital.bloodPoolLabel'),
+                        value: idx + 1,
+                      })}
+                      onClick={() => onSetBloodPool?.(idx + 1 === bloodPool.current ? idx : idx + 1)}
+                      className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
+                    />
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {showV5FuelAfterHunger && (
+          <div
+            data-testid="v5-hunger-controls"
+            className="no-print print:hidden flex flex-wrap items-center gap-2"
+          >
+            <button
+              type="button"
+              data-testid="v5-rouse-check-btn"
+              onClick={() => onRouseCheck?.()}
+              className="cyber-roll-btn min-h-[36px] flex-1 min-w-[140px] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+            >
+              {t.t('cards.vital.rouseCheckBtn')} ↗
+            </button>
+            <button
+              type="button"
+              data-testid="v5-blood-surge-toggle"
+              aria-pressed={bloodSurge}
+              onClick={() => onToggleBloodSurge?.()}
+              className={`font-mono-tech min-h-[36px] flex-1 min-w-[140px] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-[var(--radius-control)] border-[1.5px] cursor-pointer transition-colors ${
+                bloodSurge
+                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                  : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)] hover:bg-[var(--bg-hover)]'
+              }`}
+            >
+              {t.t('cards.vital.bloodSurgeLabel', { bonus: bloodSurgeBonus })}
+              {bloodSurge ? ' · ON' : ''}
+            </button>
+          </div>
+        )}
+      </React.Fragment>
+    );
   };
 
   return (
@@ -411,276 +931,31 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           </div>
         )}
 
-        {fieldsToRender.map((field) => {
-          if (consumedRollIds.has(field.id)) {
-            return null;
-          }
-          const realIdx = card.fields.findIndex((f) => f.id === field.id);
-          const showV20BloodAfterWillpower =
-            isWodCombatCard &&
-            mode === 'jogo' &&
-            rulePreset === 'storyteller-v20' &&
-            (field.id === 'f_willpower' || field.key === 'willpower') &&
-            Boolean(bloodPool);
-          const showV20VirtuesBeforeHumanity =
-            isWodCombatCard &&
-            mode === 'jogo' &&
-            rulePreset === 'storyteller-v20' &&
-            (field.id === 'f_humanity' || field.key === 'humanity') &&
-            Boolean(virtues);
-          const showV5FuelAfterHunger =
-            isWodCombatCard &&
-            mode === 'jogo' &&
-            rulePreset === 'vampire-v5' &&
-            (field.id === 'f_hunger' || field.key === 'hunger');
-
-          return (
-            <React.Fragment key={field.id}>
-              {showV20VirtuesBeforeHumanity && virtues && (
-                <div
-                  data-testid="v20-virtues-panel"
-                  className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] flex flex-col gap-2"
-                >
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="font-mono-tech text-[10px] font-bold tracking-wider uppercase text-[var(--accent-wine)]">
-                      {t.t('cards.vital.virtuesHeading')}
-                    </span>
-                  </div>
-                  <div className="grid grid-cols-1 gap-1.5">
-                    {(
-                      [
-                        ['conscience', t.t('cards.vital.virtueConscience')],
-                        ['selfControl', t.t('cards.vital.virtueSelfControl')],
-                        ['courage', t.t('cards.vital.virtueCourage')],
-                      ] as const
-                    ).map(([vKey, vLabel]) => {
-                      const val = virtues[vKey];
-                      return (
-                        <div
-                          key={vKey}
-                          className="flex items-center justify-between gap-2"
-                        >
-                          <span className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)] truncate">
-                            {vLabel}
-                          </span>
-                          <div className="flex items-center gap-1 shrink-0">
-                            <button
-                              type="button"
-                              data-testid={`v20-virtue-${vKey}-dec`}
-                              aria-label={`${vLabel} -`}
-                              disabled={val <= 1}
-                              onClick={() => onUpdateVirtue?.(vKey, val - 1)}
-                              className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
-                            >
-                              -
-                            </button>
-                            <span
-                              data-testid={`v20-virtue-${vKey}-value`}
-                              className="font-mono-tech text-xs font-bold min-w-[34px] text-center tabular-nums text-[var(--ink-primary)]"
-                            >
-                              {val} / 5
-                            </span>
-                            <button
-                              type="button"
-                              data-testid={`v20-virtue-${vKey}-inc`}
-                              aria-label={`${vLabel} +`}
-                              disabled={val >= 5}
-                              onClick={() => onUpdateVirtue?.(vKey, val + 1)}
-                              className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
-                            >
-                              +
-                            </button>
-                          </div>
-                        </div>
-                      );
-                    })}
-                  </div>
-                </div>
-              )}
-
-              <FieldPrimitive
-                field={field}
-                pairedRollField={pairedRollByNumberId.get(field.id)}
-                mode={mode}
-                systemId={systemId}
-                rulePreset={rulePreset}
-                woundPenalty={woundPenalty}
-                bloodSurge={bloodSurge}
-                lastSoakTotal={lastSoakTotal}
-                canWillpowerSurge={canWillpowerSurge}
-                variables={evaluation.variables}
-                computed={evaluation.computedByFieldId[field.id]}
-                totalCargoWeight={evaluation.totalCargoWeight}
-                t={t}
-                isEditOpen={mode === 'edicao' && editingFieldId === field.id}
-                onToggleEdit={() =>
-                  setEditingFieldId((prev) => (prev === field.id ? null : field.id))
-                }
-                canMoveUp={realIdx > 0}
-                canMoveDown={realIdx !== -1 && realIdx < card.fields.length - 1}
-                onMoveUp={() =>
-                  onUpdateCard(card.id, {
-                    fields: reorderFieldInCard(card.fields, field.id, 'up'),
-                  })
-                }
-                onMoveDown={() =>
-                  onUpdateCard(card.id, {
-                    fields: reorderFieldInCard(card.fields, field.id, 'down'),
-                  })
-                }
-                onChangeValue={onChangeValue}
-                onAdjustResource={onAdjustResource}
-                onAdjustHealthDamage={onAdjustHealthDamage}
-                onCycleV20HealthCell={onCycleV20HealthCell}
-                onAdjustV20HealthDamage={onAdjustV20HealthDamage}
-                onAdjustV5HealthDamage={onAdjustV5HealthDamage}
-                onApplyV5SuperficialHalving={onApplyV5SuperficialHalving}
-                onTriggerWillpowerSurge={onTriggerWillpowerSurge}
-                onRoll={onRoll}
-                onAddRow={onAddRow}
-                onUpdateRow={onUpdateRow}
-                onRemoveRow={onRemoveRow}
-                onUpdateSchema={onUpdateSchema}
-                onRemoveField={(fid) => {
-                  if (editingFieldId === fid) setEditingFieldId(null);
-                  onRemoveField(card.id, fid);
-                }}
-              />
-
-              {showV20BloodAfterWillpower && bloodPool && (
-                <div
-                  data-testid="v20-blood-pool-panel"
-                  className="p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-subtle)] rounded-[var(--radius-card)] flex flex-col gap-2"
-                >
-                  <div className="flex flex-wrap items-center justify-between gap-2">
-                    <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                      {t.t('cards.vital.bloodPoolLabel')}
-                    </span>
-                    <div className="flex items-center gap-1.5 shrink-0">
-                      <button
-                        type="button"
-                        data-testid="v20-spend-blood-btn"
-                        disabled={bloodPool.current <= 0}
-                        onClick={() => onAdjustBloodPool?.(-1)}
-                        className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
-                      >
-                        {t.t('cards.vital.spendBloodBtn')}
-                      </button>
-                      <span
-                        data-testid="v20-blood-pool-value"
-                        className="font-mono-tech text-xs font-bold px-1.5 min-w-[52px] text-center tabular-nums"
-                        aria-live="polite"
-                      >
-                        <AnimatedCounter value={bloodPool.current} /> /{' '}
-                        <AnimatedCounter value={bloodPool.max} pulseOnChange={false} />
-                      </span>
-                      <button
-                        type="button"
-                        data-testid="v20-blood-pool-inc"
-                        aria-label={`${t.t('cards.vital.bloodPoolLabel')} +`}
-                        disabled={bloodPool.current >= bloodPool.max}
-                        onClick={() => onAdjustBloodPool?.(1)}
-                        className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-40"
-                      >
-                        +
-                      </button>
-                    </div>
-                  </div>
-                  {bloodPool.max > 20 ? (
-                    <div
-                      className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer overflow-hidden"
-                      role="meter"
-                      aria-label={t.t('cards.vital.bloodPoolLabel')}
-                      aria-valuemin={0}
-                      aria-valuemax={bloodPool.max}
-                      aria-valuenow={bloodPool.current}
-                      onClick={(e) => {
-                        const rect = e.currentTarget.getBoundingClientRect();
-                        if (rect.width <= 0) return;
-                        const ratio = Math.max(0, Math.min(1, (e.clientX - rect.left) / rect.width));
-                        onSetBloodPool?.(Math.round(ratio * bloodPool.max));
-                      }}
-                    >
-                      <div
-                        className="h-full bg-[var(--accent-primary)]"
-                        style={{
-                          width: `${Math.max(0, Math.min(100, (bloodPool.current / bloodPool.max) * 100))}%`,
-                        }}
-                      />
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-[25%] w-[1.5px] bg-[var(--border-color)]/55"
-                      />
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-[50%] w-[1.5px] bg-[var(--border-color)]/55"
-                      />
-                      <span
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-[75%] w-[1.5px] bg-[var(--border-color)]/55"
-                      />
-                    </div>
-                  ) : (
-                    <div
-                      className="seg-meter-track flex items-center gap-[3px]"
-                      role="meter"
-                      aria-label={t.t('cards.vital.bloodPoolLabel')}
-                      aria-valuemin={0}
-                      aria-valuemax={bloodPool.max}
-                      aria-valuenow={bloodPool.current}
-                    >
-                      {Array.from({ length: bloodPool.max }, (_, idx) => {
-                        const filled = idx < bloodPool.current;
-                        return (
-                          <button
-                            key={idx}
-                            type="button"
-                            aria-label={t.t('cards.setResourceAria', {
-                              label: t.t('cards.vital.bloodPoolLabel'),
-                              value: idx + 1,
-                            })}
-                            onClick={() => onSetBloodPool?.(idx + 1 === bloodPool.current ? idx : idx + 1)}
-                            className={`seg-block cursor-pointer ${filled ? 'is-filled' : ''}`}
-                          />
-                        );
-                      })}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {showV5FuelAfterHunger && (
-                <div
-                  data-testid="v5-hunger-controls"
-                  className="no-print print:hidden flex flex-wrap items-center gap-2"
-                >
-                  <button
-                    type="button"
-                    data-testid="v5-rouse-check-btn"
-                    onClick={() => onRouseCheck?.()}
-                    className="cyber-roll-btn min-h-[36px] flex-1 min-w-[140px] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+        {wodAttributeGroups ? (
+          <>
+            <div data-testid={`wod-attr-grid-${card.id}`} className="wod-attr-grid-container">
+              <div className="wod-attr-grid">
+                {wodAttributeGroups.groups.map((group) => (
+                  <div
+                    key={group.id}
+                    data-testid={`wod-attr-group-${group.id}`}
+                    className="wod-attr-group-col"
                   >
-                    {t.t('cards.vital.rouseCheckBtn')} ↗
-                  </button>
-                  <button
-                    type="button"
-                    data-testid="v5-blood-surge-toggle"
-                    aria-pressed={bloodSurge}
-                    onClick={() => onToggleBloodSurge?.()}
-                    className={`font-mono-tech min-h-[36px] flex-1 min-w-[140px] px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider rounded-[var(--radius-control)] border-[1.5px] cursor-pointer transition-colors ${
-                      bloodSurge
-                        ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
-                        : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)] hover:bg-[var(--bg-hover)]'
-                    }`}
-                  >
-                    {t.t('cards.vital.bloodSurgeLabel', { bonus: bloodSurgeBonus })}
-                    {bloodSurge ? ' · ON' : ''}
-                  </button>
-                </div>
-              )}
-            </React.Fragment>
-          );
-        })}
+                    <span className="wod-attr-group-heading">{group.label}</span>
+                    {group.fields.map((field) => renderFieldEntry(field, true))}
+                  </div>
+                ))}
+              </div>
+            </div>
+            {wodAttributeGroups.trailingFields.length > 0 && (
+              <div className="pt-2 border-t border-dashed border-[var(--border-ink)]/35 flex flex-col gap-2">
+                {wodAttributeGroups.trailingFields.map((field) => renderFieldEntry(field, false))}
+              </div>
+            )}
+          </>
+        ) : (
+          fieldsToRender.map((field) => renderFieldEntry(field, false))
+        )}
 
         {mode === 'edicao' && (fieldsToRender.length > 0 || composerOpen) && (
           <div className="no-print print:hidden mt-auto pt-3 border-t border-dashed border-[var(--border-ink)]/40 flex flex-col gap-2">
@@ -828,6 +1103,266 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                             </div>
                           </div>
                         ))
+                      )}
+                    </div>
+                  </div>
+                ) : showOfficialDisciplineCatalog && officialEdition ? (
+                  <div
+                    data-testid={`official-disciplines-catalog-${card.id}`}
+                    className="flex flex-col gap-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono-tech text-[10px] font-extrabold uppercase text-[var(--accent-wine)]">
+                        {officialEdition === 'vampire-v5'
+                          ? t.t('cards.disciplines.headingV5')
+                          : t.t('cards.disciplines.headingV20')}
+                      </span>
+                      <div className="flex items-center gap-1">
+                        <button
+                          type="button"
+                          data-testid={`disc-catalog-tab-disciplines-${card.id}`}
+                          aria-pressed={discCatalogTab === 'disciplines'}
+                          onClick={() => setDiscCatalogTab('disciplines')}
+                          className={`font-mono-tech min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border transition-colors cursor-pointer ${
+                            discCatalogTab === 'disciplines'
+                              ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                              : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/60 hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          {t.t('cards.disciplines.tabDisciplines')}
+                        </button>
+                        <button
+                          type="button"
+                          data-testid={`disc-catalog-tab-powers-${card.id}`}
+                          aria-pressed={discCatalogTab === 'powers'}
+                          onClick={() => setDiscCatalogTab('powers')}
+                          className={`font-mono-tech min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border transition-colors cursor-pointer ${
+                            discCatalogTab === 'powers'
+                              ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                              : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/60 hover:bg-[var(--bg-hover)]'
+                          }`}
+                        >
+                          {t.t('cards.disciplines.tabPowers')}
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="relative">
+                      <Search
+                        className="w-3.5 h-3.5 text-[var(--ink-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        ref={catalogSearchRef}
+                        type="search"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-testid={`official-disc-search-${card.id}`}
+                        aria-label={t.t('cards.disciplines.searchAria')}
+                        value={catalogQuery}
+                        onChange={(e) => setCatalogQuery(e.target.value)}
+                        placeholder={t.t('cards.disciplines.searchPlaceholder')}
+                        className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[11px] w-full"
+                      />
+                    </div>
+
+                    {discCatalogTab === 'disciplines' ? (
+                      <div className="max-h-60 overflow-y-auto pr-0.5 grid grid-cols-1 sm:grid-cols-2 gap-1">
+                        {disciplineCatalogList.length === 0 ? (
+                          <p className="sm:col-span-2 font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
+                            {t.t('cards.disciplines.emptySearch', { query: catalogQuery })}
+                          </p>
+                        ) : (
+                          disciplineCatalogList.map((disc) => {
+                            const alreadyOnSheet = isCatalogDisciplinePresent(
+                              disc,
+                              existingSheetKeys,
+                            );
+                            const affinity = matchedClanEntry
+                              ? resolveDisciplineAffinity(clan, disc.id, officialEdition)
+                              : null;
+                            return (
+                              <button
+                                key={disc.id}
+                                type="button"
+                                disabled={alreadyOnSheet}
+                                data-testid={`catalog-disc-${disc.varName}`}
+                                onClick={() => handleAddOfficialDiscipline(disc)}
+                                className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-control)] border flex items-center justify-between gap-1.5 text-left transition-colors ${
+                                  alreadyOnSheet
+                                    ? 'bg-[var(--bg-strip)] text-[var(--ink-muted)] border-[var(--border-ink)]/30 opacity-65 cursor-not-allowed'
+                                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/65 hover:bg-[var(--accent-primary)] hover:text-[var(--accent-contrast)] hover:border-[var(--border-color)] cursor-pointer'
+                                }`}
+                              >
+                                <span className="truncate">{disc.name[lang]}</span>
+                                <span className="flex items-center gap-1 shrink-0">
+                                  {affinity === 'discipline_clan' && (
+                                    <span className="text-[8px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
+                                      {t.t('cards.disciplines.inClanBadge')}
+                                    </span>
+                                  )}
+                                  {affinity === 'discipline_caitiff' && (
+                                    <span className="text-[8px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--ink-primary)] border border-[var(--border-ink)]/50 rounded-[var(--radius-pill)]">
+                                      {t.t('cards.disciplines.caitiffBadge')}
+                                    </span>
+                                  )}
+                                  {alreadyOnSheet ? (
+                                    <span className="text-[8px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-ink)]/40 rounded-[var(--radius-pill)]">
+                                      {t.t('cards.catalog.alreadyOnSheet')}
+                                    </span>
+                                  ) : (
+                                    <Plus className="w-3 h-3 shrink-0" aria-hidden="true" />
+                                  )}
+                                </span>
+                              </button>
+                            );
+                          })
+                        )}
+                      </div>
+                    ) : (
+                      <div className="max-h-60 overflow-y-auto pr-0.5 flex flex-col gap-2">
+                        {powerCatalogGroups.length === 0 ? (
+                          <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
+                            {t.t('cards.disciplines.emptySearch', { query: catalogQuery })}
+                          </p>
+                        ) : (
+                          powerCatalogGroups.map(({ discipline, powers }) => (
+                            <div key={discipline.id} className="flex flex-col gap-1">
+                              <span className="font-mono-tech text-[9px] font-extrabold tracking-wider uppercase text-[var(--ink-muted)]">
+                                {discipline.name[lang]}
+                              </span>
+                              <div className="grid grid-cols-1 gap-1">
+                                {powers.map((power) => {
+                                  const alreadyOnSheet = isCatalogPowerPresent(
+                                    power,
+                                    existingPowerRows,
+                                  );
+                                  const costLabel = formatPowerCostLabel(
+                                    power.costType,
+                                    power.costAmount,
+                                    lang,
+                                  );
+                                  return (
+                                    <button
+                                      key={power.id}
+                                      type="button"
+                                      disabled={alreadyOnSheet}
+                                      data-testid={`catalog-power-${power.id}`}
+                                      onClick={() => handleAddOfficialPower(discipline, power)}
+                                      className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-control)] border flex items-center justify-between gap-2 text-left transition-colors ${
+                                        alreadyOnSheet
+                                          ? 'bg-[var(--bg-strip)] text-[var(--ink-muted)] border-[var(--border-ink)]/30 opacity-65 cursor-not-allowed'
+                                          : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/65 hover:bg-[var(--accent-primary)] hover:text-[var(--accent-contrast)] hover:border-[var(--border-color)] cursor-pointer'
+                                      }`}
+                                    >
+                                      <span className="truncate min-w-0">
+                                        {t.t('cards.disciplines.levelShort', {
+                                          level: power.level,
+                                        })}{' '}
+                                        · {power.name[lang]}
+                                      </span>
+                                      <span className="flex items-center gap-1.5 shrink-0">
+                                        <span className="text-[8px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
+                                          {costLabel}
+                                        </span>
+                                        {alreadyOnSheet ? (
+                                          <span className="text-[8px] font-extrabold px-1.5 py-0.5 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-ink)]/40 rounded-[var(--radius-pill)]">
+                                            {t.t('cards.catalog.alreadyOnSheet')}
+                                          </span>
+                                        ) : (
+                                          <Plus className="w-3 h-3 shrink-0" aria-hidden="true" />
+                                        )}
+                                      </span>
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    )}
+
+                    {/* Custom Discipline or Power quick add */}
+                    <div className="pt-2 border-t border-dashed border-[var(--border-ink)]/40 flex flex-col gap-1.5">
+                      <span className="font-mono-tech text-[9px] font-extrabold uppercase text-[var(--ink-muted)]">
+                        {t.t('cards.disciplines.customHeading')}
+                      </span>
+                      {discCatalogTab === 'disciplines' ? (
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                          <input
+                            type="text"
+                            data-testid={`custom-disc-input-${card.id}`}
+                            aria-label={t.t('cards.disciplines.customDiscPlaceholder')}
+                            value={customDiscName}
+                            onChange={(e) => setCustomDiscName(e.target.value)}
+                            placeholder={t.t('cards.disciplines.customDiscPlaceholder')}
+                            className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1 text-[11px] flex-1 min-w-[140px]"
+                          />
+                          <button
+                            type="button"
+                            data-testid={`custom-disc-add-${card.id}`}
+                            onClick={handleAddCustomDiscipline}
+                            className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                          >
+                            {t.t('cards.disciplines.customAddBtn')}
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                          <input
+                            type="text"
+                            data-testid={`custom-power-input-${card.id}`}
+                            aria-label={t.t('cards.disciplines.customPowerPlaceholder')}
+                            value={customPowerName}
+                            onChange={(e) => setCustomPowerName(e.target.value)}
+                            placeholder={t.t('cards.disciplines.customPowerPlaceholder')}
+                            className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1 text-[11px] flex-1 min-w-[120px]"
+                          />
+                          <select
+                            data-testid={`custom-power-cost-${card.id}`}
+                            aria-label={t.t('cards.disciplines.customCostLabel')}
+                            value={customPowerCost}
+                            onChange={(e) => setCustomPowerCost(e.target.value)}
+                            className="cyber-input mobile-touch-input min-h-[36px] px-2 py-1 text-[10px] font-bold uppercase shrink-0"
+                          >
+                            <option value="free">
+                              {t.t('cards.disciplines.customCostFree')}
+                            </option>
+                            {officialEdition === 'vampire-v5' ? (
+                              <>
+                                <option value="rouse_1">
+                                  {t.t('cards.disciplines.customCostRouse', { count: 1 })}
+                                </option>
+                                <option value="rouse_2">
+                                  {t.t('cards.disciplines.customCostRouse', { count: 2 })}
+                                </option>
+                              </>
+                            ) : (
+                              <>
+                                <option value="blood_1">
+                                  {t.t('cards.disciplines.customCostBlood', { count: 1 })}
+                                </option>
+                                <option value="blood_2">
+                                  {t.t('cards.disciplines.customCostBlood', { count: 2 })}
+                                </option>
+                                <option value="blood_3">
+                                  {t.t('cards.disciplines.customCostBlood', { count: 3 })}
+                                </option>
+                              </>
+                            )}
+                          </select>
+                          <button
+                            type="button"
+                            data-testid={`custom-power-add-${card.id}`}
+                            disabled={!customPowerName.trim()}
+                            onClick={handleAddCustomPower}
+                            className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                          >
+                            {t.t('cards.disciplines.customAddBtn')}
+                          </button>
+                        </div>
                       )}
                     </div>
                   </div>

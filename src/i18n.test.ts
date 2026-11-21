@@ -62,5 +62,30 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('es', 'modal.wodClanCountHint', { count: 16 })).toBe(
       '16 clanes de la edición + entrada libre',
     );
+    expect(translate('pt-BR', 'cards.powers.spendBloodBtn', { cost: 2 })).toBe('-2 SANGUE');
+    expect(translate('en', 'cards.powers.rouseBtn')).toBe('ROUSE');
+    expect(translate('es', 'xp.caitiffTag', { mult: 6 })).toBe('CAITIFF (×6)');
+
+    expect(
+      translate('pt-BR', 'fields.dotRating.groupAria', { label: 'Força', value: 3, max: 5 }),
+    ).toBe('Força: 3 de 5');
+    expect(
+      translate('en', 'fields.dotRating.decreaseDotAria', {
+        label: 'Strength',
+        dot: 3,
+        max: 5,
+        next: 2,
+      }),
+    ).toBe('Strength: level 3 of 5 (click to decrease to 2)');
+    expect(
+      translate('es', 'fields.dotRating.setDotAria', { label: 'Fuerza', dot: 4, max: 5 }),
+    ).toBe('Definir Fuerza en 4 de 5');
+    expect(
+      translate('en', 'fields.dotRating.quickEditAria', {
+        label: 'Strength',
+        value: 3,
+        max: 5,
+      }),
+    ).toBe('Edit numeric value for Strength (current: 3 of 5)');
   });
 });

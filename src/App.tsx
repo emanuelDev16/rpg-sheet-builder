@@ -122,6 +122,7 @@ import {
   buyBackgroundWithXp,
   buySpecialtyWithXp,
   getAvailableXp,
+  getSheetClanName,
   setXpRulePresetConfig,
   undoLastUpgrade,
   upgradeTraitWithXp,
@@ -278,6 +279,7 @@ function HydratedAppWorkspace({
   );
   const bloodPool = useMemo(() => getSheetBloodPool(sheet), [sheet]);
   const virtues = useMemo(() => getSheetVirtues(sheet), [sheet]);
+  const sheetClan = useMemo(() => getSheetClanName(sheet), [sheet]);
   const bloodSurge = Boolean(sheet.bloodSurge);
   const lastSoakTotal = useMemo(
     () => sheet.rollLogs.find((l) => l.isSoak)?.total ?? null,
@@ -792,29 +794,98 @@ function HydratedAppWorkspace({
     setSheet((prev) => setSheetRulePreset(prev, preset));
   };
 
-  const handleRouseCheck = () => {
-    const result = executeRouseCheck(Math.random);
+  const handleRouseCheck = (options?: { label?: string; count?: number }) => {
+    const count =
+      typeof options?.count === 'number' && Number.isFinite(options.count)
+        ? Math.max(1, Math.min(5, Math.round(options.count)))
+        : 1;
+    const checks = Array.from({ length: count }, () => executeRouseCheck(Math.random));
+    const rolls = checks.flatMap((res) => res.rolls);
+    const passedCount = checks.filter((res) => (res.hungerDelta ?? 0) === 0).length;
+    const totalHungerDelta = checks.reduce((sum, res) => sum + (res.hungerDelta ?? 0), 0);
+    const cleanPowerLabel = options?.label?.trim();
+    const entryLabel = cleanPowerLabel
+      ? `${t.t('cards.powers.rouseLogPrefix')} · ${cleanPowerLabel}`.slice(0, 120)
+      : t.t('cards.vital.rouseCheckBtn');
+    const formula =
+      count === 1
+        ? checks[0].resolvedExpression
+        : `${count}d10 (ROUSE CHECK ×${count} · DIFF 6)`;
+    const breakdown =
+      count === 1
+        ? checks[0].breakdown
+        : `${count}d10[${rolls.join(', ')}] ≥6 → ${passedCount}/${count} OK (+${totalHungerDelta} HUNGER)`;
+
     const entry: RollLogEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: nowTimeString(),
-      label: t.t('cards.vital.rouseCheckBtn'),
-      total: result.total,
-      formula: result.resolvedExpression,
-      breakdown: result.breakdown,
-      rolls: result.rolls,
-      difficulty: result.difficulty,
-      outcome: result.outcome,
+      label: entryLabel,
+      total: passedCount,
+      formula,
+      breakdown,
+      rolls,
+      difficulty: 6,
+      outcome: totalHungerDelta === 0 ? 'success' : 'failure',
       isPoolRoll: true,
       rulePreset: 'vampire-v5',
       isRouseCheck: true,
     };
-    playDiceClatter({ diceCount: 1, isCritical: false, isFumble: false });
+    playDiceClatter({ diceCount: rolls.length, isCritical: false, isFumble: false });
     showMobileToastWithTimeout(entry);
     setSheet((prev) => {
-      const nextWithHunger = applyRouseCheckHunger(prev, result.hungerDelta ?? 0);
+      const nextWithHunger = applyRouseCheckHunger(prev, totalHungerDelta);
       return {
         ...nextWithHunger,
         rollLogs: [entry, ...nextWithHunger.rollLogs].slice(0, 30),
+      };
+    });
+  };
+
+  const handleSpendPowerBlood = (cost: number, powerName: string) => {
+    const spendAmount = Math.max(1, Math.min(10, Math.round(cost)));
+    const cleanPower = powerName.trim() || t.t('cards.powers.bloodLogPrefix');
+    const { current } = getSheetBloodPool(sheet);
+    if (current < spendAmount) {
+      triggerFlash(
+        t.t('cards.powers.insufficientBloodFlash', {
+          power: cleanPower,
+          current,
+          cost: spendAmount,
+        }),
+      );
+      return;
+    }
+    const after = Math.max(0, current - spendAmount);
+    const formula = t.t('cards.powers.bloodLogFormula', {
+      cost: spendAmount,
+      before: current,
+      after,
+    });
+    const breakdown = t.t('cards.powers.bloodLogBreakdown', {
+      power: cleanPower,
+      cost: spendAmount,
+      before: current,
+      after,
+    });
+    const entry: RollLogEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: nowTimeString(),
+      label: `${t.t('cards.powers.bloodLogPrefix')} · ${cleanPower}`.slice(0, 120),
+      total: -spendAmount,
+      formula: formula.slice(0, 256),
+      breakdown: breakdown.slice(0, 512),
+      isPoolRoll: false,
+      rulePreset: 'storyteller-v20',
+    };
+    showMobileToastWithTimeout(entry);
+    triggerFlash(`${entry.label} (${formula})`);
+    setSheet((prev) => {
+      const currentPool = getSheetBloodPool(prev).current;
+      if (currentPool < spendAmount) return prev;
+      const nextWithBlood = adjustSheetBloodPool(prev, -spendAmount);
+      return {
+        ...nextWithBlood,
+        rollLogs: [entry, ...nextWithBlood.rollLogs].slice(0, 30),
       };
     });
   };
@@ -1116,6 +1187,7 @@ function HydratedAppWorkspace({
     const customName = identity?.characterName?.trim() || identity?.name?.trim() || '';
     const baseFresh = createNewSheetForSystem(targetSystemId, {
       ...identity,
+      language: identity?.language ?? language,
       localeOptions: {
         newCharacterName: t.modal.newCharacterName,
         customSystemName: t.t('system.blank.systemName'),
@@ -1671,6 +1743,7 @@ function HydratedAppWorkspace({
                       mode={mode}
                       systemId={activeSystemId}
                       rulePreset={rulePreset}
+                      clan={sheetClan}
                       woundPenalty={woundPenalty}
                       bloodPool={bloodPool}
                       virtues={virtues}
@@ -1711,6 +1784,7 @@ function HydratedAppWorkspace({
                         setSheet((prev) => updateSheetVirtue(prev, virtueKey, nextVal))
                       }
                       onRouseCheck={handleRouseCheck}
+                      onSpendPowerBlood={handleSpendPowerBlood}
                       onToggleBloodSurge={() =>
                         setSheet((prev) => toggleSheetBloodSurge(prev))
                       }

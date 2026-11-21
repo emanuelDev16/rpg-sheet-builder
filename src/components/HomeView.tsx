@@ -19,6 +19,7 @@ import { useFocusTrap } from '../utils/useFocusTrap';
 import {
   getNextClanPresetForEdition,
   resolveWodClanSelection,
+  WOD_CUSTOM_CLAN_VALUE,
   WodClanField,
   WodEditionFieldset,
 } from './SheetModal';
@@ -758,7 +759,12 @@ export const HomeView: React.FC<HomeViewProps> = ({
                 customInputId="home-wod-clan-custom"
                 customTestId="home-wod-clan-custom-input"
                 t={t}
-                onChangeClanPreset={setWodClanPreset}
+                onChangeClanPreset={(nextPreset) => {
+                  setWodClanPreset(nextPreset);
+                  if (nextPreset !== WOD_CUSTOM_CLAN_VALUE) {
+                    setWodCustomClan('');
+                  }
+                }}
                 onChangeCustomClan={setWodCustomClan}
               />
 

@@ -12,6 +12,7 @@ import {
   getCostRulesSummary,
   getEffectiveCustomUseNewLevelBase,
   getEffectiveXpRulePreset,
+  getSheetClanName,
   getXpPricingConfig,
   isWodSystem,
   normalizeXpState,
@@ -19,11 +20,15 @@ import {
   setCategoryMultiplierOverride,
   setCustomUseNewLevelBaseConfig,
   setTraitCustomCostOverride,
-  setTraitOutOfClan,
+  setTraitDisciplineAffinity,
   setXpRulePresetConfig,
   SPECIALTY_XP_COST,
   UpgradableTrait,
 } from '../core/xpSystem';
+import {
+  type DisciplineAffinity,
+  findClanByIdOrName,
+} from '../core/wodClansDisciplinesCatalog';
 
 interface XpUpgradeWorkspaceProps {
   sheet: CharacterSheetState;
@@ -156,7 +161,8 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     const multCount = Object.keys(pricingConfig.categoryMultipliers ?? {}).length;
     const costCount = Object.keys(pricingConfig.fieldCustomCosts ?? {}).length;
     const clanCount = Object.keys(pricingConfig.outOfClanFieldIds ?? {}).length;
-    return multCount > 0 || costCount > 0 || clanCount > 0 || activePreset === 'custom';
+    const affinityCount = Object.keys(pricingConfig.disciplineAffinityOverrides ?? {}).length;
+    return multCount > 0 || costCount > 0 || clanCount > 0 || affinityCount > 0 || activePreset === 'custom';
   }, [pricingConfig, activePreset]);
 
   const formulaBadgeText = useMemo(() => {
@@ -233,7 +239,19 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   };
 
   const handleToggleDisciplineClan = (trait: UpgradableTrait) => {
-    setTraitOutOfClan(sheet, trait.fieldId, !trait.isOutOfClan);
+    const edition = activePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20';
+    const matchedClan = findClanByIdOrName(getSheetClanName(sheet), edition);
+    const currentAffinity: DisciplineAffinity =
+      trait.disciplineAffinity ?? (trait.isOutOfClan ? 'discipline_out_of_clan' : 'discipline_clan');
+    let nextAffinity: DisciplineAffinity;
+    if (currentAffinity === 'discipline_clan') {
+      nextAffinity = 'discipline_out_of_clan';
+    } else if (currentAffinity === 'discipline_out_of_clan') {
+      nextAffinity = matchedClan?.isCaitiff ? 'discipline_caitiff' : 'discipline_clan';
+    } else {
+      nextAffinity = 'discipline_clan';
+    }
+    setTraitDisciplineAffinity(sheet, trait.fieldId, nextAffinity);
     setPricingVersion((v) => v + 1);
   };
 
@@ -804,7 +822,13 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   const missingXp = Math.max(0, numericCost - availableXp);
                   const isEditingCost = editingCostFieldId === trait.fieldId && !isBlockedV5;
                   const dotCap = trait.maxCap <= 10 ? trait.maxCap : 0;
-                  const clanTagMult = trait.multiplier ?? (trait.isOutOfClan ? 7 : 5);
+                  const clanTagMult =
+                    trait.multiplier ??
+                    (trait.disciplineAffinity === 'discipline_caitiff'
+                      ? 6
+                      : trait.isOutOfClan
+                        ? 7
+                        : 5);
 
                   return (
                     <li
@@ -844,14 +868,18 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                                 data-testid={`disc-clan-toggle-${trait.fieldId}`}
                                 onClick={() => handleToggleDisciplineClan(trait)}
                                 className={`no-print print:hidden px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-[var(--radius-pill)] border cursor-pointer transition-colors ${
-                                  trait.isOutOfClan
-                                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
-                                    : 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                                  trait.disciplineAffinity === 'discipline_caitiff'
+                                    ? 'bg-[var(--bg-strip)] text-[var(--ink-primary)] border-[var(--border-color)]'
+                                    : trait.isOutOfClan
+                                      ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                      : 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
                                 }`}
                               >
-                                {trait.isOutOfClan
-                                  ? t.t('xp.outOfClanTag', { mult: clanTagMult })
-                                  : t.t('xp.clanTag', { mult: clanTagMult })}
+                                {trait.disciplineAffinity === 'discipline_caitiff'
+                                  ? t.t('xp.caitiffTag', { mult: clanTagMult })
+                                  : trait.isOutOfClan
+                                    ? t.t('xp.outOfClanTag', { mult: clanTagMult })
+                                    : t.t('xp.clanTag', { mult: clanTagMult })}
                               </button>
                             )}
                           </div>

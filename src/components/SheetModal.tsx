@@ -15,13 +15,16 @@ import {
 } from 'lucide-react';
 import {
   CharacterSheetState,
-  getWodClansForEdition,
   NewSheetIdentityInput,
   parseAndValidateImportPayload,
   Sheet,
   SystemId,
   WodEdition,
 } from '../core/sheetModel';
+import {
+  getClansForEdition,
+  getDisciplinesForEdition,
+} from '../core/wodClansDisciplinesCatalog';
 import {
   createWorkspaceSnapshot,
   CustomSheetTemplate,
@@ -79,7 +82,7 @@ export function getNextClanPresetForEdition(
   if (!currentPreset || currentPreset === WOD_CUSTOM_CLAN_VALUE) {
     return currentPreset;
   }
-  const stillAvailable = getWodClansForEdition(nextEdition).some(
+  const stillAvailable = getClansForEdition(nextEdition).some(
     (clan) => clan.id === currentPreset,
   );
   return stillAvailable ? currentPreset : '';
@@ -94,8 +97,8 @@ export function resolveWodClanSelection(
   if (clanPreset === WOD_CUSTOM_CLAN_VALUE) {
     return customClan.trim();
   }
-  const match = getWodClansForEdition(edition).find((clan) => clan.id === clanPreset);
-  return match ? match.labels[language] : '';
+  const match = getClansForEdition(edition).find((clan) => clan.id === clanPreset);
+  return match ? match.name[language] : '';
 }
 
 interface WodEditionFieldsetProps {
@@ -211,7 +214,14 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
   onChangeClanPreset,
   onChangeCustomClan,
 }) => {
-  const editionClans = getWodClansForEdition(edition);
+  const editionClans = getClansForEdition(edition);
+  const selectedClan =
+    clanPreset && clanPreset !== WOD_CUSTOM_CLAN_VALUE
+      ? editionClans.find((clan) => clan.id === clanPreset) ?? null
+      : null;
+  const discNameById = new Map(
+    getDisciplinesForEdition(edition).map((disc) => [disc.id, disc.name[language]]),
+  );
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -233,7 +243,7 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
         <option value="">{t('modal.wodClanPlaceholder')}</option>
         {editionClans.map((clan) => (
           <option key={clan.id} value={clan.id}>
-            {clan.labels[language]}
+            {clan.name[language]}
           </option>
         ))}
         <option value={WOD_CUSTOM_CLAN_VALUE}>{t('modal.wodClanCustomOption')}</option>
@@ -241,6 +251,49 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
       <span id={hintId} className="font-mono-tech text-[10px] text-[var(--ink-muted)]">
         {t('modal.wodClanCountHint', { count: editionClans.length })}
       </span>
+
+      {selectedClan && (
+        <div
+          data-testid={`${selectTestId}-preview`}
+          className="p-2.5 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--bg-card-alt)] flex flex-col gap-1"
+        >
+          <div className="font-mono-tech text-[10px] leading-snug text-[var(--ink-primary)]">
+            <span className="font-extrabold text-[var(--accent-wine)] uppercase">
+              {t('modal.wodClanDisciplinesLabel')}:{' '}
+            </span>
+            <span>
+              {selectedClan.isCaitiff
+                ? t('cards.disciplines.caitiffBadge')
+                : selectedClan.clanDisciplines
+                    .map((discId) => discNameById.get(discId) ?? discId)
+                    .join(' · ')}
+            </span>
+          </div>
+          {selectedClan.edition === 'storyteller-v20' ? (
+            <div className="font-mono-tech text-[10px] leading-snug text-[var(--ink-secondary)]">
+              <span className="font-bold text-[var(--ink-primary)] uppercase">
+                {t('modal.wodClanWeaknessLabel')}:{' '}
+              </span>
+              <span>{selectedClan.weakness[language]}</span>
+            </div>
+          ) : (
+            <>
+              <div className="font-mono-tech text-[10px] leading-snug text-[var(--ink-secondary)]">
+                <span className="font-bold text-[var(--ink-primary)] uppercase">
+                  {t('modal.wodClanBaneLabel')}:{' '}
+                </span>
+                <span>{selectedClan.bane[language]}</span>
+              </div>
+              <div className="font-mono-tech text-[10px] leading-snug text-[var(--ink-secondary)]">
+                <span className="font-bold text-[var(--ink-primary)] uppercase">
+                  {t('modal.wodClanCompulsionLabel')}:{' '}
+                </span>
+                <span>{selectedClan.compulsion[language]}</span>
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
       {clanPreset === WOD_CUSTOM_CLAN_VALUE && (
         <div className="flex flex-col gap-1 pt-1">
@@ -515,6 +568,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     : '';
                 onCreateNewSheet(selectedSystem, {
                   characterName: charName,
+                  language,
                   ...(selectedSystem === 'wod'
                     ? {
                         edition: selectedWodEdition,
@@ -659,7 +713,12 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     customInputId="new-sheet-wod-clan-custom"
                     customTestId="new-sheet-wod-clan-custom-input"
                     t={t.t}
-                    onChangeClanPreset={setSelectedWodClanPreset}
+                    onChangeClanPreset={(nextPreset) => {
+                      setSelectedWodClanPreset(nextPreset);
+                      if (nextPreset !== WOD_CUSTOM_CLAN_VALUE) {
+                        setCustomWodClan('');
+                      }
+                    }}
                     onChangeCustomClan={setCustomWodClan}
                   />
                 ) : selectedSystem !== 'blank' ? (
