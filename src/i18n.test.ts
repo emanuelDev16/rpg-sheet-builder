@@ -91,5 +91,12 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('pt-BR', 'poolComposer.rollAction', { pool: 7 })).toBe('ROLAR PARADA • 7d10');
     expect(translate('en', 'poolComposer.bloodSurgeToggle', { bonus: 3 })).toBe('BLOOD SURGE (+3)');
     expect(translate('es', 'poolComposer.hungerIndicator', { count: 2 })).toBe('ANSIA 2 DADOS');
+
+    expect(translate('pt-BR', 'xp.acquireBtn', { cost: 5 })).toBe('ADQUIRIR · 5 XP ↗');
+    expect(translate('en', 'xp.bloodPotencyCat')).toBe('BLOOD POTENCY');
+    expect(translate('es', 'cards.advantages.headingV5')).toBe('CATÁLOGO OFICIAL V5 (18 VENTAJAS)');
+    expect(translate('en', 'app.xpAcquired', { label: 'AWARENESS', cost: 3 })).toBe(
+      '// XP: ACQUIRED AWARENESS (-3 XP)',
+    );
   });
 });

@@ -1,4 +1,4 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Plus, Search, Trash2, X } from 'lucide-react';
 import {
   AppMode,
@@ -33,6 +33,14 @@ import {
   WodDisciplinePower,
   WodPowerCostType,
 } from '../core/wodClansDisciplinesCatalog';
+import {
+  buildCatalogAdvantageField,
+  getAdvantagesForEdition,
+  isAdvantageCardCandidate,
+  isCatalogAdvantagePresentInCardFields,
+  WodAdvantageCatalogEntry,
+  WodAdvantageGroup,
+} from '../core/wodAdvantagesCatalog';
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
@@ -98,6 +106,7 @@ type GuidedFieldTemplateId =
   | 'skill_d10'
   | 'attribute'
   | 'discipline'
+  | 'advantage'
   | 'resource'
   | 'calculated'
   | 'text'
@@ -110,6 +119,7 @@ const TEMPLATE_ORDER: GuidedFieldTemplateId[] = [
   'skill_d10',
   'attribute',
   'discipline',
+  'advantage',
   'resource',
   'calculated',
   'text',
@@ -119,6 +129,7 @@ const TEMPLATE_ORDER: GuidedFieldTemplateId[] = [
 
 function inferDefaultTemplateForCard(card: SheetCard): GuidedFieldTemplateId {
   if (card.id === 'card_arcano' || card.id === 'card_grimorio') return 'discipline';
+  if (isAdvantageCardCandidate(card)) return 'advantage';
   const sig = `${card.code} ${card.title}`.toUpperCase();
   if (/ATTRIBUTE|ATRIBUTO/.test(sig)) return 'attribute';
   if (/DISCIPLIN|PODER|POWER|ARCANO|GRIMOR|MERIT/.test(sig)) return 'discipline';
@@ -178,6 +189,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const [customDiscName, setCustomDiscName] = useState('');
   const [customPowerName, setCustomPowerName] = useState('');
   const [customPowerCost, setCustomPowerCost] = useState('free');
+  const [advGroupFilter, setAdvGroupFilter] = useState<'all' | WodAdvantageGroup>('all');
+  const [customAdvName, setCustomAdvName] = useState('');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
   const [selectedTemplate, setSelectedTemplate] = useState<GuidedFieldTemplateId>(() =>
@@ -185,6 +198,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   );
   const labelInputRef = useRef<HTMLInputElement | null>(null);
   const catalogSearchRef = useRef<HTMLInputElement | null>(null);
+  const advSearchId = useId();
 
   useEffect(() => {
     if (mode !== 'edicao') {
@@ -193,6 +207,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       setCatalogQuery('');
       setCustomDiscName('');
       setCustomPowerName('');
+      setAdvGroupFilter('all');
+      setCustomAdvName('');
     }
   }, [mode]);
 
@@ -212,6 +228,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       skill_d10: getTemplateMeta('skill_d10'),
       attribute: getTemplateMeta('attribute'),
       discipline: getTemplateMeta('discipline'),
+      advantage: getTemplateMeta('advantage'),
       resource: getTemplateMeta('resource'),
       calculated: getTemplateMeta('calculated'),
       text: getTemplateMeta('text'),
@@ -225,6 +242,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
   const showOfficialDisciplineCatalog =
     Boolean(officialEdition) && selectedTemplate === 'discipline';
+  const showOfficialAdvantageCatalog =
+    Boolean(officialEdition) && selectedTemplate === 'advantage';
 
   const existingSheetKeys = useMemo(
     () => [
@@ -320,6 +339,35 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     });
   }, [officialEdition, catalogQuery, matchedClanEntry, lang]);
 
+  const advantageCatalogList = useMemo(() => {
+    if (!officialEdition) return [];
+    const groupParam =
+      officialEdition === 'vampire-v5' && advGroupFilter !== 'all' ? advGroupFilter : undefined;
+    const list = getAdvantagesForEdition(officialEdition, groupParam);
+    const normQ = normalizeCatalogText(catalogQuery);
+    if (!normQ) return list;
+    return list.filter((adv) =>
+      [
+        adv.id,
+        adv.varName,
+        adv.name['pt-BR'],
+        adv.name.en,
+        adv.name.es,
+        adv.summary['pt-BR'],
+        adv.summary.en,
+        adv.summary.es,
+        ...(adv.aliases ?? []),
+      ]
+        .map(normalizeCatalogText)
+        .some((item) => item.includes(normQ)),
+    );
+  }, [officialEdition, advGroupFilter, catalogQuery]);
+
+  const evaluationVarKeys = useMemo(
+    () => Object.keys(evaluation.variables),
+    [evaluation.variables],
+  );
+
   const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
   const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
@@ -397,6 +445,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     setDiscCatalogTab(hasPowerTable ? 'powers' : 'disciplines');
     setCustomDiscName('');
     setCustomPowerName('');
+    setAdvGroupFilter('all');
+    setCustomAdvName('');
     setCustomPowerCost(
       officialEdition === 'vampire-v5'
         ? 'rouse_1'
@@ -406,7 +456,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     );
     setComposerOpen(true);
     window.setTimeout(() => {
-      if (officialEdition && (defaultTpl === 'skill_d10' || defaultTpl === 'discipline')) {
+      if (
+        officialEdition &&
+        (defaultTpl === 'skill_d10' || defaultTpl === 'discipline' || defaultTpl === 'advantage')
+      ) {
         catalogSearchRef.current?.focus();
       } else {
         labelInputRef.current?.focus();
@@ -500,6 +553,49 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     setCustomPowerName('');
   };
 
+  const handleAddOfficialAdvantage = (adv: WodAdvantageCatalogEntry) => {
+    if (!officialEdition) return;
+    if (isCatalogAdvantagePresentInCardFields(adv, card.fields, evaluationVarKeys)) return;
+    const baseField = buildCatalogAdvantageField(adv, lang, 1);
+    const idExists = card.fields.some((f) => f.id === baseField.id);
+    const resolvedField = idExists
+      ? { ...baseField, id: `${baseField.id}_${Date.now().toString(36).slice(-4)}` }
+      : baseField;
+    onUpdateCard(card.id, {
+      fields: [...card.fields, resolvedField],
+    });
+  };
+
+  const handleAddCustomAdvantage = () => {
+    const clean = customAdvName.trim();
+    const resolved = clean || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
+    const slug =
+      normalizeCatalogText(resolved)
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'custom_adv';
+    const keyBase = slug === 'generation' ? 'generation_bg' : slug;
+    const existingKeys = new Set(card.fields.map((f) => f.key));
+    let uniqueKey = keyBase;
+    let suffix = 2;
+    while (existingKeys.has(uniqueKey)) {
+      uniqueKey = `${keyBase}_${suffix++}`;
+    }
+    const uid = `${Date.now().toString(36).slice(-4)}_${Math.random().toString(36).slice(2, 5)}`;
+    const newField: SheetField = {
+      id: `f_adv_${uniqueKey}_${uid}`,
+      key: uniqueKey,
+      label: resolved.toUpperCase(),
+      kind: 'number',
+      value: 1,
+      max: 5,
+      xpCategory: 'advantage',
+    };
+    onUpdateCard(card.id, {
+      fields: [...card.fields, newField],
+    });
+    setCustomAdvName('');
+  };
+
   const handleCreateGuidedField = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (showOfficialSkillCatalog) return;
@@ -511,6 +607,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       }
       return;
     }
+    if (showOfficialAdvantageCatalog) {
+      if (customAdvName.trim()) {
+        handleAddCustomAdvantage();
+      }
+      return;
+    }
     const trimmed = newFieldLabel.trim();
     const resolvedLabel =
       trimmed || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
@@ -518,7 +620,11 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     if (selectedTemplate === 'skill_d10') {
       onAddField(card.id, 'number', resolvedLabel);
       onAddField(card.id, 'roll', resolvedLabel);
-    } else if (selectedTemplate === 'attribute' || selectedTemplate === 'discipline') {
+    } else if (
+      selectedTemplate === 'attribute' ||
+      selectedTemplate === 'discipline' ||
+      selectedTemplate === 'advantage'
+    ) {
       onAddField(card.id, 'number', resolvedLabel);
     } else {
       onAddField(card.id, selectedTemplate, resolvedLabel);
@@ -1019,7 +1125,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 <p className="font-mono-tech text-[10px] text-[var(--ink-secondary)]">
                   {showOfficialSkillCatalog && officialEdition
                     ? t.t('cards.catalog.clickHint')
-                    : selectedMeta.hint}
+                    : showOfficialAdvantageCatalog && officialEdition
+                      ? t.t('cards.advantages.clickHint')
+                      : selectedMeta.hint}
                 </p>
 
                 {showOfficialSkillCatalog && officialEdition ? (
@@ -1364,6 +1472,161 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                           </button>
                         </div>
                       )}
+                    </div>
+                  </div>
+                ) : showOfficialAdvantageCatalog && officialEdition ? (
+                  <div
+                    data-testid={`official-advantages-catalog-${card.id}`}
+                    className="flex flex-col gap-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono-tech text-[10px] font-extrabold uppercase text-[var(--accent-wine)]">
+                        {officialEdition === 'vampire-v5'
+                          ? t.t('cards.advantages.headingV5')
+                          : t.t('cards.advantages.headingV20')}
+                      </span>
+                      {officialEdition === 'vampire-v5' && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {(
+                            [
+                              ['all', t.t('cards.advantages.tabAll')],
+                              ['background', t.t('cards.advantages.tabBackgrounds')],
+                              ['merit', t.t('cards.advantages.tabMerits')],
+                            ] as const
+                          ).map(([groupId, groupLabel]) => {
+                            const active = advGroupFilter === groupId;
+                            return (
+                              <button
+                                key={groupId}
+                                type="button"
+                                data-testid={`adv-catalog-group-${groupId}-${card.id}`}
+                                aria-pressed={active}
+                                onClick={() => setAdvGroupFilter(groupId)}
+                                className={`font-mono-tech min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border transition-colors cursor-pointer ${
+                                  active
+                                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/60 hover:bg-[var(--bg-hover)]'
+                                }`}
+                              >
+                                {groupLabel}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <label htmlFor={advSearchId} className="sr-only">
+                        {t.t('cards.advantages.searchAria')}
+                      </label>
+                      <Search
+                        className="w-3.5 h-3.5 text-[var(--ink-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        id={advSearchId}
+                        ref={catalogSearchRef}
+                        type="search"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-testid={`official-adv-search-${card.id}`}
+                        value={catalogQuery}
+                        onChange={(e) => setCatalogQuery(e.target.value)}
+                        placeholder={t.t('cards.advantages.searchPlaceholder')}
+                        className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[16px] sm:text-[11px] w-full"
+                      />
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto pr-0.5 grid grid-cols-1 gap-1.5">
+                      {advantageCatalogList.length === 0 ? (
+                        <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
+                          {t.t('cards.advantages.emptySearch', { query: catalogQuery })}
+                        </p>
+                      ) : (
+                        advantageCatalogList.map((adv) => {
+                          const alreadyOnSheet = isCatalogAdvantagePresentInCardFields(
+                            adv,
+                            card.fields,
+                            evaluationVarKeys,
+                          );
+                          return (
+                            <button
+                              key={adv.id}
+                              type="button"
+                              aria-disabled={alreadyOnSheet}
+                              data-testid={`catalog-adv-${adv.varName}`}
+                              onClick={() => handleAddOfficialAdvantage(adv)}
+                              className={`font-mono-tech min-h-[36px] px-2.5 py-1.5 text-[10px] font-bold rounded-[var(--radius-control)] border flex items-center justify-between gap-2 text-left transition-colors ${
+                                alreadyOnSheet
+                                  ? 'xp-catalog-present-btn'
+                                  : 'group bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/65 hover:bg-[var(--accent-primary)] hover:text-[var(--accent-contrast)] hover:border-[var(--border-color)] cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="uppercase truncate">{adv.name[lang]}</span>
+                                <span
+                                  className={`text-[9px] font-normal normal-case line-clamp-1 ${
+                                    alreadyOnSheet
+                                      ? 'text-[var(--ink-primary)]'
+                                      : 'text-[var(--ink-secondary)] group-hover:text-[var(--accent-contrast)]'
+                                  }`}
+                                >
+                                  {adv.summary[lang]}
+                                </span>
+                              </div>
+                              <span className="flex items-center gap-1 shrink-0">
+                                {officialEdition === 'vampire-v5' && (
+                                  <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
+                                    {adv.group === 'merit'
+                                      ? t.t('cards.advantages.groupMerit')
+                                      : t.t('cards.advantages.groupBackground')}
+                                  </span>
+                                )}
+                                {alreadyOnSheet ? (
+                                  <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--bg-card)] text-[var(--ink-primary)] border border-[var(--border-color)] rounded-[var(--radius-pill)]">
+                                    {t.t('cards.catalog.alreadyOnSheet')}
+                                  </span>
+                                ) : (
+                                  <Plus className="w-3 h-3 shrink-0" aria-hidden="true" />
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-dashed border-[var(--border-ink)]/40 flex flex-col gap-1.5">
+                      <span className="font-mono-tech text-[9px] font-extrabold uppercase text-[var(--ink-muted)]">
+                        {t.t('cards.advantages.customHeading')}
+                      </span>
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                        <input
+                          type="text"
+                          data-testid={`custom-adv-input-${card.id}`}
+                          aria-label={t.t('cards.advantages.customPlaceholder')}
+                          value={customAdvName}
+                          onChange={(e) => setCustomAdvName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              handleAddCustomAdvantage();
+                            }
+                          }}
+                          placeholder={t.t('cards.advantages.customPlaceholder')}
+                          className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1 text-[16px] sm:text-[11px] flex-1 min-w-[140px]"
+                        />
+                        <button
+                          type="button"
+                          data-testid={`custom-adv-add-${card.id}`}
+                          onClick={handleAddCustomAdvantage}
+                          className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          {t.t('cards.advantages.customAddBtn')}
+                        </button>
+                      </div>
                     </div>
                   </div>
                 ) : (

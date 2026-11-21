@@ -1,12 +1,15 @@
-import React, { useMemo, useState } from 'react';
+import React, { useId, useMemo, useState } from 'react';
 import { motion, useReducedMotion } from 'motion/react';
-import { ArrowUpRight, Lock, RotateCcw, SlidersHorizontal, X } from 'lucide-react';
+import { ArrowUpRight, ChevronDown, Lock, Plus, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { CharacterSheetState, XpRulePreset, XpUpgradeCategory } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
 import { AnimatedCounter } from './AnimatedCounter';
 import {
+  AcquirableCatalogKind,
+  AcquirableCatalogTrait,
   BACKGROUND_PRESETS,
   DEFAULT_BACKGROUND_XP_COST,
+  extractAcquirableTraits,
   extractAllTraits,
   getAvailableXp,
   getCostRulesSummary,
@@ -29,6 +32,12 @@ import {
   type DisciplineAffinity,
   findClanByIdOrName,
 } from '../core/wodClansDisciplinesCatalog';
+import {
+  findAdvantageByIdOrName,
+  getAdvantagesForEdition,
+  isCatalogAdvantagePresent,
+} from '../core/wodAdvantagesCatalog';
+import { normalizeCatalogText } from '../core/wodSkillsCatalog';
 
 interface XpUpgradeWorkspaceProps {
   sheet: CharacterSheetState;
@@ -38,6 +47,12 @@ interface XpUpgradeWorkspaceProps {
   onUpgradeTrait: (fieldId: string) => void;
   onBuySpecialty?: (skillFieldId: string, focus: string) => { ok: boolean; error?: string };
   onBuyBackground?: (label: string, customCost?: number) => { ok: boolean; error?: string };
+  onBuyCatalogSkill?: (skillIdOrVar: string) => { ok: boolean; error?: string };
+  onBuyCatalogDiscipline?: (discIdOrName: string) => { ok: boolean; error?: string };
+  onBuyCatalogAdvantage?: (
+    advIdOrName: string,
+    customCost?: number,
+  ) => { ok: boolean; error?: string };
   onUndoLastUpgrade: () => void;
   onSelectRulePreset?: (preset: XpRulePreset) => void;
 }
@@ -54,6 +69,9 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   onUpgradeTrait,
   onBuySpecialty,
   onBuyBackground,
+  onBuyCatalogSkill,
+  onBuyCatalogDiscipline,
+  onBuyCatalogAdvantage,
   onUndoLastUpgrade,
   onSelectRulePreset,
 }) => {
@@ -76,6 +94,10 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const [bgOpen, setBgOpen] = useState(false);
   const [bgName, setBgName] = useState('');
   const [bgCost, setBgCost] = useState(String(DEFAULT_BACKGROUND_XP_COST));
+  const [acquireOpen, setAcquireOpen] = useState(false);
+  const [acquireKind, setAcquireKind] = useState<AcquirableCatalogKind>('skill');
+  const [acquireQuery, setAcquireQuery] = useState('');
+  const acquireSearchId = useId();
 
   const ext = {
     virtuesTab: t.t('xp.virtuesTab'),
@@ -152,6 +174,62 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     [sheet, language, pricingConfig],
   );
   const isWod = useMemo(() => isWodSystem(sheet), [sheet]);
+  const officialEdition =
+    isWod && (activePreset === 'storyteller-v20' || activePreset === 'vampire-v5')
+      ? activePreset
+      : null;
+
+  const allAcquirable = useMemo(
+    () => extractAcquirableTraits(sheet, language, pricingConfig),
+    [sheet, language, pricingConfig],
+  );
+  const effectiveAcquireKind: AcquirableCatalogKind =
+    categoryFilter === 'skill'
+      ? 'skill'
+      : categoryFilter === 'discipline'
+        ? 'discipline'
+        : categoryFilter === 'virtue'
+          ? 'advantage'
+          : acquireKind;
+
+  const acquirableByKind = useMemo(
+    () => allAcquirable.filter((item) => item.kind === effectiveAcquireKind),
+    [allAcquirable, effectiveAcquireKind],
+  );
+  const filteredAcquirable = useMemo(() => {
+    const normQ = normalizeCatalogText(acquireQuery);
+    return acquirableByKind.filter((item) => {
+      if (onlyAffordable && !item.isAffordable) return false;
+      if (!normQ) return true;
+      const haystack = [item.label, item.varName, item.subGroup ?? '', item.summary ?? '']
+        .map(normalizeCatalogText)
+        .join(' ');
+      return haystack.includes(normQ);
+    });
+  }, [acquirableByKind, acquireQuery, onlyAffordable]);
+
+  const acquirableCountsByKind = useMemo(() => {
+    const counts: Record<AcquirableCatalogKind, number> = {
+      skill: 0,
+      discipline: 0,
+      advantage: 0,
+    };
+    for (const item of allAcquirable) {
+      counts[item.kind] += 1;
+    }
+    return counts;
+  }, [allAcquirable]);
+
+  const customAdvantageQuickChips = useMemo(() => {
+    if (officialEdition) {
+      return getAdvantagesForEdition(officialEdition).map((adv) => ({
+        key: adv.id,
+        label: adv.name[language] ?? adv.name.en,
+      }));
+    }
+    return BACKGROUND_PRESETS;
+  }, [officialEdition, language]);
+
   const hasUndoableUpgrade = useMemo(
     () => xpState.ledger.some((entry) => entry.kind === 'upgrade'),
     [xpState.ledger],
@@ -300,9 +378,32 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     if (trait.category === 'virtue') {
       if (trait.virtueSubtype === 'willpower') return ext.willpowerCat;
       if (trait.virtueSubtype === 'humanity') return ext.humanityCat;
+      if (trait.virtueSubtype === 'blood_potency') return t.t('xp.bloodPotencyCat');
+      if (trait.virtueSubtype === 'advantage') return t.t('xp.advantageCat');
       return ext.virtueCat;
     }
     return t.t(`xp.cat.${trait.category}`);
+  };
+
+  const handleAcquireCatalogItem = (item: AcquirableCatalogTrait) => {
+    if (!item.isAffordable) {
+      setXpError(ext.insufficientClickError(item.label, item.cost, availableXp));
+      return;
+    }
+    let res: { ok: boolean; error?: string } | undefined;
+    if (item.kind === 'skill') {
+      res = onBuyCatalogSkill?.(item.varName);
+    } else if (item.kind === 'discipline') {
+      res = onBuyCatalogDiscipline?.(item.catalogId);
+    } else {
+      res = onBuyCatalogAdvantage?.(item.catalogId);
+    }
+    if (!res) return;
+    if (!res.ok) {
+      setXpError(res.error ?? t.t('xp.errAcquireTrait'));
+      return;
+    }
+    setXpError(null);
   };
 
   const presetOptions: Array<{ id: XpRulePreset; label: string; testId: string }> = [
@@ -310,6 +411,13 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     { id: 'vampire-v5', label: t.t('xp.presetV5'), testId: 'xp-preset-v5' },
     { id: 'custom', label: t.t('xp.presetCustom'), testId: 'xp-preset-custom' },
   ];
+
+  const virtueTabLabel =
+    officialEdition === 'vampire-v5'
+      ? t.t('xp.virtuesTabV5')
+      : officialEdition === 'storyteller-v20'
+        ? t.t('xp.virtuesTabV20')
+        : ext.virtuesTab;
 
   const filterTabs: Array<{ id: CategoryFilter; label: string }> = [
     { id: 'all', label: t.filterAll },
@@ -322,7 +430,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
       id: 'discipline',
       label: isWod || activePreset !== 'storyteller-v20' ? t.t('xp.filterDisciplines') : t.t('xp.filterPowers'),
     },
-    { id: 'virtue', label: ext.virtuesTab },
+    { id: 'virtue', label: virtueTabLabel },
   ];
 
   const useNewBaseDefaults =
@@ -1032,19 +1140,238 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 })}
               </ul>
             )}
+
+            {/* Integrated Direct Acquisition (0 -> 1) Catalog for Official WoD Sheets */}
+            {officialEdition && categoryFilter !== 'attribute' && (
+              <div className="no-print print:hidden pt-1 flex flex-col gap-2">
+                <button
+                  type="button"
+                  data-testid="xp-acquire-toggle"
+                  aria-expanded={acquireOpen}
+                  aria-controls="xp-acquire-panel"
+                  aria-label={t.t('xp.acquireToggleAria')}
+                  onClick={() => setAcquireOpen((prev) => !prev)}
+                  className={`font-mono-tech min-h-[36px] w-full px-3 py-2 text-[11px] font-bold uppercase rounded-[var(--radius-control)] border-[length:var(--border-width)] flex items-center justify-between gap-2 cursor-pointer transition-colors ${
+                    acquireOpen
+                      ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                      : 'bg-[var(--bg-card-alt)] text-[var(--text-primary)] border-[var(--border-color)] hover:bg-[var(--bg-hover)]'
+                  }`}
+                >
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Plus className="w-3.5 h-3.5 shrink-0" aria-hidden="true" />
+                    <span className="truncate">{t.t('xp.acquireHeading')}</span>
+                  </span>
+                  <span className="flex items-center gap-2 shrink-0">
+                    <span
+                      className={`text-[10px] font-extrabold px-2 py-0.5 rounded-[var(--radius-pill)] border ${
+                        acquireOpen
+                          ? 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-color)]'
+                          : 'bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border-[var(--accent-wine)]'
+                      }`}
+                    >
+                      {t.t('xp.acquireCount', { count: acquirableByKind.length })}
+                    </span>
+                    <ChevronDown
+                      className={`w-3.5 h-3.5 transition-transform duration-150 ${
+                        acquireOpen ? 'rotate-180' : ''
+                      }`}
+                      aria-hidden="true"
+                    />
+                  </span>
+                </button>
+
+                {acquireOpen && (
+                  <div
+                    id="xp-acquire-panel"
+                    data-testid="xp-acquire-panel"
+                    className="xp-acquire-panel p-3 flex flex-col gap-2.5"
+                  >
+                    {categoryFilter === 'all' && (
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        {(
+                          [
+                            ['skill', t.t('xp.acquireSubSkills')],
+                            ['discipline', t.t('xp.acquireSubDisciplines')],
+                            ['advantage', t.t('xp.acquireSubAdvantages')],
+                          ] as const
+                        ).map(([kindId, kindLabel]) => {
+                          const isSelected = effectiveAcquireKind === kindId;
+                          return (
+                            <button
+                              key={kindId}
+                              type="button"
+                              data-testid={`xp-acquire-kind-${kindId}`}
+                              aria-pressed={isSelected}
+                              onClick={() => setAcquireKind(kindId)}
+                              className={`font-mono-tech min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border cursor-pointer transition-colors ${
+                                isSelected
+                                  ? 'bg-[var(--accent-black)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                  : 'bg-[var(--bg-card)] text-[var(--text-primary)] border-[var(--border-color)] hover:bg-[var(--bg-hover)]'
+                              }`}
+                            >
+                              {kindLabel} ({acquirableCountsByKind[kindId]})
+                            </button>
+                          );
+                        })}
+                      </div>
+                    )}
+
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2">
+                      <search className="relative flex-1 min-w-[180px]">
+                        <label htmlFor={acquireSearchId} className="sr-only">
+                          {t.t('xp.acquireSearchLabel')}
+                        </label>
+                        <Search
+                          className="w-3.5 h-3.5 text-[var(--ink-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                          aria-hidden="true"
+                        />
+                        <input
+                          id={acquireSearchId}
+                          type="search"
+                          autoCorrect="off"
+                          autoCapitalize="none"
+                          spellCheck={false}
+                          data-testid="xp-acquire-search"
+                          value={acquireQuery}
+                          onChange={(e) => setAcquireQuery(e.target.value)}
+                          placeholder={t.t('xp.acquireSearchPlaceholder')}
+                          className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[16px] sm:text-xs w-full"
+                        />
+                      </search>
+
+                      {effectiveAcquireKind === 'advantage' && onBuyBackground && (
+                        <button
+                          type="button"
+                          data-testid="xp-acquire-custom-advantage-btn"
+                          onClick={() => {
+                            setBgOpen(true);
+                            setSpecOpen(false);
+                            setXpError(null);
+                          }}
+                          className="cyber-btn-outline min-h-[36px] px-2.5 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          {t.t('xp.acquireCustomAdvantageBtn')}
+                        </button>
+                      )}
+                    </div>
+
+                    {acquirableByKind.length === 0 ? (
+                      <p className="font-mono-tech text-[11px] text-[var(--ink-secondary)] text-center py-3">
+                        {t.t('xp.acquireAllOwned')}
+                      </p>
+                    ) : filteredAcquirable.length === 0 ? (
+                      <p className="font-mono-tech text-[11px] text-[var(--ink-secondary)] text-center py-3">
+                        {t.t('xp.acquireEmptySearch', { query: acquireQuery })}
+                      </p>
+                    ) : (
+                      <ul
+                        data-testid="xp-acquire-list"
+                        className="max-h-[320px] overflow-y-auto border border-[var(--border-color)] rounded-[var(--radius-card)] divide-y divide-[var(--border-subtle)] bg-[var(--bg-card)]"
+                      >
+                        {filteredAcquirable.map((item) => {
+                          const missingXp = Math.max(0, item.cost - availableXp);
+                          return (
+                            <li
+                              key={`${item.kind}-${item.catalogId}`}
+                              data-testid={`xp-acquire-row-${item.kind}-${item.varName}`}
+                              className="px-3 py-2 flex flex-wrap sm:flex-nowrap items-center justify-between gap-2"
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0 flex-1">
+                                <div className="flex flex-wrap items-center gap-1.5 font-mono-tech text-[10px]">
+                                  {item.kind === 'discipline' && item.disciplineAffinity === 'discipline_clan' && (
+                                    <span
+                                      data-testid={`xp-acquire-clan-badge-${item.varName}`}
+                                      className="xp-acquire-clan-badge px-1.5 py-0.5 text-[9px] font-extrabold uppercase"
+                                    >
+                                      {t.t('xp.acquireInClanTag')}
+                                    </span>
+                                  )}
+                                  {item.kind === 'discipline' && item.disciplineAffinity === 'discipline_caitiff' && (
+                                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] bg-[var(--bg-strip)] text-[var(--text-primary)]">
+                                      {t.t('xp.acquireCaitiffTag')}
+                                    </span>
+                                  )}
+                                  {item.kind === 'discipline' && item.disciplineAffinity === 'discipline_out_of_clan' && (
+                                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-[var(--radius-pill)] border border-[var(--border-color)] bg-[var(--bg-card-alt)] text-[var(--text-secondary)]">
+                                      {t.t('xp.acquireOutOfClanTag')}
+                                    </span>
+                                  )}
+                                  {item.kind === 'advantage' && item.subGroup && (
+                                    <span className="px-1.5 py-0.5 text-[9px] font-bold uppercase rounded-[var(--radius-pill)] border border-[var(--border-subtle)] bg-[var(--bg-strip)] text-[var(--text-secondary)]">
+                                      {item.subGroup === 'merit'
+                                        ? t.t('xp.acquireGroupMerit')
+                                        : t.t('xp.acquireGroupBackground')}
+                                    </span>
+                                  )}
+                                  {item.kind === 'skill' && item.subGroup && (
+                                    <span className="text-[9px] font-bold uppercase text-[var(--accent-wine)]">
+                                      {item.subGroup}
+                                    </span>
+                                  )}
+                                  <span className="font-semibold text-[var(--text-secondary)]">
+                                    {item.formulaLabel}
+                                  </span>
+                                </div>
+
+                                <span className="font-mono-tech text-xs font-bold text-[var(--text-primary)] truncate">
+                                  {item.label}
+                                </span>
+
+                                {item.summary && (
+                                  <span className="font-mono-tech text-[10px] text-[var(--ink-secondary)] line-clamp-2">
+                                    {item.summary}
+                                  </span>
+                                )}
+                              </div>
+
+                              {item.isAffordable ? (
+                                <button
+                                  type="button"
+                                  data-testid={`xp-acquire-btn-${item.kind}-${item.varName}`}
+                                  onClick={() => handleAcquireCatalogItem(item)}
+                                  aria-label={t.t('xp.acquireAria', {
+                                    label: item.label,
+                                    cost: item.cost,
+                                  })}
+                                  className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"
+                                >
+                                  <span>{t.t('xp.acquireBtn', { cost: item.cost })}</span>
+                                </button>
+                              ) : (
+                                <button
+                                  type="button"
+                                  aria-disabled="true"
+                                  data-testid={`xp-acquire-btn-${item.kind}-${item.varName}`}
+                                  onClick={() => handleAcquireCatalogItem(item)}
+                                  className="xp-acquire-locked-btn min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 tabular-nums"
+                                >
+                                  <span>
+                                    {item.cost} XP · {ext.insufficientBadge(missingXp)}
+                                  </span>
+                                </button>
+                              )}
+                            </li>
+                          );
+                        })}
+                      </ul>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
           </div>
         </section>
       </div>
 
-      {/* Specialty & Background/Advantage Direct Purchase */}
+      {/* Specialty & Custom Background/Advantage Direct Purchase */}
       <section className="bento-card overflow-hidden">
         <div className="bento-card-header px-4 py-2.5 flex flex-wrap items-center justify-between gap-2">
           <div>
             <div className="font-mono-tech text-[10px] font-bold uppercase tracking-[0.14em] text-[var(--accent-wine)]">
-              // ANTECEDENTES_&amp;_VANTAGENS
+              {t.t('xp.extrasTag')}
             </div>
             <h3 className="text-sm font-black uppercase tracking-tight text-[var(--ink-primary)]">
-              ESPECIALIZAÇÕES &amp; VANTAGENS
+              {t.t('xp.extrasTitle')}
             </h3>
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -1058,7 +1385,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               }}
               className="cyber-btn-outline min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
             >
-              + COMPRAR ESPECIALIZAÇÃO ({SPECIALTY_XP_COST} XP)
+              {t.t('xp.openSpecialtyBtn', { cost: SPECIALTY_XP_COST })}
             </button>
             <button
               type="button"
@@ -1070,7 +1397,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
               }}
               className="cyber-roll-btn min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
             >
-              + ADICIONAR ANTECEDENTE / VANTAGEM
+              {t.t('xp.openBackgroundBtn')}
             </button>
           </div>
         </div>
@@ -1078,7 +1405,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
         {specOpen && (
           <div className="p-4 border-t border-[var(--border-ink)] bg-[var(--bg-card-alt)] space-y-3">
             <div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
-              ESPECIALIZAÇÃO DE PERÍCIA · {SPECIALTY_XP_COST} XP FIXO
+              {t.t('xp.specialtyHeading', { cost: SPECIALTY_XP_COST })}
             </div>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
               <select
@@ -1104,7 +1431,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 data-testid="xp-specialty-focus-input"
                 value={specFocus}
                 onChange={(e) => setSpecFocus(e.target.value)}
-                placeholder="Ex: Armas de Fogo: Precisão"
+                placeholder={t.t('xp.specialtyPlaceholder')}
                 className="cyber-input min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs"
               />
             </div>
@@ -1114,7 +1441,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 onClick={() => setSpecOpen(false)}
                 className="cyber-btn-outline min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
               >
-                CANCELAR
+                {t.t('xp.cancelBtn')}
               </button>
               <button
                 type="button"
@@ -1125,7 +1452,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   if (!targetId || !onBuySpecialty) return;
                   const res = onBuySpecialty(targetId, specFocus);
                   if (!res.ok) {
-                    setXpError(res.error ?? 'Erro ao comprar especialização.');
+                    setXpError(res.error ?? t.t('xp.errBuySpecialty'));
                     return;
                   }
                   setXpError(null);
@@ -1134,7 +1461,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 }}
                 className="cyber-roll-btn min-h-[40px] px-4 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
               >
-                CONFIRMAR ({SPECIALTY_XP_COST} XP)
+                {t.t('xp.specialtyConfirmBtn', { cost: SPECIALTY_XP_COST })}
               </button>
             </div>
           </div>
@@ -1143,10 +1470,10 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
         {bgOpen && (
           <div className="p-4 border-t border-[var(--border-ink)] bg-[var(--bg-card-alt)] space-y-3">
             <div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
-              NOVO ANTECEDENTE / VANTAGEM (0 → 1)
+              {t.t('xp.backgroundHeading')}
             </div>
             <div className="flex flex-wrap gap-1.5">
-              {BACKGROUND_PRESETS.map((preset) => (
+              {customAdvantageQuickChips.map((preset) => (
                 <button
                   key={preset.key}
                   type="button"
@@ -1167,7 +1494,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 data-testid="xp-background-name-input"
                 value={bgName}
                 onChange={(e) => setBgName(e.target.value)}
-                placeholder="Nome (ex: Recursos, Refúgio)"
+                placeholder={t.t('xp.backgroundPlaceholder')}
                 className="cyber-input sm:col-span-2 min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs"
               />
               <input
@@ -1177,7 +1504,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 data-testid="xp-background-cost-input"
                 value={bgCost}
                 onChange={(e) => setBgCost(e.target.value)}
-                aria-label="Custo em XP"
+                aria-label={t.t('xp.backgroundCostAria')}
                 className="cyber-input min-h-[44px] px-2.5 py-2 text-[16px] sm:text-xs font-bold text-center tabular-nums"
               />
             </div>
@@ -1187,18 +1514,31 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 onClick={() => setBgOpen(false)}
                 className="cyber-btn-outline min-h-[40px] px-3 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
               >
-                CANCELAR
+                {t.t('xp.cancelBtn')}
               </button>
               <button
                 type="button"
                 data-testid="xp-confirm-background-btn"
                 onClick={() => {
-                  if (!onBuyBackground) return;
                   const parsedCost = Number.parseInt(bgCost, 10);
                   const cost = Number.isFinite(parsedCost) ? parsedCost : DEFAULT_BACKGROUND_XP_COST;
-                  const res = onBuyBackground(bgName, cost);
+                  const matchedOfficial = officialEdition
+                    ? findAdvantageByIdOrName(bgName, officialEdition)
+                    : null;
+                  let res: { ok: boolean; error?: string } | undefined;
+                  if (
+                    matchedOfficial &&
+                    officialEdition &&
+                    onBuyCatalogAdvantage &&
+                    !isCatalogAdvantagePresent(sheet, matchedOfficial.id, officialEdition)
+                  ) {
+                    res = onBuyCatalogAdvantage(matchedOfficial.id, cost);
+                  } else if (onBuyBackground) {
+                    res = onBuyBackground(bgName, cost);
+                  }
+                  if (!res) return;
                   if (!res.ok) {
-                    setXpError(res.error ?? 'Erro ao adicionar antecedente.');
+                    setXpError(res.error ?? t.t('xp.errBuyBackground'));
                     return;
                   }
                   setXpError(null);
@@ -1208,7 +1548,11 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                 }}
                 className="cyber-roll-btn min-h-[40px] px-4 py-1.5 text-[11px] font-bold uppercase cursor-pointer"
               >
-                ADICIONAR ({Number.parseInt(bgCost, 10) || DEFAULT_BACKGROUND_XP_COST} XP)
+                {t.t('xp.backgroundConfirmBtn', {
+                  cost: Number.isFinite(Number.parseInt(bgCost, 10))
+                    ? Number.parseInt(bgCost, 10)
+                    : DEFAULT_BACKGROUND_XP_COST,
+                })}
               </button>
             </div>
           </div>

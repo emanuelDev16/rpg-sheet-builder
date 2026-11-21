@@ -123,6 +123,9 @@ import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
   buyBackgroundWithXp,
+  buyCatalogAdvantageWithXp,
+  buyCatalogDisciplineWithXp,
+  buyCatalogSkillWithXp,
   buySpecialtyWithXp,
   getAvailableXp,
   getSheetClanName,
@@ -1592,6 +1595,47 @@ function HydratedAppWorkspace({
     return result;
   };
 
+  const runCatalogPurchase = (
+    prefix: string,
+    executor: (
+      prev: CharacterSheetState,
+      timestamp: string,
+      entryId: string,
+    ) => { ok: boolean; sheet: CharacterSheetState; cost?: number; label?: string; error?: string },
+  ): { ok: boolean; error?: string } => {
+    const entryId = `${prefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`;
+    const res = executor(sheet, nowTimeString(), entryId);
+    if (!res.ok) {
+      return { ok: false, error: res.error };
+    }
+    setSheet(() => res.sheet);
+    triggerFlash(
+      t.t('app.xpAcquired', {
+        label: res.label ?? '',
+        cost: res.cost ?? 0,
+      }),
+    );
+    return { ok: true };
+  };
+
+  const handleBuyCatalogSkill = (skillIdOrVar: string): { ok: boolean; error?: string } =>
+    runCatalogPurchase('xp_skill', (prev, ts, id) =>
+      buyCatalogSkillWithXp(prev, skillIdOrVar, ts, id, language),
+    );
+
+  const handleBuyCatalogDiscipline = (discIdOrName: string): { ok: boolean; error?: string } =>
+    runCatalogPurchase('xp_disc', (prev, ts, id) =>
+      buyCatalogDisciplineWithXp(prev, discIdOrName, ts, id, language),
+    );
+
+  const handleBuyCatalogAdvantage = (
+    advIdOrName: string,
+    customCost?: number,
+  ): { ok: boolean; error?: string } =>
+    runCatalogPurchase('xp_adv', (prev, ts, id) =>
+      buyCatalogAdvantageWithXp(prev, advIdOrName, ts, id, language, customCost),
+    );
+
   const handleUndoLastUpgrade = () => {
     let flashText: string | null = null;
     setSheet((prev) => {
@@ -1797,6 +1841,9 @@ function HydratedAppWorkspace({
                 onUpgradeTrait={handleUpgradeTrait}
                 onBuySpecialty={handleBuySpecialty}
                 onBuyBackground={handleBuyBackground}
+                onBuyCatalogSkill={handleBuyCatalogSkill}
+                onBuyCatalogDiscipline={handleBuyCatalogDiscipline}
+                onBuyCatalogAdvantage={handleBuyCatalogAdvantage}
                 onUndoLastUpgrade={handleUndoLastUpgrade}
                 onSelectRulePreset={handleSelectRulePreset}
               />

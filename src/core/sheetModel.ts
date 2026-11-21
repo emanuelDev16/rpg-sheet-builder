@@ -220,7 +220,7 @@ export interface RollLogEntry {
 }
 
 export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
-export type FieldXpCategory = XpUpgradeCategory | DisciplineAffinity;
+export type FieldXpCategory = XpUpgradeCategory | DisciplineAffinity | 'advantage';
 export type XpRulePreset = RulePreset;
 
 export interface VirtuesState {
@@ -241,6 +241,7 @@ export interface XpLedgerEntry {
   fromValue?: number;
   toValue?: number;
   createdField?: boolean;
+  createdFieldIds?: string[];
   createdCardId?: string;
   prevSpecialtyLabel?: string;
   prevRollSpecialty?: boolean;
@@ -3691,6 +3692,7 @@ const ALLOWED_FIELD_XP_CATEGORIES = new Set([
   'skill',
   'discipline',
   'virtue',
+  'advantage',
   'discipline_clan',
   'discipline_out_of_clan',
   'discipline_caitiff',
@@ -3820,6 +3822,7 @@ const XP_LEDGER_KEYS = new Set([
   'fromValue',
   'toValue',
   'createdField',
+  'createdFieldIds',
   'createdCardId',
   'prevSpecialtyLabel',
   'prevRollSpecialty',
@@ -4112,6 +4115,17 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
             (typeof entry.xpSpent !== 'number' || !Number.isFinite(entry.xpSpent) || entry.xpSpent < 0)
           ) {
             errors.push(`${xPath}.xpSpent: deve ser número >= 0.`);
+          }
+          if (entry.createdFieldIds !== undefined) {
+            if (
+              !Array.isArray(entry.createdFieldIds) ||
+              entry.createdFieldIds.length > 8 ||
+              entry.createdFieldIds.some(
+                (fid) => typeof fid !== 'string' || fid.length < 1 || fid.length > 64,
+              )
+            ) {
+              errors.push(`${xPath}.createdFieldIds: esperado array de até 8 IDs válidos.`);
+            }
           }
         });
       }
