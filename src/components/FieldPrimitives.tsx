@@ -17,6 +17,7 @@ import {
   getV20HealthBreakdown,
   getV5HealthBreakdown,
   resolveRollPreview,
+  SheetCard,
   SheetField,
   SystemId,
 } from '../core/sheetModel';
@@ -30,7 +31,9 @@ import {
 import { AppTranslations, getTranslations } from '../core/i18n';
 import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
 import { parsePowerActivationCost } from '../core/wodClansDisciplinesCatalog';
+import { resolveWodDotRatingConfig } from '../utils/dotRating';
 import { AnimatedCounter } from './AnimatedCounter';
+import { DotRating } from './DotRating';
 
 interface ClampedNumberInputProps {
   value: number;
@@ -422,10 +425,12 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
 
 interface FieldPrimitiveProps {
   field: SheetField;
+  card?: SheetCard;
   pairedRollField?: SheetField;
   mode: AppMode;
   systemId?: SystemId;
   rulePreset?: RulePreset;
+  compactDots?: boolean;
   woundPenalty?: number;
   bloodPool?: { current: number; max: number };
   bloodSurge?: boolean;
@@ -475,10 +480,12 @@ const DEFAULT_CARDS_T = getTranslations('pt-BR').cards;
 
 export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   field,
+  card,
   pairedRollField,
   mode,
   systemId = 'wod',
   rulePreset = 'storyteller-v20',
+  compactDots = false,
   woundPenalty = 0,
   bloodPool,
   bloodSurge = false,
@@ -521,6 +528,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const shouldReduceMotion = Boolean(prefersReducedMotion || isEinkTheme);
   const shouldShowEditStrip =
     mode === 'edicao' && (onToggleEdit ? Boolean(isEditOpen) : true);
+  const dotConfig = resolveWodDotRatingConfig(field, card, rulePreset, systemId);
+  const useWodDots = mode === 'jogo' && dotConfig.enabled;
 
   const renderEditStrip = () => {
     if (!shouldShowEditStrip) return null;
@@ -673,6 +682,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const renderFieldBody = (): React.ReactNode => {
     // 1. Número e Texto
     if (field.kind === 'number') {
+      const numericValue = typeof field.value === 'number' ? field.value : 0;
+
       if (pairedRollField && mode === 'jogo') {
         const parsedPairedPool = parseWodPoolExpression(pairedRollField.rollExpr ?? '');
         const pairedIsSoak = Boolean(
@@ -717,21 +728,44 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             data-testid={`paired-skill-row-${field.id}`}
             className="py-1 flex flex-col gap-1 border-b border-[var(--border-subtle)]/45 last:border-b-0"
           >
-            <div className="flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 min-w-0">
-              <label
-                htmlFor={inputId}
-                className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
-              >
-                {field.label}
-              </label>
-              <div className="flex items-center gap-1.5 shrink-0">
-                <input
-                  id={inputId}
-                  type="number"
-                  value={typeof field.value === 'number' ? field.value : 0}
-                  onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
-                  className="cyber-input mobile-touch-input w-16 px-2 py-1 text-sm font-bold text-right tabular-nums shrink-0"
-                />
+            <div
+              className={`flex items-center justify-between gap-2 min-w-0 ${
+                useWodDots ? 'flex-wrap gap-y-1' : 'flex-wrap sm:flex-nowrap'
+              }`}
+            >
+              {useWodDots ? (
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words">
+                  {field.label}
+                </span>
+              ) : (
+                <label
+                  htmlFor={inputId}
+                  className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
+                >
+                  {field.label}
+                </label>
+              )}
+              <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 max-w-full shrink-0">
+                {useWodDots ? (
+                  <DotRating
+                    label={field.label}
+                    value={numericValue}
+                    min={dotConfig.min}
+                    max={dotConfig.max}
+                    onChange={(next) => onChangeValue(field.id, next)}
+                    t={t}
+                    compact={compactDots}
+                    testId={`dot-rating-${field.id}`}
+                  />
+                ) : (
+                  <input
+                    id={inputId}
+                    type="number"
+                    value={numericValue}
+                    onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
+                    className="cyber-input mobile-touch-input w-16 px-2 py-1 text-sm font-bold text-right tabular-nums shrink-0"
+                  />
+                )}
                 <button
                   type="button"
                   data-testid={`roll-btn-${pairedRollField.id}`}
@@ -770,6 +804,30 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         );
       }
 
+      if (useWodDots) {
+        return (
+          <div
+            className={`py-1 flex flex-wrap items-center justify-between gap-x-2 gap-y-1 min-w-0 ${
+              compactDots ? 'wod-attr-dot-row' : ''
+            }`}
+          >
+            <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words">
+              {field.label}
+            </span>
+            <DotRating
+              label={field.label}
+              value={numericValue}
+              min={dotConfig.min}
+              max={dotConfig.max}
+              onChange={(next) => onChangeValue(field.id, next)}
+              t={t}
+              compact={compactDots}
+              testId={`dot-rating-${field.id}`}
+            />
+          </div>
+        );
+      }
+
       return (
         <div className="py-1 flex items-center justify-between gap-2 sm:gap-3 min-w-0">
           <label
@@ -781,7 +839,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <input
             id={inputId}
             type="number"
-            value={typeof field.value === 'number' ? field.value : 0}
+            value={numericValue}
             onChange={(e) => onChangeValue(field.id, Number(e.target.value))}
             className="cyber-input mobile-touch-input w-24 px-2.5 py-1.5 text-sm font-bold text-right shrink-0"
           />
@@ -1366,6 +1424,17 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 className="pointer-events-none absolute inset-y-0 left-[75%] w-[1.5px] bg-[var(--border-color)]/55"
               />
             </div>
+          ) : useWodDots && max === dotConfig.max ? (
+            <DotRating
+              label={field.label}
+              value={current}
+              min={dotConfig.min}
+              max={dotConfig.max}
+              onChange={(next) => onChangeValue(field.id, next)}
+              t={t}
+              showQuickEdit={false}
+              testId={`resource-dot-rating-${field.id}`}
+            />
           ) : (
             <div
               data-testid={`resource-segmented-bar-${field.id}`}

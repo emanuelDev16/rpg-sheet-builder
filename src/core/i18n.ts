@@ -316,6 +316,14 @@ const PT_BR_DICT = {
   'cards.vital.wpSurgeBtn': 'REROLL NO LOG ↗',
   'cards.vital.wpSurgeNoRoll': 'ROLE DADOS V5 ANTES',
   'cards.vital.wpSurgeHint': 'MARCA 1 DANO SUPERFICIAL NA VONTADE',
+  'cards.attributes.physical': 'FÍSICOS',
+  'cards.attributes.social': 'SOCIAIS',
+  'cards.attributes.mental': 'MENTAIS',
+  'fields.dotRating.groupAria': '{{label}}: {{value}} de {{max}}',
+  'fields.dotRating.setDotAria': 'Definir {{label}} para {{dot}} de {{max}}',
+  'fields.dotRating.decreaseDotAria': '{{label}}: nível {{dot}} de {{max}} (clique para reduzir para {{next}})',
+  'fields.dotRating.quickEditAria': 'Editar valor numérico de {{label}} (atual: {{value}} de {{max}})',
+  'fields.dotRating.quickInputAria': 'Valor numérico de {{label}} ({{min}} a {{max}})',
 
   // Sidebar / RollLog / RulesSearchPanel
   'sidebar.ariaAside': 'Painel lateral de rolagens e consulta de regras',
@@ -1073,6 +1081,14 @@ export const EN: TranslationDictionary = {
   'cards.vital.wpSurgeBtn': 'REROLL IN LOG ↗',
   'cards.vital.wpSurgeNoRoll': 'ROLL V5 POOL FIRST',
   'cards.vital.wpSurgeHint': 'MARKS 1 SUPERFICIAL WILLPOWER DMG',
+  'cards.attributes.physical': 'PHYSICAL',
+  'cards.attributes.social': 'SOCIAL',
+  'cards.attributes.mental': 'MENTAL',
+  'fields.dotRating.groupAria': '{{label}}: {{value}} of {{max}}',
+  'fields.dotRating.setDotAria': 'Set {{label}} to {{dot}} of {{max}}',
+  'fields.dotRating.decreaseDotAria': '{{label}}: level {{dot}} of {{max}} (click to decrease to {{next}})',
+  'fields.dotRating.quickEditAria': 'Edit numeric value for {{label}} (current: {{value}} of {{max}})',
+  'fields.dotRating.quickInputAria': 'Numeric value for {{label}} ({{min}} to {{max}})',
 
   // Sidebar / RollLog / RulesSearchPanel
   'sidebar.ariaAside': 'Roll log and rules lookup sidebar',
@@ -1825,6 +1841,14 @@ export const ES: TranslationDictionary = {
   'cards.vital.wpSurgeBtn': 'RELANZAR EN LOG ↗',
   'cards.vital.wpSurgeNoRoll': 'TIRA DADOS V5 PRIMERO',
   'cards.vital.wpSurgeHint': 'MARCA 1 DAÑO SUPERFICIAL EN VOLUNTAD',
+  'cards.attributes.physical': 'FÍSICOS',
+  'cards.attributes.social': 'SOCIALES',
+  'cards.attributes.mental': 'MENTALES',
+  'fields.dotRating.groupAria': '{{label}}: {{value}} de {{max}}',
+  'fields.dotRating.setDotAria': 'Definir {{label}} en {{dot}} de {{max}}',
+  'fields.dotRating.decreaseDotAria': '{{label}}: nivel {{dot}} de {{max}} (clic para reducir a {{next}})',
+  'fields.dotRating.quickEditAria': 'Editar valor numérico de {{label}} (actual: {{value}} de {{max}})',
+  'fields.dotRating.quickInputAria': 'Valor numérico de {{label}} ({{min}} a {{max}})',
 
   // Sidebar / RollLog / RulesSearchPanel
   'sidebar.ariaAside': 'Panel lateral de tiradas y consulta de reglas',
