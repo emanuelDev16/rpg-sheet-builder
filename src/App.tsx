@@ -58,6 +58,7 @@ import {
   RoomSyncIndicatorState,
 } from './core/roomSync';
 import {
+  type DiceRollResult,
   executeRouseCheck,
   getV5BloodSurgeBonus,
   isWodPoolExpression,
@@ -96,6 +97,8 @@ import {
   writeRoomSyncLocalMeta,
 } from './core/workspaceHydration';
 import { filterCardsByQuery } from './core/sheetSearch';
+import { isOfficialVampireSheet } from './core/wodSkillsCatalog';
+import { type WodComposedRollRequest } from './utils/wodPoolComposer';
 import { TopBar } from './components/TopBar';
 import { TabNav } from './components/TabNav';
 import { SheetSearchBar } from './components/SheetSearchBar';
@@ -973,6 +976,43 @@ function HydratedAppWorkspace({
     triggerFlash(`${t.t('sidebar.roll.wpRerollChip')}: ${rerolled.total}`);
   };
 
+  const buildRollLogEntry = (
+    entryLabel: string,
+    res: DiceRollResult,
+    idPrefix = 'log',
+  ): RollLogEntry => ({
+    id: `${idPrefix}_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+    timestamp: nowTimeString(),
+    label: entryLabel,
+    total: res.total,
+    formula: res.resolvedExpression,
+    breakdown: res.breakdown,
+    rolls: res.rolls,
+    difficulty: res.difficulty,
+    specialty: res.specialty,
+    willpowerUsed: res.willpowerUsed,
+    isSoak: res.isSoak,
+    soakDamageType: res.soakDamageType,
+    onesCount: res.onesCount,
+    canceledOnes: res.canceledOnes,
+    doubledTensCount: res.doubledTensCount,
+    outcome: res.outcome,
+    status: res.status,
+    margin: res.margin,
+    isCritical: res.isCritical,
+    isFumble: res.isFumble,
+    isPoolRoll: res.isPoolRoll,
+    rulePreset: res.rulePreset,
+    woundPenalty: res.woundPenalty,
+    hungerDice: res.hungerDice,
+    hungerRolls: res.hungerRolls,
+    messyCritical: res.messyCritical,
+    bestialFailure: res.bestialFailure,
+    critPairsCount: res.critPairsCount,
+    isBloodSurge: res.isBloodSurge,
+    isRouseCheck: res.isRouseCheck,
+  });
+
   const appendRollLog = (
     label: string,
     expression: string,
@@ -1015,37 +1055,7 @@ function HydratedAppWorkspace({
       return;
     }
 
-    const entry: RollLogEntry = {
-      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
-      timestamp: nowTimeString(),
-      label,
-      total: result.total,
-      formula: result.resolvedExpression,
-      breakdown: result.breakdown,
-      rolls: result.rolls,
-      difficulty: result.difficulty,
-      specialty: result.specialty,
-      willpowerUsed: result.willpowerUsed,
-      isSoak: result.isSoak,
-      soakDamageType: result.soakDamageType,
-      onesCount: result.onesCount,
-      canceledOnes: result.canceledOnes,
-      doubledTensCount: result.doubledTensCount,
-      outcome: result.outcome,
-      status: result.status,
-      margin: result.margin,
-      isCritical: result.isCritical,
-      isFumble: result.isFumble,
-      isPoolRoll: result.isPoolRoll,
-      rulePreset: result.rulePreset,
-      woundPenalty: result.woundPenalty,
-      hungerDice: result.hungerDice,
-      hungerRolls: result.hungerRolls,
-      messyCritical: result.messyCritical,
-      bestialFailure: result.bestialFailure,
-      critPairsCount: result.critPairsCount,
-      isBloodSurge: result.isBloodSurge,
-    };
+    const entry = buildRollLogEntry(label, result);
     playDiceClatter({
       diceCount: result.rolls.length || 1,
       isCritical: result.isCritical,
@@ -1088,6 +1098,88 @@ function HydratedAppWorkspace({
           }
         : undefined,
     );
+  };
+
+  const handleComposedPoolRoll = (request: WodComposedRollRequest) => {
+    if (!isOfficialVampireSheet(activeSystemId, rulePreset)) return;
+    const isV5 = request.rulePreset === 'vampire-v5';
+    const surgeActive = isV5 && Boolean(request.bloodSurge);
+    const wpAutoSuccess = !isV5 && Boolean(request.useWillpower) && currentWillpower > 0;
+    const currentHunger = Math.max(0, Math.min(5, Math.round(evaluation.variables.hunger ?? 0)));
+    const expression = `pool(${Math.max(0, Math.round(request.basePool))}, ${request.difficulty})`;
+
+    const result = rollDiceExpression(expression, evaluation.variables, Math.random, {
+      rulePreset: request.rulePreset,
+      difficulty: request.difficulty,
+      modifier: request.modifier,
+      specialty: !isV5 && request.specialty,
+      woundPenalty: request.ignoreWoundPenalty ? 0 : woundPenalty,
+      isWoundExempt: request.ignoreWoundPenalty,
+      hungerDice: isV5 ? currentHunger : 0,
+      bloodSurge: surgeActive,
+      bloodSurgeDice: request.bloodSurgeBonus,
+      willpowerAutoSuccess: wpAutoSuccess,
+    });
+    if (!result.ok) {
+      triggerFlash(t.t('app.rollError', { error: result.error ?? '' }));
+      return;
+    }
+
+    const poolEntry = buildRollLogEntry(request.label, result);
+    const rouseResult = surgeActive ? executeRouseCheck(Math.random) : null;
+    const rouseHungerDelta = rouseResult?.hungerDelta ?? 0;
+    const rouseEntry = rouseResult
+      ? buildRollLogEntry(
+          `${t.t('cards.powers.rouseLogPrefix')} · BLOOD SURGE`,
+          rouseResult,
+          'log_rouse',
+        )
+      : null;
+
+    playDiceClatter({
+      diceCount: result.rolls.length || 1,
+      isCritical: result.isCritical,
+      isFumble: Boolean(result.isFumble || result.bestialFailure),
+    });
+    showMobileToastWithTimeout(poolEntry);
+
+    setSheet((prev) => {
+      let nextSheet = prev;
+      if (wpAutoSuccess) {
+        const wpField = nextSheet.cards
+          .flatMap((c) => c.fields)
+          .find((f) => f.id === 'f_willpower' || f.key === 'willpower');
+        if (wpField && typeof wpField.value === 'number' && wpField.value > 0) {
+          nextSheet = adjustResourceValue(nextSheet, wpField.id, -1);
+        }
+        nextSheet = {
+          ...nextSheet,
+          cards: nextSheet.cards.map((card) => ({
+            ...card,
+            fields: card.fields.map((f) =>
+              (f.id === 'f_wp_boost' || f.key === 'wp_boost') && f.kind === 'boolean'
+                ? { ...f, value: false }
+                : f,
+            ),
+          })),
+        };
+      }
+
+      if (surgeActive) {
+        if (rouseHungerDelta > 0) {
+          nextSheet = applyRouseCheckHunger(nextSheet, rouseHungerDelta);
+        }
+        if (nextSheet.bloodSurge) {
+          nextSheet = { ...nextSheet, bloodSurge: false };
+        }
+      }
+
+      const appendedEntries = rouseEntry ? [poolEntry, rouseEntry] : [poolEntry];
+      return {
+        ...nextSheet,
+        rollLogs: [...appendedEntries, ...nextSheet.rollLogs].slice(0, 30),
+      };
+    });
   };
 
   const handleAddField = (cardId: string, kind: FieldKind, customLabel?: string) => {
@@ -1842,9 +1934,16 @@ function HydratedAppWorkspace({
 
         <RollLogSidebar
           logs={sheet.rollLogs}
+          sheet={sheet}
           systemId={activeSystemId}
+          rulePreset={rulePreset}
           systemName={sheet.systemName}
           language={language}
+          woundPenalty={woundPenalty}
+          bloodSurge={bloodSurge}
+          bloodSurgeBonus={bloodSurgeBonus}
+          currentWillpower={currentWillpower}
+          currentHunger={Math.max(0, Math.min(5, Math.round(evaluation.variables.hunger ?? 0)))}
           t={t.sidebar}
           rerollArmedLogId={rerollArmedLogId}
           canWillpowerReroll={currentWillpower > 0 || Boolean(rerollArmedLogId)}
@@ -1857,6 +1956,7 @@ function HydratedAppWorkspace({
             setRerollArmedLogId(null);
             setFlashMessage(null);
           }}
+          onRollComposedPool={handleComposedPoolRoll}
           requestedTab={mobileSidebarTab}
           requestedTabSeq={mobileSidebarTabSeq}
           isMobileOpen={mobileSidebarOpen}
