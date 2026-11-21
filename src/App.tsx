@@ -1113,7 +1113,7 @@ function HydratedAppWorkspace({
     baseRevisionsRef.current[targetSystemId] = baseRev;
     dirtySystemsRef.current[targetSystemId] = true;
 
-    const customName = identity?.characterName?.trim() ?? '';
+    const customName = identity?.characterName?.trim() || identity?.name?.trim() || '';
     const baseFresh = createNewSheetForSystem(targetSystemId, {
       ...identity,
       localeOptions: {
@@ -1510,16 +1510,23 @@ function HydratedAppWorkspace({
                 setActiveView('sheet');
               }}
               onSelectSheet={(id) => void handleSelectHomeSheet(id)}
-              onCreateSheet={(systemId, customName, rulePreset) => {
+              onCreateSheet={(systemId, customName, rulePreset, clan) => {
                 const validIds: SystemId[] = ['wod', 'dnd5e', 'cyberpunk', 'default', 'blank'];
                 const resolvedSys = (
                   validIds.includes(systemId as SystemId) ? systemId : 'blank'
                 ) as SystemId;
+                const wodEdition =
+                  resolvedSys === 'wod' &&
+                  (rulePreset === 'vampire-v5' || rulePreset === 'storyteller-v20')
+                    ? rulePreset
+                    : undefined;
                 const identityInput =
-                  customName || rulePreset
+                  customName || rulePreset || clan
                     ? {
                         ...(customName ? { characterName: customName } : {}),
                         ...(rulePreset ? { rulePreset } : {}),
+                        ...(wodEdition ? { edition: wodEdition } : {}),
+                        ...(clan ? { clan, secondaryTrait: clan } : {}),
                       }
                     : undefined;
                 handleCreateNewSheet(resolvedSys, identityInput);

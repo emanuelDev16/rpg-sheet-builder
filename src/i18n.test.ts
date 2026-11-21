@@ -56,5 +56,11 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(ptBundle.customBuilder.t('customBuilder.starterHeading')).toBe('TEMPLATE INICIAL');
     const enBundle = getTranslations('en');
     expect(enBundle.cards.t('cards.guided.addFirstField')).toBe('+ ADD FIRST FIELD');
+
+    expect(translate('pt-BR', 'home.wodModalTitle')).toBe('CRIAR PERSONAGEM · WORLD OF DARKNESS');
+    expect(translate('en', 'modal.wodClanCustomOption')).toBe('Other (custom)...');
+    expect(translate('es', 'modal.wodClanCountHint', { count: 16 })).toBe(
+      '16 clanes de la edición + entrada libre',
+    );
   });
 });

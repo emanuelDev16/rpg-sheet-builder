@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import React, { useMemo, useRef, useState } from 'react';
 import {
   ArrowRight,
   BookOpen,
@@ -13,8 +13,15 @@ import {
   X,
 } from 'lucide-react';
 import { AppLanguage, createTranslator } from '../core/i18n';
-import type { RulePreset } from '../core/sheetModel';
+import type { RulePreset, WodEdition } from '../core/sheetModel';
 import { ThemeMode } from '../utils/theme';
+import { useFocusTrap } from '../utils/useFocusTrap';
+import {
+  getNextClanPresetForEdition,
+  resolveWodClanSelection,
+  WodClanField,
+  WodEditionFieldset,
+} from './SheetModal';
 import { ThemeSelector } from './ThemeSelector';
 
 export interface HomeSheetItem {
@@ -39,7 +46,12 @@ export interface HomeViewProps {
   onChangeTheme?: (theme: ThemeMode) => void;
   onContinueSheet: () => void;
   onSelectSheet: (id: string) => void;
-  onCreateSheet: (systemId: string, customName?: string, rulePreset?: RulePreset) => void;
+  onCreateSheet: (
+    systemId: string,
+    customName?: string,
+    rulePreset?: RulePreset,
+    clan?: string,
+  ) => void;
   onDuplicateSheet: (id: string) => void;
   onDeleteSheet: (id: string) => void;
   onOpenImportExport: () => void;
@@ -94,6 +106,51 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedSystemFilter, setSelectedSystemFilter] = useState<string>('all');
   const [customSheetName, setCustomSheetName] = useState('');
+  const [wodModalOpen, setWodModalOpen] = useState(false);
+  const [wodEdition, setWodEdition] = useState<WodEdition>('vampire-v5');
+  const [wodClanPreset, setWodClanPreset] = useState('');
+  const [wodCustomClan, setWodCustomClan] = useState('');
+  const [wodCharName, setWodCharName] = useState('');
+  const wodDialogRef = useRef<HTMLDivElement>(null);
+  const wodCloseBtnRef = useRef<HTMLButtonElement>(null);
+  const wodOverlayPointerDownRef = useRef(false);
+
+  const closeWodModal = () => {
+    setWodModalOpen(false);
+  };
+
+  useFocusTrap(wodModalOpen, wodDialogRef, closeWodModal, wodCloseBtnRef);
+
+  const openWodModal = (initialEdition: WodEdition) => {
+    setWodEdition(initialEdition);
+    setWodClanPreset('');
+    setWodCustomClan('');
+    setWodCharName('');
+    setWodModalOpen(true);
+  };
+
+  const handleSelectWodEdition = (nextEdition: WodEdition) => {
+    setWodEdition(nextEdition);
+    setWodClanPreset((prev) => getNextClanPresetForEdition(nextEdition, prev));
+  };
+
+  const handleConfirmWodCreate = (e: React.FormEvent) => {
+    e.preventDefault();
+    const trimmedName = wodCharName.trim();
+    const resolvedClan = resolveWodClanSelection(
+      wodEdition,
+      wodClanPreset,
+      wodCustomClan,
+      language,
+    );
+    onCreateSheet(
+      'wod',
+      trimmedName.length > 0 ? trimmedName : undefined,
+      wodEdition,
+      resolvedClan.length > 0 ? resolvedClan : undefined,
+    );
+    setWodModalOpen(false);
+  };
 
   const customSystemId = useMemo(() => {
     const customMatch = systems.find((sys) => sys.id === 'blank' || sys.id === 'custom');
@@ -142,6 +199,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   };
 
   return (
+    <>
     <div className="mx-auto w-full max-w-[1320px] space-y-6 pb-8">
       {onChangeTheme && (
         <div className="flex flex-wrap items-center justify-between gap-2 rounded-[var(--radius-card)] border-[length:var(--border-width)] border-[var(--border-color)] bg-[var(--bg-card)] px-3.5 py-2 shadow-[var(--shadow-btn)]">
@@ -277,7 +335,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <button
                     type="button"
                     data-testid="home-create-wod-v5"
-                    onClick={() => onCreateSheet('wod', undefined, 'vampire-v5')}
+                    onClick={() => openWodModal('vampire-v5')}
                     className="cyber-roll-btn flex min-h-[40px] w-full items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
                   >
                     <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -286,7 +344,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   <button
                     type="button"
                     data-testid="home-create-wod-v20"
-                    onClick={() => onCreateSheet('wod', undefined, 'storyteller-v20')}
+                    onClick={() => openWodModal('storyteller-v20')}
                     className="cyber-btn-outline flex min-h-[40px] w-full items-center justify-center gap-1.5 px-2.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
                   >
                     <UserPlus className="h-3.5 w-3.5 shrink-0" aria-hidden="true" />
@@ -625,6 +683,127 @@ export const HomeView: React.FC<HomeViewProps> = ({
         </div>
       </section>
     </div>
+
+    {wodModalOpen && (
+      <div
+        className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--overlay-backdrop)]"
+        role="presentation"
+        onPointerDown={(e) => {
+          wodOverlayPointerDownRef.current = e.target === e.currentTarget;
+        }}
+        onClick={(e) => {
+          if (wodOverlayPointerDownRef.current && e.target === e.currentTarget) {
+            closeWodModal();
+          }
+          wodOverlayPointerDownRef.current = false;
+        }}
+      >
+        <div
+          ref={wodDialogRef}
+          role="dialog"
+          aria-modal="true"
+          aria-labelledby="home-wod-modal-title"
+          data-testid="home-wod-modal"
+          className="bento-card mobile-modal-dialog w-full max-w-md max-h-[100dvh] overflow-y-auto overscroll-contain bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+        >
+          <header className="bento-card-header sticky top-0 z-10">
+            <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
+              <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] shrink-0">
+                {t('home.wodModalTag')}
+              </span>
+              <h2
+                id="home-wod-modal-title"
+                className="font-display text-lg sm:text-xl font-extrabold uppercase leading-tight text-[var(--ink-primary)]"
+              >
+                {t('home.wodModalTitle')}
+              </h2>
+            </div>
+            <button
+              ref={wodCloseBtnRef}
+              type="button"
+              onClick={closeWodModal}
+              aria-label={t('modal.closeAria')}
+              className="cyber-btn-outline mobile-touch-stepper min-h-[36px] min-w-[36px] w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center shrink-0 cursor-pointer"
+            >
+              <X className="w-4 h-4" aria-hidden="true" />
+            </button>
+          </header>
+
+          <div className="p-4 flex flex-col gap-3">
+            <p className="font-mono-tech text-xs leading-relaxed text-[var(--ink-secondary)]">
+              {t('home.wodModalSubtitle')}
+            </p>
+
+            <form
+              aria-labelledby="home-wod-modal-title"
+              onSubmit={handleConfirmWodCreate}
+              className="flex flex-col gap-4"
+            >
+              <WodEditionFieldset
+                edition={wodEdition}
+                radioGroupName="homeWodEdition"
+                testIdPrefix="home-wod-edition"
+                t={t}
+                onSelectEdition={handleSelectWodEdition}
+              />
+
+              <WodClanField
+                edition={wodEdition}
+                clanPreset={wodClanPreset}
+                customClan={wodCustomClan}
+                language={language}
+                selectId="home-wod-clan-select"
+                selectTestId="home-wod-clan-select"
+                hintId="home-wod-clan-hint"
+                customInputId="home-wod-clan-custom"
+                customTestId="home-wod-clan-custom-input"
+                t={t}
+                onChangeClanPreset={setWodClanPreset}
+                onChangeCustomClan={setWodCustomClan}
+              />
+
+              <div className="flex flex-col gap-1">
+                <label
+                  htmlFor="home-wod-char-name"
+                  className="font-mono-tech text-[11px] font-bold uppercase text-[var(--ink-primary)]"
+                >
+                  {t('modal.newCharNameOptionalLabel')}
+                </label>
+                <input
+                  id="home-wod-char-name"
+                  name="characterName"
+                  data-testid="home-wod-name-input"
+                  type="text"
+                  value={wodCharName}
+                  onChange={(e) => setWodCharName(e.target.value)}
+                  placeholder={wodEdition === 'vampire-v5' ? 'Nadia Voss' : 'Julian Cross'}
+                  enterKeyHint="done"
+                  className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+                />
+              </div>
+
+              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  onClick={closeWodModal}
+                  className="cyber-btn-outline min-h-[40px] px-3.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+                >
+                  {t('home.wodModalCancel')}
+                </button>
+                <button
+                  type="submit"
+                  data-testid="home-wod-submit-btn"
+                  className="cyber-roll-btn min-h-[40px] flex-1 sm:flex-initial px-4 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+                >
+                  {t('modal.createAction')}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 };
 

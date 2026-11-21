@@ -3181,10 +3181,131 @@ const DND_ABILITY_KEYS = new Set([
   'intelecto',
 ]);
 
+export type WodEdition = 'vampire-v5' | 'storyteller-v20';
+
+export interface WodClanPreset {
+  id: string;
+  editions: readonly WodEdition[];
+  labels: Record<'pt-BR' | 'en' | 'es', string>;
+}
+
+/**
+ * Core Vampire clan roster partitioned by edition so Phase 2 catalogs can extend
+ * entries with Clan Disciplines, Banes, and Compulsions without breaking creation UI imports.
+ */
+export const WOD_CLAN_PRESETS: readonly WodClanPreset[] = [
+  {
+    id: 'assamite',
+    editions: ['storyteller-v20'],
+    labels: { 'pt-BR': 'Assamita', en: 'Assamite', es: 'Assamita' },
+  },
+  {
+    id: 'banu_haqim',
+    editions: ['vampire-v5'],
+    labels: { 'pt-BR': 'Banu Haqim', en: 'Banu Haqim', es: 'Banu Haqim' },
+  },
+  {
+    id: 'brujah',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Brujah', en: 'Brujah', es: 'Brujah' },
+  },
+  {
+    id: 'followers_of_set',
+    editions: ['storyteller-v20'],
+    labels: {
+      'pt-BR': 'Seguidores de Set',
+      en: 'Followers of Set',
+      es: 'Seguidores de Set',
+    },
+  },
+  {
+    id: 'gangrel',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Gangrel', en: 'Gangrel', es: 'Gangrel' },
+  },
+  {
+    id: 'giovanni',
+    editions: ['storyteller-v20'],
+    labels: { 'pt-BR': 'Giovanni', en: 'Giovanni', es: 'Giovanni' },
+  },
+  {
+    id: 'hecata',
+    editions: ['vampire-v5'],
+    labels: { 'pt-BR': 'Hecata', en: 'Hecata', es: 'Hecata' },
+  },
+  {
+    id: 'lasombra',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Lasombra', en: 'Lasombra', es: 'Lasombra' },
+  },
+  {
+    id: 'malkavian',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Malkavian', en: 'Malkavian', es: 'Malkavian' },
+  },
+  {
+    id: 'ministry',
+    editions: ['vampire-v5'],
+    labels: { 'pt-BR': 'Ministério', en: 'The Ministry', es: 'El Ministerio' },
+  },
+  {
+    id: 'nosferatu',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Nosferatu', en: 'Nosferatu', es: 'Nosferatu' },
+  },
+  {
+    id: 'ravnos',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Ravnos', en: 'Ravnos', es: 'Ravnos' },
+  },
+  {
+    id: 'salubri',
+    editions: ['vampire-v5'],
+    labels: { 'pt-BR': 'Salubri', en: 'Salubri', es: 'Salubri' },
+  },
+  {
+    id: 'toreador',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Toreador', en: 'Toreador', es: 'Toreador' },
+  },
+  {
+    id: 'tremere',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Tremere', en: 'Tremere', es: 'Tremere' },
+  },
+  {
+    id: 'tzimisce',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Tzimisce', en: 'Tzimisce', es: 'Tzimisce' },
+  },
+  {
+    id: 'ventrue',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Ventrue', en: 'Ventrue', es: 'Ventrue' },
+  },
+  {
+    id: 'caitiff',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    labels: { 'pt-BR': 'Caitiff', en: 'Caitiff', es: 'Caitiff' },
+  },
+  {
+    id: 'thin_blood',
+    editions: ['vampire-v5'],
+    labels: { 'pt-BR': 'Sangue-Fraco', en: 'Thin-Blood', es: 'Sangre Débil' },
+  },
+];
+
+export function getWodClansForEdition(edition: WodEdition): readonly WodClanPreset[] {
+  return WOD_CLAN_PRESETS.filter((clan) => clan.editions.includes(edition));
+}
+
 export interface NewSheetIdentityInput {
   characterName?: string;
+  name?: string;
   secondaryTrait?: string;
+  clan?: string;
   rulePreset?: RulePreset;
+  edition?: WodEdition;
   localeOptions?: {
     newCharacterName?: string;
     customSystemName?: string;
@@ -3236,8 +3357,13 @@ function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
       nextFields = nextFields.map((f) => {
         const k = (f.key ?? '').trim().toLowerCase();
         if (f.id === 'f_health' || k === 'health') {
+          const {
+            bashingDamage: _dropBashing,
+            lethalDamage: _dropLethal,
+            ...restHealth
+          } = f;
           return {
-            ...f,
+            ...restHealth,
             max: initialHealthMax,
             maxFormula: 'stamina + 3',
             value: initialHealthMax,
@@ -3298,13 +3424,18 @@ export function createNewSheetForSystem(
     : isV5System
       ? 'wod'
       : 'blank';
-  const defaultXpRulePreset: XpRulePreset = identity?.rulePreset
-    ? normalizeRulePreset(identity.rulePreset)
+  const rawPreset =
+    resolvedId === 'wod' ? (identity?.edition ?? identity?.rulePreset) : identity?.rulePreset;
+  const defaultXpRulePreset: XpRulePreset = rawPreset
+    ? normalizeRulePreset(rawPreset)
     : isV5System
       ? 'vampire-v5'
       : 'storyteller-v20';
-  const customCharName = identity?.characterName?.trim() ?? '';
-  const customSecondaryTrait = identity?.secondaryTrait?.trim() ?? '';
+  const customCharName = identity?.characterName?.trim() || identity?.name?.trim() || '';
+  const customSecondaryTrait =
+    resolvedId === 'wod'
+      ? identity?.clan?.trim() || identity?.secondaryTrait?.trim() || ''
+      : identity?.secondaryTrait?.trim() || '';
   const defaultNewName = identity?.localeOptions?.newCharacterName ?? 'NOVO PERSONAGEM';
 
   if (resolvedId === 'blank') {
@@ -3374,9 +3505,11 @@ export function createNewSheetForSystem(
       if (field.kind === 'resource') {
         const max = Math.max(1, field.max ?? 10);
         if (field.damageTrack) {
+          const isWodV20 = resolvedId === 'wod' && defaultXpRulePreset !== 'vampire-v5';
           return {
             ...field,
             value: max,
+            ...(isWodV20 ? { bashingDamage: 0, lethalDamage: 0 } : {}),
             superficialDamage: 0,
             aggravatedDamage: 0,
           };
@@ -3402,8 +3535,25 @@ export function createNewSheetForSystem(
     }),
   }));
 
+  const isWodV5 = resolvedId === 'wod' && defaultXpRulePreset === 'vampire-v5';
+  const isWodV20 = resolvedId === 'wod' && !isWodV5;
+  const { bloodPool: _dropBloodPool, virtues: _dropVirtues, ...presetWithoutV20 } = preset;
+  const basePreset = isWodV5 ? presetWithoutV20 : preset;
+
   return {
-    ...preset,
+    ...basePreset,
+    ...(isWodV5
+      ? {
+          systemName: 'VAMPIRE: THE MASQUERADE // V5',
+          systemCode: '/SYS: WORLD OF DARKNESS · VAMPIRE V5',
+        }
+      : {}),
+    ...(isWodV20
+      ? {
+          bloodPool: getBloodPoolMaxByGeneration(13),
+          virtues: { conscience: 1, selfControl: 1, courage: 1 },
+        }
+      : {}),
     systemId: resolvedId,
     characterName: customCharName ? customCharName.toUpperCase() : defaultNewName,
     revision: 1,
@@ -3411,10 +3561,7 @@ export function createNewSheetForSystem(
     deviceId: getOrCreateDeviceId(),
     rulePreset: defaultXpRulePreset,
     xpRulePreset: defaultXpRulePreset,
-    cards:
-      resolvedId === 'wod' && defaultXpRulePreset === 'vampire-v5'
-        ? buildWodV5EditionCards(freshCards)
-        : freshCards,
+    cards: isWodV5 ? buildWodV5EditionCards(freshCards) : freshCards,
     rollLogs: [],
     xp: {
       totalEarned: 0,
