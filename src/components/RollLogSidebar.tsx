@@ -1,23 +1,34 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
-import { RollLogEntry, SystemId } from '../core/sheetModel';
+import { CharacterSheetState, RollLogEntry, RulePreset, SystemId } from '../core/sheetModel';
 import { AppLanguage, AppTranslations } from '../core/i18n';
+import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
+import { type WodComposedRollRequest } from '../utils/wodPoolComposer';
 import { RulesSearchPanel } from './RulesSearchPanel';
+import { WodPoolComposer } from './WodPoolComposer';
 import { useFocusTrap } from '../utils/useFocusTrap';
 
 export type SidebarTab = 'logs' | 'rules';
 
 interface RollLogSidebarProps {
   logs: RollLogEntry[];
+  sheet?: CharacterSheetState;
   systemId: SystemId;
+  rulePreset?: RulePreset;
   systemName: string;
   language?: AppLanguage;
+  woundPenalty?: number;
+  bloodSurge?: boolean;
+  bloodSurgeBonus?: number;
+  currentWillpower?: number;
+  currentHunger?: number;
   t: AppTranslations['sidebar'];
   rerollArmedLogId?: string | null;
   canWillpowerReroll?: boolean;
   onArmWillpowerReroll?: (logId: string) => void;
   onWillpowerReroll?: (logId: string, indices: number[]) => void;
   onCancelReroll?: () => void;
+  onRollComposedPool?: (request: WodComposedRollRequest) => void;
   onQuickRoll: (expression: string) => void;
   onClearLogs: () => void;
   requestedTab?: SidebarTab;
@@ -231,15 +242,23 @@ function getQuickDicePresets(systemId: SystemId): string[] {
 
 export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   logs,
+  sheet,
   systemId,
+  rulePreset,
   systemName,
   language = 'pt-BR',
+  woundPenalty = 0,
+  bloodSurge = false,
+  bloodSurgeBonus = 2,
+  currentWillpower = 0,
+  currentHunger = 0,
   t,
   rerollArmedLogId = null,
   canWillpowerReroll = true,
   onArmWillpowerReroll,
   onWillpowerReroll,
   onCancelReroll,
+  onRollComposedPool,
   onQuickRoll,
   onClearLogs,
   requestedTab,
@@ -354,6 +373,21 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
         />
       ) : (
         <>
+          {sheet && isOfficialVampireSheet(systemId, rulePreset) && onRollComposedPool && (
+            <WodPoolComposer
+              sheet={sheet}
+              rulePreset={rulePreset}
+              language={language}
+              woundPenalty={woundPenalty}
+              bloodSurge={bloodSurge}
+              bloodSurgeBonus={bloodSurgeBonus}
+              currentWillpower={currentWillpower}
+              currentHunger={currentHunger}
+              t={t}
+              onRollComposedPool={onRollComposedPool}
+            />
+          )}
+
           {/* Rolagem rápida manual */}
           <form
             onSubmit={handleSubmit}

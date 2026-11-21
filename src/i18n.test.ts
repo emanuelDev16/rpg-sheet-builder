@@ -87,5 +87,9 @@ describe('Strict i18n dictionary parity & fallback', () => {
         max: 5,
       }),
     ).toBe('Edit numeric value for Strength (current: 3 of 5)');
+
+    expect(translate('pt-BR', 'poolComposer.rollAction', { pool: 7 })).toBe('ROLAR PARADA • 7d10');
+    expect(translate('en', 'poolComposer.bloodSurgeToggle', { bonus: 3 })).toBe('BLOOD SURGE (+3)');
+    expect(translate('es', 'poolComposer.hungerIndicator', { count: 2 })).toBe('ANSIA 2 DADOS');
   });
 });

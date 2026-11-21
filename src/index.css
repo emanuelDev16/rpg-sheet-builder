@@ -855,6 +855,104 @@ select:focus-visible,
 }
 
 /* ============================================================================
+   WOD POOL COMPOSER (Rolador Combinado Livre V20 & V5)
+   ============================================================================ */
+.wod-pool-composer {
+  min-width: 0;
+  max-width: 100%;
+}
+
+.wod-composer-header {
+  min-block-size: 36px;
+  transition: background-color 120ms ease;
+}
+
+.wod-composer-header:focus-visible,
+.wod-composer-select:focus-visible,
+.wod-composer-stepper-btn:focus-visible,
+.wod-composer-toggle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.wod-composer-toggle {
+  font-family: var(--font-mono);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.wod-composer-toggle:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+.wod-composer-toggle.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+}
+
+.wod-composer-toggle:disabled {
+  background-color: var(--bg-strip);
+  color: var(--text-secondary);
+  border: var(--border-width) dashed var(--border-color);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.wod-composer-hunger-pill {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: var(--border-width) solid var(--hunger-border);
+}
+
+[data-theme="eink"] .wod-composer-header,
+[data-theme="eink"] .wod-composer-toggle,
+[data-theme="eink"] .wod-composer-stepper-btn {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-composer-toggle.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+}
+
+[data-theme="eink"] .wod-composer-toggle:disabled {
+  border-color: var(--border-color);
+}
+
+@media (forced-colors: active) {
+  .wod-composer-toggle {
+    border: 2px solid ButtonText;
+    background-color: Canvas;
+    color: ButtonText;
+  }
+
+  .wod-composer-toggle.is-active {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .wod-composer-toggle:disabled {
+    border: 2px dashed GrayText;
+    color: GrayText;
+  }
+
+  .wod-composer-hunger-pill {
+    border: 2px solid ButtonText;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+}
+
+/* ============================================================================
    MODO IMPRESSÃO / EXPORTAÇÃO PDF
    ============================================================================ */
 @page {
@@ -1062,6 +1160,8 @@ select:focus-visible,
   .print-shell input,
   .print-shell select,
   .print-shell textarea,
+  .wod-pool-composer input,
+  .wod-pool-composer select,
   .mobile-modal-dialog input,
   .mobile-modal-dialog select,
   .mobile-modal-dialog textarea {
