@@ -1121,6 +1121,51 @@ select:focus-visible,
   font-variant-numeric: tabular-nums;
 }
 
+.wod-mend-rouse-btn {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 1.5px solid var(--hunger-border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.wod-mend-rouse-btn:hover:not(:disabled) {
+  background-color: var(--accent-wine-hover);
+  color: var(--accent-contrast);
+  border-color: var(--accent-wine-hover);
+}
+
+.wod-mend-rouse-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.wod-mend-rouse-btn:disabled,
+.wod-mend-rouse-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.v5-bane-severity-badge {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 1.5px solid var(--hunger-border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.wod-power-bonus-badge {
+  background-color: var(--bg-card-alt);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
 [data-theme="eink"] .v5-humanity-box {
   border-radius: 9999px;
   box-shadow: none;
@@ -1152,7 +1197,10 @@ select:focus-visible,
 [data-theme="eink"] .wod-frenzy-panel,
 [data-theme="eink"] .wod-frenzy-chip,
 [data-theme="eink"] .roll-badge-frenzy,
-[data-theme="eink"] .roll-badge-remorse {
+[data-theme="eink"] .roll-badge-remorse,
+[data-theme="eink"] .wod-mend-rouse-btn,
+[data-theme="eink"] .v5-bane-severity-badge,
+[data-theme="eink"] .wod-power-bonus-badge {
   box-shadow: none;
   transform: none;
   transition: none;
@@ -1173,6 +1221,39 @@ select:focus-visible,
 [data-theme="eink"] .roll-badge-remorse {
   background-color: #F8F8F8;
   color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mend-rouse-btn {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mend-rouse-btn:hover:not(:disabled) {
+  background-color: #0B0B0B;
+  color: #FFFFFF;
+  border-color: #0B0B0B;
+}
+
+[data-theme="eink"] .wod-mend-rouse-btn:disabled,
+[data-theme="eink"] .wod-mend-rouse-btn[aria-disabled="true"] {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+  opacity: 0.6;
+}
+
+[data-theme="eink"] .v5-bane-severity-badge {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-power-bonus-badge {
+  background-color: #F8F8F8;
+  color: #0B0B0B;
   border-color: #1A1A1A;
 }
 
@@ -1220,6 +1301,25 @@ select:focus-visible,
     background-color: Canvas;
     color: CanvasText;
     border: 2px solid ButtonText;
+  }
+
+  .wod-mend-rouse-btn {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-mend-rouse-btn:disabled,
+  .wod-mend-rouse-btn[aria-disabled="true"] {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  .v5-bane-severity-badge,
+  .wod-power-bonus-badge {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px solid Highlight;
   }
 }
 

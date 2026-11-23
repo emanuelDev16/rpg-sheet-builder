@@ -19,6 +19,7 @@ interface RollLogSidebarProps {
   language?: AppLanguage;
   woundPenalty?: number;
   isWillpowerImpaired?: boolean;
+  bloodPotency?: number;
   bloodSurge?: boolean;
   bloodSurgeBonus?: number;
   currentWillpower?: number;
@@ -251,6 +252,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   language = 'pt-BR',
   woundPenalty = 0,
   isWillpowerImpaired = false,
+  bloodPotency = 1,
   bloodSurge = false,
   bloodSurgeBonus = 2,
   currentWillpower = 0,
@@ -381,11 +383,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
               sheet={sheet}
               rulePreset={rulePreset}
               language={language}
-              woundPenalty={
-                rulePreset === 'vampire-v5' && isWillpowerImpaired && woundPenalty === 0
-                  ? -2
-                  : woundPenalty
-              }
+              woundPenalty={woundPenalty}
+              isWillpowerImpaired={isWillpowerImpaired}
+              bloodPotency={bloodPotency}
               bloodSurge={bloodSurge}
               bloodSurgeBonus={bloodSurgeBonus}
               currentWillpower={currentWillpower}

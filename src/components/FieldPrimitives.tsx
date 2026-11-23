@@ -24,6 +24,7 @@ import {
 } from '../core/sheetModel';
 import {
   computeRemainingDamageAfterSoak,
+  getV5BloodPotencyStats,
   parseWodPoolExpression,
   RulePreset,
   SoakDamageType,
@@ -435,6 +436,7 @@ interface FieldPrimitiveProps {
   woundPenalty?: number;
   bloodPool?: { current: number; max: number };
   bloodSurge?: boolean;
+  bloodPotency?: number;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
   v5WillpowerState?: V5WillpowerState;
@@ -473,6 +475,7 @@ interface FieldPrimitiveProps {
   onAdjustHumanityStains?: (delta: number) => void;
   onTriggerRemorseCheck?: () => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
+  onMendSuperficialWithRouse?: (fieldId: string) => void;
   onRouseCheck?: (options?: { label?: string; count?: number }) => void;
   onSpendPowerBlood?: (cost: number, powerName: string) => void;
   onTriggerWillpowerSurge?: () => void;
@@ -497,6 +500,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   woundPenalty = 0,
   bloodPool,
   bloodSurge = false,
+  bloodPotency,
   lastSoakTotal = null,
   canWillpowerSurge = false,
   v5WillpowerState,
@@ -520,6 +524,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onAdjustHumanityStains,
   onTriggerRemorseCheck,
   onApplyV5SuperficialHalving,
+  onMendSuperficialWithRouse,
   onRouseCheck,
   onSpendPowerBlood,
   onTriggerWillpowerSurge,
@@ -542,6 +547,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     mode === 'edicao' && (onToggleEdit ? Boolean(isEditOpen) : true);
   const dotConfig = resolveWodDotRatingConfig(field, card, rulePreset, systemId);
   const useWodDots = mode === 'jogo' && dotConfig.enabled;
+  const resolvedBloodPotency =
+    typeof bloodPotency === 'number' && Number.isFinite(bloodPotency)
+      ? bloodPotency
+      : typeof variables.blood_potency === 'number' && Number.isFinite(variables.blood_potency)
+        ? variables.blood_potency
+        : 1;
+  const v5BloodPotencyStats =
+    rulePreset === 'vampire-v5' ? getV5BloodPotencyStats(resolvedBloodPotency) : null;
 
   const renderEditStrip = () => {
     if (!shouldShowEditStrip) return null;
@@ -861,6 +874,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
     if (field.kind === 'text') {
       const isLong = field.key === 'notas_campanha' || String(field.value ?? '').length > 48;
+      const isClanBane =
+        rulePreset === 'vampire-v5' &&
+        (field.key === 'clan_bane' || field.id === 'f_clan_bane') &&
+        Boolean(v5BloodPotencyStats);
       return (
         <div
           className={`py-1 ${
@@ -869,12 +886,22 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               : 'flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3'
           }`}
         >
-          <label
-            htmlFor={inputId}
-            className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase shrink-0"
-          >
-            {field.label}
-          </label>
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0 max-w-full">
+            <label
+              htmlFor={inputId}
+              className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase shrink-0"
+            >
+              {field.label}
+            </label>
+            {isClanBane && v5BloodPotencyStats && (
+              <span
+                data-testid="v5-bane-severity-badge"
+                className="v5-bane-severity-badge inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shrink-0"
+              >
+                {t.t('cards.vital.baneSeverityBadge', { severity: v5BloodPotencyStats.baneSeverity })}
+              </span>
+            )}
+          </div>
           {isLong ? (
             <>
               <textarea
@@ -1111,7 +1138,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
                   {t.t('cards.vital.reduceSupLabel')}
                 </span>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-full">
                   <input
                     type="number"
                     min={0}
@@ -1133,6 +1160,23 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   >
                     {t.t('cards.vital.reduceSupApply', { amount: halvedIncoming })}
                   </button>
+                  {v5BloodPotencyStats && (
+                    <button
+                      type="button"
+                      data-testid="v5-mend-superficial-rouse-btn"
+                      disabled={sup <= 0}
+                      aria-disabled={sup <= 0}
+                      aria-label={t.t('cards.vital.mendRouseAria', {
+                        amount: v5BloodPotencyStats.mendSuperficialPerRouse,
+                      })}
+                      onClick={() => onMendSuperficialWithRouse?.(field.id)}
+                      className="wod-mend-rouse-btn min-h-[36px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer shrink-0"
+                    >
+                      {t.t('cards.vital.mendRouseBtn', {
+                        amount: v5BloodPotencyStats.mendSuperficialPerRouse,
+                      })}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
