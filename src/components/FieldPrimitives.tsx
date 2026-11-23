@@ -997,7 +997,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
                   {field.label}
                 </span>
-                <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
+                <span className="v5-overflow-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                   {t.t('cards.vital.v5OverflowRule')}
                 </span>
                 {isImpaired && (
@@ -1563,7 +1563,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
                   {field.label}
                 </span>
-                <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
+                <span className="v5-overflow-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                   {t.t('cards.vital.v5OverflowRule')}
                 </span>
                 {wpImpaired && (
@@ -1616,10 +1616,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   }
                   className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
                     state === 'aggravated'
-                      ? 'eink-health-solid'
+                      ? 'eink-health-solid v5-wp-box--aggravated'
                       : state === 'superficial'
-                        ? 'eink-health-slash'
-                        : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                        ? 'eink-health-slash v5-wp-box--superficial'
+                        : 'v5-wp-box--empty bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
                   }`}
                 >
                   {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}

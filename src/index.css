@@ -1324,6 +1324,259 @@ select:focus-visible,
 }
 
 /* ============================================================================
+   LIGHT THEME HARMONIZATION — //VITAL_STATUS (Light Cyber Brutalism ONLY)
+   Estritamente escopado a screen + forced-colors: none + tema claro.
+   Nenhuma regra afeta [data-theme="dark"], [data-theme="eink"], forced-colors ou print.
+   ============================================================================ */
+@media screen and (forced-colors: none) {
+  /* 1. Sub-caixas primárias de //VITAL_STATUS (HEALTH, WILLPOWER, HUNGER, HUMANITY, V20) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] {
+    background-color: var(--bg-base);
+    border: 2px solid var(--border-color);
+    border-radius: 4px;
+  }
+
+  /* Sub-painéis secundários (WILLPOWER SURGE, FRENESI / RÖTSCHRECK, POTÊNCIA DE SANGUE) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-panel"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-frenzy-panel,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stats-panel {
+    background-color: var(--bg-base);
+    border: 1.5px solid var(--border-color);
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stat-cell {
+    background-color: var(--bg-card);
+    border: 1.5px solid var(--border-color);
+    border-radius: 4px;
+  }
+
+  /* Badge EXCESSO SUP -> AGRAV */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-overflow-badge {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+    border-radius: 2px;
+  }
+
+  /* Badge SEVERIDADE (Bane Severity) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bane-severity-badge {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 2px;
+  }
+
+  /* 2. Segmentos & Caixas das Trilhas (WILLPOWER, HUNGER, HUMANITY, HEALTH) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .seg-block,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-empty,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--empty,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-continuous-bar-"] {
+    background-color: #FFFDF9;
+    border: 1.5px solid #4A433D;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .seg-block.is-filled {
+    background-color: #5B0F18;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box {
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-humanity {
+    background-color: #0B0B0B;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-stain {
+    background-color: #EFE3D2;
+    background-image: repeating-linear-gradient(
+      135deg,
+      rgba(91, 15, 24, 0.24) 0px,
+      rgba(91, 15, 24, 0.24) 2px,
+      transparent 2px,
+      transparent 6px
+    );
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+    border-radius: 2px;
+  }
+
+  /* WILLPOWER V5: Superficial (/) e Agravado (X) — sobrepõe style inline apenas no tema claro */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--superficial {
+    background-color: #EFE3D2 !important;
+    background-image: repeating-linear-gradient(
+      -45deg,
+      rgba(91, 15, 24, 0.26) 0px,
+      rgba(91, 15, 24, 0.26) 2px,
+      transparent 2px,
+      transparent 6px
+    ) !important;
+    color: #5B0F18 !important;
+    border: 1.5px solid #5B0F18 !important;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--aggravated {
+    background-color: #5B0F18 !important;
+    background-image: none !important;
+    color: #FFFDF9 !important;
+    border: 1.5px solid #0B0B0B !important;
+    border-radius: 2px;
+  }
+
+  /* 3. Botões Ativos vs. Desabilitados — Eliminação de cinza lavado e opacity baixa */
+  /* 3A. CTA Primário de Sangue (ROUSE CHECK, TESTE DE REMORSO ativo, CURAR +X ROUSE ativo, WILLPOWER SURGE ativo, FRENESI roll) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-rouse-check-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-remorse-check-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:not(:disabled):not([aria-disabled="true"]),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-roll-btn"]:not(:disabled) {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 2px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-rouse-check-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-remorse-check-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:not(:disabled):not([aria-disabled="true"]):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-roll-btn"]:not(:disabled):hover {
+    background-color: #7A1622;
+    color: #FFFDF9;
+    border-color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+    transform: translateY(-1px);
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-rouse-check-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-remorse-check-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:not(:disabled):not([aria-disabled="true"]):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-roll-btn"]:not(:disabled):active {
+    transform: translateY(0);
+    box-shadow: none;
+  }
+
+  /* 3B. CTA Secundário (BLOOD SURGE, FRENESI / RÖTSCHRECK, steppers + / - ativos em //VITAL_STATUS) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-toggle-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-panel"] .cyber-btn-outline:not(:disabled) {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 2px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"]:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-toggle-btn"]:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-panel"] .cyber-btn-outline:not(:disabled):hover {
+    background-color: #EAE0D0;
+    color: #0B0B0B;
+    border-color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+    transform: translate(-1px, -1px);
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"]:active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-toggle-btn"]:active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-panel"] .cyber-btn-outline:not(:disabled):active {
+    transform: translate(0, 0);
+    box-shadow: none;
+  }
+
+  /* BLOOD SURGE quando armado (aria-pressed="true") */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"][aria-pressed="true"] {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 2px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"][aria-pressed="true"]:hover {
+    background-color: #7A1622;
+    color: #FFFDF9;
+    border-color: #0B0B0B;
+    transform: translate(-1px, -1px);
+  }
+
+  /* Chips de Frenesi / Rötschreck no tema claro */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-frenzy-chip {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-frenzy-chip.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  /* 3C. Estados Desabilitados WCAG AA (>= 4.5:1 — contraste real 7.68:1) sem opacity baixa */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-roll-btn:disabled,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-btn-outline:disabled,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:disabled,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn[aria-disabled="true"] {
+    opacity: 1;
+    background-color: #EFE3D2;
+    color: #4A433D;
+    border: 1.5px dashed #4A433D;
+    border-radius: 4px;
+    box-shadow: none;
+    transform: none;
+    cursor: not-allowed;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-roll-btn:disabled:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-btn-outline:disabled:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:disabled:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn[aria-disabled="true"]:hover {
+    background-color: #EFE3D2;
+    color: #4A433D;
+    border-color: #4A433D;
+    box-shadow: none;
+    transform: none;
+  }
+}
+
+/* ============================================================================
    MODO IMPRESSÃO / EXPORTAÇÃO PDF
    ============================================================================ */
 @page {
