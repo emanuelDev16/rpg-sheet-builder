@@ -64,6 +64,7 @@ interface BentoCardProps {
   virtues?: VirtuesState;
   bloodSurge?: boolean;
   bloodSurgeBonus?: number;
+  bloodPotency?: number;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
   v5WillpowerState?: V5WillpowerState;
@@ -99,6 +100,7 @@ interface BentoCardProps {
     kind?: FrenzyKind;
   }) => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
+  onMendSuperficialWithRouse?: (fieldId: string) => void;
   onAdjustBloodPool?: (delta: number) => void;
   onSetBloodPool?: (nextVal: number) => void;
   onUpdateVirtue?: (virtue: keyof VirtuesState, nextVal: number) => void;
@@ -169,6 +171,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   virtues,
   bloodSurge = false,
   bloodSurgeBonus = 2,
+  bloodPotency,
   lastSoakTotal = null,
   canWillpowerSurge = false,
   v5WillpowerState,
@@ -185,6 +188,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onTriggerRemorseCheck,
   onTriggerFrenzyRoll,
   onApplyV5SuperficialHalving,
+  onMendSuperficialWithRouse,
   onAdjustBloodPool,
   onSetBloodPool,
   onUpdateVirtue,
@@ -789,6 +793,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           woundPenalty={woundPenalty}
           bloodPool={bloodPool}
           bloodSurge={bloodSurge}
+          bloodPotency={bloodPotency}
           lastSoakTotal={lastSoakTotal}
           canWillpowerSurge={canWillpowerSurge}
           v5WillpowerState={v5WillpowerState}
@@ -822,6 +827,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           onAdjustHumanityStains={onAdjustHumanityStains}
           onTriggerRemorseCheck={onTriggerRemorseCheck}
           onApplyV5SuperficialHalving={onApplyV5SuperficialHalving}
+          onMendSuperficialWithRouse={onMendSuperficialWithRouse}
           onRouseCheck={onRouseCheck}
           onSpendPowerBlood={
             onSpendPowerBlood ?? ((cost) => onAdjustBloodPool?.(-cost))

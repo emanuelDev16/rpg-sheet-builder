@@ -16,6 +16,8 @@ export interface WodPoolComposerProps {
   rulePreset: WodComposerRulePreset;
   language?: AppLanguage;
   woundPenalty?: number;
+  isWillpowerImpaired?: boolean;
+  bloodPotency?: number;
   bloodSurge?: boolean;
   bloodSurgeBonus?: number;
   currentWillpower?: number;
@@ -43,6 +45,8 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
   rulePreset,
   language = 'pt-BR',
   woundPenalty = 0,
+  isWillpowerImpaired = false,
+  bloodPotency = 1,
   bloodSurge = false,
   bloodSurgeBonus = 2,
   currentWillpower = 0,
@@ -158,9 +162,11 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
     secondaryTrait,
     modifier,
     woundPenalty,
+    isWillpowerImpaired,
     ignoreWoundPenalty,
     bloodSurgeActive: isV5 && bloodSurgeActive,
     bloodSurgeBonus,
+    bloodPotency,
     hunger: currentHunger,
     difficulty,
     specialty,
@@ -172,6 +178,7 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
       hungerWord: t.t('poolComposer.hungerWord'),
       specTag: t.t('cards.pool.specShort'),
       wpTag: t.t('cards.pool.wpBadge'),
+      powerTag: t.t('poolComposer.powerBonusTag'),
     },
   });
 
@@ -207,15 +214,16 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
       label: breakdown.displayLabel,
       formulaSummary: breakdown.formulaSummary,
       rulePreset,
-      basePool: breakdown.primaryValue + breakdown.secondaryValue,
+      basePool: breakdown.primaryValue + breakdown.secondaryValue + breakdown.powerBonusDiceApplied,
       modifier: breakdown.modifier,
       difficulty: breakdown.difficulty,
-      woundPenalty,
+      woundPenalty: breakdown.appliedWoundPenalty,
       ignoreWoundPenalty,
       specialty: breakdown.specialty,
       useWillpower: breakdown.useWillpower,
       bloodSurge: breakdown.bloodSurgeApplied,
       bloodSurgeBonus,
+      powerBonusDice: breakdown.powerBonusDiceApplied,
     });
     setUseWillpower(false);
     setBloodSurgeActive(false);
@@ -442,13 +450,17 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
           </div>
 
           {/* Active wound penalty notice & exemption toggle */}
-          {woundPenalty < 0 && (
+          {(isV5 ? breakdown.impairedPenaltySource !== 'none' : woundPenalty < 0) && (
             <div className="flex flex-wrap items-center justify-between gap-1.5 px-2 py-1.5 rounded-[var(--radius-card)] border border-[var(--accent-danger)]/75 bg-[var(--accent-danger-soft)]">
               <span
                 data-testid="pool-composer-wound-badge"
                 className="font-mono-tech text-[10px] font-extrabold uppercase text-[var(--accent-danger)]"
               >
-                {t.t('poolComposer.woundActive', { penalty: woundPenalty })}
+                {isV5 && breakdown.impairedPenaltySource === 'willpower'
+                  ? t.t('poolComposer.wpImpairedActive')
+                  : t.t('poolComposer.woundActive', {
+                      penalty: isV5 ? (woundPenalty < 0 ? woundPenalty : -2) : woundPenalty,
+                    })}
               </span>
               <button
                 type="button"
@@ -549,6 +561,14 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
             <span className="font-mono-tech text-[10px] font-semibold uppercase text-[var(--ink-secondary)] tabular-nums">
               {breakdown.formulaSummary}
             </span>
+            {breakdown.powerBonusDiceApplied > 0 && (
+              <span
+                data-testid="pool-composer-power-bonus-badge"
+                className="wod-power-bonus-badge self-start inline-flex items-center px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide"
+              >
+                {t.t('poolComposer.powerBonusBadge', { bonus: breakdown.powerBonusDiceApplied })}
+              </span>
+            )}
             {breakdown.isIncapacitated && !breakdown.canRoll && (
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-danger)]">
                 {t.t('poolComposer.incapacitatedHint')}

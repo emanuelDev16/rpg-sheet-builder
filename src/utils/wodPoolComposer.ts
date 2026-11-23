@@ -1,4 +1,4 @@
-import { getV5BloodSurgeBonus } from '../core/formula.ts';
+import { getV5BloodPotencyStats, getV5BloodSurgeBonus } from '../core/formula.ts';
 import type { AppLanguage } from '../core/i18n.ts';
 import {
   type AttributeGroup,
@@ -7,10 +7,13 @@ import {
   resolveRulePreset,
   type SheetField,
 } from '../core/sheetModel.ts';
+import { normalizeCatalogText, V5_SKILLS_CATALOG } from '../core/wodSkillsCatalog.ts';
 import { classifyTraitField } from '../core/xpSystem.ts';
 
 export type WodTraitGroup = 'attributes' | 'skills' | 'disciplines' | 'virtues';
 export type WodComposerRulePreset = 'storyteller-v20' | 'vampire-v5';
+export type WodTraitDomain = 'physical' | 'social_mental' | 'unknown';
+export type WodPoolDomain = 'physical' | 'social_mental' | 'mixed' | 'unknown';
 
 export interface WodRollableTrait {
   id: string;
@@ -18,9 +21,13 @@ export interface WodRollableTrait {
   label: string;
   value: number;
   group: WodTraitGroup;
+  attributeGroup?: AttributeGroup;
   specialty?: boolean;
   specialtyLabel?: string;
 }
+
+export type WodComposedTraitInput = Pick<WodRollableTrait, 'label' | 'value'> &
+  Partial<Pick<WodRollableTrait, 'id' | 'key' | 'group' | 'attributeGroup'>>;
 
 export interface WodRollableTraitGroups {
   attributes: WodRollableTrait[];
@@ -36,12 +43,13 @@ export interface WodComposedPoolLabels {
   hungerWord?: string;
   specTag?: string;
   wpTag?: string;
+  powerTag?: string;
 }
 
 export interface WodComposedPoolInput {
   rulePreset: WodComposerRulePreset;
-  primaryTrait: Pick<WodRollableTrait, 'label' | 'value'> | null;
-  secondaryTrait?: Pick<WodRollableTrait, 'label' | 'value'> | null;
+  primaryTrait: WodComposedTraitInput | null;
+  secondaryTrait?: WodComposedTraitInput | null;
   modifier?: number;
   woundPenalty?: number;
   isWillpowerImpaired?: boolean;
@@ -64,8 +72,11 @@ export interface WodComposedPoolBreakdown {
   modifier: number;
   bloodSurgeApplied: boolean;
   bloodSurgeBonus: number;
+  powerBonusDiceApplied: number;
+  poolDomain: WodPoolDomain;
   rawPool: number;
   appliedWoundPenalty: number;
+  healthImpairedApplied: boolean;
   isWillpowerImpaired: boolean;
   willpowerImpairedApplied: boolean;
   impairedPenaltySource: 'none' | 'health' | 'willpower' | 'both';
@@ -94,6 +105,7 @@ export interface WodComposedRollRequest {
   useWillpower: boolean;
   bloodSurge: boolean;
   bloodSurgeBonus: number;
+  powerBonusDice?: number;
 }
 
 const ATTRIBUTE_GROUP_ORDER: Record<AttributeGroup, number> = {
@@ -114,7 +126,124 @@ const VIRTUE_KEYS = new Set([
   'instinto',
   'courage',
   'coragem',
+  'coraje',
 ]);
+
+function normalizeTraitDomainToken(value: string): string {
+  return normalizeCatalogText(value)
+    .replace(/[^a-z0-9]+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+const WOD_TRAIT_DOMAIN_BY_TOKEN: ReadonlyMap<string, 'physical' | 'social_mental'> = (() => {
+  const map = new Map<string, 'physical' | 'social_mental'>();
+  const addTokens = (tokens: readonly string[], domain: 'physical' | 'social_mental') => {
+    for (const token of tokens) {
+      const normalized = normalizeTraitDomainToken(token);
+      if (normalized) {
+        map.set(normalized, domain);
+      }
+    }
+  };
+
+  // Standard WoD physical attributes & fallback physical skills
+  addTokens(
+    [
+      'strength',
+      'forca',
+      'fuerza',
+      'dexterity',
+      'destreza',
+      'stamina',
+      'vigor',
+      'resistencia',
+      'dodge',
+      'esquiva',
+    ],
+    'physical',
+  );
+
+  // Standard WoD social & mental attributes, virtues, and fallback social/mental skills
+  addTokens(
+    [
+      'charisma',
+      'carisma',
+      'manipulation',
+      'manipulacao',
+      'manipulacion',
+      'appearance',
+      'aparencia',
+      'apariencia',
+      'composure',
+      'compostura',
+      'perception',
+      'percepcao',
+      'percepcion',
+      'intelligence',
+      'inteligencia',
+      'wits',
+      'raciocinio',
+      'astucia',
+      'resolve',
+      'determinacao',
+      'determinacion',
+      'resolucao',
+      'alertness',
+      'prontidao',
+      'empathy',
+      'empatia',
+      'expression',
+      'expressao',
+      'enigmas',
+      'law',
+      'direito',
+      'linguistics',
+      'linguistica',
+      'security',
+      'seguranca',
+    ],
+    'social_mental',
+  );
+
+  for (const virtueKey of VIRTUE_KEYS) {
+    map.set(virtueKey, 'social_mental');
+  }
+
+  for (const skill of V5_SKILLS_CATALOG) {
+    const domain: 'physical' | 'social_mental' =
+      skill.category === 'physical' ? 'physical' : 'social_mental';
+    addTokens([skill.varName, ...(skill.aliases ?? []), ...Object.values(skill.labels)], domain);
+  }
+
+  return map;
+})();
+
+/**
+ * Classifies a WoD trait as 'physical', 'social_mental', or 'unknown' (e.g. standalone Discipline).
+ */
+export function classifyWodTraitDomain(
+  trait?: WodComposedTraitInput | null,
+): WodTraitDomain {
+  if (!trait) return 'unknown';
+  if (trait.attributeGroup === 'physical') return 'physical';
+  if (trait.attributeGroup === 'social' || trait.attributeGroup === 'mental') {
+    return 'social_mental';
+  }
+  if (trait.group === 'virtues') return 'social_mental';
+
+  for (const candidate of [trait.key, trait.label]) {
+    if (!candidate) continue;
+    const token = normalizeTraitDomainToken(candidate);
+    if (!token) continue;
+    const direct = WOD_TRAIT_DOMAIN_BY_TOKEN.get(token);
+    if (direct) return direct;
+    const stripped = token.replace(/^(?:f|attr|skill|hab)_/, '');
+    const strippedMatch = WOD_TRAIT_DOMAIN_BY_TOKEN.get(stripped);
+    if (strippedMatch) return strippedMatch;
+  }
+
+  return 'unknown';
+}
 
 const SYNTHETIC_V20_VIRTUE_DEFS: ReadonlyArray<{
   id: string;
@@ -224,6 +353,7 @@ export function extractWodRollableTraits(
             label: field.label,
             value: traitValue,
             group: 'attributes',
+            ...(field.attributeGroup ? { attributeGroup: field.attributeGroup } : {}),
             ...(hasSpecialty ? { specialty: true, ...(specialtyLabel ? { specialtyLabel } : {}) } : {}),
           },
           groupRank,
@@ -338,28 +468,61 @@ export function computeWodComposedPool(
       : getV5BloodSurgeBonus(input.bloodPotency);
   const bloodSurgeBonus = bloodSurgeApplied ? resolvedSurgeBonus : 0;
 
-  const rawPool = primaryValue + secondaryValue + modifier + bloodSurgeBonus;
+  const hasDisciplineTrait =
+    input.primaryTrait?.group === 'disciplines' ||
+    input.secondaryTrait?.group === 'disciplines';
+  const resolvedPowerBonus =
+    typeof input.bloodPotency === 'number' && Number.isFinite(input.bloodPotency)
+      ? getV5BloodPotencyStats(input.bloodPotency).powerBonusDice
+      : 0;
+  const powerBonusDiceApplied = isV5 && hasDisciplineTrait ? resolvedPowerBonus : 0;
+
+  const rawPool =
+    primaryValue + secondaryValue + modifier + bloodSurgeBonus + powerBonusDiceApplied;
+
+  const primaryDomain = classifyWodTraitDomain(input.primaryTrait);
+  const secondaryDomain = classifyWodTraitDomain(input.secondaryTrait);
+  const hasPhysicalTrait =
+    primaryDomain === 'physical' || secondaryDomain === 'physical';
+  const hasSocialMentalTrait =
+    primaryDomain === 'social_mental' || secondaryDomain === 'social_mental';
+  const poolDomain: WodPoolDomain =
+    hasPhysicalTrait && hasSocialMentalTrait
+      ? 'mixed'
+      : hasPhysicalTrait
+        ? 'physical'
+        : hasSocialMentalTrait
+          ? 'social_mental'
+          : 'unknown';
+
   const rawWound =
     typeof input.woundPenalty === 'number' && Number.isFinite(input.woundPenalty)
       ? Math.min(0, Math.round(input.woundPenalty))
       : 0;
-  const healthImpaired = rawWound < 0;
+  const healthImpairedOnSheet = rawWound < 0;
   const isWillpowerImpaired = isV5 && Boolean(input.isWillpowerImpaired);
+  // V5 RAW: Health Impaired penalizes Physical pools; Willpower Impaired penalizes Social/Mental pools.
+  // Both apply a maximum single -2 cap even on mixed pools. V20 wound penalties remain global.
+  const healthEligible = isV5
+    ? healthImpairedOnSheet && hasPhysicalTrait
+    : healthImpairedOnSheet;
+  const willpowerEligible = isV5 && isWillpowerImpaired && hasSocialMentalTrait;
   const impairedPenaltySource: 'none' | 'health' | 'willpower' | 'both' =
-    healthImpaired && isWillpowerImpaired
+    healthEligible && willpowerEligible
       ? 'both'
-      : healthImpaired
+      : healthEligible
         ? 'health'
-        : isWillpowerImpaired
+        : willpowerEligible
           ? 'willpower'
           : 'none';
+  const healthImpairedApplied = !input.ignoreWoundPenalty && healthEligible;
   const willpowerImpairedApplied =
-    !input.ignoreWoundPenalty && !healthImpaired && isWillpowerImpaired;
+    !input.ignoreWoundPenalty && !healthEligible && willpowerEligible;
   const appliedWoundPenalty = input.ignoreWoundPenalty
     ? 0
-    : healthImpaired
+    : healthEligible
       ? rawWound
-      : isWillpowerImpaired
+      : willpowerEligible
         ? -2
         : 0;
   const effectivePool = Math.max(0, Math.min(30, rawPool + appliedWoundPenalty));
@@ -395,8 +558,10 @@ export function computeWodComposedPool(
     input.primaryTrait ? `${input.primaryTrait.label} (${primaryValue})` : null,
     input.secondaryTrait ? `${input.secondaryTrait.label} (${secondaryValue})` : null,
   ].filter(Boolean);
+  const powerTag = input.labels?.powerTag ?? 'PODER';
+  const powerPart = powerBonusDiceApplied > 0 ? ` +${powerBonusDiceApplied} ${powerTag}` : '';
   const modPart = modifier > 0 ? ` +${modifier}` : modifier < 0 ? ` ${modifier}` : '';
-  const displayLabel = `${traitParts.join(' + ')}${modPart}`.trim();
+  const displayLabel = `${traitParts.join(' + ')}${powerPart}${modPart}`.trim();
 
   const diffTn = input.labels?.diffTn ?? 'DIFF';
   const diffMeta = input.labels?.diffMeta ?? 'META';
@@ -415,8 +580,11 @@ export function computeWodComposedPool(
     modifier,
     bloodSurgeApplied,
     bloodSurgeBonus,
+    powerBonusDiceApplied,
+    poolDomain,
     rawPool,
     appliedWoundPenalty,
+    healthImpairedApplied,
     isWillpowerImpaired,
     willpowerImpairedApplied,
     impairedPenaltySource,

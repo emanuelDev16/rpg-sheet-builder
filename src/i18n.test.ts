@@ -111,5 +111,13 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'cards.vital.wpImpairedBadge')).toBe('IMPAIRED (-2)');
     expect(translate('es', 'cards.vital.frenzyBtn')).toBe('FRENESÍ / RÖTSCHRECK');
     expect(translate('en', 'sidebar.roll.rotschreckBadge')).toBe('RÖTSCHRECK');
+
+    expect(translate('pt-BR', 'cards.vital.mendRouseBtn', { amount: 2 })).toBe('CURAR +2 (ROUSE)');
+    expect(translate('en', 'cards.vital.mendRouseBtn', { amount: 3 })).toBe('MEND +3 (ROUSE)');
+    expect(translate('es', 'cards.vital.mendRouseBtn', { amount: 2 })).toBe('CURAR +2 (ROUSE)');
+    expect(translate('pt-BR', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERIDADE 4');
+    expect(translate('en', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERITY 4');
+    expect(translate('es', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERIDAD 4');
+    expect(translate('en', 'poolComposer.powerBonusBadge', { bonus: 2 })).toBe('+2 POWER (POTENCY)');
   });
 });

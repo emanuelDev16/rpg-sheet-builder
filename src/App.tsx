@@ -28,6 +28,7 @@ import {
   getSheetBloodPool,
   getSheetHumanityStains,
   getSheetVirtues,
+  getV5HealthBreakdown,
   getV5WillpowerState,
   NewSheetIdentityInput,
   nowIsoUtc,
@@ -66,6 +67,7 @@ import {
   executeRemorseCheck,
   executeRouseCheck,
   type FrenzyKind,
+  getV5BloodPotencyStats,
   getV5BloodSurgeBonus,
   isWodPoolExpression,
   rerollV5PoolDice,
@@ -739,9 +741,15 @@ function HydratedAppWorkspace({
         : 0;
   const canV5WillpowerReroll =
     rulePreset === 'vampire-v5' ? !v5WillpowerState.isFullyAggravated : currentWillpower > 0;
+  const bloodPotency = useMemo(() => {
+    const rawBp = evaluation.variables.blood_potency;
+    return typeof rawBp === 'number' && Number.isFinite(rawBp)
+      ? Math.max(0, Math.min(10, Math.round(rawBp)))
+      : 1;
+  }, [evaluation.variables.blood_potency]);
   const bloodSurgeBonus = useMemo(
-    () => getV5BloodSurgeBonus(evaluation.variables.blood_potency),
-    [evaluation.variables.blood_potency],
+    () => getV5BloodSurgeBonus(bloodPotency),
+    [bloodPotency],
   );
 
   const visibleCards = useMemo(
@@ -869,6 +877,65 @@ function HydratedAppWorkspace({
       return {
         ...nextWithHunger,
         rollLogs: [entry, ...nextWithHunger.rollLogs].slice(0, 30),
+      };
+    });
+  };
+
+  const handleMendSuperficialWithRouse = (fieldId?: string) => {
+    if (rulePreset !== 'vampire-v5') return;
+    const allFields = sheet.cards.flatMap((c) => c.fields);
+    const healthField =
+      (fieldId ? allFields.find((f) => f.id === fieldId) : undefined) ??
+      allFields.find((f) => f.id === 'f_health' || f.key === 'health');
+    if (!healthField) return;
+    const { superficial } = getV5HealthBreakdown(healthField);
+    if (superficial <= 0) return;
+
+    const mendAmount = getV5BloodPotencyStats(bloodPotency).mendSuperficialPerRouse;
+    const healedAmount = Math.min(superficial, mendAmount);
+    const rouseResult = executeRouseCheck(Math.random);
+    const die = rouseResult.rolls[0] ?? 1;
+    const hungerDelta = rouseResult.hungerDelta ?? 0;
+    const passed = hungerDelta === 0;
+    const breakdown = passed
+      ? t.t('sidebar.roll.mendRousePassBreakdown', { die, healed: healedAmount })
+      : t.t('sidebar.roll.mendRouseFailBreakdown', {
+          die,
+          hungerDelta,
+          healed: healedAmount,
+        });
+
+    const entry: RollLogEntry = {
+      id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: nowTimeString(),
+      label: t.t('sidebar.roll.mendRouseLogLabel'),
+      total: passed ? 1 : 0,
+      formula: rouseResult.resolvedExpression,
+      breakdown,
+      rolls: rouseResult.rolls,
+      difficulty: 6,
+      outcome: passed ? 'success' : 'failure',
+      isPoolRoll: true,
+      rulePreset: 'vampire-v5',
+      isRouseCheck: true,
+    };
+
+    playDiceClatter({ diceCount: 1, isCritical: false, isFumble: false });
+    showMobileToastWithTimeout(entry);
+
+    setSheet((prev) => {
+      const targetField =
+        prev.cards.flatMap((c) => c.fields).find((f) => f.id === healthField.id) ?? healthField;
+      const prevSup = getV5HealthBreakdown(targetField).superficial;
+      const actualHealed = Math.min(prevSup, mendAmount);
+      if (actualHealed <= 0) return prev;
+      let nextSheet = adjustV5HealthDamage(prev, targetField.id, 'superficial', -actualHealed);
+      if (hungerDelta > 0) {
+        nextSheet = applyRouseCheckHunger(nextSheet, hungerDelta);
+      }
+      return {
+        ...nextSheet,
+        rollLogs: [entry, ...nextSheet.rollLogs].slice(0, 30),
       };
     });
   };
@@ -1263,7 +1330,7 @@ function HydratedAppWorkspace({
       difficulty: request.difficulty,
       modifier: request.modifier,
       specialty: !isV5 && request.specialty,
-      woundPenalty: request.ignoreWoundPenalty ? 0 : woundPenalty,
+      woundPenalty: request.ignoreWoundPenalty ? 0 : request.woundPenalty,
       isWoundExempt: request.ignoreWoundPenalty,
       hungerDice: isV5 ? currentHunger : 0,
       bloodSurge: surgeActive,
@@ -2035,6 +2102,7 @@ function HydratedAppWorkspace({
                       virtues={virtues}
                       bloodSurge={bloodSurge}
                       bloodSurgeBonus={bloodSurgeBonus}
+                      bloodPotency={bloodPotency}
                       lastSoakTotal={lastSoakTotal}
                       canWillpowerSurge={Boolean(latestEligibleV5Roll)}
                       v5WillpowerState={v5WillpowerState}
@@ -2065,6 +2133,7 @@ function HydratedAppWorkspace({
                       onApplyV5SuperficialHalving={(fid, rawDmg) =>
                         setSheet((prev) => applyV5SuperficialHalving(prev, fid, rawDmg).sheet)
                       }
+                      onMendSuperficialWithRouse={handleMendSuperficialWithRouse}
                       onAdjustBloodPool={(delta) =>
                         setSheet((prev) => adjustSheetBloodPool(prev, delta))
                       }
@@ -2140,6 +2209,7 @@ function HydratedAppWorkspace({
           language={language}
           woundPenalty={woundPenalty}
           isWillpowerImpaired={isWillpowerImpaired}
+          bloodPotency={bloodPotency}
           bloodSurge={bloodSurge}
           bloodSurgeBonus={bloodSurgeBonus}
           currentWillpower={currentWillpower}

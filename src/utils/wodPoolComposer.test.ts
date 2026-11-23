@@ -182,8 +182,8 @@ test('computeWodComposedPool handles V20 wound penalties, ignoreWoundPenalty, cl
 test('computeWodComposedPool handles V5 Blood Surge, Impaired (-2), and Hunger Dice splitting/capping', () => {
   const poolWithSurge = computeWodComposedPool({
     rulePreset: 'vampire-v5',
-    primaryTrait: { label: 'MANIPULATION', value: 4 },
-    secondaryTrait: { label: 'DOMINATE', value: 3 },
+    primaryTrait: { label: 'STRENGTH', value: 4, group: 'attributes', attributeGroup: 'physical' },
+    secondaryTrait: { label: 'BRAWL', value: 3, group: 'skills' },
     modifier: -1,
     woundPenalty: -2,
     bloodSurgeActive: true,
@@ -194,9 +194,10 @@ test('computeWodComposedPool handles V5 Blood Surge, Impaired (-2), and Hunger D
     useWillpower: true, // ignored in V5
   });
 
-  // 4 + 3 - 1 + 3 (surge) = 9 raw - 2 wound = 7 effective; 2 hunger + 5 normal
+  // 4 + 3 - 1 + 3 (surge) = 9 raw - 2 health impaired (physical) = 7 effective; 2 hunger + 5 normal
   assert.equal(poolWithSurge.bloodSurgeApplied, true);
   assert.equal(poolWithSurge.bloodSurgeBonus, 3);
+  assert.equal(poolWithSurge.powerBonusDiceApplied, 0);
   assert.equal(poolWithSurge.rawPool, 9);
   assert.equal(poolWithSurge.appliedWoundPenalty, -2);
   assert.equal(poolWithSurge.effectivePool, 7);
@@ -253,7 +254,7 @@ test('computeWodComposedPool supports all free trait combinations, single trait,
 });
 
 test('computeWodComposedPool handles V5 isWillpowerImpaired without double-stacking Health Impaired', () => {
-  // 1) Willpower Impaired alone applies -2 in V5
+  // 1) Willpower Impaired alone applies -2 in V5 Social/Mental pools
   const wpOnly = computeWodComposedPool({
     rulePreset: 'vampire-v5',
     primaryTrait: { label: 'CHARISMA', value: 3 },
@@ -269,16 +270,18 @@ test('computeWodComposedPool handles V5 isWillpowerImpaired without double-stack
   assert.equal(wpOnly.appliedWoundPenalty, -2);
   assert.equal(wpOnly.effectivePool, 4);
 
-  // 2) Health Impaired (-2) + Willpower Impaired MUST NOT stack to -4
+  // 2) On mixed Physical + Social/Mental pools, Health Impaired (-2) + Willpower Impaired MUST NOT stack to -4
   const bothImpaired = computeWodComposedPool({
     rulePreset: 'vampire-v5',
-    primaryTrait: { label: 'CHARISMA', value: 3 },
-    secondaryTrait: { label: 'PERSUASION', value: 3 },
+    primaryTrait: { label: 'DEXTERITY', value: 3, group: 'attributes', attributeGroup: 'physical' },
+    secondaryTrait: { label: 'PERSUASION', value: 3, group: 'skills' },
     woundPenalty: -2,
     isWillpowerImpaired: true,
     hunger: 1,
   });
+  assert.equal(bothImpaired.poolDomain, 'mixed');
   assert.equal(bothImpaired.isWillpowerImpaired, true);
+  assert.equal(bothImpaired.healthImpairedApplied, true);
   assert.equal(bothImpaired.willpowerImpairedApplied, false);
   assert.equal(bothImpaired.impairedPenaltySource, 'both');
   assert.equal(bothImpaired.appliedWoundPenalty, -2);
@@ -287,13 +290,14 @@ test('computeWodComposedPool handles V5 isWillpowerImpaired without double-stack
   // 3) Exemption clears both penalties
   const exemptedBoth = computeWodComposedPool({
     rulePreset: 'vampire-v5',
-    primaryTrait: { label: 'CHARISMA', value: 3 },
-    secondaryTrait: { label: 'PERSUASION', value: 3 },
+    primaryTrait: { label: 'DEXTERITY', value: 3, group: 'attributes', attributeGroup: 'physical' },
+    secondaryTrait: { label: 'PERSUASION', value: 3, group: 'skills' },
     woundPenalty: -2,
     isWillpowerImpaired: true,
     ignoreWoundPenalty: true,
   });
   assert.equal(exemptedBoth.appliedWoundPenalty, 0);
+  assert.equal(exemptedBoth.healthImpairedApplied, false);
   assert.equal(exemptedBoth.willpowerImpairedApplied, false);
   assert.equal(exemptedBoth.impairedPenaltySource, 'both');
   assert.equal(exemptedBoth.effectivePool, 6);
@@ -311,4 +315,140 @@ test('computeWodComposedPool handles V5 isWillpowerImpaired without double-stack
   assert.equal(v20Ignored.impairedPenaltySource, 'none');
   assert.equal(v20Ignored.appliedWoundPenalty, 0);
   assert.equal(v20Ignored.effectivePool, 6);
+});
+
+test('computeWodComposedPool adds V5 powerBonusDice only for Discipline pools in vampire-v5', () => {
+  const manipulation = {
+    key: 'manipulation',
+    label: 'MANIPULAÇÃO',
+    value: 4,
+    group: 'attributes' as const,
+    attributeGroup: 'social' as const,
+  };
+  const dominate = {
+    key: 'dominate',
+    label: 'DOMINAÇÃO',
+    value: 3,
+    group: 'disciplines' as const,
+  };
+
+  const bp0 = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: manipulation,
+    secondaryTrait: dominate,
+    bloodPotency: 0,
+  });
+  assert.equal(bp0.powerBonusDiceApplied, 0);
+  assert.equal(bp0.rawPool, 7);
+  assert.equal(bp0.effectivePool, 7);
+  assert.equal(bp0.displayLabel, 'MANIPULAÇÃO (4) + DOMINAÇÃO (3)');
+
+  const bp2 = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: manipulation,
+    secondaryTrait: dominate,
+    bloodPotency: 2,
+  });
+  assert.equal(bp2.powerBonusDiceApplied, 1);
+  assert.equal(bp2.rawPool, 8);
+  assert.equal(bp2.effectivePool, 8);
+  assert.equal(bp2.displayLabel, 'MANIPULAÇÃO (4) + DOMINAÇÃO (3) +1 PODER');
+
+  const bp4 = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: manipulation,
+    secondaryTrait: dominate,
+    bloodPotency: 4,
+    labels: { powerTag: 'POWER' },
+  });
+  assert.equal(bp4.powerBonusDiceApplied, 2);
+  assert.equal(bp4.rawPool, 9);
+  assert.equal(bp4.effectivePool, 9);
+  assert.equal(bp4.displayLabel, 'MANIPULAÇÃO (4) + DOMINAÇÃO (3) +2 POWER');
+
+  // Attribute + Skill without disciplines must receive 0 power bonus even at high Blood Potency
+  const nonDiscipline = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { key: 'charisma', label: 'CARISMA', value: 3, group: 'attributes', attributeGroup: 'social' },
+    secondaryTrait: { key: 'persuasion', label: 'PERSUASÃO', value: 3, group: 'skills' },
+    bloodPotency: 4,
+  });
+  assert.equal(nonDiscipline.powerBonusDiceApplied, 0);
+  assert.equal(nonDiscipline.effectivePool, 6);
+
+  // V20 ignores V5 Blood Potency powerBonusDice even when discipline is selected
+  const v20Discipline = computeWodComposedPool({
+    rulePreset: 'storyteller-v20',
+    primaryTrait: manipulation,
+    secondaryTrait: dominate,
+    bloodPotency: 4,
+  });
+  assert.equal(v20Discipline.powerBonusDiceApplied, 0);
+  assert.equal(v20Discipline.effectivePool, 7);
+});
+
+test('computeWodComposedPool scopes V5 Willpower Impaired (-2) to Social/Mental and Health Impaired (-2) to Physical', () => {
+  // Social pool penalized by Willpower Impaired
+  const socialWpImpaired = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { key: 'charisma', label: 'CARISMA', value: 3, group: 'attributes', attributeGroup: 'social' },
+    secondaryTrait: { key: 'persuasion', label: 'PERSUASÃO', value: 2, group: 'skills' },
+    woundPenalty: 0,
+    isWillpowerImpaired: true,
+  });
+  assert.equal(socialWpImpaired.poolDomain, 'social_mental');
+  assert.equal(socialWpImpaired.appliedWoundPenalty, -2);
+  assert.equal(socialWpImpaired.willpowerImpairedApplied, true);
+  assert.equal(socialWpImpaired.effectivePool, 3);
+
+  // Mental pool penalized by Willpower Impaired
+  const mentalWpImpaired = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { key: 'intelligence', label: 'INTELIGÊNCIA', value: 4, group: 'attributes', attributeGroup: 'mental' },
+    secondaryTrait: { key: 'investigation', label: 'INVESTIGAÇÃO', value: 2, group: 'skills' },
+    woundPenalty: 0,
+    isWillpowerImpaired: true,
+  });
+  assert.equal(mentalWpImpaired.poolDomain, 'social_mental');
+  assert.equal(mentalWpImpaired.appliedWoundPenalty, -2);
+  assert.equal(mentalWpImpaired.willpowerImpairedApplied, true);
+  assert.equal(mentalWpImpaired.effectivePool, 4);
+
+  // Purely Physical pools (Força + Briga, Destreza + Furtividade) must NOT receive -2 from Willpower Impaired
+  const strengthBrawl = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { key: 'strength', label: 'FORÇA', value: 4, group: 'attributes', attributeGroup: 'physical' },
+    secondaryTrait: { key: 'brawl', label: 'BRIGA', value: 3, group: 'skills' },
+    woundPenalty: 0,
+    isWillpowerImpaired: true,
+  });
+  assert.equal(strengthBrawl.poolDomain, 'physical');
+  assert.equal(strengthBrawl.appliedWoundPenalty, 0);
+  assert.equal(strengthBrawl.willpowerImpairedApplied, false);
+  assert.equal(strengthBrawl.impairedPenaltySource, 'none');
+  assert.equal(strengthBrawl.effectivePool, 7);
+
+  const dexStealthByLabelsOnly = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { label: 'DESTREZA', value: 3 },
+    secondaryTrait: { label: 'FURTIVIDADE', value: 2 },
+    woundPenalty: 0,
+    isWillpowerImpaired: true,
+  });
+  assert.equal(dexStealthByLabelsOnly.poolDomain, 'physical');
+  assert.equal(dexStealthByLabelsOnly.appliedWoundPenalty, 0);
+  assert.equal(dexStealthByLabelsOnly.effectivePool, 5);
+
+  // Purely Social/Mental pool must NOT receive -2 from Health Impaired alone
+  const socialWithHealthImpairedOnly = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { key: 'charisma', label: 'CARISMA', value: 3, group: 'attributes', attributeGroup: 'social' },
+    secondaryTrait: { key: 'persuasion', label: 'PERSUASÃO', value: 2, group: 'skills' },
+    woundPenalty: -2,
+    isWillpowerImpaired: false,
+  });
+  assert.equal(socialWithHealthImpairedOnly.poolDomain, 'social_mental');
+  assert.equal(socialWithHealthImpairedOnly.appliedWoundPenalty, 0);
+  assert.equal(socialWithHealthImpairedOnly.healthImpairedApplied, false);
+  assert.equal(socialWithHealthImpairedOnly.effectivePool, 5);
 });
