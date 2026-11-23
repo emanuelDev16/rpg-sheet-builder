@@ -9,7 +9,6 @@
 - O desenvolvimento Android (`android/`) está pausado: não execute tarefas do Gradle nem modifique código Kotlin salvo solicitação explícita.
 - Nenhuma tarefa de código Web é considerada concluída sem Exit Code `0` e sem testes pulados (`skipped`) nos comandos abaixo:
   1. `npm run lint`
-  2. `npx vitest run`
-  3. Os testes `node:test` correspondentes em `src/core/*.test.ts` (ou a suíte completa quando alterar `src/core/` ou `shared/presets/`)
-  4. `npx vite build --base=/rpg-sheet-builder/`
-- Ao finalizar, reporte a contagem de testes aprovados e exiba `git branch --show-current` e `git diff --stat`.
+  2. `npm run test:all` (executa `test:vitest` e todas as suítes `node:test`)
+  3. `npx vite build --base=/rpg-sheet-builder/`
+- Ao finalizar, reporte a contagem de testes aprovados (`vitest` e `node:test`), exiba `git branch --show-current`, `git status -sb` e `git diff --stat`.
