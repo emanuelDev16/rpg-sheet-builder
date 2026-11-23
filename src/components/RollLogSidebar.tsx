@@ -18,6 +18,7 @@ interface RollLogSidebarProps {
   systemName: string;
   language?: AppLanguage;
   woundPenalty?: number;
+  isWillpowerImpaired?: boolean;
   bloodSurge?: boolean;
   bloodSurgeBonus?: number;
   currentWillpower?: number;
@@ -58,8 +59,9 @@ export const RollDiceChips: React.FC<RollDiceChipsProps> = ({
     return null;
   }
 
-  const diffThreshold = entry.difficulty ?? 6;
-  const isV5Pool = entry.rulePreset === 'vampire-v5' && !entry.isRouseCheck;
+  const diffThreshold = entry.isRemorseCheck ? 6 : (entry.difficulty ?? 6);
+  const isV5Pool =
+    entry.rulePreset === 'vampire-v5' && !entry.isRouseCheck && !entry.isRemorseCheck;
   const hungerCount = isV5Pool
     ? Math.min(entry.rolls.length, Math.max(0, entry.hungerDice ?? entry.hungerRolls?.length ?? 0))
     : 0;
@@ -85,7 +87,7 @@ export const RollDiceChips: React.FC<RollDiceChipsProps> = ({
               {t.t('sidebar.roll.normalDiceLabel')}:
             </span>
             {normalDice.map(({ val, dIdx }) => {
-              const isSuccessDie = val >= diffThreshold;
+              const isSuccessDie = val >= 6;
               const isOne = val === 1;
               const isRerollPick = selectedRerollIndices.includes(dIdx);
               const normalClassName = `die-chip text-[10px] border ${
@@ -248,6 +250,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
   systemName,
   language = 'pt-BR',
   woundPenalty = 0,
+  isWillpowerImpaired = false,
   bloodSurge = false,
   bloodSurgeBonus = 2,
   currentWillpower = 0,
@@ -378,7 +381,11 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
               sheet={sheet}
               rulePreset={rulePreset}
               language={language}
-              woundPenalty={woundPenalty}
+              woundPenalty={
+                rulePreset === 'vampire-v5' && isWillpowerImpaired && woundPenalty === 0
+                  ? -2
+                  : woundPenalty
+              }
               bloodSurge={bloodSurge}
               bloodSurgeBonus={bloodSurgeBonus}
               currentWillpower={currentWillpower}
@@ -440,7 +447,8 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 const isV5Pool =
                   Boolean(entry.isPoolRoll) &&
                   entry.rulePreset === 'vampire-v5' &&
-                  !entry.isRouseCheck;
+                  !entry.isRouseCheck &&
+                  !entry.isRemorseCheck;
                 const v5Target = Math.max(1, Math.min(10, Math.round(entry.difficulty ?? 2)));
                 const v5Margin =
                   typeof entry.margin === 'number' ? entry.margin : entry.total - v5Target;
@@ -464,13 +472,15 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                     : entry.outcome ??
                       (entry.isFumble ? 'botch' : entry.total > 0 ? 'success' : 'failure')
                   : null;
-                const diffThreshold = entry.difficulty ?? 6;
+                const diffThreshold = entry.isRemorseCheck ? 6 : (entry.difficulty ?? 6);
                 const hungerCount = entry.hungerDice ?? 0;
                 const normalDiceCount = Math.max(0, (entry.rolls?.length ?? 0) - hungerCount);
                 const isRerollArmed = rerollArmedLogId === entry.id;
                 const canArmThisRollReroll =
                   Boolean(onArmWillpowerReroll) &&
                   isV5Pool &&
+                  !entry.isFrenzyRoll &&
+                  !entry.isRemorseCheck &&
                   normalDiceCount > 0 &&
                   !entry.isWillpowerReroll &&
                   !isRerollArmed;
@@ -513,6 +523,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         ) : (
                           entry.isPoolRoll &&
                           !entry.isRouseCheck &&
+                          !entry.isRemorseCheck &&
                           poolOutcome !== 'botch' && (
                             <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">
                               {entry.isSoak
@@ -526,7 +537,39 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       </div>
 
                       {entry.isPoolRoll ? (
-                        entry.isRouseCheck ? (
+                        entry.isRemorseCheck ? (
+                          poolOutcome === 'success' && !entry.humanityLost ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-remorse-outcome' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.remorsePass')}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid={idx === 0 ? 'latest-remorse-outcome' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.remorseFail')}
+                            </span>
+                          )
+                        ) : entry.isFrenzyRoll ? (
+                          (isV5Pool ? v5Succeeded : poolOutcome === 'success') ? (
+                            <span
+                              data-testid={idx === 0 ? 'latest-frenzy-outcome' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.frenzyResisted')}
+                            </span>
+                          ) : (
+                            <span
+                              data-testid={idx === 0 ? 'latest-frenzy-outcome' : undefined}
+                              className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                            >
+                              {t.t('sidebar.roll.frenzyFailed')}
+                            </span>
+                          )
+                        ) : entry.isRouseCheck ? (
                           poolOutcome === 'success' ? (
                             <span
                               data-testid={idx === 0 ? 'latest-rouse-outcome' : undefined}
@@ -640,7 +683,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       }
                     />
 
-                    {(entry.willpowerUsed ||
+                    {(entry.isFrenzyRoll ||
+                      entry.isRemorseCheck ||
+                      entry.willpowerUsed ||
                       entry.isWillpowerReroll ||
                       entry.isBloodSurge ||
                       (entry.hungerDice ?? 0) > 0 ||
@@ -649,6 +694,24 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       (entry.canceledOnes ?? 0) > 0 ||
                       (entry.doubledTensCount ?? 0) > 0) && (
                       <div className="flex flex-wrap items-center gap-1 mb-1">
+                        {entry.isFrenzyRoll && (
+                          <span
+                            data-testid={idx === 0 ? 'latest-roll-frenzy-badge' : undefined}
+                            className="roll-badge-frenzy text-[9px] font-extrabold px-1.5 py-0.5 rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {entry.frenzyKind === 'rotschreck'
+                              ? t.t('sidebar.roll.rotschreckBadge')
+                              : t.t('sidebar.roll.frenzyBadge')}
+                          </span>
+                        )}
+                        {entry.isRemorseCheck && (
+                          <span
+                            data-testid={idx === 0 ? 'latest-roll-remorse-badge' : undefined}
+                            className="roll-badge-remorse text-[9px] font-extrabold px-1.5 py-0.5 rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.remorseBadge')}
+                          </span>
+                        )}
                         {entry.willpowerUsed && !entry.isWillpowerReroll && (
                           <span
                             data-testid="roll-log-wp-chip"
@@ -723,7 +786,11 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                           title={
                             canWillpowerReroll
                               ? t.t('sidebar.roll.rerollWillpower')
-                              : t.t('sidebar.roll.noWillpowerLeft')
+                              : t.t(
+                                  rulePreset === 'vampire-v5'
+                                    ? 'sidebar.roll.wpAllAggravated'
+                                    : 'sidebar.roll.noWillpowerLeft',
+                                )
                           }
                           onClick={() => onArmWillpowerReroll?.(entry.id)}
                           className="cyber-btn-outline min-h-[36px] w-full px-2.5 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center"
@@ -803,7 +870,8 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         !entry.rolls ||
                         entry.rolls.length === 0 ||
                         entry.rulePreset === 'vampire-v5' ||
-                        entry.isRouseCheck
+                        entry.isRouseCheck ||
+                        entry.isRemorseCheck
                       ) {
                         return (
                           <>

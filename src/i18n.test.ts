@@ -106,5 +106,10 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('pt-BR', 'xp.flatPerDotFormula', { cost: 3 })).toBe('3 XP / PONTO');
     expect(translate('en', 'xp.flatPerDotFormula', { cost: 3 })).toBe('3 XP / DOT');
     expect(translate('es', 'xp.flatPerDotFormula', { cost: 3 })).toBe('3 XP / PUNTO');
+
+    expect(translate('pt-BR', 'cards.vital.remorseCheckBtn', { pool: 2 })).toBe('TESTE DE REMORSO (2d10)');
+    expect(translate('en', 'cards.vital.wpImpairedBadge')).toBe('IMPAIRED (-2)');
+    expect(translate('es', 'cards.vital.frenzyBtn')).toBe('FRENESÍ / RÖTSCHRECK');
+    expect(translate('en', 'sidebar.roll.rotschreckBadge')).toBe('RÖTSCHRECK');
   });
 });

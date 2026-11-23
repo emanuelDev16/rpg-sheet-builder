@@ -1,5 +1,10 @@
 import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Trash2, X } from 'lucide-react';
+import { ChevronDown, Flame, Minus, Plus, Search, Trash2, X } from 'lucide-react';
+import {
+  FrenzyKind,
+  getV5BloodPotencyStats,
+  V20FrenzyVirtue,
+} from '../core/formula';
 import {
   AppMode,
   FieldKind,
@@ -9,6 +14,7 @@ import {
   SheetEvaluation,
   SheetField,
   SystemId,
+  V5WillpowerState,
   VirtuesState,
 } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
@@ -60,6 +66,7 @@ interface BentoCardProps {
   bloodSurgeBonus?: number;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
+  v5WillpowerState?: V5WillpowerState;
   evaluation: SheetEvaluation;
   t?: AppTranslations['cards'];
   onChangeValue: (fieldId: string, value: number | string | boolean) => void;
@@ -80,6 +87,17 @@ interface BentoCardProps {
     damageType: 'superficial' | 'aggravated',
     delta: number,
   ) => void;
+  onAdjustV5WillpowerDamage?: (
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
+  onAdjustHumanityStains?: (delta: number) => void;
+  onTriggerRemorseCheck?: () => void;
+  onTriggerFrenzyRoll?: (options: {
+    difficulty?: number;
+    virtue?: V20FrenzyVirtue;
+    kind?: FrenzyKind;
+  }) => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
   onAdjustBloodPool?: (delta: number) => void;
   onSetBloodPool?: (nextVal: number) => void;
@@ -153,6 +171,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   bloodSurgeBonus = 2,
   lastSoakTotal = null,
   canWillpowerSurge = false,
+  v5WillpowerState,
   evaluation,
   t = DEFAULT_CARDS_T,
   onChangeValue,
@@ -161,6 +180,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onCycleV20HealthCell,
   onAdjustV20HealthDamage,
   onAdjustV5HealthDamage,
+  onAdjustV5WillpowerDamage,
+  onAdjustHumanityStains,
+  onTriggerRemorseCheck,
+  onTriggerFrenzyRoll,
   onApplyV5SuperficialHalving,
   onAdjustBloodPool,
   onSetBloodPool,
@@ -193,12 +216,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const [customAdvName, setCustomAdvName] = useState('');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [frenzyOpen, setFrenzyOpen] = useState(false);
+  const [frenzyKind, setFrenzyKind] = useState<FrenzyKind>('frenzy');
+  const [frenzyV5Diff, setFrenzyV5Diff] = useState<number>(2);
+  const [frenzyV20Virtue, setFrenzyV20Virtue] = useState<'autocontrole' | 'instinto' | 'coragem'>(
+    'autocontrole',
+  );
+  const [frenzyV20Diff, setFrenzyV20Diff] = useState<number>(6);
   const [selectedTemplate, setSelectedTemplate] = useState<GuidedFieldTemplateId>(() =>
     inferDefaultTemplateForCard(card),
   );
   const labelInputRef = useRef<HTMLInputElement | null>(null);
   const catalogSearchRef = useRef<HTMLInputElement | null>(null);
   const advSearchId = useId();
+  const frenzyPanelId = useId();
 
   useEffect(() => {
     if (mode !== 'edicao') {
@@ -209,6 +240,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       setCustomPowerName('');
       setAdvGroupFilter('all');
       setCustomAdvName('');
+    }
+    if (mode !== 'jogo') {
+      setFrenzyOpen(false);
     }
   }, [mode]);
 
@@ -656,6 +690,17 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       mode === 'jogo' &&
       rulePreset === 'vampire-v5' &&
       (field.id === 'f_hunger' || field.key === 'hunger');
+    const showV5BloodPotencyPanel =
+      mode === 'jogo' &&
+      rulePreset === 'vampire-v5' &&
+      (field.id === 'f_blood_potency' || field.key.trim().toLowerCase() === 'blood_potency');
+    const bpComputed = evaluation.computedByFieldId[field.id];
+    const bpRawLevel = bpComputed?.ok
+      ? bpComputed.value
+      : typeof field.value === 'number'
+        ? field.value
+        : evaluation.variables.blood_potency ?? 1;
+    const bpStats = showV5BloodPotencyPanel ? getV5BloodPotencyStats(bpRawLevel) : null;
 
     return (
       <React.Fragment key={field.id}>
@@ -746,6 +791,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           bloodSurge={bloodSurge}
           lastSoakTotal={lastSoakTotal}
           canWillpowerSurge={canWillpowerSurge}
+          v5WillpowerState={v5WillpowerState}
           variables={evaluation.variables}
           computed={evaluation.computedByFieldId[field.id]}
           totalCargoWeight={evaluation.totalCargoWeight}
@@ -772,6 +818,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           onCycleV20HealthCell={onCycleV20HealthCell}
           onAdjustV20HealthDamage={onAdjustV20HealthDamage}
           onAdjustV5HealthDamage={onAdjustV5HealthDamage}
+          onAdjustV5WillpowerDamage={onAdjustV5WillpowerDamage}
+          onAdjustHumanityStains={onAdjustHumanityStains}
+          onTriggerRemorseCheck={onTriggerRemorseCheck}
           onApplyV5SuperficialHalving={onApplyV5SuperficialHalving}
           onRouseCheck={onRouseCheck}
           onSpendPowerBlood={
@@ -920,6 +969,73 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             </button>
           </div>
         )}
+
+        {showV5BloodPotencyPanel && bpStats && (
+          <div
+            data-testid="v5-blood-potency-panel"
+            className={`v5-bp-stats-panel p-2.5 flex flex-col gap-2 ${
+              useTwoColBody ? 'md:col-span-2' : ''
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono-tech text-[10px] font-extrabold tracking-wider uppercase text-[var(--accent-wine)]">
+                {t.t('cards.vital.bpPanelTitle', { level: bpStats.level })}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpSurge')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  +{bpStats.bloodSurgeDice}d10
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpMend')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  {bpStats.mendSuperficialPerRouse} SUP
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpPowerBonus')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  +{bpStats.powerBonusDice}d10
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpRouseReroll')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  {bpStats.rouseRerollMaxLevel > 0
+                    ? t.t('cards.vital.bpRouseRerollValue', { level: bpStats.rouseRerollMaxLevel })
+                    : t.t('cards.vital.bpRouseRerollNone')}
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpBaneSeverity')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  {bpStats.baneSeverity}
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpFeedingLabel')}
+                </span>
+                <span className="font-mono-tech text-[10px] font-bold leading-snug text-[var(--ink-secondary)]">
+                  {t.t(`cards.vital.bpFeeding.${bpStats.feedingPenaltyKey}`)}
+                </span>
+              </div>
+            </div>
+          </div>
+        )}
       </React.Fragment>
     );
   };
@@ -1061,6 +1177,279 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           </>
         ) : (
           fieldsToRender.map((field) => renderFieldEntry(field, false))
+        )}
+
+        {isWodCombatCard && mode === 'jogo' && officialEdition && (
+          <div data-testid="wod-frenzy-section" className="no-print print:hidden flex flex-col gap-2 pt-1">
+            <button
+              type="button"
+              data-testid="wod-frenzy-toggle-btn"
+              aria-expanded={frenzyOpen}
+              aria-controls={frenzyPanelId}
+              onClick={() => setFrenzyOpen((prev) => !prev)}
+              className="cyber-btn-outline min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-between gap-2 cursor-pointer"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
+                <span>{t.t('cards.vital.frenzyBtn')}</span>
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 shrink-0 ${frenzyOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
+            </button>
+
+            {frenzyOpen && (
+              <div
+                id={frenzyPanelId}
+                data-testid="wod-frenzy-panel"
+                className="wod-frenzy-panel p-2.5 flex flex-col gap-2.5"
+              >
+                {rulePreset === 'vampire-v5' ? (
+                  (() => {
+                    const wpFree =
+                      v5WillpowerState?.available ??
+                      Math.max(0, Math.round(evaluation.variables.willpower ?? 0));
+                    const humVal = Math.max(
+                      0,
+                      Math.min(10, Math.round(evaluation.variables.humanity ?? 7)),
+                    );
+                    const humBonus = Math.floor(humVal / 3);
+                    const v5Pool = Math.max(1, wpFree + humBonus);
+                    return (
+                      <>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              ['frenzy', t.t('cards.vital.frenzyKindFrenzy')],
+                              ['rotschreck', t.t('cards.vital.frenzyKindRotschreck')],
+                            ] as const
+                          ).map(([kindId, kindLabel]) => (
+                            <button
+                              key={kindId}
+                              type="button"
+                              data-testid={`wod-frenzy-kind-${kindId}`}
+                              aria-pressed={frenzyKind === kindId}
+                              onClick={() => setFrenzyKind(kindId)}
+                              className={`wod-frenzy-chip min-h-[36px] px-2 py-1 text-[10px] font-extrabold uppercase cursor-pointer ${
+                                frenzyKind === kindId ? 'is-active' : ''
+                              }`}
+                            >
+                              {kindLabel}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {(
+                            [
+                              [2, t.t('cards.vital.frenzyV5Diff2')],
+                              [3, t.t('cards.vital.frenzyV5Diff3')],
+                              [4, t.t('cards.vital.frenzyV5Diff4')],
+                            ] as const
+                          ).map(([diffVal, diffLabel]) => (
+                            <button
+                              key={diffVal}
+                              type="button"
+                              data-testid={`wod-frenzy-v5-diff-${diffVal}`}
+                              aria-pressed={frenzyV5Diff === diffVal}
+                              onClick={() => setFrenzyV5Diff(diffVal)}
+                              className={`wod-frenzy-chip min-h-[36px] flex-1 min-w-[110px] px-2 py-1 text-[10px] font-bold uppercase cursor-pointer ${
+                                frenzyV5Diff === diffVal ? 'is-active' : ''
+                              }`}
+                            >
+                              {diffLabel}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                            {t.t('cards.vital.frenzyDiffLabel')}
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-dec"
+                              aria-label={t.t('cards.vital.frenzyDiffDecAria')}
+                              disabled={frenzyV5Diff <= 1}
+                              onClick={() => setFrenzyV5Diff((d) => Math.max(1, d - 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                            >
+                              <Minus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                            <span
+                              data-testid="wod-frenzy-diff-value"
+                              className="font-mono-tech text-xs font-extrabold min-w-[28px] text-center tabular-nums"
+                            >
+                              {frenzyV5Diff}
+                            </span>
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-inc"
+                              aria-label={t.t('cards.vital.frenzyDiffIncAria')}
+                              disabled={frenzyV5Diff >= 10}
+                              onClick={() => setFrenzyV5Diff((d) => Math.min(10, d + 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                            >
+                              <Plus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="font-mono-tech text-[10px] font-semibold text-[var(--ink-secondary)]">
+                          {t.t('cards.vital.frenzyFormulaV5', { wp: wpFree, humBonus })}
+                        </p>
+
+                        <button
+                          type="button"
+                          data-testid="wod-frenzy-roll-btn"
+                          onClick={() =>
+                            onTriggerFrenzyRoll?.({
+                              difficulty: frenzyV5Diff,
+                              kind: frenzyKind,
+                            })
+                          }
+                          className="cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+                        >
+                          {t.t('cards.vital.frenzyRollBtn', { pool: v5Pool })}
+                        </button>
+                      </>
+                    );
+                  })()
+                ) : (
+                  (() => {
+                    const instVar =
+                      typeof evaluation.variables.instinct === 'number'
+                        ? evaluation.variables.instinct
+                        : typeof evaluation.variables.instinto === 'number'
+                          ? evaluation.variables.instinto
+                          : null;
+                    const selfControlVal =
+                      typeof evaluation.variables.self_control === 'number'
+                        ? evaluation.variables.self_control
+                        : virtues?.selfControl ?? 3;
+                    const courageVal =
+                      typeof evaluation.variables.courage === 'number'
+                        ? evaluation.variables.courage
+                        : virtues?.courage ?? 4;
+                    const rawVirtuePool =
+                      frenzyV20Virtue === 'coragem'
+                        ? courageVal
+                        : frenzyV20Virtue === 'instinto'
+                          ? instVar ?? selfControlVal
+                          : selfControlVal;
+                    const v20Pool = Math.max(1, Math.min(10, Math.round(rawVirtuePool)));
+                    const virtueOptions = [
+                      {
+                        id: 'autocontrole' as const,
+                        label: t.t('cards.vital.frenzyVirtueSelfControl'),
+                        kind: 'frenzy' as const,
+                      },
+                      {
+                        id: 'instinto' as const,
+                        label: t.t('cards.vital.frenzyVirtueInstinct'),
+                        kind: 'frenzy' as const,
+                      },
+                      {
+                        id: 'coragem' as const,
+                        label: t.t('cards.vital.frenzyVirtueCourage'),
+                        kind: 'rotschreck' as const,
+                      },
+                    ];
+                    const selectedVirtueLabel =
+                      virtueOptions.find((opt) => opt.id === frenzyV20Virtue)?.label ?? '';
+
+                    return (
+                      <>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                            {t.t('cards.vital.frenzyVirtueLabel')}
+                          </span>
+                          <div className="grid grid-cols-3 gap-1">
+                            {virtueOptions.map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                data-testid={`wod-frenzy-virtue-${opt.id}`}
+                                aria-pressed={frenzyV20Virtue === opt.id}
+                                onClick={() => {
+                                  setFrenzyV20Virtue(opt.id);
+                                  setFrenzyKind(opt.kind);
+                                }}
+                                className={`wod-frenzy-chip min-h-[36px] px-1.5 py-1 text-[9px] font-extrabold uppercase cursor-pointer truncate ${
+                                  frenzyV20Virtue === opt.id ? 'is-active' : ''
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                            {t.t('cards.vital.frenzyDiffLabel')} (TN)
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-dec"
+                              aria-label={t.t('cards.vital.frenzyDiffDecAria')}
+                              disabled={frenzyV20Diff <= 2}
+                              onClick={() => setFrenzyV20Diff((d) => Math.max(2, d - 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                            >
+                              <Minus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                            <span
+                              data-testid="wod-frenzy-diff-value"
+                              className="font-mono-tech text-xs font-extrabold min-w-[28px] text-center tabular-nums"
+                            >
+                              {frenzyV20Diff}
+                            </span>
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-inc"
+                              aria-label={t.t('cards.vital.frenzyDiffIncAria')}
+                              disabled={frenzyV20Diff >= 10}
+                              onClick={() => setFrenzyV20Diff((d) => Math.min(10, d + 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                            >
+                              <Plus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="font-mono-tech text-[10px] font-semibold text-[var(--ink-secondary)]">
+                          {t.t('cards.vital.frenzyFormulaV20', {
+                            virtue: selectedVirtueLabel,
+                            pool: v20Pool,
+                            diff: frenzyV20Diff,
+                          })}
+                        </p>
+
+                        <button
+                          type="button"
+                          data-testid="wod-frenzy-roll-btn"
+                          onClick={() =>
+                            onTriggerFrenzyRoll?.({
+                              virtue: frenzyV20Virtue,
+                              difficulty: frenzyV20Diff,
+                              kind: frenzyV20Virtue === 'coragem' ? 'rotschreck' : 'frenzy',
+                            })
+                          }
+                          className="cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+                        >
+                          {t.t('cards.vital.frenzyRollBtn', { pool: v20Pool })}
+                        </button>
+                      </>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {mode === 'edicao' && (fieldsToRender.length > 0 || composerOpen) && (

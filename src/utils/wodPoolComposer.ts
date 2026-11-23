@@ -44,6 +44,7 @@ export interface WodComposedPoolInput {
   secondaryTrait?: Pick<WodRollableTrait, 'label' | 'value'> | null;
   modifier?: number;
   woundPenalty?: number;
+  isWillpowerImpaired?: boolean;
   ignoreWoundPenalty?: boolean;
   bloodSurgeActive?: boolean;
   bloodSurgeBonus?: number;
@@ -65,6 +66,9 @@ export interface WodComposedPoolBreakdown {
   bloodSurgeBonus: number;
   rawPool: number;
   appliedWoundPenalty: number;
+  isWillpowerImpaired: boolean;
+  willpowerImpairedApplied: boolean;
+  impairedPenaltySource: 'none' | 'health' | 'willpower' | 'both';
   effectivePool: number;
   isIncapacitated: boolean;
   canRoll: boolean;
@@ -339,7 +343,25 @@ export function computeWodComposedPool(
     typeof input.woundPenalty === 'number' && Number.isFinite(input.woundPenalty)
       ? Math.min(0, Math.round(input.woundPenalty))
       : 0;
-  const appliedWoundPenalty = input.ignoreWoundPenalty ? 0 : rawWound;
+  const healthImpaired = rawWound < 0;
+  const isWillpowerImpaired = isV5 && Boolean(input.isWillpowerImpaired);
+  const impairedPenaltySource: 'none' | 'health' | 'willpower' | 'both' =
+    healthImpaired && isWillpowerImpaired
+      ? 'both'
+      : healthImpaired
+        ? 'health'
+        : isWillpowerImpaired
+          ? 'willpower'
+          : 'none';
+  const willpowerImpairedApplied =
+    !input.ignoreWoundPenalty && !healthImpaired && isWillpowerImpaired;
+  const appliedWoundPenalty = input.ignoreWoundPenalty
+    ? 0
+    : healthImpaired
+      ? rawWound
+      : isWillpowerImpaired
+        ? -2
+        : 0;
   const effectivePool = Math.max(0, Math.min(30, rawPool + appliedWoundPenalty));
 
   const specialty = !isV5 && Boolean(input.specialty);
@@ -395,6 +417,9 @@ export function computeWodComposedPool(
     bloodSurgeBonus,
     rawPool,
     appliedWoundPenalty,
+    isWillpowerImpaired,
+    willpowerImpairedApplied,
+    impairedPenaltySource,
     effectivePool,
     isIncapacitated,
     canRoll,

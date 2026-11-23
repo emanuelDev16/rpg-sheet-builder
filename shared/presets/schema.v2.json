@@ -79,6 +79,11 @@
     "bloodSurge": {
       "type": "boolean"
     },
+    "stains": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
     "virtues": {
       "type": "object",
       "additionalProperties": false,
@@ -153,6 +158,7 @@
         "damageTrack": { "type": "boolean" },
         "superficialDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "aggravatedDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "stains": { "type": "integer", "minimum": 0, "maximum": 10 },
         "bashingDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "lethalDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "soakDamageType": { "type": "string", "enum": ["bashing", "lethal", "aggravated"] },
@@ -252,6 +258,10 @@
         "isRouseCheck": { "type": "boolean" },
         "isBloodSurge": { "type": "boolean" },
         "isWillpowerReroll": { "type": "boolean" },
+        "isRemorseCheck": { "type": "boolean" },
+        "isFrenzyRoll": { "type": "boolean" },
+        "frenzyKind": { "type": "string", "enum": ["frenzy", "rotschreck"] },
+        "humanityLost": { "type": "boolean" },
         "rerolledIndices": {
           "type": "array",
           "items": { "type": "integer" }

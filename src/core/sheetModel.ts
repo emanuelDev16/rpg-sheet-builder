@@ -1,5 +1,6 @@
 import {
   evaluateFormula,
+  type FrenzyKind,
   getV5BloodSurgeBonus,
   normalizeRulePreset,
   parseWodPoolExpression,
@@ -153,6 +154,7 @@ export interface SheetField {
   lethalDamage?: number;
   superficialDamage?: number;
   aggravatedDamage?: number;
+  stains?: number;
   soakDamageType?: SoakDamageType;
   formula?: string;
   showPlus?: boolean;
@@ -216,6 +218,10 @@ export interface RollLogEntry {
   isRouseCheck?: boolean;
   isBloodSurge?: boolean;
   isWillpowerReroll?: boolean;
+  isRemorseCheck?: boolean;
+  isFrenzyRoll?: boolean;
+  frenzyKind?: FrenzyKind;
+  humanityLost?: boolean;
   rerolledIndices?: number[];
 }
 
@@ -267,6 +273,7 @@ export interface CharacterSheetState {
   customUseNewLevelBase?: boolean;
   bloodPool?: number;
   bloodSurge?: boolean;
+  stains?: number;
   virtues?: VirtuesState;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
@@ -2087,7 +2094,23 @@ export function updateFieldValue(
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
-      fields: card.fields.map((f) => (f.id === fieldId ? { ...f, value: nextValue } : f)),
+      fields: card.fields.map((f) => {
+        if (f.id !== fieldId) return f;
+        if (
+          (f.id === 'f_humanity' || f.key === 'humanity') &&
+          typeof nextValue === 'number' &&
+          Number.isFinite(nextValue) &&
+          typeof f.stains === 'number'
+        ) {
+          const clampedH = Math.max(0, Math.min(10, Math.round(nextValue)));
+          return {
+            ...f,
+            value: clampedH,
+            stains: Math.max(0, Math.min(10 - clampedH, Math.round(f.stains))),
+          };
+        }
+        return { ...f, value: nextValue };
+      }),
     })),
   });
   const withDerivedTracks =
@@ -2119,6 +2142,13 @@ export function adjustResourceValue(
             value: clamped,
             aggravatedDamage: nextAgg,
             superficialDamage: nextSup,
+          };
+        }
+        if ((f.id === 'f_humanity' || f.key === 'humanity') && typeof f.stains === 'number') {
+          return {
+            ...f,
+            value: clamped,
+            stains: Math.max(0, Math.min(10 - clamped, Math.round(f.stains))),
           };
         }
         return { ...f, value: clamped };
@@ -2602,36 +2632,305 @@ export function computeWoundPenalty(
   return -5;
 }
 
+export interface HumanityStainsResult {
+  humanity: number;
+  stains: number;
+  overflowStains: number;
+  isDegenerating: boolean;
+  remorsePool: number;
+}
+
+export function applyHumanityStains(
+  humanity: number,
+  currentStains: number,
+  delta: number,
+): HumanityStainsResult {
+  const clampedHumanity =
+    typeof humanity === 'number' && Number.isFinite(humanity)
+      ? Math.max(0, Math.min(10, Math.round(humanity)))
+      : 7;
+  const clampedCurrentStains =
+    typeof currentStains === 'number' && Number.isFinite(currentStains)
+      ? Math.max(0, Math.min(10, Math.round(currentStains)))
+      : 0;
+  const roundedDelta =
+    typeof delta === 'number' && Number.isFinite(delta) ? Math.round(delta) : 0;
+
+  const maxFitStains = Math.max(0, 10 - clampedHumanity);
+  const rawNextStains = Math.max(0, clampedCurrentStains + roundedDelta);
+  const overflowStains = Math.max(0, rawNextStains - maxFitStains);
+  const stains = Math.min(maxFitStains, rawNextStains);
+  const remorsePool = Math.max(1, 10 - clampedHumanity - stains);
+
+  return {
+    humanity: clampedHumanity,
+    stains,
+    overflowStains,
+    isDegenerating: overflowStains > 0,
+    remorsePool,
+  };
+}
+
+export function getSheetHumanityStains(sheet: CharacterSheetState): {
+  humanity: number;
+  stains: number;
+  remorsePool: number;
+} {
+  const humField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity');
+  const rawHumanity =
+    typeof humField?.value === 'number' && Number.isFinite(humField.value) ? humField.value : 7;
+  const humanity = Math.max(0, Math.min(10, Math.round(rawHumanity)));
+  const rawStains =
+    typeof humField?.stains === 'number' && Number.isFinite(humField.stains)
+      ? humField.stains
+      : typeof sheet.stains === 'number' && Number.isFinite(sheet.stains)
+        ? sheet.stains
+        : 0;
+  const stains = Math.max(0, Math.min(10 - humanity, Math.round(rawStains)));
+  const remorsePool = Math.max(1, 10 - humanity - stains);
+  return { humanity, stains, remorsePool };
+}
+
+export interface V5WillpowerState {
+  max: number;
+  superficial: number;
+  aggravated: number;
+  available: number;
+  isImpaired: boolean;
+  isFullyAggravated: boolean;
+}
+
+export function applyV5WillpowerDamage(
+  willpowerField: SheetField,
+  type: 'superficial' | 'aggravated',
+  amount: number,
+): SheetField {
+  const max = Math.max(1, Math.round(willpowerField.max ?? 5));
+  let nextAgg = Math.max(0, Math.min(max, Math.round(willpowerField.aggravatedDamage ?? 0)));
+  let nextSup = Math.max(
+    0,
+    Math.min(max - nextAgg, Math.round(willpowerField.superficialDamage ?? 0)),
+  );
+  const delta = typeof amount === 'number' && Number.isFinite(amount) ? Math.round(amount) : 0;
+
+  if (delta > 0) {
+    for (let step = 0; step < delta; step += 1) {
+      if (type === 'superficial') {
+        if (nextAgg + nextSup < max) {
+          nextSup += 1;
+        } else if (nextSup > 0) {
+          // Official V5 overflow: superficial on a full track converts 1 superficial into aggravated
+          nextSup -= 1;
+          nextAgg = Math.min(max, nextAgg + 1);
+        }
+      } else if (nextAgg < max) {
+        nextAgg += 1;
+        nextSup = Math.min(nextSup, max - nextAgg);
+      }
+    }
+  } else if (delta < 0) {
+    const steps = Math.abs(delta);
+    if (type === 'superficial') {
+      nextSup = Math.max(0, nextSup - steps);
+    } else {
+      nextAgg = Math.max(0, nextAgg - steps);
+    }
+  }
+
+  const available = Math.max(0, max - nextAgg - nextSup);
+  return {
+    ...willpowerField,
+    max,
+    value: available,
+    superficialDamage: nextSup,
+    aggravatedDamage: nextAgg,
+  };
+}
+
+export function healV5WillpowerDamage(
+  willpowerField: SheetField,
+  type: 'superficial' | 'aggravated',
+  amount = 1,
+): SheetField {
+  const healSteps =
+    typeof amount === 'number' && Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
+  return applyV5WillpowerDamage(willpowerField, type, -healSteps);
+}
+
+export function getV5WillpowerState(sheet: CharacterSheetState): V5WillpowerState {
+  const allFields = sheet.cards.flatMap((c) => c.fields);
+  const wpField = allFields.find(
+    (f) => f.id === 'f_willpower' || f.key.trim().toLowerCase() === 'willpower',
+  );
+  const composureField = allFields.find(
+    (f) => f.kind === 'number' && f.key.trim().toLowerCase() === 'composure',
+  );
+  const resolveField = allFields.find(
+    (f) => f.kind === 'number' && f.key.trim().toLowerCase() === 'resolve',
+  );
+  const hasDerivedAttrs =
+    resolveRulePreset(sheet) === 'vampire-v5' &&
+    typeof composureField?.value === 'number' &&
+    Number.isFinite(composureField.value) &&
+    typeof resolveField?.value === 'number' &&
+    Number.isFinite(resolveField.value);
+
+  const max = hasDerivedAttrs
+    ? Math.max(1, Math.round(composureField!.value as number) + Math.round(resolveField!.value as number))
+    : Math.max(1, Math.round(wpField?.max ?? 5));
+  const aggravated = Math.max(0, Math.min(max, Math.round(wpField?.aggravatedDamage ?? 0)));
+  const remainingAfterAgg = Math.max(0, max - aggravated);
+  const hasExplicitTrack =
+    typeof wpField?.superficialDamage === 'number' ||
+    typeof wpField?.aggravatedDamage === 'number';
+  const superficial = hasExplicitTrack
+    ? Math.max(0, Math.min(remainingAfterAgg, Math.round(wpField?.superficialDamage ?? 0)))
+    : Math.max(
+        0,
+        Math.min(
+          remainingAfterAgg,
+          max -
+            Math.round(
+              typeof wpField?.value === 'number' && Number.isFinite(wpField.value)
+                ? wpField.value
+                : max,
+            ),
+        ),
+      );
+  const available = Math.max(0, max - superficial - aggravated);
+  return {
+    max,
+    superficial,
+    aggravated,
+    available,
+    isImpaired: max > 0 && superficial + aggravated >= max,
+    isFullyAggravated: max > 0 && aggravated >= max,
+  };
+}
+
+export function adjustV5WillpowerDamage(
+  sheet: CharacterSheetState,
+  damageType: 'superficial' | 'aggravated',
+  delta: number,
+): CharacterSheetState {
+  const { max: derivedMax } = getV5WillpowerState(sheet);
+  const updated = touchSheetMetadata({
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if ((f.id !== 'f_willpower' && f.key !== 'willpower') || f.kind !== 'resource') return f;
+        const nextField = applyV5WillpowerDamage(
+          { ...f, max: f.max ?? derivedMax },
+          damageType,
+          delta,
+        );
+        return nextField;
+      }),
+    })),
+  });
+  return syncWillpowerToggleWithResource(updated);
+}
+
+export function adjustSheetHumanityStains(
+  sheet: CharacterSheetState,
+  delta: number,
+): {
+  sheet: CharacterSheetState;
+  humanity: number;
+  stains: number;
+  overflowStains: number;
+} {
+  const { humanity, stains } = getSheetHumanityStains(sheet);
+  const res = applyHumanityStains(humanity, stains, delta);
+  const hasHumField = sheet.cards
+    .flatMap((c) => c.fields)
+    .some((f) => f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity');
+
+  let nextSheet: CharacterSheetState = touchSheetMetadata({
+    ...sheet,
+    ...(sheet.stains !== undefined ? { stains: res.stains } : {}),
+    cards: hasHumField
+      ? sheet.cards.map((card) => ({
+          ...card,
+          fields: card.fields.map((f) =>
+            f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity'
+              ? { ...f, value: res.humanity, max: 10, stains: res.stains }
+              : f,
+          ),
+        }))
+      : sheet.cards,
+  });
+
+  if (res.overflowStains > 0 && resolveRulePreset(nextSheet) === 'vampire-v5') {
+    nextSheet = adjustV5WillpowerDamage(nextSheet, 'aggravated', res.overflowStains);
+  }
+
+  return {
+    sheet: nextSheet,
+    humanity: res.humanity,
+    stains: res.stains,
+    overflowStains: res.overflowStains,
+  };
+}
+
+export function applyRemorseOutcomeToSheet(
+  sheet: CharacterSheetState,
+  nextHumanity: number,
+): CharacterSheetState {
+  const clampedHumanity = Math.max(0, Math.min(10, Math.round(nextHumanity)));
+  return touchSheetMetadata({
+    ...sheet,
+    ...(sheet.stains !== undefined ? { stains: 0 } : {}),
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) =>
+        f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity'
+          ? { ...f, value: clampedHumanity, max: 10, stains: 0 }
+          : f,
+      ),
+    })),
+  });
+}
+
 export function applyV5WillpowerSuperficialDamage(
   sheet: CharacterSheetState,
   delta = 1,
 ): CharacterSheetState {
-  return touchSheetMetadata({
+  const updated = touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
       fields: card.fields.map((f) => {
         if ((f.id !== 'f_willpower' && f.key !== 'willpower') || f.kind !== 'resource') return f;
         const max = Math.max(1, f.max ?? 8);
+        const hasExplicitTrack =
+          typeof f.superficialDamage === 'number' || typeof f.aggravatedDamage === 'number';
         const currentVal = typeof f.value === 'number' ? Math.max(0, Math.min(max, f.value)) : max;
-        const currentSup = Math.max(0, Math.min(max, f.superficialDamage ?? 0));
-        if (delta > 0) {
-          const spent = Math.min(currentVal, delta);
+        if (!hasExplicitTrack && currentVal < max) {
+          const currentSup = Math.max(0, Math.min(max, f.superficialDamage ?? 0));
+          if (delta > 0) {
+            const spent = Math.min(currentVal, delta);
+            return {
+              ...f,
+              value: Math.max(0, currentVal - spent),
+              superficialDamage: Math.min(max, currentSup + spent),
+            };
+          }
+          const healed = Math.min(currentSup, Math.abs(delta));
           return {
             ...f,
-            value: Math.max(0, currentVal - spent),
-            superficialDamage: Math.min(max, currentSup + spent),
+            value: Math.min(max, currentVal + healed),
+            superficialDamage: Math.max(0, currentSup - healed),
           };
         }
-        const healed = Math.min(currentSup, Math.abs(delta));
-        return {
-          ...f,
-          value: Math.min(max, currentVal + healed),
-          superficialDamage: Math.max(0, currentSup - healed),
-        };
+        return applyV5WillpowerDamage(f, 'superficial', delta);
       }),
     })),
   });
+  return syncWillpowerToggleWithResource(updated);
 }
 
 export function applyRouseCheckHunger(
@@ -2723,13 +3022,50 @@ export function migrateLegacyWodSheet(
         isV5 &&
         field.kind === 'resource' &&
         (field.id === 'f_willpower' || fk === 'willpower') &&
-        !field.maxFormula
+        (!field.maxFormula ||
+          field.superficialDamage === undefined ||
+          field.aggravatedDamage === undefined)
       ) {
         cardChanged = true;
+        const wpMax = Math.max(1, Math.round(field.max ?? 5));
+        const wpAgg = Math.max(0, Math.min(wpMax, Math.round(field.aggravatedDamage ?? 0)));
+        const wpVal =
+          typeof field.value === 'number' && Number.isFinite(field.value)
+            ? Math.max(0, Math.min(wpMax, Math.round(field.value)))
+            : wpMax - wpAgg;
+        const wpSup =
+          typeof field.superficialDamage === 'number'
+            ? Math.max(0, Math.min(wpMax - wpAgg, Math.round(field.superficialDamage)))
+            : Math.max(0, Math.min(wpMax - wpAgg, wpMax - wpAgg - wpVal));
         return {
           ...field,
-          maxFormula: 'composure + resolve',
+          maxFormula: field.maxFormula || 'composure + resolve',
+          superficialDamage: wpSup,
+          aggravatedDamage: wpAgg,
         };
+      }
+      if (
+        card.id === 'card_combate' &&
+        isV5 &&
+        field.kind === 'resource' &&
+        (field.id === 'f_humanity' || fk === 'humanity')
+      ) {
+        const humVal =
+          typeof field.value === 'number' && Number.isFinite(field.value)
+            ? Math.max(0, Math.min(10, Math.round(field.value)))
+            : 7;
+        const rawStains = field.stains ?? withMeta.stains;
+        const clampedStains =
+          typeof rawStains === 'number' && Number.isFinite(rawStains)
+            ? Math.max(0, Math.min(10 - humVal, Math.round(rawStains)))
+            : 0;
+        if (field.stains !== clampedStains || field.stains === undefined) {
+          cardChanged = true;
+          return {
+            ...field,
+            stains: clampedStains,
+          };
+        }
       }
       if (
         card.id === 'card_atributos' &&
@@ -3301,7 +3637,7 @@ function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
           return { ...f, value: 1 };
         }
         if (f.id === 'f_humanity' || k === 'humanity') {
-          return { ...f, value: 7 };
+          return { ...f, value: 7, stains: 0 };
         }
         return f;
       });
@@ -3720,6 +4056,7 @@ const ROOT_SHEET_KEYS = new Set([
   'customUseNewLevelBase',
   'bloodPool',
   'bloodSurge',
+  'stains',
   'virtues',
   'tabs',
   'cards',
@@ -3744,6 +4081,7 @@ const FIELD_KEYS = new Set([
   'lethalDamage',
   'superficialDamage',
   'aggravatedDamage',
+  'stains',
   'soakDamageType',
   'formula',
   'showPlus',
@@ -3799,6 +4137,10 @@ const ROLL_LOG_KEYS = new Set([
   'isRouseCheck',
   'isBloodSurge',
   'isWillpowerReroll',
+  'isRemorseCheck',
+  'isFrenzyRoll',
+  'frenzyKind',
+  'humanityLost',
   'rerolledIndices',
 ]);
 const XP_STATE_KEYS = new Set([
@@ -3912,6 +4254,12 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
   }
   if (data.bloodSurge !== undefined && typeof data.bloodSurge !== 'boolean') {
     errors.push('$.bloodSurge: deve ser booleano.');
+  }
+  if (
+    data.stains !== undefined &&
+    (typeof data.stains !== 'number' || !Number.isInteger(data.stains) || data.stains < 0 || data.stains > 10)
+  ) {
+    errors.push('$.stains: deve ser inteiro entre 0 e 10.');
   }
   if (data.virtues !== undefined) {
     if (checkPlainObject(data.virtues, '$.virtues', new Set(['conscience', 'selfControl', 'courage']), errors)) {
@@ -4043,6 +4391,33 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         ) {
           errors.push(`${fPath}.xpCategory: categoria XP inválida "${String(field.xpCategory)}".`);
         }
+        if (
+          field.superficialDamage !== undefined &&
+          (typeof field.superficialDamage !== 'number' ||
+            !Number.isInteger(field.superficialDamage) ||
+            field.superficialDamage < 0 ||
+            field.superficialDamage > 100000)
+        ) {
+          errors.push(`${fPath}.superficialDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.aggravatedDamage !== undefined &&
+          (typeof field.aggravatedDamage !== 'number' ||
+            !Number.isInteger(field.aggravatedDamage) ||
+            field.aggravatedDamage < 0 ||
+            field.aggravatedDamage > 100000)
+        ) {
+          errors.push(`${fPath}.aggravatedDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.stains !== undefined &&
+          (typeof field.stains !== 'number' ||
+            !Number.isInteger(field.stains) ||
+            field.stains < 0 ||
+            field.stains > 10)
+        ) {
+          errors.push(`${fPath}.stains: deve ser inteiro entre 0 e 10.`);
+        }
         if (field.rows !== undefined) {
           if (!Array.isArray(field.rows) || field.rows.length > 200) {
             errors.push(`${fPath}.rows: esperado array com até 200 linhas.`);
@@ -4081,6 +4456,22 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         }
         if (typeof log.formula !== 'string' || typeof log.breakdown !== 'string') {
           errors.push(`${lPath}: formula e breakdown obrigatórios.`);
+        }
+        if (log.isRemorseCheck !== undefined && typeof log.isRemorseCheck !== 'boolean') {
+          errors.push(`${lPath}.isRemorseCheck: deve ser booleano.`);
+        }
+        if (log.isFrenzyRoll !== undefined && typeof log.isFrenzyRoll !== 'boolean') {
+          errors.push(`${lPath}.isFrenzyRoll: deve ser booleano.`);
+        }
+        if (
+          log.frenzyKind !== undefined &&
+          log.frenzyKind !== 'frenzy' &&
+          log.frenzyKind !== 'rotschreck'
+        ) {
+          errors.push(`${lPath}.frenzyKind: deve ser "frenzy" ou "rotschreck".`);
+        }
+        if (log.humanityLost !== undefined && typeof log.humanityLost !== 'boolean') {
+          errors.push(`${lPath}.humanityLost: deve ser booleano.`);
         }
       });
     }
