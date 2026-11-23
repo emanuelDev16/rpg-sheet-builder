@@ -753,7 +753,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                           aria-label={`${vLabel} -`}
                           disabled={val <= 1}
                           onClick={() => onUpdateVirtue?.(vKey, val - 1)}
-                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                         >
                           -
                         </button>
@@ -769,7 +769,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                           aria-label={`${vLabel} +`}
                           disabled={val >= 5}
                           onClick={() => onUpdateVirtue?.(vKey, val + 1)}
-                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                         >
                           +
                         </button>
@@ -859,7 +859,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   data-testid="v20-spend-blood-btn"
                   disabled={bloodPool.current <= 0}
                   onClick={() => onAdjustBloodPool?.(-1)}
-                  className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer"
                 >
                   {t.t('cards.vital.spendBloodBtn')}
                 </button>
@@ -877,7 +877,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   aria-label={`${t.t('cards.vital.bloodPoolLabel')} +`}
                   disabled={bloodPool.current >= bloodPool.max}
                   onClick={() => onAdjustBloodPool?.(1)}
-                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-40"
+                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   +
                 </button>
@@ -1047,7 +1047,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   };
 
   return (
-    <section className={`bento-card ${spanClass}`} aria-label={card.title}>
+    <section className={`bento-card ${spanClass}`} data-card-id={card.id} aria-label={card.title}>
       <header className="bento-card-header">
         {mode === 'edicao' ? (
           <>
@@ -1129,12 +1129,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       </header>
 
       <div
-        className={`bento-card-body p-4 flex-1 ${
+        className={`bento-card-body flex-1 ${
           useTwoColBody
             ? `grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 ${
                 consumedRollIds.size > 0 ? 'items-start' : 'items-center'
               }`
-            : 'flex flex-col gap-3'
+            : 'flex flex-col'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
         {fieldsToRender.length === 0 && (
@@ -1176,7 +1176,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               </div>
             </div>
             {wodAttributeGroups.trailingFields.length > 0 && (
-              <div className="pt-2 border-t border-dashed border-[var(--border-ink)]/35 flex flex-col gap-2">
+              <div className="wod-attr-trailing pt-2 border-t border-dashed border-[var(--border-ink)]/35 flex flex-col gap-2">
                 {wodAttributeGroups.trailingFields.map((field) => renderFieldEntry(field, false))}
               </div>
             )}
@@ -1280,7 +1280,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                               aria-label={t.t('cards.vital.frenzyDiffDecAria')}
                               disabled={frenzyV5Diff <= 1}
                               onClick={() => setFrenzyV5Diff((d) => Math.max(1, d - 1))}
-                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
                             >
                               <Minus className="w-3 h-3" aria-hidden="true" />
                             </button>
@@ -1296,7 +1296,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                               aria-label={t.t('cards.vital.frenzyDiffIncAria')}
                               disabled={frenzyV5Diff >= 10}
                               onClick={() => setFrenzyV5Diff((d) => Math.min(10, d + 1))}
-                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
                             >
                               <Plus className="w-3 h-3" aria-hidden="true" />
                             </button>
@@ -1404,7 +1404,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                               aria-label={t.t('cards.vital.frenzyDiffDecAria')}
                               disabled={frenzyV20Diff <= 2}
                               onClick={() => setFrenzyV20Diff((d) => Math.max(2, d - 1))}
-                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
                             >
                               <Minus className="w-3 h-3" aria-hidden="true" />
                             </button>
@@ -1420,7 +1420,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                               aria-label={t.t('cards.vital.frenzyDiffIncAria')}
                               disabled={frenzyV20Diff >= 10}
                               onClick={() => setFrenzyV20Diff((d) => Math.min(10, d + 1))}
-                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer disabled:opacity-35"
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
                             >
                               <Plus className="w-3 h-3" aria-hidden="true" />
                             </button>
@@ -1861,7 +1861,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                             data-testid={`custom-power-add-${card.id}`}
                             disabled={!customPowerName.trim()}
                             onClick={handleAddCustomPower}
-                            className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                            className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
                           >
                             {t.t('cards.disciplines.customAddBtn')}
                           </button>
