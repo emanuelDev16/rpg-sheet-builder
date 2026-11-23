@@ -36,11 +36,8 @@ jobs:
       - name: Verificar tipagem TypeScript
         run: npm run lint
 
-      - name: Executar testes unitários (Vitest)
-        run: npm run test:vitest
-
-      - name: Executar testes unitários (node:test)
-        run: npm run test:node
+      - name: Executar suíte completa de testes (Vitest + node:test)
+        run: npm run test:all
 
       - name: Gerar build estático (Vite)
         run: npx vite build --base=/rpg-sheet-builder/

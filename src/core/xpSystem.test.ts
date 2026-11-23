@@ -6,6 +6,7 @@ import {
   createDnd5ePreset,
   createGenericD20Preset,
   createNewSheetForSystem,
+  createWorldOfDarknessV5Sheet,
   evaluateSheet,
   updateFieldValue,
   validateSheetPayload,
@@ -18,10 +19,12 @@ import {
   buyCatalogSkillWithXp,
   buySpecialtyWithXp,
   calculateUpgradeCost,
+  calculateUpgradeCostDetails,
   extractAcquirableTraits,
   extractAllTraits,
   getAvailableXp,
   getCheapestBlockedUpgrade,
+  getCostRulesSummary,
   getPossibleUpgrades,
   resetXpPricingConfig,
   setTraitDisciplineAffinity,
@@ -62,7 +65,31 @@ test('calculateUpgradeCost applies Vampire V5 costs and blocks Willpower and Hum
   // Out-of-Clan Discipline 0 -> 1 = 7 XP, 2 -> 3 = 21 XP
   assert.equal(calculateUpgradeCost(0, 'discipline', 'vampire-v5', { isOutOfClan: true }), 7);
   assert.equal(calculateUpgradeCost(2, 'discipline', 'vampire-v5', { isOutOfClan: true }), 21);
-  // Advantages / Virtues = (current + 1) * 3
+  // Advantages in V5 cost flat 3 XP per dot at every rating (0->1, 1->2, 2->3, 3->4, 4->5)
+  for (const level of [0, 1, 2, 3, 4]) {
+    assert.equal(calculateUpgradeCost(level, 'virtue', 'vampire-v5', { virtueSubtype: 'advantage' }), 3);
+  }
+  const v5AdvPt = calculateUpgradeCostDetails(2, 'virtue', 'vampire-v5', 'pt-BR', {
+    virtueSubtype: 'advantage',
+  });
+  assert.equal(v5AdvPt.cost, 3);
+  assert.equal(v5AdvPt.formulaLabel, '3 XP / PONTO');
+  assert.equal(
+    calculateUpgradeCostDetails(4, 'virtue', 'vampire-v5', 'en', { virtueSubtype: 'advantage' }).formulaLabel,
+    '3 XP / DOT',
+  );
+  assert.equal(
+    calculateUpgradeCostDetails(1, 'virtue', 'vampire-v5', 'es', { virtueSubtype: 'advantage' }).formulaLabel,
+    '3 XP / PUNTO',
+  );
+
+  // V5 cost rules summary reflects 3 XP per dot for Advantages
+  const v5Sheet = createWorldOfDarknessV5Sheet();
+  assert.match(getCostRulesSummary(v5Sheet, 'pt-BR').join(' '), /3 XP\/PONTO/);
+  assert.match(getCostRulesSummary(v5Sheet, 'en').join(' '), /3 XP\/DOT/);
+  assert.match(getCostRulesSummary(v5Sheet, 'es').join(' '), /3 XP\/PUNTO/);
+
+  // Other non-advantage virtue traits follow (current + 1) * 3
   assert.equal(calculateUpgradeCost(2, 'virtue', 'vampire-v5', { virtueSubtype: 'virtue' }), 9);
 
   // Willpower & Humanity return null in V5
@@ -693,15 +720,26 @@ test('buyCatalogAdvantageWithXp acquires official V20 & V5 advantages cleanly, p
   const boughtLore = buyCatalogAdvantageWithXp(v5, 'loresheet', '22:42', 'xp_adv_lore', 'en');
   assert.equal(boughtLore.ok, true);
   assert.equal(boughtLore.cost, 3);
+  assert.equal(getAvailableXp(boughtLore.sheet.xp), 9);
   assert.equal(validateSheetPayload(boughtLore.sheet).valid, true);
 
-  // Upgraded 1 -> 2 costs 2 * 3 = 6 XP in V5
+  // RAW V5 Advantages cost flat 3 XP per dot: 1 -> 2 = 3 XP, 2 -> 3 = 3 XP
   const upgLore = upgradeTraitWithXp(boughtLore.sheet, boughtLore.fieldId!, '22:43', 'xp_adv_lore_2', 'en');
   assert.equal(upgLore.ok, true);
-  assert.equal(upgLore.trait?.cost, 6);
-  assert.equal(getAvailableXp(upgLore.sheet.xp), 3);
+  assert.equal(upgLore.trait?.cost, 3);
+  assert.equal(upgLore.trait?.formulaLabel, '3 XP / DOT');
+  assert.equal(getAvailableXp(upgLore.sheet.xp), 6);
 
-  const undoUpgrade = undoLastUpgrade(upgLore.sheet, 'en');
+  const upgLore2 = upgradeTraitWithXp(upgLore.sheet, boughtLore.fieldId!, '22:44', 'xp_adv_lore_3', 'en');
+  assert.equal(upgLore2.ok, true);
+  assert.equal(upgLore2.trait?.cost, 3);
+  assert.equal(getAvailableXp(upgLore2.sheet.xp), 3);
+
+  const undoUpgrade2 = undoLastUpgrade(upgLore2.sheet, 'en');
+  assert.equal(undoUpgrade2.ok, true);
+  assert.equal(getAvailableXp(undoUpgrade2.sheet.xp), 6);
+
+  const undoUpgrade = undoLastUpgrade(undoUpgrade2.sheet, 'en');
   assert.equal(undoUpgrade.ok, true);
   assert.equal(getAvailableXp(undoUpgrade.sheet.xp), 9);
 
@@ -709,6 +747,27 @@ test('buyCatalogAdvantageWithXp acquires official V20 & V5 advantages cleanly, p
   assert.equal(undoAcquire.ok, true);
   assert.equal(getAvailableXp(undoAcquire.sheet.xp), 12);
   assert.equal(undoAcquire.sheet.cards.some((c) => c.id === 'card_backgrounds'), false);
+
+  // Historical ledger entries keep refunding exact xpSpent (e.g. legacy 6 XP purchase)
+  const legacyPurchasedSheet = {
+    ...upgLore.sheet,
+    xp: {
+      totalEarned: 12,
+      spent: 9,
+      ledger: [
+        {
+          ...upgLore.sheet.xp!.ledger[0],
+          delta: -6,
+          xpSpent: 6,
+        },
+        ...upgLore.sheet.xp!.ledger.slice(1),
+      ],
+    },
+  };
+  const undoLegacy = undoLastUpgrade(legacyPurchasedSheet, 'en');
+  assert.equal(undoLegacy.ok, true);
+  assert.equal(undoLegacy.sheet.xp?.spent, 3);
+  assert.equal(getAvailableXp(undoLegacy.sheet.xp), 9);
 });
 
 test('V5 Blood Potency lists with New Level x 10 XP (1->2 = 20 XP, max 10), updates evaluated variables, and Undo reverts', () => {
@@ -756,4 +815,116 @@ test('extractAcquirableTraits returns empty for non-WoD and custom preset sheets
 
   const customWod = setXpRulePreset(createDefaultSheet(), 'custom');
   assert.deepEqual(extractAcquirableTraits(customWod), []);
+});
+
+test('V5 XP upgrades and Undo sync derived Health (Stamina + 3) and Willpower (Composure + Resolve) without losing marked damage', () => {
+  let v5 = createWorldOfDarknessV5Sheet(); // starts with 15 XP
+  resetXpPricingConfig(v5);
+  v5 = updateFieldValue(v5, 'f_stamina', 2);
+  v5 = updateFieldValue(v5, 'f_composure', 2);
+  v5 = updateFieldValue(v5, 'f_resolve', 2);
+  v5 = awardXp(v5, 60, 'Chronicle Milestone', '23:00', 'xp_v5_derived').sheet; // 75 XP available
+
+  // Mark superficial & aggravated damage on Health (max 5) and superficial damage on Willpower (max 4)
+  v5 = {
+    ...v5,
+    cards: v5.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id === 'f_health') {
+          return { ...f, superficialDamage: 2, aggravatedDamage: 1, value: 2 };
+        }
+        if (f.id === 'f_willpower') {
+          return { ...f, superficialDamage: 1, aggravatedDamage: 0, value: 3 };
+        }
+        return f;
+      }),
+    })),
+  };
+
+  const getField = (sheet: typeof v5, id: string) =>
+    sheet.cards.flatMap((c) => c.fields).find((f) => f.id === id);
+
+  assert.equal(getField(v5, 'f_health')?.max, 5);
+  assert.equal(getField(v5, 'f_willpower')?.max, 4);
+
+  // 1. Upgrade Stamina 2 -> 3 (-15 XP) => Health max 5 -> 6, damage preserved, unmarked boxes 2 -> 3
+  const upgSta = upgradeTraitWithXp(v5, 'f_stamina', '23:01', 'xp_sta_1', 'pt-BR');
+  assert.equal(upgSta.ok, true);
+  assert.equal(upgSta.trait?.cost, 15);
+  assert.equal(getAvailableXp(upgSta.sheet.xp), 60);
+  assert.equal(getField(upgSta.sheet, 'f_stamina')?.value, 3);
+  assert.equal(getField(upgSta.sheet, 'f_health')?.max, 6);
+  assert.equal(getField(upgSta.sheet, 'f_health')?.superficialDamage, 2);
+  assert.equal(getField(upgSta.sheet, 'f_health')?.aggravatedDamage, 1);
+  assert.equal(getField(upgSta.sheet, 'f_health')?.value, 3);
+  assert.equal(evaluateSheet(upgSta.sheet).variables.health_max, 6);
+
+  // Undo Stamina reverts Stamina 3 -> 2, Health max 6 -> 5, damage preserved, refunds 15 XP
+  const undoSta = undoLastUpgrade(upgSta.sheet, 'pt-BR');
+  assert.equal(undoSta.ok, true);
+  assert.equal(getAvailableXp(undoSta.sheet.xp), 75);
+  assert.equal(getField(undoSta.sheet, 'f_stamina')?.value, 2);
+  assert.equal(getField(undoSta.sheet, 'f_health')?.max, 5);
+  assert.equal(getField(undoSta.sheet, 'f_health')?.superficialDamage, 2);
+  assert.equal(getField(undoSta.sheet, 'f_health')?.aggravatedDamage, 1);
+  assert.equal(getField(undoSta.sheet, 'f_health')?.value, 2);
+  assert.equal(evaluateSheet(undoSta.sheet).variables.health_max, 5);
+
+  // 2. Clamping check: if player marks all 6 boxes of Health after buying Stamina, Undo safely clamps damage to 5
+  const upgStaClamp = upgradeTraitWithXp(v5, 'f_stamina', '23:02', 'xp_sta_2', 'pt-BR');
+  assert.equal(upgStaClamp.ok, true);
+  const fullDmgSheet = {
+    ...upgStaClamp.sheet,
+    cards: upgStaClamp.sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) =>
+        f.id === 'f_health' ? { ...f, superficialDamage: 6, aggravatedDamage: 0, value: 0 } : f,
+      ),
+    })),
+  };
+  const undoStaClamped = undoLastUpgrade(fullDmgSheet, 'pt-BR');
+  assert.equal(undoStaClamped.ok, true);
+  assert.equal(getField(undoStaClamped.sheet, 'f_health')?.max, 5);
+  assert.equal(getField(undoStaClamped.sheet, 'f_health')?.superficialDamage, 5);
+  assert.equal(getField(undoStaClamped.sheet, 'f_health')?.value, 0);
+
+  // 3. Upgrade Composure 2 -> 3 (-15 XP) and Resolve 2 -> 3 (-15 XP) => Willpower max 4 -> 5 -> 6
+  const upgComp = upgradeTraitWithXp(v5, 'f_composure', '23:03', 'xp_comp_1', 'en');
+  assert.equal(upgComp.ok, true);
+  assert.equal(upgComp.trait?.cost, 15);
+  assert.equal(getAvailableXp(upgComp.sheet.xp), 60);
+  assert.equal(getField(upgComp.sheet, 'f_composure')?.value, 3);
+  assert.equal(getField(upgComp.sheet, 'f_willpower')?.max, 5);
+  assert.equal(getField(upgComp.sheet, 'f_willpower')?.superficialDamage, 1);
+  assert.equal(getField(upgComp.sheet, 'f_willpower')?.value, 4);
+  assert.equal(evaluateSheet(upgComp.sheet).variables.willpower_max, 5);
+
+  const upgRes = upgradeTraitWithXp(upgComp.sheet, 'f_resolve', '23:04', 'xp_res_1', 'en');
+  assert.equal(upgRes.ok, true);
+  assert.equal(upgRes.trait?.cost, 15);
+  assert.equal(getAvailableXp(upgRes.sheet.xp), 45);
+  assert.equal(getField(upgRes.sheet, 'f_resolve')?.value, 3);
+  assert.equal(getField(upgRes.sheet, 'f_willpower')?.max, 6);
+  assert.equal(getField(upgRes.sheet, 'f_willpower')?.superficialDamage, 1);
+  assert.equal(getField(upgRes.sheet, 'f_willpower')?.value, 5);
+  assert.equal(evaluateSheet(upgRes.sheet).variables.willpower_max, 6);
+
+  // Undo Resolve and Composure reverts Willpower max 6 -> 5 -> 4 and refunds exact XP
+  const undoRes = undoLastUpgrade(upgRes.sheet, 'en');
+  assert.equal(undoRes.ok, true);
+  assert.equal(getAvailableXp(undoRes.sheet.xp), 60);
+  assert.equal(getField(undoRes.sheet, 'f_resolve')?.value, 2);
+  assert.equal(getField(undoRes.sheet, 'f_willpower')?.max, 5);
+  assert.equal(getField(undoRes.sheet, 'f_willpower')?.superficialDamage, 1);
+  assert.equal(getField(undoRes.sheet, 'f_willpower')?.value, 4);
+
+  const undoComp = undoLastUpgrade(undoRes.sheet, 'en');
+  assert.equal(undoComp.ok, true);
+  assert.equal(getAvailableXp(undoComp.sheet.xp), 75);
+  assert.equal(getField(undoComp.sheet, 'f_composure')?.value, 2);
+  assert.equal(getField(undoComp.sheet, 'f_willpower')?.max, 4);
+  assert.equal(getField(undoComp.sheet, 'f_willpower')?.superficialDamage, 1);
+  assert.equal(getField(undoComp.sheet, 'f_willpower')?.value, 3);
+  assert.equal(evaluateSheet(undoComp.sheet).variables.willpower_max, 4);
 });
