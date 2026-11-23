@@ -20,6 +20,7 @@ import {
   SheetCard,
   SheetField,
   SystemId,
+  V5WillpowerState,
 } from '../core/sheetModel';
 import {
   computeRemainingDamageAfterSoak,
@@ -436,6 +437,7 @@ interface FieldPrimitiveProps {
   bloodSurge?: boolean;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
+  v5WillpowerState?: V5WillpowerState;
   variables: VariableMap;
   computed?: ComputedFieldInfo;
   totalCargoWeight: number;
@@ -464,6 +466,12 @@ interface FieldPrimitiveProps {
     damageType: 'superficial' | 'aggravated',
     delta: number,
   ) => void;
+  onAdjustV5WillpowerDamage?: (
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
+  onAdjustHumanityStains?: (delta: number) => void;
+  onTriggerRemorseCheck?: () => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
   onRouseCheck?: (options?: { label?: string; count?: number }) => void;
   onSpendPowerBlood?: (cost: number, powerName: string) => void;
@@ -491,6 +499,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   bloodSurge = false,
   lastSoakTotal = null,
   canWillpowerSurge = false,
+  v5WillpowerState,
   variables,
   computed,
   totalCargoWeight,
@@ -507,6 +516,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onCycleV20HealthCell,
   onAdjustV20HealthDamage,
   onAdjustV5HealthDamage,
+  onAdjustV5WillpowerDamage,
+  onAdjustHumanityStains,
+  onTriggerRemorseCheck,
   onApplyV5SuperficialHalving,
   onRouseCheck,
   onSpendPowerBlood,
@@ -1337,11 +1349,315 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       );
     }
 
-    // 3B. Recurso Padrão
+    // 3B. Recurso Padrão (com trilhas especiais V5 de Humanidade+Manchas e Força de Vontade)
     if (field.kind === 'resource') {
+      const isHumanityField = field.id === 'f_humanity' || field.key === 'humanity';
+      if (isHumanityField && rulePreset === 'vampire-v5') {
+        const humanity = Math.max(
+          0,
+          Math.min(10, Math.round(typeof field.value === 'number' ? field.value : 7)),
+        );
+        const stains = Math.max(
+          0,
+          Math.min(10 - humanity, Math.round(field.stains ?? 0)),
+        );
+        const remorsePool = Math.max(1, 10 - humanity - stains);
+        const isTrackFull = humanity + stains >= 10;
+        const boxes = Array.from({ length: 10 }, (_, idx) => {
+          if (idx < humanity) return 'humanity' as const;
+          if (idx >= 10 - stains) return 'stain' as const;
+          return 'empty' as const;
+        });
+
+        return (
+          <div
+            data-testid={`v5-humanity-track-${field.id}`}
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2 min-w-0 max-w-full overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                  {field.label}
+                </span>
+                {isTrackFull && (
+                  <span
+                    data-testid="humanity-degeneration-hint"
+                    className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase"
+                  >
+                    {t.t('cards.vital.degenerationHint')}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-testid="humanity-dec"
+                  aria-label={t.t('cards.decreaseAria', { label: field.label })}
+                  disabled={humanity <= 0}
+                  onClick={() => onAdjustResource(field.id, -1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                >
+                  -
+                </button>
+                <span
+                  data-testid="humanity-value"
+                  className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums"
+                  aria-live="polite"
+                >
+                  <AnimatedCounter value={humanity} /> / 10
+                </span>
+                <button
+                  type="button"
+                  data-testid="humanity-inc"
+                  aria-label={t.t('cards.increaseAria', { label: field.label })}
+                  disabled={humanity >= 10}
+                  onClick={() => onAdjustResource(field.id, 1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div
+              data-testid="v5-humanity-track"
+              className="seg-meter-track flex items-center gap-[3px]"
+              role="meter"
+              aria-label={t.t('cards.vital.humanityStainsTrackAria')}
+              aria-valuemin={0}
+              aria-valuemax={10}
+              aria-valuenow={humanity}
+            >
+              {boxes.map((boxState, idx) => (
+                <div
+                  key={idx}
+                  aria-hidden="true"
+                  className={`v5-humanity-box ${
+                    boxState === 'humanity'
+                      ? 'is-humanity'
+                      : boxState === 'stain'
+                        ? 'is-stain'
+                        : 'is-empty'
+                  }`}
+                >
+                  {boxState === 'humanity' ? '●' : boxState === 'stain' ? '/' : ''}
+                </div>
+              ))}
+            </div>
+
+            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
+              <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase">
+                {t.t('cards.vital.stainsLabel')}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-testid="humanity-stains-dec"
+                  aria-label={t.t('cards.vital.stainsDecAria')}
+                  disabled={stains <= 0}
+                  onClick={() => onAdjustHumanityStains?.(-1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                >
+                  -
+                </button>
+                <span
+                  data-testid="humanity-stains-value"
+                  className="font-mono-tech text-xs font-bold px-1.5 min-w-[40px] text-center tabular-nums text-[var(--accent-wine)]"
+                >
+                  <AnimatedCounter value={stains} />
+                </span>
+                <button
+                  type="button"
+                  data-testid="humanity-stains-inc"
+                  aria-label={t.t('cards.vital.stainsIncAria')}
+                  onClick={() => onAdjustHumanityStains?.(1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              data-testid="v5-remorse-check-btn"
+              disabled={stains <= 0}
+              onClick={() => onTriggerRemorseCheck?.()}
+              className="no-print print:hidden cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+            >
+              {t.t('cards.vital.remorseCheckBtn', { pool: remorsePool })} ↗
+            </button>
+          </div>
+        );
+      }
+
+      const isWillpowerField = field.id === 'f_willpower' || field.key === 'willpower';
+      if (isWillpowerField && rulePreset === 'vampire-v5') {
+        const wpMax = v5WillpowerState?.max ?? Math.max(1, field.max ?? 5);
+        const wpAgg =
+          v5WillpowerState?.aggravated ??
+          Math.max(0, Math.min(wpMax, Math.round(field.aggravatedDamage ?? 0)));
+        const wpSup =
+          v5WillpowerState?.superficial ??
+          Math.max(0, Math.min(wpMax - wpAgg, Math.round(field.superficialDamage ?? 0)));
+        const wpAvailable = v5WillpowerState?.available ?? Math.max(0, wpMax - wpAgg - wpSup);
+        const wpImpaired =
+          v5WillpowerState?.isImpaired ?? (wpMax > 0 && wpAgg + wpSup >= wpMax);
+        const wpBoxes = Array.from({ length: wpMax }, (_, idx) => {
+          if (idx < wpAgg) return 'aggravated' as const;
+          if (idx < wpAgg + wpSup) return 'superficial' as const;
+          return 'free' as const;
+        });
+
+        return (
+          <div
+            data-testid="v5-willpower-track"
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2 min-w-0 max-w-full overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                  {field.label}
+                </span>
+                <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
+                  {t.t('cards.vital.v5OverflowRule')}
+                </span>
+                {wpImpaired && (
+                  <span
+                    data-testid="willpower-impaired-badge"
+                    className="font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] whitespace-nowrap"
+                  >
+                    {t.t('cards.vital.wpImpairedBadge')}
+                  </span>
+                )}
+              </div>
+              <span
+                data-testid="willpower-available-summary"
+                className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] tabular-nums whitespace-nowrap"
+                aria-live="polite"
+              >
+                <AnimatedCounter value={wpAvailable} /> / <AnimatedCounter value={wpMax} pulseOnChange={false} />{' '}
+                {t.t('cards.vital.wpAvailableLabel')}
+              </span>
+            </div>
+
+            <div
+              className="seg-meter-track flex items-center gap-[3px]"
+              role="meter"
+              aria-label={field.label}
+              aria-valuemin={0}
+              aria-valuemax={wpMax}
+              aria-valuenow={wpAvailable}
+            >
+              {wpBoxes.map((state, idx) => (
+                <div
+                  key={idx}
+                  aria-hidden="true"
+                  style={
+                    state === 'aggravated'
+                      ? {
+                          backgroundColor: 'var(--ink-primary)',
+                          color: 'var(--bg-card)',
+                          borderColor: 'var(--border-color)',
+                        }
+                      : state === 'superficial'
+                        ? {
+                            backgroundImage:
+                              'repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-primary) 18%, transparent) 0 3px, transparent 3px 6px)',
+                            backgroundColor: 'var(--bg-card)',
+                            color: 'var(--ink-primary)',
+                            borderColor: 'var(--border-color)',
+                          }
+                        : undefined
+                  }
+                  className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
+                    state === 'aggravated'
+                      ? 'eink-health-solid'
+                      : state === 'superficial'
+                        ? 'eink-health-slash'
+                        : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                  }`}
+                >
+                  {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
+                  {t.t('cards.vital.wpAggravatedDmg')}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    data-testid="willpower-aggravated-dec"
+                    aria-label={`${t.t('cards.vital.wpAggravatedDmg')} -`}
+                    disabled={wpAgg <= 0}
+                    onClick={() => onAdjustV5WillpowerDamage?.('aggravated', -1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  >
+                    -
+                  </button>
+                  <span
+                    data-testid="willpower-aggravated-value"
+                    className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--ink-primary)]"
+                  >
+                    <AnimatedCounter value={wpAgg} /> / <AnimatedCounter value={wpMax} pulseOnChange={false} />
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="willpower-aggravated-inc"
+                    aria-label={`${t.t('cards.vital.wpAggravatedDmg')} +`}
+                    disabled={wpAgg >= wpMax}
+                    onClick={() => onAdjustV5WillpowerDamage?.('aggravated', 1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
+                  {t.t('cards.vital.wpSuperficialDmg')}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    data-testid="willpower-superficial-dec"
+                    aria-label={`${t.t('cards.vital.wpSuperficialDmg')} -`}
+                    disabled={wpSup <= 0}
+                    onClick={() => onAdjustV5WillpowerDamage?.('superficial', -1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  >
+                    -
+                  </button>
+                  <span
+                    data-testid="willpower-superficial-value"
+                    className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--accent-wine)]"
+                  >
+                    <AnimatedCounter value={wpSup} /> / <AnimatedCounter value={wpMax} pulseOnChange={false} />
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="willpower-superficial-inc"
+                    aria-label={`${t.t('cards.vital.wpSuperficialDmg')} +`}
+                    disabled={wpAgg >= wpMax}
+                    onClick={() => onAdjustV5WillpowerDamage?.('superficial', 1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       const max = Math.max(1, field.max ?? 12);
       const current = Math.max(0, Math.min(max, typeof field.value === 'number' ? field.value : 0));
-      const isWillpowerField = field.id === 'f_willpower' || field.key === 'willpower';
       const wpSuperficial =
         isWillpowerField && rulePreset === 'vampire-v5'
           ? Math.max(0, Math.min(max - current, field.superficialDamage ?? 0))
@@ -1491,7 +1807,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
       if (isWillpowerAutoSuccess && rulePreset === 'vampire-v5') {
         const currentWillpower = typeof variables.willpower === 'number' ? variables.willpower : 0;
-        const isDisabled = currentWillpower <= 0 || !canWillpowerSurge;
+        const isWillpowerBlocked = v5WillpowerState
+          ? v5WillpowerState.isFullyAggravated
+          : currentWillpower <= 0;
+        const isDisabled = isWillpowerBlocked || !canWillpowerSurge;
         return (
           <div
             data-testid="willpower-surge-panel"
@@ -1510,6 +1829,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 type="button"
                 data-testid="willpower-surge-btn"
                 disabled={isDisabled}
+                title={isWillpowerBlocked ? t.t('sidebar.roll.wpAllAggravated') : undefined}
                 onClick={() => onTriggerWillpowerSurge?.()}
                 className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-extrabold uppercase shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
               >

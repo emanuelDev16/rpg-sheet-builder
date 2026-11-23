@@ -1023,6 +1023,207 @@ select:focus-visible,
 }
 
 /* ============================================================================
+   PHASE 3: V5 HUMANITY/STAINS, BLOOD POTENCY TABLE, FRENZY/RÖTSCHRECK & LOG BADGES
+   ============================================================================ */
+.v5-humanity-box {
+  flex: 1 1 0;
+  min-width: 1px;
+  height: 22px;
+  border-radius: 2px;
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  user-select: none;
+}
+
+.v5-humanity-box.is-humanity {
+  background-color: var(--accent-black);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+}
+
+.v5-humanity-box.is-stain {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-wine) 24%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+  background-color: var(--bg-card);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.v5-humanity-box.is-empty {
+  border-color: var(--border-subtle);
+}
+
+.v5-bp-stats-panel {
+  background-color: var(--bg-card-alt);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.v5-bp-stat-cell {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.wod-frenzy-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-frenzy-chip {
+  font-family: var(--font-mono);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.wod-frenzy-chip:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+.wod-frenzy-chip.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--accent-primary);
+}
+
+.wod-frenzy-chip:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.roll-badge-frenzy {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 1.5px solid var(--hunger-border);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.roll-badge-remorse {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .v5-humanity-box {
+  border-radius: 9999px;
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .v5-humanity-box.is-humanity {
+  background-image: none;
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .v5-humanity-box.is-stain {
+  background-image: repeating-linear-gradient(45deg, transparent 0 3px, #1A1A1A 3px 4.5px);
+  background-color: #F8F8F8;
+  color: #0B0B0B;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .v5-humanity-box.is-empty {
+  background-color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .v5-bp-stats-panel,
+[data-theme="eink"] .v5-bp-stat-cell,
+[data-theme="eink"] .wod-frenzy-panel,
+[data-theme="eink"] .wod-frenzy-chip,
+[data-theme="eink"] .roll-badge-frenzy,
+[data-theme="eink"] .roll-badge-remorse {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-frenzy-chip.is-active {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .roll-badge-frenzy {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .roll-badge-remorse {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+@media (forced-colors: active) {
+  .v5-humanity-box {
+    border: 2px solid ButtonText;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+
+  .v5-humanity-box.is-humanity {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .v5-humanity-box.is-stain {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px dashed Highlight;
+  }
+
+  .v5-bp-stats-panel,
+  .v5-bp-stat-cell,
+  .wod-frenzy-panel {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-frenzy-chip {
+    background-color: Canvas;
+    color: ButtonText;
+    border-color: ButtonText;
+  }
+
+  .wod-frenzy-chip.is-active,
+  .roll-badge-frenzy {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .roll-badge-remorse {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px solid ButtonText;
+  }
+}
+
+/* ============================================================================
    MODO IMPRESSÃO / EXPORTAÇÃO PDF
    ============================================================================ */
 @page {
@@ -1232,6 +1433,8 @@ select:focus-visible,
   .print-shell textarea,
   .wod-pool-composer input,
   .wod-pool-composer select,
+  .wod-frenzy-panel input,
+  .wod-frenzy-panel select,
   .xp-acquire-panel input,
   .mobile-modal-dialog input,
   .mobile-modal-dialog select,
@@ -1458,6 +1661,11 @@ select:focus-visible,
 [data-theme="eink"] [data-testid="health-healthy-summary"],
 [data-theme="eink"] [data-testid="health-aggravated-value"],
 [data-theme="eink"] [data-testid="health-superficial-value"],
+[data-theme="eink"] [data-testid="willpower-available-summary"],
+[data-theme="eink"] [data-testid="willpower-aggravated-value"],
+[data-theme="eink"] [data-testid="willpower-superficial-value"],
+[data-theme="eink"] [data-testid="humanity-stains-value"],
+[data-theme="eink"] [data-testid="v5-blood-potency-panel"],
 [data-theme="eink"] [data-testid="willpower-auto-success-badge"],
 [data-theme="eink"] [data-testid="xp-active-formula-badge"],
 [data-theme="eink"] [data-testid^="xp-trait-formula-"],

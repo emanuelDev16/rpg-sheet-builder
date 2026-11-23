@@ -11,9 +11,14 @@ import {
   adjustHealthDamage,
   adjustResourceValue,
   adjustSheetBloodPool,
+  adjustSheetHumanityStains,
   adjustV20HealthDamage,
   adjustV5HealthDamage,
+  adjustV5WillpowerDamage,
+  applyHumanityStains,
+  applyRemorseOutcomeToSheet,
   applyV5SuperficialHalving,
+  applyV5WillpowerDamage,
   applyV5WillpowerSuperficialDamage,
   computeWoundPenalty,
   consumeWillpowerForRoll,
@@ -32,10 +37,13 @@ import {
   getBloodPoolMaxByGeneration,
   getOrCreateDeviceId,
   getSheetBloodPool,
+  getSheetHumanityStains,
   getSheetVirtues,
   getV20HealthBreakdown,
   getV5HealthBreakdown,
+  getV5WillpowerState,
   getWodClansForEdition,
+  healV5WillpowerDamage,
   isValidIsoDateTime,
   migrateLegacySheetMetadata,
   migrateLegacyWodSheet,
@@ -45,6 +53,7 @@ import {
   resolveRollPreview,
   resolveRulePreset,
   setSheetRulePreset,
+  type SheetField,
   toCanonicalSheet,
   updateCardSchema,
   updateFieldSchema,
@@ -1148,5 +1157,178 @@ test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attribut
   assert.equal(detectSystemId(blankEmpty), 'blank');
   assert.equal(blankEmpty.characterName, 'NOVO PERSONAGEM');
   assert.equal(blankEmpty.cards.length, 0);
+});
+
+test('Phase 3 Block 1: V5 Humanity Stains invariant, Willpower Superficial/Aggravated overflow & Impaired, and strict schema validation', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. applyHumanityStains clamps 0..10 and computes degeneration overflow
+  const withinBounds = applyHumanityStains(7, 1, 2);
+  assert.deepEqual(withinBounds, {
+    humanity: 7,
+    stains: 3,
+    overflowStains: 0,
+    isDegenerating: false,
+    remorsePool: 1,
+  });
+
+  const overflowed = applyHumanityStains(7, 3, 2); // 7 + 5 > 10 -> stains capped at 3, overflowStains = 2
+  assert.deepEqual(overflowed, {
+    humanity: 7,
+    stains: 3,
+    overflowStains: 2,
+    isDegenerating: true,
+    remorsePool: 1,
+  });
+
+  const clampedFloor = applyHumanityStains(-2, 1, -5);
+  assert.equal(clampedFloor.humanity, 0);
+  assert.equal(clampedFloor.stains, 0);
+  assert.equal(clampedFloor.remorsePool, 10);
+
+  // 2. applyV5WillpowerDamage, healV5WillpowerDamage, overflow, and isImpaired
+  let wpField: SheetField = {
+    id: 'f_willpower',
+    key: 'willpower',
+    label: 'WILLPOWER',
+    kind: 'resource',
+    value: 5,
+    max: 5,
+    superficialDamage: 0,
+    aggravatedDamage: 0,
+  };
+  wpField = applyV5WillpowerDamage(wpField, 'superficial', 3);
+  assert.equal(wpField.superficialDamage, 3);
+  assert.equal(wpField.aggravatedDamage, 0);
+  assert.equal(wpField.value, 2);
+
+  // Fill remaining 2 boxes -> Impaired
+  wpField = applyV5WillpowerDamage(wpField, 'superficial', 2);
+  assert.equal(wpField.superficialDamage, 5);
+  assert.equal(wpField.aggravatedDamage, 0);
+  assert.equal(wpField.value, 0);
+
+  // +2 Superficial overflow converts 2 superficial into 2 aggravated
+  wpField = applyV5WillpowerDamage(wpField, 'superficial', 2);
+  assert.equal(wpField.superficialDamage, 3);
+  assert.equal(wpField.aggravatedDamage, 2);
+  assert.equal(wpField.value, 0);
+
+  // Healing superficial and aggravated restores available boxes
+  wpField = healV5WillpowerDamage(wpField, 'superficial', 2);
+  assert.equal(wpField.superficialDamage, 1);
+  assert.equal(wpField.aggravatedDamage, 2);
+  assert.equal(wpField.value, 2);
+
+  wpField = healV5WillpowerDamage(wpField, 'aggravated', 1);
+  assert.equal(wpField.superficialDamage, 1);
+  assert.equal(wpField.aggravatedDamage, 1);
+  assert.equal(wpField.value, 3);
+
+  // Direct aggravated damage caps at max and trims superficial
+  wpField = applyV5WillpowerDamage(wpField, 'aggravated', 10);
+  assert.equal(wpField.aggravatedDamage, 5);
+  assert.equal(wpField.superficialDamage, 0);
+  assert.equal(wpField.value, 0);
+
+  // 3. Sheet-level V5 Willpower state, Degeneration -> Aggravated WP, and Remorse update
+  let v5 = createWorldOfDarknessV5Sheet(); // Composure 3 + Resolve 2 = max 5 WP; Humanity 7
+  assert.equal(getV5WillpowerState(v5).available, 5);
+  assert.equal(getV5WillpowerState(v5).isImpaired, false);
+
+  v5 = adjustV5WillpowerDamage(v5, 'superficial', 5);
+  let wpState = getV5WillpowerState(v5);
+  assert.equal(wpState.available, 0);
+  assert.equal(wpState.superficial, 5);
+  assert.equal(wpState.aggravated, 0);
+  assert.equal(wpState.isImpaired, true);
+  assert.equal(wpState.isFullyAggravated, false);
+
+  // Triggering 1 more superficial WP damage via reroll overflows 1 superficial -> aggravated
+  v5 = applyV5WillpowerSuperficialDamage(v5, 1);
+  wpState = getV5WillpowerState(v5);
+  assert.equal(wpState.superficial, 4);
+  assert.equal(wpState.aggravated, 1);
+  assert.equal(wpState.isImpaired, true);
+  assert.equal(wpState.isFullyAggravated, false);
+
+  // Adding stains beyond 10 - Humanity (7 + 4 -> overflow 1) adds 1 Aggravated WP damage
+  const stainRes = adjustSheetHumanityStains(v5, 4);
+  assert.equal(stainRes.stains, 3);
+  assert.equal(stainRes.overflowStains, 1);
+  v5 = stainRes.sheet;
+  assert.deepEqual(getSheetHumanityStains(v5), { humanity: 7, stains: 3, remorsePool: 1 });
+  wpState = getV5WillpowerState(v5);
+  assert.equal(wpState.aggravated, 2);
+  assert.equal(wpState.superficial, 3);
+
+  // Applying Remorse failure clears stains and lowers Humanity by 1
+  v5 = applyRemorseOutcomeToSheet(v5, 6);
+  assert.deepEqual(getSheetHumanityStains(v5), { humanity: 6, stains: 0, remorsePool: 4 });
+
+  // 4. Schema v2.0 + validateSheetPayload accept persisted stains, WP damages, and Remorse/Frenzy logs
+  v5 = {
+    ...v5,
+    stains: 0,
+    rollLogs: [
+      {
+        id: 'log_remorse_1',
+        timestamp: '00:10',
+        label: 'TESTE DE REMORSO',
+        total: 0,
+        formula: '1d10 (REMORSO)',
+        breakdown: '1d10[3] ≥6 → FALHA (-1 HUMANIDADE)',
+        rolls: [3],
+        difficulty: 6,
+        outcome: 'failure',
+        isPoolRoll: true,
+        rulePreset: 'vampire-v5',
+        isRemorseCheck: true,
+        humanityLost: true,
+      },
+      {
+        id: 'log_frenzy_1',
+        timestamp: '00:12',
+        label: 'FRENESI / RÖTSCHRECK',
+        total: 2,
+        formula: '2d10 (V5 · DIFF (META) 2)',
+        breakdown: '2d10[7, 8] ≥6 → 2 / 2 SUCESSOS',
+        rolls: [7, 8],
+        difficulty: 2,
+        outcome: 'success',
+        isPoolRoll: true,
+        rulePreset: 'vampire-v5',
+        isFrenzyRoll: true,
+        frenzyKind: 'rotschreck',
+      },
+    ],
+  };
+
+  assert.equal(validateAjv(v5), true, `V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v5).valid, true);
+
+  // Rejects out-of-bounds stains and invalid frenzyKind
+  const badStainsSheet = { ...v5, stains: 11 };
+  assert.equal(validateAjv(badStainsSheet), false);
+  assert.equal(validateSheetPayload(badStainsSheet).valid, false);
+
+  const badFrenzyLogSheet = {
+    ...v5,
+    rollLogs: [
+      {
+        ...v5.rollLogs[1],
+        frenzyKind: 'berserk',
+      },
+    ],
+  };
+  assert.equal(validateAjv(badFrenzyLogSheet), false);
+  assert.equal(validateSheetPayload(badFrenzyLogSheet).valid, false);
 });
 

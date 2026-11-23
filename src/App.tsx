@@ -7,12 +7,14 @@ import {
   adjustHealthDamage,
   adjustResourceValue,
   adjustSheetBloodPool,
+  adjustSheetHumanityStains,
   adjustV20HealthDamage,
   adjustV5HealthDamage,
+  adjustV5WillpowerDamage,
   AppMode,
+  applyRemorseOutcomeToSheet,
   applyRouseCheckHunger,
   applyV5SuperficialHalving,
-  applyV5WillpowerSuperficialDamage,
   CharacterSheetState,
   computeWoundPenalty,
   consumeWillpowerForRoll,
@@ -24,7 +26,9 @@ import {
   evaluateSheet,
   FieldKind,
   getSheetBloodPool,
+  getSheetHumanityStains,
   getSheetVirtues,
+  getV5WillpowerState,
   NewSheetIdentityInput,
   nowIsoUtc,
   removeCardFromSheet,
@@ -59,11 +63,15 @@ import {
 } from './core/roomSync';
 import {
   type DiceRollResult,
+  executeRemorseCheck,
   executeRouseCheck,
+  type FrenzyKind,
   getV5BloodSurgeBonus,
   isWodPoolExpression,
   rerollV5PoolDice,
+  resolveFrenzyRoll,
   rollDiceExpression,
+  type V20FrenzyVirtue,
   WodPoolOptions,
 } from './core/formula';
 import { isDiceAudioMuted, playDiceClatter, setDiceAudioMuted } from './core/diceAudio';
@@ -222,6 +230,11 @@ function HydratedAppWorkspace({
   const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
   const mobileRollToastTimerRef = useRef<number | null>(null);
   const [rerollArmedLogId, setRerollArmedLogId] = useState<string | null>(null);
+  const rerollPreDamageRef = useRef<{
+    value: number;
+    superficial?: number;
+    aggravated?: number;
+  } | null>(null);
   const [flashMessage, setFlashMessage] = useState<string | null>(null);
   const [customTemplates, setCustomTemplates] = useState<CustomSheetTemplate[]>(
     hydrated.customTemplates,
@@ -283,6 +296,10 @@ function HydratedAppWorkspace({
     () => computeWoundPenalty(sheet, rulePreset),
     [sheet, rulePreset],
   );
+  const v5WillpowerState = useMemo(() => getV5WillpowerState(sheet), [sheet]);
+  const isWillpowerImpaired = rulePreset === 'vampire-v5' && v5WillpowerState.isImpaired;
+  const effectiveWoundPenalty =
+    rulePreset === 'vampire-v5' && woundPenalty === 0 && isWillpowerImpaired ? -2 : woundPenalty;
   const bloodPool = useMemo(() => getSheetBloodPool(sheet), [sheet]);
   const virtues = useMemo(() => getSheetVirtues(sheet), [sheet]);
   const sheetClan = useMemo(() => getSheetClanName(sheet), [sheet]);
@@ -298,6 +315,8 @@ function HydratedAppWorkspace({
           l.isPoolRoll &&
           l.rulePreset === 'vampire-v5' &&
           !l.isRouseCheck &&
+          !l.isRemorseCheck &&
+          !l.isFrenzyRoll &&
           !l.isWillpowerReroll &&
           (l.rolls?.length ?? 0) > (l.hungerDice ?? 0),
       ) ?? null,
@@ -713,7 +732,13 @@ function HydratedAppWorkspace({
 
   const evaluation = useMemo(() => evaluateSheet(sheet), [sheet]);
   const currentWillpower =
-    typeof evaluation.variables.willpower === 'number' ? evaluation.variables.willpower : 0;
+    rulePreset === 'vampire-v5'
+      ? v5WillpowerState.available
+      : typeof evaluation.variables.willpower === 'number'
+        ? evaluation.variables.willpower
+        : 0;
+  const canV5WillpowerReroll =
+    rulePreset === 'vampire-v5' ? !v5WillpowerState.isFullyAggravated : currentWillpower > 0;
   const bloodSurgeBonus = useMemo(
     () => getV5BloodSurgeBonus(evaluation.variables.blood_potency),
     [evaluation.variables.blood_potency],
@@ -796,6 +821,7 @@ function HydratedAppWorkspace({
 
   const handleSelectRulePreset = (preset: RulePreset) => {
     setRerollArmedLogId(null);
+    rerollPreDamageRef.current = null;
     setXpRulePresetConfig(sheet, preset);
     setSheet((prev) => setSheetRulePreset(prev, preset));
   };
@@ -903,16 +929,34 @@ function HydratedAppWorkspace({
         l.isPoolRoll &&
         l.rulePreset === 'vampire-v5' &&
         !l.isRouseCheck &&
+        !l.isRemorseCheck &&
+        !l.isFrenzyRoll &&
         !l.isWillpowerReroll &&
         (l.rolls?.length ?? 0) > (l.hungerDice ?? 0),
     );
     if (!target || rerollArmedLogId === logId) return;
     if (!rerollArmedLogId) {
-      if (currentWillpower <= 0) {
-        triggerFlash(t.t('sidebar.roll.noWillpowerLeft'));
+      if (!canV5WillpowerReroll) {
+        triggerFlash(
+          t.t(
+            rulePreset === 'vampire-v5'
+              ? 'sidebar.roll.wpAllAggravated'
+              : 'sidebar.roll.noWillpowerLeft',
+          ),
+        );
         return;
       }
-      setSheet((prev) => applyV5WillpowerSuperficialDamage(prev, 1));
+      const wpField = sheet.cards
+        .flatMap((c) => c.fields)
+        .find((f) => f.id === 'f_willpower' || f.key === 'willpower');
+      rerollPreDamageRef.current = wpField
+        ? {
+            value: typeof wpField.value === 'number' ? wpField.value : v5WillpowerState.available,
+            superficial: wpField.superficialDamage,
+            aggravated: wpField.aggravatedDamage,
+          }
+        : null;
+      setSheet((prev) => adjustV5WillpowerDamage(prev, 'superficial', 1));
     }
     setRerollArmedLogId(logId);
     dismissMobileRollToast();
@@ -931,6 +975,7 @@ function HydratedAppWorkspace({
     const target = sheet.rollLogs.find((l) => l.id === logId);
     if (!target || !target.rolls || target.rolls.length === 0 || indices.length === 0) {
       setRerollArmedLogId(null);
+      rerollPreDamageRef.current = null;
       return;
     }
     const rerolled = rerollV5PoolDice(
@@ -976,7 +1021,105 @@ function HydratedAppWorkspace({
       rollLogs: prev.rollLogs.map((l) => (l.id === logId ? updatedEntry : l)),
     }));
     setRerollArmedLogId(null);
+    rerollPreDamageRef.current = null;
     triggerFlash(`${t.t('sidebar.roll.wpRerollChip')}: ${rerolled.total}`);
+  };
+
+  const handleAdjustV5WillpowerDamage = (
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => {
+    setSheet((prev) => adjustV5WillpowerDamage(prev, damageType, delta));
+  };
+
+  const handleAdjustHumanityStains = (delta: number) => {
+    const previewRes = adjustSheetHumanityStains(sheet, delta);
+    setSheet((prev) => adjustSheetHumanityStains(prev, delta).sheet);
+    if (previewRes.overflowStains > 0) {
+      triggerFlash(t.t('cards.vital.degenerationFlash', { count: previewRes.overflowStains }));
+    }
+  };
+
+  const handleTriggerRemorseCheck = () => {
+    const { humanity, stains } = getSheetHumanityStains(sheet);
+    if (stains <= 0) return;
+    const res = executeRemorseCheck(humanity, stains, Math.random);
+    const breakdown = res.passed
+      ? t.t('sidebar.roll.remorsePassBreakdown', {
+          pool: res.pool,
+          dice: res.dice.join(', '),
+          successes: res.successes,
+          humanity: res.nextHumanity,
+        })
+      : t.t('sidebar.roll.remorseFailBreakdown', {
+          pool: res.pool,
+          dice: res.dice.join(', '),
+          successes: res.successes,
+          prev: res.previousHumanity,
+          next: res.nextHumanity,
+        });
+    const entry: RollLogEntry = {
+      id: `log_remorse_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: nowTimeString(),
+      label: t.t('sidebar.roll.remorseLogLabel'),
+      total: res.successes,
+      formula: `${res.pool}d10 (${t.t('sidebar.roll.remorseBadge')})`,
+      breakdown,
+      rolls: res.dice,
+      difficulty: 6,
+      outcome: res.passed ? 'success' : 'failure',
+      isPoolRoll: true,
+      rulePreset: 'vampire-v5',
+      hungerDice: 0,
+      isRemorseCheck: true,
+      humanityLost: !res.passed,
+    };
+    playDiceClatter({
+      diceCount: res.dice.length || 1,
+      isCritical: false,
+      isFumble: !res.passed,
+    });
+    showMobileToastWithTimeout(entry);
+    triggerFlash(
+      `${entry.label}: ${res.passed ? t.t('sidebar.roll.remorsePass') : t.t('sidebar.roll.remorseFail')}`,
+    );
+    setSheet((prev) => {
+      const updatedHum = applyRemorseOutcomeToSheet(prev, res.nextHumanity);
+      return {
+        ...updatedHum,
+        rollLogs: [entry, ...updatedHum.rollLogs].slice(0, 30),
+      };
+    });
+  };
+
+  const handleTriggerFrenzyRoll = (options: {
+    difficulty?: number;
+    virtue?: V20FrenzyVirtue;
+    kind?: FrenzyKind;
+  }) => {
+    const res = resolveFrenzyRoll(sheet, {
+      ...options,
+      rulePreset,
+      rng: Math.random,
+    });
+    const entryLabel =
+      res.frenzyKind === 'rotschreck'
+        ? t.t('sidebar.roll.rotschreckLogLabel')
+        : t.t('sidebar.roll.frenzyLogLabel');
+    const entry = buildRollLogEntry(entryLabel, res, 'log_frenzy');
+    playDiceClatter({
+      diceCount: res.rolls.length || 1,
+      isCritical: res.isCritical,
+      isFumble: Boolean(res.isFumble),
+    });
+    showMobileToastWithTimeout(entry);
+    triggerFlash(
+      `${entryLabel}: ${res.resisted ? t.t('sidebar.roll.frenzyResisted') : t.t('sidebar.roll.frenzyFailed')}`,
+    );
+    setSheet((prev) => ({
+      ...prev,
+      rollLogs: [entry, ...prev.rollLogs].slice(0, 30),
+    }));
   };
 
   const buildRollLogEntry = (
@@ -1014,6 +1157,10 @@ function HydratedAppWorkspace({
     critPairsCount: res.critPairsCount,
     isBloodSurge: res.isBloodSurge,
     isRouseCheck: res.isRouseCheck,
+    isRemorseCheck: res.isRemorseCheck,
+    isFrenzyRoll: res.isFrenzyRoll,
+    frenzyKind: res.frenzyKind,
+    humanityLost: res.humanityLost,
   });
 
   const appendRollLog = (
@@ -1045,7 +1192,7 @@ function HydratedAppWorkspace({
         ? {
             ...poolOptions,
             rulePreset: effectiveRulePreset,
-            woundPenalty: poolOptions?.woundPenalty ?? woundPenalty,
+            woundPenalty: poolOptions?.woundPenalty ?? effectiveWoundPenalty,
             hungerDice: evaluation.variables.hunger ?? 0,
             bloodSurge: isV5 && !isSoak && Boolean(sheet.bloodSurge),
             bloodSurgeDice: bloodSurgeBonus,
@@ -1097,7 +1244,7 @@ function HydratedAppWorkspace({
             isSoak,
             soakDamageType: field.soakDamageType ?? 'lethal',
             rulePreset,
-            woundPenalty,
+            woundPenalty: effectiveWoundPenalty,
           }
         : undefined,
     );
@@ -1883,13 +2030,14 @@ function HydratedAppWorkspace({
                       systemId={activeSystemId}
                       rulePreset={rulePreset}
                       clan={sheetClan}
-                      woundPenalty={woundPenalty}
+                      woundPenalty={effectiveWoundPenalty}
                       bloodPool={bloodPool}
                       virtues={virtues}
                       bloodSurge={bloodSurge}
                       bloodSurgeBonus={bloodSurgeBonus}
                       lastSoakTotal={lastSoakTotal}
                       canWillpowerSurge={Boolean(latestEligibleV5Roll)}
+                      v5WillpowerState={v5WillpowerState}
                       evaluation={evaluation}
                       t={t.cards}
                       onChangeValue={(fid, val) =>
@@ -1910,6 +2058,10 @@ function HydratedAppWorkspace({
                       onAdjustV5HealthDamage={(fid, dmgType, delta) =>
                         setSheet((prev) => adjustV5HealthDamage(prev, fid, dmgType, delta))
                       }
+                      onAdjustV5WillpowerDamage={handleAdjustV5WillpowerDamage}
+                      onAdjustHumanityStains={handleAdjustHumanityStains}
+                      onTriggerRemorseCheck={handleTriggerRemorseCheck}
+                      onTriggerFrenzyRoll={handleTriggerFrenzyRoll}
                       onApplyV5SuperficialHalving={(fid, rawDmg) =>
                         setSheet((prev) => applyV5SuperficialHalving(prev, fid, rawDmg).sheet)
                       }
@@ -1987,19 +2139,42 @@ function HydratedAppWorkspace({
           systemName={sheet.systemName}
           language={language}
           woundPenalty={woundPenalty}
+          isWillpowerImpaired={isWillpowerImpaired}
           bloodSurge={bloodSurge}
           bloodSurgeBonus={bloodSurgeBonus}
           currentWillpower={currentWillpower}
           currentHunger={Math.max(0, Math.min(5, Math.round(evaluation.variables.hunger ?? 0)))}
           t={t.sidebar}
           rerollArmedLogId={rerollArmedLogId}
-          canWillpowerReroll={currentWillpower > 0 || Boolean(rerollArmedLogId)}
+          canWillpowerReroll={canV5WillpowerReroll || Boolean(rerollArmedLogId)}
           onArmWillpowerReroll={handleArmWillpowerReroll}
           onWillpowerReroll={handleConfirmWillpowerReroll}
           onCancelReroll={() => {
             if (rerollArmedLogId) {
-              setSheet((prev) => applyV5WillpowerSuperficialDamage(prev, -1));
+              const snapshot = rerollPreDamageRef.current;
+              setSheet((prev) => {
+                if (!snapshot) {
+                  return adjustV5WillpowerDamage(prev, 'superficial', -1);
+                }
+                return {
+                  ...prev,
+                  cards: prev.cards.map((card) => ({
+                    ...card,
+                    fields: card.fields.map((f) =>
+                      (f.id === 'f_willpower' || f.key === 'willpower') && f.kind === 'resource'
+                        ? {
+                            ...f,
+                            value: snapshot.value,
+                            superficialDamage: snapshot.superficial,
+                            aggravatedDamage: snapshot.aggravated,
+                          }
+                        : f,
+                    ),
+                  })),
+                };
+              });
             }
+            rerollPreDamageRef.current = null;
             setRerollArmedLogId(null);
             setFlashMessage(null);
           }}
@@ -2013,6 +2188,7 @@ function HydratedAppWorkspace({
           }
           onClearLogs={() => {
             setRerollArmedLogId(null);
+            rerollPreDamageRef.current = null;
             setSheet((prev) => ({ ...prev, rollLogs: [] }));
           }}
         />
@@ -2043,7 +2219,8 @@ function HydratedAppWorkspace({
                       if (mobileRollToast.isPoolRoll) {
                         const isV5Toast =
                           mobileRollToast.rulePreset === 'vampire-v5' &&
-                          !mobileRollToast.isRouseCheck;
+                          !mobileRollToast.isRouseCheck &&
+                          !mobileRollToast.isRemorseCheck;
                         const v5ToastTarget = Math.max(
                           1,
                           Math.min(10, Math.round(mobileRollToast.difficulty ?? 2)),
@@ -2069,6 +2246,54 @@ function HydratedAppWorkspace({
                               : mobileRollToast.total > 0
                                 ? 'success'
                                 : 'failure');
+                        if (mobileRollToast.isRemorseCheck) {
+                          return (
+                            <>
+                              <span className="roll-badge-remorse text-[9px] font-extrabold px-1.5 py-0.5 rounded-[var(--radius-pill)] uppercase shrink-0">
+                                {t.t('sidebar.roll.remorseBadge')}
+                              </span>
+                              <span
+                                data-testid="mobile-roll-toast-status"
+                                className={`font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 border rounded-[var(--radius-pill)] uppercase shrink-0 ${
+                                  outcome === 'success' && !mobileRollToast.humanityLost
+                                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                    : 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                                }`}
+                              >
+                                {outcome === 'success' && !mobileRollToast.humanityLost
+                                  ? t.t('sidebar.roll.remorsePass')
+                                  : t.t('sidebar.roll.remorseFail')}
+                              </span>
+                            </>
+                          );
+                        }
+                        if (mobileRollToast.isFrenzyRoll) {
+                          const resisted = isV5Toast ? v5ToastSucceeded : outcome === 'success';
+                          return (
+                            <>
+                              <span
+                                data-testid="mobile-roll-toast-frenzy-badge"
+                                className="roll-badge-frenzy text-[9px] font-extrabold px-1.5 py-0.5 rounded-[var(--radius-pill)] uppercase shrink-0"
+                              >
+                                {mobileRollToast.frenzyKind === 'rotschreck'
+                                  ? t.t('sidebar.roll.rotschreckBadge')
+                                  : t.t('sidebar.roll.frenzyBadge')}
+                              </span>
+                              <span
+                                data-testid="mobile-roll-toast-status"
+                                className={`font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 border rounded-[var(--radius-pill)] uppercase shrink-0 ${
+                                  resisted
+                                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                    : 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                                }`}
+                              >
+                                {resisted
+                                  ? t.t('sidebar.roll.frenzyResisted')
+                                  : t.t('sidebar.roll.frenzyFailed')}
+                              </span>
+                            </>
+                          );
+                        }
                         if (mobileRollToast.isRouseCheck) {
                           return (
                             <span
@@ -2158,7 +2383,7 @@ function HydratedAppWorkspace({
                     })()}
                   </div>
                   <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
-                    {mobileRollToast.isPoolRoll
+                    {mobileRollToast.isPoolRoll && !mobileRollToast.isRemorseCheck
                       ? mobileRollToast.rulePreset === 'vampire-v5' && !mobileRollToast.isRouseCheck
                         ? (() => {
                             const v5T = Math.max(
@@ -2234,16 +2459,18 @@ function HydratedAppWorkspace({
             {mobileRollToast.isPoolRoll &&
               mobileRollToast.rulePreset === 'vampire-v5' &&
               !mobileRollToast.isRouseCheck &&
+              !mobileRollToast.isRemorseCheck &&
+              !mobileRollToast.isFrenzyRoll &&
               !mobileRollToast.isWillpowerReroll &&
               (mobileRollToast.rolls?.length ?? 0) > (mobileRollToast.hungerDice ?? 0) && (
                 <button
                   type="button"
                   data-testid="mobile-toast-reroll-wp-btn"
-                  disabled={currentWillpower <= 0 && !rerollArmedLogId}
+                  disabled={!canV5WillpowerReroll && !rerollArmedLogId}
                   title={
-                    currentWillpower > 0 || rerollArmedLogId
+                    canV5WillpowerReroll || rerollArmedLogId
                       ? t.t('sidebar.roll.rerollWillpower')
-                      : t.t('sidebar.roll.noWillpowerLeft')
+                      : t.t('sidebar.roll.wpAllAggravated')
                   }
                   onClick={() => handleArmWillpowerReroll(mobileRollToast.id)}
                   className="cyber-btn-outline min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed flex items-center justify-center"

@@ -251,3 +251,64 @@ test('computeWodComposedPool supports all free trait combinations, single trait,
   assert.equal(singleClamped.hungerDiceCount, 0);
   assert.equal(singleClamped.displayLabel, 'RESOLVE (3) -10');
 });
+
+test('computeWodComposedPool handles V5 isWillpowerImpaired without double-stacking Health Impaired', () => {
+  // 1) Willpower Impaired alone applies -2 in V5
+  const wpOnly = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { label: 'CHARISMA', value: 3 },
+    secondaryTrait: { label: 'PERSUASION', value: 3 },
+    woundPenalty: 0,
+    isWillpowerImpaired: true,
+    hunger: 1,
+  });
+  assert.equal(wpOnly.rawPool, 6);
+  assert.equal(wpOnly.isWillpowerImpaired, true);
+  assert.equal(wpOnly.willpowerImpairedApplied, true);
+  assert.equal(wpOnly.impairedPenaltySource, 'willpower');
+  assert.equal(wpOnly.appliedWoundPenalty, -2);
+  assert.equal(wpOnly.effectivePool, 4);
+
+  // 2) Health Impaired (-2) + Willpower Impaired MUST NOT stack to -4
+  const bothImpaired = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { label: 'CHARISMA', value: 3 },
+    secondaryTrait: { label: 'PERSUASION', value: 3 },
+    woundPenalty: -2,
+    isWillpowerImpaired: true,
+    hunger: 1,
+  });
+  assert.equal(bothImpaired.isWillpowerImpaired, true);
+  assert.equal(bothImpaired.willpowerImpairedApplied, false);
+  assert.equal(bothImpaired.impairedPenaltySource, 'both');
+  assert.equal(bothImpaired.appliedWoundPenalty, -2);
+  assert.equal(bothImpaired.effectivePool, 4);
+
+  // 3) Exemption clears both penalties
+  const exemptedBoth = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: { label: 'CHARISMA', value: 3 },
+    secondaryTrait: { label: 'PERSUASION', value: 3 },
+    woundPenalty: -2,
+    isWillpowerImpaired: true,
+    ignoreWoundPenalty: true,
+  });
+  assert.equal(exemptedBoth.appliedWoundPenalty, 0);
+  assert.equal(exemptedBoth.willpowerImpairedApplied, false);
+  assert.equal(exemptedBoth.impairedPenaltySource, 'both');
+  assert.equal(exemptedBoth.effectivePool, 6);
+
+  // 4) V20 ignores isWillpowerImpaired
+  const v20Ignored = computeWodComposedPool({
+    rulePreset: 'storyteller-v20',
+    primaryTrait: { label: 'CHARISMA', value: 3 },
+    secondaryTrait: { label: 'SUBTERFUGE', value: 3 },
+    woundPenalty: 0,
+    isWillpowerImpaired: true,
+  });
+  assert.equal(v20Ignored.isWillpowerImpaired, false);
+  assert.equal(v20Ignored.willpowerImpairedApplied, false);
+  assert.equal(v20Ignored.impairedPenaltySource, 'none');
+  assert.equal(v20Ignored.appliedWoundPenalty, 0);
+  assert.equal(v20Ignored.effectivePool, 6);
+});
