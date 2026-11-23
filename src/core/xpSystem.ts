@@ -1,6 +1,7 @@
 import {
   evaluateSheet,
   getSheetVirtues,
+  updateFieldValue,
   type CharacterSheetState,
   type SheetCard,
   type SheetField,
@@ -696,6 +697,9 @@ export function calculateUpgradeCost(
   }
 
   if (preset === 'vampire-v5') {
+    if (category === 'virtue' && options.virtueSubtype === 'advantage') {
+      return mult;
+    }
     return nextLevel * mult;
   }
 
@@ -772,6 +776,19 @@ export function calculateUpgradeCostDetails(
       cost,
       formulaLabel: `${cost} XP (${customTag})`,
       multiplier: rating > 0 ? Number((cost / rating).toFixed(1)) : cost,
+      isBlocked: false,
+    };
+  }
+
+  if (
+    preset === 'vampire-v5' &&
+    category === 'virtue' &&
+    options.virtueSubtype === 'advantage'
+  ) {
+    return {
+      cost,
+      formulaLabel: t('xp.flatPerDotFormula', { cost }),
+      multiplier: mult,
       isBlocked: false,
     };
   }
@@ -1415,6 +1432,32 @@ export function awardXp(
   };
 }
 
+function updateSheetTraitCards(
+  sheet: CharacterSheetState,
+  fieldId: string,
+  nextValue: number,
+  options?: { isWillpowerResource?: boolean; resourceDelta?: 1 | -1; fallbackPrev?: number },
+): SheetCard[] {
+  if (options?.isWillpowerResource) {
+    const nextMax = Math.max(1, nextValue);
+    const delta = options.resourceDelta ?? 0;
+    return sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if (f.id !== fieldId) return f;
+        const prevVal =
+          typeof f.value === 'number' ? f.value : (options.fallbackPrev ?? nextValue);
+        return {
+          ...f,
+          max: nextMax,
+          value: Math.min(nextValue, Math.max(0, prevVal + delta)),
+        };
+      }),
+    }));
+  }
+  return updateFieldValue(sheet, fieldId, nextValue).cards;
+}
+
 export function upgradeTraitWithXp(
   sheet: CharacterSheetState,
   fieldId: string,
@@ -1577,21 +1620,15 @@ export function upgradeTraitWithXp(
       }
     }
   } else {
-    nextCards = sheet.cards.map((card) => ({
-      ...card,
-      fields: card.fields.map((f) => {
-        if (f.id !== fieldId) return f;
-        if (f.kind === 'resource' && trait.virtueSubtype === 'willpower') {
-          const prevVal = typeof f.value === 'number' ? f.value : trait.currentValue;
-          return {
-            ...f,
-            max: trait.nextValue,
-            value: Math.min(trait.nextValue, Math.max(0, prevVal + 1)),
-          };
-        }
-        return { ...f, value: trait.nextValue };
-      }),
-    }));
+    const targetField = sheet.cards.flatMap((c) => c.fields).find((f) => f.id === fieldId);
+    const isWillpowerResource = Boolean(
+      targetField && targetField.kind === 'resource' && trait.virtueSubtype === 'willpower',
+    );
+    nextCards = updateSheetTraitCards(sheet, fieldId, trait.nextValue, {
+      isWillpowerResource,
+      resourceDelta: 1,
+      fallbackPrev: trait.currentValue,
+    });
   }
 
   const entry: XpLedgerEntry = {
@@ -2459,21 +2496,15 @@ export function undoLastUpgrade(
     }));
   } else {
     const fromValue = entry.fromValue!;
-    nextCards = sheet.cards.map((card) => ({
-      ...card,
-      fields: card.fields.map((f) => {
-        if (f.id !== entry.fieldId) return f;
-        if (f.kind === 'resource' && getVirtueSubtype(f) === 'willpower') {
-          const prevVal = typeof f.value === 'number' ? f.value : fromValue;
-          return {
-            ...f,
-            max: Math.max(1, fromValue),
-            value: Math.min(fromValue, Math.max(0, prevVal - 1)),
-          };
-        }
-        return { ...f, value: fromValue };
-      }),
-    }));
+    const targetField = sheet.cards.flatMap((c) => c.fields).find((f) => f.id === entry.fieldId);
+    const isWillpowerResource = Boolean(
+      targetField && targetField.kind === 'resource' && getVirtueSubtype(targetField) === 'willpower',
+    );
+    nextCards = updateSheetTraitCards(sheet, entry.fieldId, fromValue, {
+      isWillpowerResource,
+      resourceDelta: -1,
+      fallbackPrev: fromValue,
+    });
   }
 
   const nextLedger = currentXp.ledger.filter((_, idx) => idx !== targetIdx);

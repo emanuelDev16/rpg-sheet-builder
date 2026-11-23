@@ -98,5 +98,13 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'app.xpAcquired', { label: 'AWARENESS', cost: 3 })).toBe(
       '// XP: ACQUIRED AWARENESS (-3 XP)',
     );
+
+    expect(translate('pt-BR', 'xp.ruleV5Virtue')).toBe('VANT 3 XP/PONTO · FV/HUM EM JOGO');
+    expect(translate('en', 'xp.ruleV5Virtue')).toBe('ADV 3 XP/DOT · WP/HUM IN-PLAY');
+    expect(translate('es', 'xp.ruleV5Virtue')).toBe('VENT 3 XP/PUNTO · VOL/HUM EN JUEGO');
+
+    expect(translate('pt-BR', 'xp.flatPerDotFormula', { cost: 3 })).toBe('3 XP / PONTO');
+    expect(translate('en', 'xp.flatPerDotFormula', { cost: 3 })).toBe('3 XP / DOT');
+    expect(translate('es', 'xp.flatPerDotFormula', { cost: 3 })).toBe('3 XP / PUNTO');
   });
 });
