@@ -689,7 +689,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                   <span>{xpError}</span>
                   <button
                     type="button"
-                    aria-label="Dismiss"
+                    aria-label={t.t('xp.dismissErrorAria')}
                     onClick={() => setXpError(null)}
                     className="shrink-0 cursor-pointer"
                   >

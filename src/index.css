@@ -2389,15 +2389,32 @@ select:focus-visible,
     --bg-card-alt: #F5F5F5 !important;
     --bg-strip: #F0F0F0 !important;
     --bg-header-strip: #F0F0F0 !important;
+    --bg-input: #FFFFFF !important;
+    --bg-hover: #F5F5F5 !important;
     --ink-primary: #0B0B0B !important;
     --ink-secondary: #1F1F1F !important;
     --ink-muted: #333333 !important;
+    --ink-inverse: #FFFFFF !important;
     --text-primary: #0B0B0B !important;
     --text-secondary: #1F1F1F !important;
     --text-muted: #333333 !important;
     --border-color: #0B0B0B !important;
     --border-ink: #0B0B0B !important;
+    --border-subtle: #444444 !important;
     --accent-black: #0B0B0B !important;
+    --accent-primary: #0B0B0B !important;
+    --accent-hover: #0B0B0B !important;
+    --accent-contrast: #FFFFFF !important;
+    --accent-wine: #0B0B0B !important;
+    --accent-wine-hover: #0B0B0B !important;
+    --accent-wine-soft: #F0F0F0 !important;
+    --accent-cream-badge: #F5F5F5 !important;
+    --accent-danger: #0B0B0B !important;
+    --accent-danger-soft: #F5F5F5 !important;
+    --accent-danger-contrast: #FFFFFF !important;
+    --hunger-bg: #FFFFFF !important;
+    --hunger-border: #0B0B0B !important;
+    --hunger-text: #0B0B0B !important;
     --shadow-card: none !important;
     --shadow-btn: none !important;
     --shadow-btn-hover: none !important;
@@ -2509,7 +2526,187 @@ select:focus-visible,
     border-color: #0B0B0B !important;
   }
 
-  .no-print {
+  /* High-contrast B&W vital tracks (Health V20/V5, Willpower V5, Humanity + Stains) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box,
+  [data-theme] .v5-humanity-box,
+  .v5-humanity-box {
+    height: 18px !important;
+    border: 1.5px solid #0B0B0B !important;
+    background-color: #FFFFFF !important;
+    border-radius: 2px !important;
+    box-shadow: none !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-humanity,
+  [data-theme] .v5-humanity-box.is-humanity,
+  .v5-humanity-box.is-humanity {
+    background-image: none !important;
+    background-color: #0B0B0B !important;
+    color: #FFFFFF !important;
+    border-color: #0B0B0B !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-stain,
+  [data-theme] .v5-humanity-box.is-stain,
+  .v5-humanity-box.is-stain {
+    background-image: repeating-linear-gradient(45deg, transparent 0 3px, #0B0B0B 3px 4.5px) !important;
+    background-color: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border-color: #0B0B0B !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-empty,
+  [data-theme] .v5-humanity-box.is-empty,
+  .v5-humanity-box.is-empty {
+    background-image: none !important;
+    background-color: #FFFFFF !important;
+    border-color: #0B0B0B !important;
+    color: transparent !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box .v5-humanity-glyph,
+  [data-theme] .v5-humanity-box .v5-humanity-glyph,
+  .v5-humanity-box .v5-humanity-glyph {
+    display: none !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .eink-health-slash,
+  [data-theme] .eink-health-slash,
+  .eink-health-slash,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-health-box--superficial,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--superficial,
+  [data-theme] .v5-health-box--superficial,
+  [data-theme] [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--superficial,
+  .v5-health-box--superficial,
+  .v5-wp-box--superficial {
+    background-image: repeating-linear-gradient(45deg, transparent 0 3px, #0B0B0B 3px 4.5px) !important;
+    background-color: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 1.5px solid #0B0B0B !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .eink-health-cross,
+  [data-theme] .eink-health-cross,
+  .eink-health-cross {
+    background-image:
+      repeating-linear-gradient(45deg, transparent 0 3px, #0B0B0B 3px 4.5px),
+      repeating-linear-gradient(-45deg, transparent 0 3px, #0B0B0B 3px 4.5px) !important;
+    background-color: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 1.5px solid #0B0B0B !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .eink-health-solid,
+  [data-theme] .eink-health-solid,
+  .eink-health-solid,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-health-box--aggravated,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--aggravated,
+  [data-theme] .v5-health-box--aggravated,
+  [data-theme] [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--aggravated,
+  .v5-health-box--aggravated,
+  .v5-wp-box--aggravated {
+    background-image: none !important;
+    background-color: #0B0B0B !important;
+    color: #FFFFFF !important;
+    border: 1.5px solid #0B0B0B !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-wp-box--empty,
+  [data-theme] .v5-wp-box--empty,
+  .v5-wp-box--empty,
+  .v5-health-box--empty {
+    background-image: none !important;
+    background-color: #FFFFFF !important;
+    border: 1.5px solid #0B0B0B !important;
+  }
+
+  /* High-contrast Blood Potency summary & Phase 3 Dossier blocks */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stats-panel,
+  [data-theme] .v5-bp-stats-panel,
+  .v5-bp-stats-panel,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-panel,
+  [data-theme] .wod-structured-panel,
+  .wod-structured-panel {
+    background-color: #F5F5F5 !important;
+    color: #0B0B0B !important;
+    border: 1.5px solid #0B0B0B !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stat-cell,
+  [data-theme] .v5-bp-stat-cell,
+  .v5-bp-stat-cell,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-item,
+  [data-theme] .wod-structured-item,
+  .wod-structured-item {
+    background-color: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 1px solid #0B0B0B !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-summary-pill,
+  [data-theme] .wod-structured-summary-pill,
+  .wod-structured-summary-pill,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--merit,
+  [data-theme] .wod-mf-badge--merit,
+  .wod-mf-badge--merit,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--flaw,
+  [data-theme] .wod-mf-badge--flaw,
+  .wod-mf-badge--flaw,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-active,
+  [data-theme] .wod-haven-trait-chip.is-active,
+  .wod-haven-trait-chip.is-active {
+    background-color: #F0F0F0 !important;
+    color: #0B0B0B !important;
+    border: 1.5px solid #0B0B0B !important;
+    box-shadow: none !important;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw.is-active,
+  [data-theme] .wod-haven-trait-chip.is-flaw.is-active,
+  .wod-haven-trait-chip.is-flaw.is-active {
+    border-style: dashed !important;
+  }
+
+  .wod-structured-blocks input.cyber-input,
+  .wod-structured-blocks select.cyber-input,
+  .wod-structured-blocks textarea.cyber-textarea {
+    background-color: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border-color: #0B0B0B !important;
+    box-shadow: none !important;
+  }
+
+  /* Hide interactive-only controls on paper output */
+  .no-print,
+  .wod-pool-composer,
+  .wod-frenzy-panel,
+  .cyber-roll-btn,
+  .wod-mend-rouse-btn,
+  .wod-power-trigger-btn,
+  [data-testid="wod-add-touchstone-btn"],
+  [data-testid="wod-mf-picker-toggle"],
+  [data-testid="wod-mf-picker-panel"],
+  [data-testid="wod-add-haven-btn"],
+  [data-testid^="wod-mf-filter-"],
+  [data-testid^="wod-ts-remove-"],
+  [data-testid^="wod-ts-confirm-remove-"],
+  [data-testid^="wod-ts-cancel-remove-"],
+  [data-testid^="wod-mf-remove-"],
+  [data-testid^="wod-mf-confirm-remove-"],
+  [data-testid^="wod-mf-cancel-remove-"],
+  [data-testid^="wod-haven-remove-"],
+  [data-testid^="wod-haven-confirm-remove-"],
+  [data-testid^="wod-haven-cancel-remove-"],
+  .wod-structured-filter-chip,
+  .wod-structured-catalog-btn,
+  .wod-structured-danger-btn,
+  .wod-haven-trait-chip:not(.is-active) {
     display: none !important;
   }
 

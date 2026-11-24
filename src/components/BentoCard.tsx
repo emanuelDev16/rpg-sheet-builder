@@ -54,6 +54,7 @@ import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
 import { WodStructuredBlocks } from './WodStructuredBlocks';
+import { isFullWidthBentoCard } from '../utils/bentoLayout';
 
 interface BentoCardProps {
   card: SheetCard;
@@ -437,7 +438,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     [evaluation.variables],
   );
 
-  const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
+  const spanClass = isFullWidthBentoCard(card) ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
   const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
   const fieldsToRender =

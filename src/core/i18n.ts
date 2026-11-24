@@ -865,6 +865,13 @@ const PT_BR_DICT = {
   'print.initFailed': 'Falha ao iniciar impressão PDF.',
   'print.pureHtmlTitleSuffix': 'Protótipo HTML + CSS Puro',
   'print.pureHtmlAddRow': '+ ADICIONAR LINHA',
+  'print.pureHtmlDossierTitle': 'CONVICÇÕES, QUALIDADES & REFÚGIOS',
+  'print.pureHtmlDossierTitleV20': 'QUALIDADES, DEFEITOS & REFÚGIOS',
+  'print.pureHtmlHumanityValue': '{{humanity}} / 10 · {{stains}} MANCHAS',
+  'print.pureHtmlWpValue': '{{available}} / {{max}} LIVRE ({{sup}} / · {{agg}} X)',
+  'print.pureHtmlHealthV20Summary': '{{healthy}} / {{max}} SAUD. · {{agg}} * · {{lethal}} X · {{bashing}} /',
+  'print.pureHtmlHealthV5Summary': '{{healthy}} / {{max}} SAUD. · {{agg}} X · {{sup}} /',
+  'print.pureHtmlStainsLegend': '● HUMANIDADE · / MANCHA',
 
   // Theme & Mobile Dock
   'theme.ariaSelector': 'Selecionar tema visual',
@@ -1159,6 +1166,9 @@ const PT_BR_DICT = {
   'wizard.issue.v5TouchstonesMismatch': 'Registre entre {{min}} e {{max}} Convicções & Pedras de Toque válidas (atual: {{current}}).',
   'wizard.issue.v20BackgroundsMismatch': 'Distribua exatamente {{target}} pontos em Antecedentes V20 (atual: {{current}}).',
   'wizard.issue.v20VirtuesMismatch': 'Distribua exatamente {{target}} pontos extras nas 3 Virtudes (atual: {{current}}).',
+  'wizard.powerLevelShort': 'N{{level}}',
+  'wizard.customRatingLabel': 'Pts',
+  'xp.dismissErrorAria': 'Fechar alerta',
 } as const;
 
 export type TranslationKey = keyof typeof PT_BR_DICT;
@@ -1990,6 +2000,13 @@ export const EN: TranslationDictionary = {
   'print.initFailed': 'Failed to start PDF printing.',
   'print.pureHtmlTitleSuffix': 'Standalone HTML + Pure CSS Prototype',
   'print.pureHtmlAddRow': '+ ADD ROW',
+  'print.pureHtmlDossierTitle': 'CONVICTIONS, MERITS & HAVENS',
+  'print.pureHtmlDossierTitleV20': 'MERITS, FLAWS & HAVENS',
+  'print.pureHtmlHumanityValue': '{{humanity}} / 10 · {{stains}} STAINS',
+  'print.pureHtmlWpValue': '{{available}} / {{max}} AVAIL ({{sup}} / · {{agg}} X)',
+  'print.pureHtmlHealthV20Summary': '{{healthy}} / {{max}} HEALTHY · {{agg}} * · {{lethal}} X · {{bashing}} /',
+  'print.pureHtmlHealthV5Summary': '{{healthy}} / {{max}} HEALTHY · {{agg}} X · {{sup}} /',
+  'print.pureHtmlStainsLegend': '● HUMANITY · / STAIN',
 
   // Theme & Mobile Dock
   'theme.ariaSelector': 'Select visual theme',
@@ -2284,6 +2301,9 @@ export const EN: TranslationDictionary = {
   'wizard.issue.v5TouchstonesMismatch': 'Add between {{min}} and {{max}} valid Convictions & Touchstones (current: {{current}}).',
   'wizard.issue.v20BackgroundsMismatch': 'Allocate exactly {{target}} V20 Background dots (current: {{current}}).',
   'wizard.issue.v20VirtuesMismatch': 'Allocate exactly {{target}} extra Virtue dots (current: {{current}}).',
+  'wizard.powerLevelShort': 'L{{level}}',
+  'wizard.customRatingLabel': 'Dots',
+  'xp.dismissErrorAria': 'Dismiss alert',
 };
 
 export const ES: TranslationDictionary = {
@@ -3110,6 +3130,13 @@ export const ES: TranslationDictionary = {
   'print.initFailed': 'Error al iniciar la impresión PDF.',
   'print.pureHtmlTitleSuffix': 'Prototipo HTML + CSS Puro',
   'print.pureHtmlAddRow': '+ AÑADIR FILA',
+  'print.pureHtmlDossierTitle': 'CONVICCIONES, MÉRITOS Y REFUGIOS',
+  'print.pureHtmlDossierTitleV20': 'MÉRITOS, DEFECTOS Y REFUGIOS',
+  'print.pureHtmlHumanityValue': '{{humanity}} / 10 · {{stains}} MÁCULAS',
+  'print.pureHtmlWpValue': '{{available}} / {{max}} LIBRE ({{sup}} / · {{agg}} X)',
+  'print.pureHtmlHealthV20Summary': '{{healthy}} / {{max}} SANO · {{agg}} * · {{lethal}} X · {{bashing}} /',
+  'print.pureHtmlHealthV5Summary': '{{healthy}} / {{max}} SANO · {{agg}} X · {{sup}} /',
+  'print.pureHtmlStainsLegend': '● HUMANIDAD · / MÁCULA',
 
   // Theme & Mobile Dock
   'theme.ariaSelector': 'Seleccionar tema visual',
@@ -3404,6 +3431,9 @@ export const ES: TranslationDictionary = {
   'wizard.issue.v5TouchstonesMismatch': 'Registra entre {{min}} y {{max}} Convicciones y Piedras de Toque válidas (actual: {{current}}).',
   'wizard.issue.v20BackgroundsMismatch': 'Distribuye exactamente {{target}} puntos en Trasfondos V20 (actual: {{current}}).',
   'wizard.issue.v20VirtuesMismatch': 'Distribuye exactamente {{target}} puntos extra en las 3 Virtudes (actual: {{current}}).',
+  'wizard.powerLevelShort': 'N{{level}}',
+  'wizard.customRatingLabel': 'Pts',
+  'xp.dismissErrorAria': 'Cerrar alerta',
 };
 
 export const TRANSLATION_DICTIONARIES: Record<AppLanguage, TranslationDictionary> = {
