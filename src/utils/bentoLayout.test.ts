@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import {
   BENTO_TWO_COLUMN_MEDIA_QUERY,
   partitionBentoCardSegments,
+  shouldUseTwoColumnMasonry,
 } from './bentoLayout.ts';
 
 interface MockCard {
@@ -125,9 +126,17 @@ test('partitionBentoCardSegments preserves exact originalIndex and handles empty
   assert.deepEqual(recoveredIndices, [0, 1, 2, 3, 4, 5]);
 });
 
-test('BENTO_TWO_COLUMN_MEDIA_QUERY matches desktop >=1024px and landscape >=560px breakpoints', () => {
-  assert.match(BENTO_TWO_COLUMN_MEDIA_QUERY, /\bscreen\b/);
+test('BENTO_TWO_COLUMN_MEDIA_QUERY matches desktop >=64rem/1024px and landscape 560px-932px breakpoints', () => {
+  assert.match(BENTO_TWO_COLUMN_MEDIA_QUERY, /min-width:\s*64rem/);
   assert.match(BENTO_TWO_COLUMN_MEDIA_QUERY, /min-width:\s*1024px/);
+  assert.match(BENTO_TWO_COLUMN_MEDIA_QUERY, /max-width:\s*932px/);
   assert.match(BENTO_TWO_COLUMN_MEDIA_QUERY, /min-width:\s*560px/);
   assert.match(BENTO_TWO_COLUMN_MEDIA_QUERY, /orientation:\s*landscape/);
+});
+
+test('shouldUseTwoColumnMasonry enables masonry only when 2-column matches and not printing', () => {
+  assert.equal(shouldUseTwoColumnMasonry(true, false), true);
+  assert.equal(shouldUseTwoColumnMasonry(true, true), false);
+  assert.equal(shouldUseTwoColumnMasonry(false, false), false);
+  assert.equal(shouldUseTwoColumnMasonry(false, true), false);
 });

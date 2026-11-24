@@ -133,6 +133,7 @@ import { useFocusTrap } from './utils/useFocusTrap';
 import {
   BENTO_TWO_COLUMN_MEDIA_QUERY,
   partitionBentoCardSegments,
+  shouldUseTwoColumnMasonry,
 } from './utils/bentoLayout';
 import { printActiveSheetView } from './core/printSheet';
 import {
@@ -178,13 +179,15 @@ function useTwoColBentoLayout(): boolean {
     const twoColMql = window.matchMedia(BENTO_TWO_COLUMN_MEDIA_QUERY);
     const printMql = window.matchMedia('print');
 
+    const syncViewportState = () => {
+      setMatchesTwoCol(Boolean(twoColMql?.matches));
+      setIsPrinting(Boolean(printMql?.matches));
+    };
     const updateTwoCol = () => setMatchesTwoCol(Boolean(twoColMql?.matches));
     const updatePrint = () => setIsPrinting(Boolean(printMql?.matches));
     const handleBeforePrint = () => setIsPrinting(true);
-    const handleAfterPrint = () => setIsPrinting(Boolean(printMql?.matches));
 
-    updateTwoCol();
-    updatePrint();
+    syncViewportState();
 
     const addMqlListener = (mql: MediaQueryList | null | undefined, handler: () => void) => {
       if (!mql) return () => {};
@@ -201,18 +204,24 @@ function useTwoColBentoLayout(): boolean {
 
     const cleanupTwoCol = addMqlListener(twoColMql, updateTwoCol);
     const cleanupPrint = addMqlListener(printMql, updatePrint);
+    window.addEventListener('resize', syncViewportState);
+    window.addEventListener('orientationchange', syncViewportState);
     window.addEventListener('beforeprint', handleBeforePrint);
-    window.addEventListener('afterprint', handleAfterPrint);
+    window.addEventListener('afterprint', updatePrint);
+    window.addEventListener('focus', updatePrint);
 
     return () => {
       cleanupTwoCol();
       cleanupPrint();
+      window.removeEventListener('resize', syncViewportState);
+      window.removeEventListener('orientationchange', syncViewportState);
       window.removeEventListener('beforeprint', handleBeforePrint);
-      window.removeEventListener('afterprint', handleAfterPrint);
+      window.removeEventListener('afterprint', updatePrint);
+      window.removeEventListener('focus', updatePrint);
     };
   }, []);
 
-  return matchesTwoCol && !isPrinting;
+  return shouldUseTwoColumnMasonry(matchesTwoCol, isPrinting);
 }
 
 interface HydratedAppWorkspaceProps {
@@ -2261,10 +2270,11 @@ function HydratedAppWorkspace({
               />
             ) : (
               <div
+                data-bento-layout={useTwoColMasonry ? 'masonry-2col' : 'flat-1col'}
                 className={
                   useTwoColMasonry
                     ? 'bento-print-grid bento-masonry-stack'
-                    : 'bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
+                    : 'bento-print-grid grid grid-cols-1 gap-4 items-start'
                 }
               >
                 {searchQuery.trim() && filteredCards.length === 0 ? (
