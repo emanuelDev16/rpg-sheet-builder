@@ -7,7 +7,10 @@ import addFormats from 'ajv-formats';
 import {
   addCardToSheet,
   addFieldToCard,
+  addHaven,
+  addMeritFlaw,
   addRepeatableRow,
+  addTouchstone,
   adjustHealthDamage,
   adjustResourceValue,
   adjustSheetBloodPool,
@@ -50,7 +53,10 @@ import {
   migrateLocalStorageSheet,
   parseAndValidateImportPayload,
   removeCardFromSheet,
+  removeHaven,
+  removeMeritFlaw,
   removeRepeatableRow,
+  removeTouchstone,
   resolveRollPreview,
   resolveRulePreset,
   setSheetRulePreset,
@@ -60,7 +66,10 @@ import {
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
+  updateHaven,
+  updateMeritFlaw,
   updateSheetVirtue,
+  updateTouchstone,
   validateSheetPayload,
 } from './sheetModel';
 import { getV5BloodPotencyStats } from './formula';
@@ -1447,5 +1456,156 @@ test('Phase 3 Block 1 round-trip: export -> JSON.stringify -> parseAndValidateIm
   assert.equal(restored.rollLogs[0]?.isRouseCheck, true);
   assert.deepEqual(restored.rollLogs[0]?.rolls, [3, 8]);
   assert.deepEqual(restored.rollLogs[0]?.rerolledIndices, [1]);
+});
+
+test('Phase 3 Block 2: touchstones, meritsFlaws, and havens CRUD, schema validation, legacy migration, and JSON round-trip', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. Fresh V5 and V20 sheets initialize clean empty arrays and include card_wod_dossier
+  let v5 = createNewSheetForSystem('wod', { edition: 'vampire-v5', clan: 'Toreador', name: 'Camille' });
+  assert.deepEqual(v5.touchstones, []);
+  assert.deepEqual(v5.meritsFlaws, []);
+  assert.deepEqual(v5.havens, []);
+  assert.ok(v5.cards.some((c) => c.id === 'card_wod_dossier' && c.tab === 'magias'));
+
+  const v20 = createNewSheetForSystem('wod', { edition: 'storyteller-v20', clan: 'Ventrue', name: 'Marcus' });
+  assert.equal(v20.touchstones, undefined);
+  assert.deepEqual(v20.meritsFlaws, []);
+  assert.deepEqual(v20.havens, []);
+  assert.ok(v20.cards.some((c) => c.id === 'card_wod_dossier' && c.tab === 'magias'));
+
+  const dnd = createNewSheetForSystem('dnd5e');
+  assert.equal(dnd.touchstones, undefined);
+  assert.equal(dnd.meritsFlaws, undefined);
+  assert.equal(dnd.havens, undefined);
+  assert.equal(dnd.cards.some((c) => c.id === 'card_wod_dossier'), false);
+
+  // 2. Immutable CRUD helpers & rating clamping
+  v5 = addTouchstone(v5, {
+    id: 'ts_1',
+    conviction: 'Nunca trair a arte verdadeira',
+    touchstone: 'Clara Mendes (Restauradora)',
+    notes: 'Trabalha no Museu do Porto.',
+  });
+  v5 = updateTouchstone(v5, 'ts_1', { notes: 'Atualizada: protege o ateliê.' });
+  assert.equal(v5.touchstones?.length, 1);
+  assert.equal(v5.touchstones?.[0].notes, 'Atualizada: protege o ateliê.');
+
+  v5 = addMeritFlaw(v5, {
+    id: 'mf_1',
+    kind: 'merit',
+    name: 'Linguística',
+    rating: 9, // clamps to 5
+    catalogId: 'linguistics',
+  });
+  v5 = addMeritFlaw(v5, {
+    id: 'mf_2',
+    kind: 'flaw',
+    name: 'Sede de Matusalém',
+    rating: 0, // clamps to 1
+    catalogId: 'methuselahs_thirst',
+  });
+  assert.equal(v5.meritsFlaws?.[0].rating, 5);
+  assert.equal(v5.meritsFlaws?.[1].rating, 1);
+  v5 = updateMeritFlaw(v5, 'mf_1', { rating: 2, notes: 'Latim e Grego' });
+  assert.equal(v5.meritsFlaws?.[0].rating, 2);
+
+  v5 = addHaven(v5, {
+    id: 'hv_1',
+    name: 'Galeria Subterrânea',
+    location: 'Zona Portuária',
+    rating: 8, // clamps to 5
+    traits: ['hidden_armory', 'security_system'],
+    notes: 'Acesso pelo elevador de carga.',
+  });
+  assert.equal(v5.havens?.[0].rating, 5);
+  v5 = updateHaven(v5, 'hv_1', { rating: 3, traits: ['hidden_armory', 'warding'] });
+  assert.equal(v5.havens?.[0].rating, 3);
+  assert.deepEqual(v5.havens?.[0].traits, ['hidden_armory', 'warding']);
+
+  // 3. Round-trip JSON + AJV + validateSheetPayload
+  const jsonText = JSON.stringify(v5, null, 2);
+  const parsedRaw = JSON.parse(jsonText) as unknown;
+  assert.equal(validateAjv(parsedRaw), true, `AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(parsedRaw).valid, true);
+
+  const imported = parseAndValidateImportPayload(jsonText);
+  assert.equal(imported.valid, true, `Import errors: ${imported.errors.join('; ')}`);
+  const restored = imported.sheets[0];
+  assert.deepEqual(restored.touchstones, v5.touchstones);
+  assert.deepEqual(restored.meritsFlaws, v5.meritsFlaws);
+  assert.deepEqual(restored.havens, v5.havens);
+
+  // Removals work cleanly
+  const trimmed = removeHaven(removeMeritFlaw(removeTouchstone(restored, 'ts_1'), 'mf_2'), 'hv_1');
+  assert.equal(trimmed.touchstones?.length, 0);
+  assert.equal(trimmed.meritsFlaws?.length, 1);
+  assert.equal(trimmed.havens?.length, 0);
+
+  // 4. Rejects malformed entries and extra properties (additionalProperties: false)
+  const badTouchstoneExtra = {
+    ...v5,
+    touchstones: [{ id: 'ts_bad', conviction: 'X', touchstone: 'Y', extraProp: 1 }],
+  };
+  assert.equal(validateAjv(badTouchstoneExtra), false);
+  assert.equal(validateSheetPayload(badTouchstoneExtra).valid, false);
+
+  const badMeritRating = {
+    ...v5,
+    meritsFlaws: [{ id: 'mf_bad', kind: 'merit', name: 'X', rating: 0 }],
+  };
+  assert.equal(validateAjv(badMeritRating), false);
+  assert.equal(validateSheetPayload(badMeritRating).valid, false);
+
+  const badMeritKind = {
+    ...v5,
+    meritsFlaws: [{ id: 'mf_bad2', kind: 'curse', name: 'X', rating: 2 }],
+  };
+  assert.equal(validateAjv(badMeritKind), false);
+  assert.equal(validateSheetPayload(badMeritKind).valid, false);
+
+  const badHavenExtra = {
+    ...v5,
+    havens: [{ id: 'hv_bad', name: 'Crypt', rating: 2, traits: ['library'], extraField: true }],
+  };
+  assert.equal(validateAjv(badHavenExtra), false);
+  assert.equal(validateSheetPayload(badHavenExtra).valid, false);
+
+  const badHavenRating = {
+    ...v5,
+    havens: [{ id: 'hv_bad2', name: 'Crypt', rating: 6, traits: [] }],
+  };
+  assert.equal(validateAjv(badHavenRating), false);
+  assert.equal(validateSheetPayload(badHavenRating).valid, false);
+
+  // 5. Legacy WoD migration initializes missing arrays cleanly without overwriting existing values
+  const legacyV5 = createWorldOfDarknessV5Sheet();
+  const {
+    touchstones: _dropTs,
+    meritsFlaws: _dropMf,
+    havens: _dropHv,
+    ...legacyV5WithoutStructured
+  } = legacyV5;
+  legacyV5WithoutStructured.cards = legacyV5WithoutStructured.cards.filter(
+    (c) => c.id !== 'card_wod_dossier',
+  );
+  const upcastV5 = migrateLegacyWodSheet(legacyV5WithoutStructured, { storage: null });
+  assert.deepEqual(upcastV5.touchstones, []);
+  assert.deepEqual(upcastV5.meritsFlaws, []);
+  assert.deepEqual(upcastV5.havens, []);
+  assert.ok(upcastV5.cards.some((c) => c.id === 'card_wod_dossier'));
+  assert.equal(validateAjv(upcastV5), true);
+
+  const prefilledV5 = migrateLegacyWodSheet(v5, { storage: null });
+  assert.deepEqual(prefilledV5.touchstones, v5.touchstones);
+  assert.deepEqual(prefilledV5.meritsFlaws, v5.meritsFlaws);
+  assert.deepEqual(prefilledV5.havens, v5.havens);
 });
 

@@ -3,7 +3,10 @@ import { Dices, X } from 'lucide-react';
 import {
   addCardToSheet,
   addFieldToCard,
+  addHaven,
+  addMeritFlaw,
   addRepeatableRow,
+  addTouchstone,
   adjustHealthDamage,
   adjustResourceValue,
   adjustSheetBloodPool,
@@ -34,7 +37,10 @@ import {
   nowIsoUtc,
   removeCardFromSheet,
   removeFieldFromCard,
+  removeHaven,
+  removeMeritFlaw,
   removeRepeatableRow,
+  removeTouchstone,
   resolveRulePreset,
   RollLogEntry,
   RulePreset,
@@ -48,8 +54,11 @@ import {
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
+  updateHaven,
+  updateMeritFlaw,
   updateRepeatableRow,
   updateSheetVirtue,
+  updateTouchstone,
   WorkspaceState,
 } from './core/sheetModel';
 import {
@@ -825,18 +834,37 @@ function HydratedAppWorkspace({
     [bloodPotency],
   );
 
+  const isOfficialWod = isOfficialVampireSheet(activeSystemId, rulePreset);
   const visibleCards = useMemo(
-    () => sheet.cards.filter((card) => card.tab === activeTab),
-    [sheet.cards, activeTab],
+    () =>
+      sheet.cards.filter(
+        (card) => card.tab === activeTab && (card.id !== 'card_wod_dossier' || isOfficialWod),
+      ),
+    [sheet.cards, activeTab, isOfficialWod],
+  );
+
+  const structuredSearchContext = useMemo(
+    () => ({
+      systemId: activeSystemId,
+      rulePreset,
+      touchstones: sheet.touchstones,
+      meritsFlaws: sheet.meritsFlaws,
+      havens: sheet.havens,
+    }),
+    [activeSystemId, rulePreset, sheet.touchstones, sheet.meritsFlaws, sheet.havens],
   );
 
   const filteredCards = useMemo(
-    () => filterCardsByQuery(visibleCards, searchQuery),
-    [visibleCards, searchQuery],
+    () => filterCardsByQuery(visibleCards, searchQuery, structuredSearchContext),
+    [visibleCards, searchQuery, structuredSearchContext],
   );
 
   const matchedFieldCount = useMemo(
-    () => filteredCards.reduce((sum, entry) => sum + entry.matchedFields.length, 0),
+    () =>
+      filteredCards.reduce(
+        (sum, entry) => sum + entry.matchedFields.length + (entry.structuredMatchesCount ?? 0),
+        0,
+      ),
     [filteredCards],
   );
 
@@ -2093,6 +2121,19 @@ function HydratedAppWorkspace({
         setSheet((prev) => removeCardFromSheet(prev, cid));
         triggerFlash(t.t('app.cardRemoved'));
       }}
+      touchstones={sheet.touchstones ?? []}
+      meritsFlaws={sheet.meritsFlaws ?? []}
+      havens={sheet.havens ?? []}
+      searchQuery={searchQuery}
+      onAddTouchstone={(entry) => setSheet((prev) => addTouchstone(prev, entry))}
+      onUpdateTouchstone={(id, patch) => setSheet((prev) => updateTouchstone(prev, id, patch))}
+      onRemoveTouchstone={(id) => setSheet((prev) => removeTouchstone(prev, id))}
+      onAddMeritFlaw={(entry) => setSheet((prev) => addMeritFlaw(prev, entry))}
+      onUpdateMeritFlaw={(id, patch) => setSheet((prev) => updateMeritFlaw(prev, id, patch))}
+      onRemoveMeritFlaw={(id) => setSheet((prev) => removeMeritFlaw(prev, id))}
+      onAddHaven={(entry) => setSheet((prev) => addHaven(prev, entry))}
+      onUpdateHaven={(id, patch) => setSheet((prev) => updateHaven(prev, id, patch))}
+      onRemoveHaven={(id) => setSheet((prev) => removeHaven(prev, id))}
     />
   );
 

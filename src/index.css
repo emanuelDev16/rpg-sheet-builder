@@ -1369,6 +1369,141 @@ select:focus-visible,
   border-color: #1A1A1A;
 }
 
+/* ============================================================================
+   WOD BLOCOS ESTRUTURADOS (Pedras de Toque, Qualidades/Defeitos & Refúgios)
+   ============================================================================ */
+.wod-structured-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-structured-item {
+  background-color: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.wod-structured-summary-pill {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+}
+
+.wod-mf-badge--merit {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+}
+
+.wod-mf-badge--flaw {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: 1.5px solid var(--accent-danger);
+  border-radius: var(--radius-pill);
+}
+
+.wod-structured-filter-chip,
+.wod-haven-trait-chip,
+.wod-structured-catalog-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
+}
+
+.wod-structured-filter-chip:hover,
+.wod-haven-trait-chip:hover,
+.wod-structured-catalog-btn:hover {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-structured-filter-chip.is-active,
+.wod-haven-trait-chip.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-haven-trait-chip.is-flaw:not(.is-active) {
+  border-style: dashed;
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+.wod-haven-trait-chip.is-flaw.is-active {
+  background-color: var(--accent-danger);
+  color: var(--accent-danger-contrast);
+  border-color: var(--border-color);
+}
+
+.wod-structured-danger-btn {
+  background-color: var(--accent-danger);
+  color: var(--accent-danger-contrast);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+.wod-structured-added-pill {
+  background-color: var(--bg-strip);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="eink"] .wod-structured-panel,
+[data-theme="eink"] .wod-structured-item,
+[data-theme="eink"] .wod-structured-summary-pill,
+[data-theme="eink"] .wod-mf-badge--merit,
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-structured-filter-chip,
+[data-theme="eink"] .wod-haven-trait-chip,
+[data-theme="eink"] .wod-structured-catalog-btn,
+[data-theme="eink"] .wod-structured-danger-btn {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-structured-filter-chip:hover,
+[data-theme="eink"] .wod-haven-trait-chip:hover,
+[data-theme="eink"] .wod-structured-catalog-btn:hover {
+  box-shadow: none;
+}
+
+[data-theme="eink"] .wod-structured-filter-chip.is-active,
+[data-theme="eink"] .wod-haven-trait-chip.is-active,
+[data-theme="eink"] .wod-haven-trait-chip.is-flaw.is-active {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mf-badge--merit {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-haven-trait-chip.is-flaw:not(.is-active) {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-structured-danger-btn {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
 @media (forced-colors: active) {
   .v5-humanity-box {
     border: 2px solid ButtonText;
@@ -1428,10 +1563,36 @@ select:focus-visible,
   }
 
   .v5-bane-severity-badge,
-  .wod-power-bonus-badge {
+  .wod-power-bonus-badge,
+  .wod-structured-summary-pill,
+  .wod-mf-badge--merit,
+  .wod-mf-badge--flaw {
     background-color: Canvas;
     color: CanvasText;
     border: 2px solid Highlight;
+  }
+
+  .wod-structured-panel,
+  .wod-structured-item {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-structured-filter-chip,
+  .wod-haven-trait-chip,
+  .wod-structured-catalog-btn {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-structured-filter-chip.is-active,
+  .wod-haven-trait-chip.is-active,
+  .wod-structured-danger-btn {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
   }
 }
 
@@ -1757,6 +1918,75 @@ select:focus-visible,
     box-shadow: none;
     transform: none;
   }
+
+  /* 4. Blocos Estruturados WoD — Light Cyber Brutalism (#FFFDF9, #EFE3D2, #0B0B0B, #5B0F18, 4px) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-panel {
+    background-color: #F8F1E7;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-item {
+    background-color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-summary-pill,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--merit {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--flaw {
+    background-color: #FEE2E2;
+    color: #8C1313;
+    border: 1.5px solid #8C1313;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-catalog-btn {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-catalog-btn:hover {
+    background-color: #EFE3D2;
+    color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw:not(.is-active) {
+    background-color: #FFFDF9;
+    color: #8C1313;
+    border: 1.5px dashed #8C1313;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-danger-btn {
+    background-color: #8C1313;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
 }
 
 /* Compactação Desktop (> 768px) restrita ao tema claro */
@@ -2073,6 +2303,9 @@ select:focus-visible,
   .wod-pool-composer select,
   .wod-frenzy-panel input,
   .wod-frenzy-panel select,
+  .wod-structured-blocks input,
+  .wod-structured-blocks select,
+  .wod-structured-blocks textarea,
   .xp-acquire-panel input,
   .mobile-modal-dialog input,
   .mobile-modal-dialog select,
@@ -2310,7 +2543,10 @@ select:focus-visible,
 [data-theme="eink"] .die-chip,
 [data-theme="eink"] .die-chip--hunger,
 [data-theme="eink"] .v5-status-badge--messy,
-[data-theme="eink"] .v5-status-badge--bestial {
+[data-theme="eink"] .v5-status-badge--bestial,
+[data-theme="eink"] .wod-structured-summary-pill,
+[data-theme="eink"] .wod-mf-badge--merit,
+[data-theme="eink"] .wod-mf-badge--flaw {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }

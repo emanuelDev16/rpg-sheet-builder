@@ -92,6 +92,21 @@
         "selfControl": { "type": "integer", "minimum": 1, "maximum": 5 },
         "courage": { "type": "integer", "minimum": 1, "maximum": 5 }
       }
+    },
+    "touchstones": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/TouchstoneEntry" }
+    },
+    "meritsFlaws": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/MeritFlawEntry" }
+    },
+    "havens": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/HavenEntry" }
     }
   },
   "$defs": {
@@ -321,6 +336,47 @@
         "customUseNewLevelBase": {
           "type": "boolean"
         }
+      }
+    },
+    "TouchstoneEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "conviction", "touchstone"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "conviction": { "type": "string", "maxLength": 240 },
+        "touchstone": { "type": "string", "maxLength": 160 },
+        "notes": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "MeritFlawEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "rating"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "kind": { "type": "string", "enum": ["merit", "flaw"] },
+        "name": { "type": "string", "maxLength": 120 },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "catalogId": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "HavenEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "rating", "traits"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 120 },
+        "location": { "type": "string", "maxLength": 200 },
+        "rating": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "traits": {
+          "type": "array",
+          "maxItems": 30,
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+        },
+        "notes": { "type": "string", "maxLength": 500 }
       }
     }
   }
