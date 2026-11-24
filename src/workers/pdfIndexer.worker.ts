@@ -115,7 +115,6 @@ function joinPageTextItems(items: Array<{ str?: string; hasEOL?: boolean }>): st
 async function handleExtractRequest(
   request: Extract<PdfIndexWorkerRequest, { type: 'extract' }>,
 ): Promise<void> {
-  let bufferRef: ArrayBuffer | null = request.buffer;
   let bytesRef: Uint8Array | null = new Uint8Array(request.buffer);
   let loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null;
   let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
@@ -209,7 +208,6 @@ async function handleExtractRequest(
     pdfDoc = null;
     loadingTask = null;
     bytesRef = null;
-    bufferRef = null;
   }
 }
 

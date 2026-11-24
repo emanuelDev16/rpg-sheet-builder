@@ -66,7 +66,6 @@ import {
   toggleWizardDisciplinePower,
   toggleWizardHavenTrait,
   V5_FREE_SPECIALTY_SKILL_KEYS,
-  V5_SKILL_ARRAYS,
   V5_TOUCHSTONES_MAX,
   V5_TOUCHSTONES_MIN,
   V20_ATTRIBUTE_PRIORITY_BUDGETS,
