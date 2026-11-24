@@ -5,7 +5,6 @@ import {
   migrateLegacyWodSheet,
   type Sheet,
   type SystemId,
-  touchSheetMetadata,
   validateSheetPayload,
   type WorkspaceState,
 } from './sheetModel.ts';
