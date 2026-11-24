@@ -18,11 +18,22 @@ export type BentoCardSegment<T> = BentoFullSegment<T> | BentoColumnsSegment<T>;
 
 /**
  * Matches the CSS 2-column Bento breakpoints used on screen:
- * - Desktop (`>= 1024px`, Tailwind `lg:grid-cols-2`)
+ * - Desktop (`>= 64rem` / `>= 1024px`, aligned with Tailwind `lg:`)
  * - Mobile/tablet landscape (`560px..932px` in landscape orientation)
  */
 export const BENTO_TWO_COLUMN_MEDIA_QUERY =
-  'screen and (min-width: 1024px), screen and (max-width: 932px) and (min-width: 560px) and (orientation: landscape)';
+  '(min-width: 64rem), (min-width: 1024px), (max-width: 932px) and (min-width: 560px) and (orientation: landscape)';
+
+/**
+ * Resolves whether the Bento container should render segmented 2-column masonry.
+ * Printing always falls back to the flat CSS Print Grid.
+ */
+export function shouldUseTwoColumnMasonry(
+  matchesTwoCol: boolean,
+  isPrinting: boolean,
+): boolean {
+  return matchesTwoCol && !isPrinting;
+}
 
 /**
  * Partitions an ordered card list into full-width bands and independent 2-column
