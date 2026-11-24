@@ -142,5 +142,11 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('pt-BR', 'wizard.finishBtn')).toBe('CONCLUIR E CRIAR FICHA');
     expect(translate('en', 'wizard.finishBtn')).toBe('FINISH & CREATE SHEET');
     expect(translate('es', 'wizard.finishBtn')).toBe('FINALIZAR Y CREAR HOJA');
+
+    expect(translate('pt-BR', 'xp.dismissErrorAria')).toBe('Fechar alerta');
+    expect(translate('en', 'xp.dismissErrorAria')).toBe('Dismiss alert');
+    expect(translate('es', 'xp.dismissErrorAria')).toBe('Cerrar alerta');
+    expect(translate('en', 'wizard.powerLevelShort', { level: 2 })).toBe('L2');
+    expect(translate('pt-BR', 'print.pureHtmlDossierTitle')).toBe('CONVICÇÕES, QUALIDADES & REFÚGIOS');
   });
 });

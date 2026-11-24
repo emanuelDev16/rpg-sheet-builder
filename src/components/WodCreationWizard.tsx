@@ -1562,7 +1562,7 @@ export const WodCreationWizard: React.FC<WodCreationWizardProps> = ({
                                       }
                                     />
                                     <span className="truncate font-semibold text-[var(--ink-primary)]">
-                                      N{power.level} · {power.name[language]}
+                                      {t('wizard.powerLevelShort', { level: power.level })} · {power.name[language]}
                                     </span>
                                   </span>
                                   <span className="text-[9px] font-extrabold text-[var(--accent-wine)] shrink-0">
@@ -1822,7 +1822,7 @@ export const WodCreationWizard: React.FC<WodCreationWizardProps> = ({
                     htmlFor={`${uid}-custom-mf-rating`}
                     className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]"
                   >
-                    Pts
+                    {t('wizard.customRatingLabel')}
                   </label>
                   <select
                     id={`${uid}-custom-mf-rating`}

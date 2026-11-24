@@ -141,6 +141,7 @@ import {
 import { useFocusTrap } from './utils/useFocusTrap';
 import {
   BENTO_TWO_COLUMN_MEDIA_QUERY,
+  isFullWidthBentoCard,
   partitionBentoCardSegments,
   shouldUseTwoColumnMasonry,
 } from './utils/bentoLayout';
@@ -870,7 +871,7 @@ function HydratedAppWorkspace({
 
   const useTwoColMasonry = useTwoColBentoLayout();
   const segmentedCards = useMemo(
-    () => partitionBentoCardSegments(filteredCards, (entry) => (entry.card.colSpan ?? 1) >= 2),
+    () => partitionBentoCardSegments(filteredCards, (entry) => isFullWidthBentoCard(entry.card)),
     [filteredCards],
   );
 

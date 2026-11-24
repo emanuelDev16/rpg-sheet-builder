@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   BENTO_TWO_COLUMN_MEDIA_QUERY,
+  isFullWidthBentoCard,
   partitionBentoCardSegments,
   shouldUseTwoColumnMasonry,
 } from './bentoLayout.ts';
@@ -139,4 +140,34 @@ test('shouldUseTwoColumnMasonry enables masonry only when 2-column matches and n
   assert.equal(shouldUseTwoColumnMasonry(true, true), false);
   assert.equal(shouldUseTwoColumnMasonry(false, false), false);
   assert.equal(shouldUseTwoColumnMasonry(false, true), false);
+});
+
+test('isFullWidthBentoCard treats card_wod_dossier and colSpan >= 2 as full-width and isolates it in masonry segments', () => {
+  assert.equal(isFullWidthBentoCard({ id: 'card_wod_dossier', colSpan: 1 }), true);
+  assert.equal(isFullWidthBentoCard({ id: 'card_wod_dossier' }), true);
+  assert.equal(isFullWidthBentoCard({ id: 'card_disciplinas', colSpan: 2 }), true);
+  assert.equal(isFullWidthBentoCard({ id: 'card_antecedentes', colSpan: 1 }), false);
+
+  const cards = [
+    { id: 'card_disciplinas', colSpan: 1 },
+    { id: 'card_antecedentes', colSpan: 1 },
+    { id: 'card_wod_dossier', colSpan: 1 },
+    { id: 'card_anotacoes', colSpan: 2 },
+  ];
+
+  const segments = partitionBentoCardSegments(cards, isFullWidthBentoCard);
+  assert.deepEqual(segments, [
+    {
+      type: 'columns',
+      left: [{ card: { id: 'card_disciplinas', colSpan: 1 }, originalIndex: 0 }],
+      right: [{ card: { id: 'card_antecedentes', colSpan: 1 }, originalIndex: 1 }],
+    },
+    {
+      type: 'full',
+      items: [
+        { card: { id: 'card_wod_dossier', colSpan: 1 }, originalIndex: 2 },
+        { card: { id: 'card_anotacoes', colSpan: 2 }, originalIndex: 3 },
+      ],
+    },
+  ]);
 });
