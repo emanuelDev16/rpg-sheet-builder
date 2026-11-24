@@ -1053,12 +1053,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                           }
                         : undefined
                   }
-                  className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
+                  className={`seg-block flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
                     state === 'aggravated'
-                      ? 'eink-health-solid'
+                      ? 'eink-health-solid v5-health-box--aggravated'
                       : state === 'superficial'
-                        ? 'eink-health-slash'
-                        : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                        ? 'eink-health-slash v5-health-box--superficial'
+                        : 'v5-health-box--empty text-transparent'
                   }`}
                 >
                   {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
@@ -1067,7 +1067,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
 
             <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
                   {t.aggravatedDmg} (X)
                 </span>
@@ -1099,7 +1099,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
                   {t.superficialDmg} (/)
                 </span>
@@ -1156,7 +1156,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     data-testid="v5-halve-superficial-btn"
                     disabled={halvedIncoming <= 0}
                     onClick={() => onApplyV5SuperficialHalving?.(field.id, v5RawSupDamage)}
-                    className="cyber-btn-outline min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                    className="cyber-btn-outline min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer"
                   >
                     {t.t('cards.vital.reduceSupApply', { amount: halvedIncoming })}
                   </button>
@@ -1439,7 +1439,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   aria-label={t.t('cards.decreaseAria', { label: field.label })}
                   disabled={humanity <= 0}
                   onClick={() => onAdjustResource(field.id, -1)}
-                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   -
                 </button>
@@ -1456,7 +1456,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   aria-label={t.t('cards.increaseAria', { label: field.label })}
                   disabled={humanity >= 10}
                   onClick={() => onAdjustResource(field.id, 1)}
-                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   +
                 </button>
@@ -1484,12 +1484,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                         : 'is-empty'
                   }`}
                 >
-                  {boxState === 'humanity' ? '●' : boxState === 'stain' ? '/' : ''}
+                  <span className="v5-humanity-glyph" aria-hidden="true">
+                    {boxState === 'humanity' ? '●' : boxState === 'stain' ? '/' : ''}
+                  </span>
                 </div>
               ))}
             </div>
 
-            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
+            <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase">
                 {t.t('cards.vital.stainsLabel')}
               </span>
@@ -1500,7 +1502,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   aria-label={t.t('cards.vital.stainsDecAria')}
                   disabled={stains <= 0}
                   onClick={() => onAdjustHumanityStains?.(-1)}
-                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   -
                 </button>
@@ -1527,7 +1529,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               data-testid="v5-remorse-check-btn"
               disabled={stains <= 0}
               onClick={() => onTriggerRemorseCheck?.()}
-              className="no-print print:hidden cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+              className="no-print print:hidden cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
             >
               {t.t('cards.vital.remorseCheckBtn', { pool: remorsePool })} ↗
             </button>
@@ -1614,12 +1616,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                           }
                         : undefined
                   }
-                  className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
+                  className={`seg-block flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
                     state === 'aggravated'
                       ? 'eink-health-solid v5-wp-box--aggravated'
                       : state === 'superficial'
                         ? 'eink-health-slash v5-wp-box--superficial'
-                        : 'v5-wp-box--empty bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                        : 'v5-wp-box--empty text-transparent'
                   }`}
                 >
                   {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
@@ -1628,7 +1630,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
 
             <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
                   {t.t('cards.vital.wpAggravatedDmg')}
                 </span>
@@ -1639,7 +1641,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     aria-label={`${t.t('cards.vital.wpAggravatedDmg')} -`}
                     disabled={wpAgg <= 0}
                     onClick={() => onAdjustV5WillpowerDamage?.('aggravated', -1)}
-                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                   >
                     -
                   </button>
@@ -1655,14 +1657,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     aria-label={`${t.t('cards.vital.wpAggravatedDmg')} +`}
                     disabled={wpAgg >= wpMax}
                     onClick={() => onAdjustV5WillpowerDamage?.('aggravated', 1)}
-                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                   >
                     +
                   </button>
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
                   {t.t('cards.vital.wpSuperficialDmg')}
                 </span>
@@ -1673,7 +1675,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     aria-label={`${t.t('cards.vital.wpSuperficialDmg')} -`}
                     disabled={wpSup <= 0}
                     onClick={() => onAdjustV5WillpowerDamage?.('superficial', -1)}
-                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                   >
                     -
                   </button>
@@ -1689,7 +1691,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     aria-label={`${t.t('cards.vital.wpSuperficialDmg')} +`}
                     disabled={wpAgg >= wpMax}
                     onClick={() => onAdjustV5WillpowerDamage?.('superficial', 1)}
-                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
                   >
                     +
                   </button>
@@ -1858,7 +1860,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         return (
           <div
             data-testid="willpower-surge-panel"
-            className="py-1 flex flex-col gap-1.5 p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)]"
+            className="flex flex-col gap-1.5 p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)]"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
@@ -1875,7 +1877,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 disabled={isDisabled}
                 title={isWillpowerBlocked ? t.t('sidebar.roll.wpAllAggravated') : undefined}
                 onClick={() => onTriggerWillpowerSurge?.()}
-                className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-extrabold uppercase shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-extrabold uppercase shrink-0 cursor-pointer"
               >
                 {canWillpowerSurge
                   ? t.t('cards.vital.wpSurgeBtn')
