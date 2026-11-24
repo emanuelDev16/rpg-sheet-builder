@@ -462,6 +462,13 @@ if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') 
     }
 
     if (payload.type === 'START_OCR_INDEXING') {
+      if (activeTesseractWorker) {
+        const previousWorker = activeTesseractWorker;
+        activeTesseractWorker = null;
+        void previousWorker.terminate().catch(() => {
+          // Ignore terminate errors for previous worker
+        });
+      }
       const jobId =
         payload.payload.jobId?.trim() ||
         `ocr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;

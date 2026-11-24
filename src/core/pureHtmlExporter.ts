@@ -88,7 +88,7 @@ QPushButton.ModeEditActive {
 */`;
 
 export function escapeHtml(text: string): string {
-  return text
+  return String(text ?? '')
     .replace(/&/g, '&amp;')
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
@@ -96,9 +96,11 @@ export function escapeHtml(text: string): string {
     .replace(/'/g, '&#39;');
 }
 
-const DATA_IMAGE_BASE64_REGEX = /^data:image\/(?:png|jpeg|jpg|gif|webp|avif);base64,[A-Za-z0-9+/=]+$/i;
+const DATA_IMAGE_BASE64_REGEX = /^data:image\/(?:png|jpeg|jpg|gif|webp);base64,[A-Za-z0-9+/=]+$/i;
 
 export function sanitizeUrl(raw: string): string {
+  if (typeof raw !== 'string') return '';
+  if (/[\u0000-\u001f\u007f]/.test(raw)) return '';
   const trimmed = raw.trim();
   if (!trimmed) return '';
   if (DATA_IMAGE_BASE64_REGEX.test(trimmed)) {

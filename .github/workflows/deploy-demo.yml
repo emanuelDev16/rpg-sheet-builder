@@ -39,8 +39,19 @@ jobs:
       - name: Executar suíte completa de testes (Vitest + node:test)
         run: npm run test:all
 
-      - name: Gerar build estático (Vite)
-        run: npx vite build --base=/rpg-sheet-builder/
+      - name: Gerar build estático (Vite) e verificar ausência de segredos/sourcemaps
+        env:
+          SYNC_TOKEN: CANARY_SECRET_CI_GUARD
+        run: |
+          npx vite build --base=/rpg-sheet-builder/
+          if grep -rn "CANARY_SECRET_CI_GUARD" dist/; then
+            echo "ERROR: Canary secret leaked into dist/"
+            exit 1
+          fi
+          if [ -n "$(find dist -name '*.map')" ]; then
+            echo "ERROR: Source maps generated in production dist/"
+            exit 1
+          fi
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v6

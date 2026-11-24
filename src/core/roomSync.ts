@@ -5,6 +5,7 @@ import {
   type CanonicalSheet,
   type CanonicalTab,
   type CharacterSheetState,
+  findDangerousKeyPath,
   fromCanonicalSheet,
   getOrCreateDeviceId,
   isValidIsoDateTime,
@@ -352,6 +353,14 @@ export function validateCanonicalSheetPayload(
 ):
   | { ok: true; sheet: CanonicalSheet }
   | { ok: false; error: string; details: string[] } {
+  const dangerousPath = findDangerousKeyPath(payload);
+  if (dangerousPath) {
+    return {
+      ok: false,
+      error: 'SCHEMA_VALIDATION_FAILED',
+      details: [`${dangerousPath}: chave proibida (risco de Prototype Pollution).`],
+    };
+  }
   if (externalAjvValidator) {
     const valid = externalAjvValidator(payload);
     if (!valid) {
@@ -742,6 +751,10 @@ export function validateWorkspaceMirrorInput(input: unknown):
   | { ok: false; error: string } {
   if (!input || typeof input !== 'object') {
     return { ok: false, error: 'Payload de sincronização inválido.' };
+  }
+  const dangerousPath = findDangerousKeyPath(input);
+  if (dangerousPath) {
+    return { ok: false, error: `${dangerousPath}: chave proibida (risco de Prototype Pollution).` };
   }
   const raw = input as Record<string, unknown>;
   const wsRaw = raw.workspace as Record<string, unknown> | undefined;

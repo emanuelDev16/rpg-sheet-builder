@@ -4297,7 +4297,40 @@ export interface SheetPayloadValidationResult {
   errors: string[];
 }
 
+export const MAX_IMPORT_PAYLOAD_BYTES = 2 * 1024 * 1024;
+export const MAX_IMPORT_SHEETS = 100;
+export const MAX_VALIDATION_DEPTH = 32;
+
 const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function findDangerousKeyPath(
+  value: unknown,
+  path = '$',
+  depth = 0,
+): string | null {
+  if (depth > MAX_VALIDATION_DEPTH) {
+    return `${path} (profundidade máxima excedida)`;
+  }
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const hit = findDangerousKeyPath(value[i], `${path}[${i}]`, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(record)) {
+    if (DANGEROUS_OBJECT_KEYS.has(key)) {
+      return `${path}.${key}`;
+    }
+    const hit = findDangerousKeyPath(record[key], `${path}.${key}`, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
 const ALLOWED_SYSTEM_IDS = new Set(['wod', 'dnd5e', 'cyberpunk', 'default', 'blank']);
 const ALLOWED_TAB_IDS = new Set(['geral', 'magias', 'xp']);
 const ALLOWED_FIELD_KINDS = new Set([
@@ -4486,6 +4519,11 @@ function checkPlainObject(
 
 export function validateSheetPayload(data: unknown): SheetPayloadValidationResult {
   const errors: string[] = [];
+  const dangerousPath = findDangerousKeyPath(data);
+  if (dangerousPath) {
+    errors.push(`${dangerousPath}: chave proibida (risco de Prototype Pollution).`);
+    return { valid: false, errors };
+  }
   if (!checkPlainObject(data, '$', ROOT_SHEET_KEYS, errors)) {
     return { valid: false, errors };
   }
@@ -4636,6 +4674,24 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         if (!ALLOWED_FIELD_KINDS.has(String(field.kind))) {
           errors.push(`${fPath}.kind: tipo de campo inválido "${String(field.kind)}".`);
         }
+        if (field.value !== undefined && field.value !== null) {
+          const isValidValue =
+            typeof field.value === 'boolean' ||
+            (typeof field.value === 'string' && field.value.length <= 20000) ||
+            (typeof field.value === 'number' && Number.isFinite(field.value));
+          if (!isValidValue) {
+            errors.push(`${fPath}.value: valor inválido ou excede limite permitido.`);
+          }
+        }
+        if (
+          (field.id === 'f_blood_potency' ||
+            (typeof field.key === 'string' && field.key.trim().toLowerCase() === 'blood_potency')) &&
+          field.kind === 'number' &&
+          typeof field.value === 'number' &&
+          (!Number.isInteger(field.value) || field.value < 0 || field.value > 10)
+        ) {
+          errors.push(`${fPath}.value: blood_potency deve ser inteiro entre 0 e 10.`);
+        }
         if (
           field.max !== undefined &&
           (typeof field.max !== 'number' || !Number.isInteger(field.max) || field.max < 1 || field.max > 100000)
@@ -4647,6 +4703,27 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           (typeof field.maxFormula !== 'string' || field.maxFormula.length > 256)
         ) {
           errors.push(`${fPath}.maxFormula: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.formula !== undefined &&
+          (typeof field.formula !== 'string' || field.formula.length > 256)
+        ) {
+          errors.push(`${fPath}.formula: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.rollExpr !== undefined &&
+          (typeof field.rollExpr !== 'string' || field.rollExpr.length > 256)
+        ) {
+          errors.push(`${fPath}.rollExpr: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.rollMod !== undefined &&
+          (typeof field.rollMod !== 'number' ||
+            !Number.isInteger(field.rollMod) ||
+            field.rollMod < -100 ||
+            field.rollMod > 100)
+        ) {
+          errors.push(`${fPath}.rollMod: deve ser inteiro entre -100 e 100.`);
         }
         if (
           field.attributeGroup !== undefined &&
@@ -4683,6 +4760,24 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           !ALLOWED_FIELD_XP_CATEGORIES.has(String(field.xpCategory))
         ) {
           errors.push(`${fPath}.xpCategory: categoria XP inválida "${String(field.xpCategory)}".`);
+        }
+        if (
+          field.bashingDamage !== undefined &&
+          (typeof field.bashingDamage !== 'number' ||
+            !Number.isInteger(field.bashingDamage) ||
+            field.bashingDamage < 0 ||
+            field.bashingDamage > 100000)
+        ) {
+          errors.push(`${fPath}.bashingDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.lethalDamage !== undefined &&
+          (typeof field.lethalDamage !== 'number' ||
+            !Number.isInteger(field.lethalDamage) ||
+            field.lethalDamage < 0 ||
+            field.lethalDamage > 100000)
+        ) {
+          errors.push(`${fPath}.lethalDamage: deve ser inteiro entre 0 e 100000.`);
         }
         if (
           field.superficialDamage !== undefined &&
@@ -4782,8 +4877,8 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       if (typeof data.xp.spent !== 'number' || !Number.isInteger(data.xp.spent) || data.xp.spent < 0) {
         errors.push('$.xp.spent: deve ser inteiro >= 0.');
       }
-      if (!Array.isArray(data.xp.ledger)) {
-        errors.push('$.xp.ledger: array obrigatório.');
+      if (!Array.isArray(data.xp.ledger) || data.xp.ledger.length > 500) {
+        errors.push('$.xp.ledger: array obrigatório (máx 500 itens).');
       } else {
         data.xp.ledger.forEach((entry, xIdx) => {
           const xPath = `$.xp.ledger[${xIdx}]`;
@@ -4812,6 +4907,49 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
             }
           }
         });
+      }
+      if (data.xp.outOfClanFieldIds !== undefined) {
+        if (
+          !Array.isArray(data.xp.outOfClanFieldIds) ||
+          data.xp.outOfClanFieldIds.some(
+            (fid) => typeof fid !== 'string' || fid.length < 1 || fid.length > 64,
+          )
+        ) {
+          errors.push('$.xp.outOfClanFieldIds: esperado array de IDs válidos (1..64 caracteres).');
+        }
+      }
+      if (data.xp.customMultipliers !== undefined) {
+        if (
+          !data.xp.customMultipliers ||
+          typeof data.xp.customMultipliers !== 'object' ||
+          Array.isArray(data.xp.customMultipliers)
+        ) {
+          errors.push('$.xp.customMultipliers: esperado objeto JSON.');
+        } else {
+          const multObj = data.xp.customMultipliers as Record<string, unknown>;
+          for (const mk of Object.getOwnPropertyNames(multObj)) {
+            if (DANGEROUS_OBJECT_KEYS.has(mk)) {
+              errors.push(`$.xp.customMultipliers.${mk}: chave proibida (risco de Prototype Pollution).`);
+              continue;
+            }
+            const mv = multObj[mk];
+            if (typeof mv !== 'number' || !Number.isInteger(mv) || mv < 1) {
+              errors.push(`$.xp.customMultipliers.${mk}: deve ser inteiro >= 1.`);
+            }
+          }
+        }
+      }
+      if (
+        data.xp.xpRulePreset !== undefined &&
+        !ALLOWED_XP_RULE_PRESETS.has(String(data.xp.xpRulePreset))
+      ) {
+        errors.push(`$.xp.xpRulePreset: preset de XP inválido "${String(data.xp.xpRulePreset)}".`);
+      }
+      if (
+        data.xp.customUseNewLevelBase !== undefined &&
+        typeof data.xp.customUseNewLevelBase !== 'boolean'
+      ) {
+        errors.push('$.xp.customUseNewLevelBase: deve ser booleano.');
       }
     }
   }
@@ -4931,6 +5069,16 @@ export interface ParsedImportPayloadResult {
 }
 
 export function parseAndValidateImportPayload(rawText: string): ParsedImportPayloadResult {
+  if (
+    typeof rawText !== 'string' ||
+    new TextEncoder().encode(rawText).byteLength > MAX_IMPORT_PAYLOAD_BYTES
+  ) {
+    return {
+      valid: false,
+      sheets: [],
+      errors: ['Payload JSON excede o tamanho máximo permitido (2 MB).'],
+    };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
@@ -4942,12 +5090,28 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
     };
   }
 
+  const dangerousPath = findDangerousKeyPath(parsed);
+  if (dangerousPath) {
+    return {
+      valid: false,
+      sheets: [],
+      errors: [`${dangerousPath}: chave proibida (risco de Prototype Pollution).`],
+    };
+  }
+
   if (Array.isArray(parsed)) {
     if (parsed.length === 0) {
       return {
         valid: false,
         sheets: [],
         errors: ['O arquivo JSON contém uma lista vazia de fichas.'],
+      };
+    }
+    if (parsed.length > MAX_IMPORT_SHEETS) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: [`O arquivo JSON excede o limite de ${MAX_IMPORT_SHEETS} fichas por importação.`],
       };
     }
     const validSheets: CharacterSheetState[] = [];
@@ -4988,6 +5152,13 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
         valid: false,
         sheets: [],
         errors: ['O pacote JSON não contém nenhuma ficha.'],
+      };
+    }
+    if (bundleSheets.length > MAX_IMPORT_SHEETS) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: [`O pacote JSON excede o limite de ${MAX_IMPORT_SHEETS} fichas por importação.`],
       };
     }
     const validSheets: CharacterSheetState[] = [];
