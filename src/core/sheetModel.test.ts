@@ -48,11 +48,13 @@ import {
   migrateLegacySheetMetadata,
   migrateLegacyWodSheet,
   migrateLocalStorageSheet,
+  parseAndValidateImportPayload,
   removeCardFromSheet,
   removeRepeatableRow,
   resolveRollPreview,
   resolveRulePreset,
   setSheetRulePreset,
+  type CharacterSheetState,
   type SheetField,
   toCanonicalSheet,
   updateCardSchema,
@@ -61,6 +63,7 @@ import {
   updateSheetVirtue,
   validateSheetPayload,
 } from './sheetModel';
+import { getV5BloodPotencyStats } from './formula';
 
 test('World of Darkness default sheet computes derived traits, Skill/Soak pools, and Willpower (+1 Auto Success)', () => {
   let sheet = createDefaultSheet();
@@ -1330,5 +1333,119 @@ test('Phase 3 Block 1: V5 Humanity Stains invariant, Willpower Superficial/Aggra
   };
   assert.equal(validateAjv(badFrenzyLogSheet), false);
   assert.equal(validateSheetPayload(badFrenzyLogSheet).valid, false);
+});
+
+test('Phase 3 Block 1 round-trip: export -> JSON.stringify -> parseAndValidateImportPayload preserves V5 stains, willpower damage, blood_potency, and BP reroll log', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  let v5: CharacterSheetState = {
+    ...createWorldOfDarknessV5Sheet(),
+    stains: 0,
+  };
+
+  // Apply stains: 3 via runtime helper (updates both root stains and f_humanity.stains)
+  v5 = adjustSheetHumanityStains(v5, 3).sheet;
+  // Apply Willpower damage: 1 aggravated + 2 superficial (Composure 3 + Resolve 2 = max 5 -> 2 available)
+  v5 = adjustV5WillpowerDamage(v5, 'aggravated', 1);
+  v5 = adjustV5WillpowerDamage(v5, 'superficial', 2);
+  // Set blood_potency: 3 as numeric field (matching V5 XP-upgraded Blood Potency)
+  v5 = {
+    ...v5,
+    cards: v5.cards.map((card) =>
+      card.id === 'card_identidade'
+        ? {
+            ...card,
+            fields: card.fields.map((f) =>
+              f.id === 'f_blood_potency' || f.key === 'blood_potency'
+                ? {
+                    id: 'f_blood_potency',
+                    key: 'blood_potency',
+                    label: 'BLOOD_POTENCY',
+                    kind: 'number' as const,
+                    value: 3,
+                    max: 10,
+                  }
+                : f,
+            ),
+          }
+        : card,
+    ),
+    rollLogs: [
+      {
+        id: 'log_rouse_bp_1',
+        timestamp: '21:15',
+        label: 'ROUSE · Sussurros Selvagens (Animalismo 2)',
+        total: 1,
+        formula: '2d10 (ROUSE CHECK · DIFF 6 · REROLL POTÊNCIA)',
+        breakdown: '2d10[3, 8] ≥6 · REROLL POTÊNCIA → ROUSE OK',
+        rolls: [3, 8],
+        difficulty: 6,
+        outcome: 'success',
+        isPoolRoll: true,
+        rulePreset: 'vampire-v5',
+        isRouseCheck: true,
+        rerolledIndices: [1],
+      },
+      ...v5.rollLogs,
+    ],
+  };
+
+  const exportedJson = JSON.stringify(v5, null, 2);
+  const parsedRaw = JSON.parse(exportedJson) as unknown;
+
+  assert.equal(validateAjv(parsedRaw), true, `AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(parsedRaw).valid, true);
+
+  const imported = parseAndValidateImportPayload(exportedJson);
+  assert.equal(imported.valid, true, `Import errors: ${imported.errors.join('; ')}`);
+  assert.equal(imported.errors.length, 0);
+  assert.equal(imported.sheets.length, 1);
+
+  const restored = imported.sheets[0];
+  assert.equal(restored.stains, 3);
+  assert.deepEqual(getSheetHumanityStains(restored), {
+    humanity: 7,
+    stains: 3,
+    remorsePool: 1,
+  });
+  const restoredHum = restored.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_humanity');
+  assert.equal(restoredHum?.stains, 3);
+
+  const restoredWp = restored.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_willpower');
+  assert.equal(restoredWp?.superficialDamage, 2);
+  assert.equal(restoredWp?.aggravatedDamage, 1);
+  assert.equal(restoredWp?.value, 2);
+  assert.equal(restoredWp?.max, 5);
+  assert.deepEqual(getV5WillpowerState(restored), {
+    max: 5,
+    superficial: 2,
+    aggravated: 1,
+    available: 2,
+    isImpaired: false,
+    isFullyAggravated: false,
+  });
+
+  const restoredBp = restored.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_blood_potency');
+  assert.equal(restoredBp?.value, 3);
+  const restoredEval = evaluateSheet(restored);
+  assert.equal(restoredEval.variables.blood_potency, 3);
+  assert.equal(getV5BloodPotencyStats(restoredEval.variables.blood_potency).rouseRerollMaxLevel, 2);
+
+  assert.equal(restored.rollLogs[0]?.isRouseCheck, true);
+  assert.deepEqual(restored.rollLogs[0]?.rolls, [3, 8]);
+  assert.deepEqual(restored.rollLogs[0]?.rerolledIndices, [1]);
 });
 

@@ -57,6 +57,7 @@ export interface WodComposedPoolInput {
   bloodSurgeActive?: boolean;
   bloodSurgeBonus?: number;
   bloodPotency?: number;
+  applyPowerBonus?: boolean;
   hunger?: number;
   difficulty?: number;
   specialty?: boolean;
@@ -72,6 +73,8 @@ export interface WodComposedPoolBreakdown {
   modifier: number;
   bloodSurgeApplied: boolean;
   bloodSurgeBonus: number;
+  hasDisciplineTrait: boolean;
+  availablePowerBonusDice: number;
   powerBonusDiceApplied: number;
   poolDomain: WodPoolDomain;
   rawPool: number;
@@ -475,7 +478,9 @@ export function computeWodComposedPool(
     typeof input.bloodPotency === 'number' && Number.isFinite(input.bloodPotency)
       ? getV5BloodPotencyStats(input.bloodPotency).powerBonusDice
       : 0;
-  const powerBonusDiceApplied = isV5 && hasDisciplineTrait ? resolvedPowerBonus : 0;
+  const availablePowerBonusDice = isV5 && hasDisciplineTrait ? resolvedPowerBonus : 0;
+  const applyPowerBonus = input.applyPowerBonus !== false;
+  const powerBonusDiceApplied = applyPowerBonus ? availablePowerBonusDice : 0;
 
   const rawPool =
     primaryValue + secondaryValue + modifier + bloodSurgeBonus + powerBonusDiceApplied;
@@ -580,6 +585,8 @@ export function computeWodComposedPool(
     modifier,
     bloodSurgeApplied,
     bloodSurgeBonus,
+    hasDisciplineTrait,
+    availablePowerBonusDice,
     powerBonusDiceApplied,
     poolDomain,
     rawPool,

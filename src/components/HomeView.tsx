@@ -687,7 +687,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
 
     {wodModalOpen && (
       <div
-        className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--overlay-backdrop)]"
+        className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex justify-center bg-[var(--overlay-backdrop)]"
         role="presentation"
         onPointerDown={(e) => {
           wodOverlayPointerDownRef.current = e.target === e.currentTarget;
@@ -705,9 +705,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           aria-modal="true"
           aria-labelledby="home-wod-modal-title"
           data-testid="home-wod-modal"
-          className="bento-card mobile-modal-dialog w-full max-w-md max-h-[100dvh] overflow-y-auto overscroll-contain bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+          className="bento-card mobile-modal-dialog w-full max-w-md bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
         >
-          <header className="bento-card-header sticky top-0 z-10">
+          <header className="bento-card-header modal-dialog-header">
             <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
               <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] shrink-0">
                 {t('home.wodModalTag')}
@@ -730,16 +730,17 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </header>
 
-          <div className="p-4 flex flex-col gap-3">
-            <p className="font-mono-tech text-xs leading-relaxed text-[var(--ink-secondary)]">
-              {t('home.wodModalSubtitle')}
-            </p>
+          <form
+            id="home-wod-create-form"
+            aria-labelledby="home-wod-modal-title"
+            onSubmit={handleConfirmWodCreate}
+            className="modal-dialog-form"
+          >
+            <div className="modal-dialog-body p-3.5 sm:p-4 flex flex-col gap-3">
+              <p className="font-mono-tech text-xs leading-relaxed text-[var(--ink-secondary)]">
+                {t('home.wodModalSubtitle')}
+              </p>
 
-            <form
-              aria-labelledby="home-wod-modal-title"
-              onSubmit={handleConfirmWodCreate}
-              className="flex flex-col gap-4"
-            >
               <WodEditionFieldset
                 edition={wodEdition}
                 radioGroupName="homeWodEdition"
@@ -784,28 +785,28 @@ export const HomeView: React.FC<HomeViewProps> = ({
                   onChange={(e) => setWodCharName(e.target.value)}
                   placeholder={wodEdition === 'vampire-v5' ? 'Nadia Voss' : 'Julian Cross'}
                   enterKeyHint="done"
-                  className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+                  className="cyber-input mobile-touch-input min-h-[38px] px-2.5 py-1.5 text-base sm:text-xs font-semibold w-full"
                 />
               </div>
+            </div>
 
-              <div className="flex flex-wrap items-center justify-end gap-2 pt-1">
-                <button
-                  type="button"
-                  onClick={closeWodModal}
-                  className="cyber-btn-outline min-h-[40px] px-3.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
-                >
-                  {t('home.wodModalCancel')}
-                </button>
-                <button
-                  type="submit"
-                  data-testid="home-wod-submit-btn"
-                  className="cyber-roll-btn min-h-[40px] flex-1 sm:flex-initial px-4 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
-                >
-                  {t('modal.createAction')}
-                </button>
-              </div>
-            </form>
-          </div>
+            <div className="modal-dialog-footer flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={closeWodModal}
+                className="cyber-btn-outline min-h-[38px] px-3.5 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+              >
+                {t('home.wodModalCancel')}
+              </button>
+              <button
+                type="submit"
+                data-testid="home-wod-submit-btn"
+                className="cyber-roll-btn min-h-[38px] flex-1 sm:flex-initial px-4 py-2 text-xs font-bold tracking-wider uppercase cursor-pointer"
+              >
+                {t('modal.createAction')}
+              </button>
+            </div>
+          </form>
         </div>
       </div>
     )}

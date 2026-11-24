@@ -31,11 +31,84 @@ import {
   VariableMap,
 } from '../core/formula';
 import { AppTranslations, getTranslations } from '../core/i18n';
-import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
-import { parsePowerActivationCost } from '../core/wodClansDisciplinesCatalog';
+import { isOfficialVampireSheet, normalizeCatalogText } from '../core/wodSkillsCatalog';
+import {
+  getDisciplinesForEdition,
+  parsePowerActivationCost,
+} from '../core/wodClansDisciplinesCatalog';
 import { resolveWodDotRatingConfig } from '../utils/dotRating';
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
+
+const V5_POWER_LEVEL_BY_ID = new Map<string, number>();
+const V5_POWER_LEVEL_BY_NAME: Array<{ nameNorm: string; level: number }> = [];
+
+for (const disc of getDisciplinesForEdition('vampire-v5')) {
+  for (const power of disc.powers) {
+    V5_POWER_LEVEL_BY_ID.set(power.id, power.level);
+    for (const rawName of Object.values(power.name)) {
+      const nameNorm = normalizeCatalogText(rawName).replace(/[^a-z0-9]+/g, ' ').trim();
+      if (nameNorm.length >= 3) {
+        V5_POWER_LEVEL_BY_NAME.push({ nameNorm, level: power.level });
+      }
+    }
+  }
+}
+V5_POWER_LEVEL_BY_NAME.sort((a, b) => b.nameNorm.length - a.nameNorm.length);
+
+/**
+ * Resolves a V5 Discipline power level (1..5) from its catalog ID, explicit level label,
+ * parenthetical rating, dot glyphs, or catalog power name.
+ */
+function resolveV5PowerLevel(row: {
+  id: string;
+  col1: string;
+  col2: string | number;
+}): number | undefined {
+  if (row.id.startsWith('pwr_')) {
+    const catalogLevel = V5_POWER_LEVEL_BY_ID.get(row.id.slice(4));
+    if (catalogLevel !== undefined) return catalogLevel;
+  }
+
+  const col1Text = String(row.col1 ?? '');
+  const col2Text = String(row.col2 ?? '');
+
+  for (const candidate of [col1Text, col2Text]) {
+    const normalized = normalizeCatalogText(candidate);
+    const explicitMatch = normalized.match(/\b(?:niv(?:el)?|nv|lv|lvl|level)\.?\s*([1-5])\b/i);
+    if (explicitMatch) {
+      return Number(explicitMatch[1]);
+    }
+  }
+
+  const parenMatch = col1Text.match(/\([^)]*?\b([1-5])\s*\)/);
+  if (parenMatch) {
+    return Number(parenMatch[1]);
+  }
+
+  for (const candidate of [col1Text, col2Text]) {
+    const dotMatches = candidate.match(/[•●]+/g);
+    if (dotMatches) {
+      for (const run of dotMatches) {
+        if (run.length >= 1 && run.length <= 5) {
+          return run.length;
+        }
+      }
+    }
+  }
+
+  const normCol1 = normalizeCatalogText(col1Text).replace(/[^a-z0-9]+/g, ' ').trim();
+  if (normCol1) {
+    const paddedCol1 = ` ${normCol1} `;
+    for (const entry of V5_POWER_LEVEL_BY_NAME) {
+      if (normCol1 === entry.nameNorm || paddedCol1.includes(` ${entry.nameNorm} `)) {
+        return entry.level;
+      }
+    }
+  }
+
+  return undefined;
+}
 
 interface ClampedNumberInputProps {
   value: number;
@@ -476,7 +549,7 @@ interface FieldPrimitiveProps {
   onTriggerRemorseCheck?: () => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
   onMendSuperficialWithRouse?: (fieldId: string) => void;
-  onRouseCheck?: (options?: { label?: string; count?: number }) => void;
+  onRouseCheck?: (options?: { label?: string; count?: number; powerLevel?: number }) => void;
   onSpendPowerBlood?: (cost: number, powerName: string) => void;
   onTriggerWillpowerSurge?: () => void;
   onRoll: (field: SheetField) => void;
@@ -2159,9 +2232,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                                   btn: rouseBtnText,
                                   power: row.col1,
                                 })}
-                                onClick={() =>
-                                  onRouseCheck?.({ label: row.col1, count: costInfo.costAmount })
-                                }
+                                onClick={() => {
+                                  const powerLevel = resolveV5PowerLevel(row);
+                                  onRouseCheck?.({
+                                    label: row.col1,
+                                    count: costInfo.costAmount,
+                                    ...(powerLevel !== undefined ? { powerLevel } : {}),
+                                  });
+                                }}
                                 className="wod-power-trigger-btn"
                               >
                                 {rouseBtnText}

@@ -1,9 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canRerollDisciplineRouse,
   computeRemainingDamageAfterSoak,
   evaluateFormula,
   evaluateV5Rolls,
+  executeDisciplineRouseCheck,
   executeRemorseCheck,
   executeRouseCheck,
   getV5BloodPotencyStats,
@@ -515,6 +517,100 @@ test('resolveFrenzyRoll computes V5 and V20 pools exempt from wounds and Hunger 
   assert.equal(v20Rotschreck.difficulty, 7);
   assert.equal(v20Rotschreck.total, 0);
   assert.equal(v20Rotschreck.resisted, false);
+});
+
+test('canRerollDisciplineRouse and executeDisciplineRouseCheck enforce Blood Potency reroll levels', () => {
+  // BP 0 allows no rerolls
+  assert.equal(canRerollDisciplineRouse(0, 1), false);
+  // BP 1 and BP 2 reroll Level 1 only
+  assert.equal(canRerollDisciplineRouse(1, 1), true);
+  assert.equal(canRerollDisciplineRouse(1, 2), false);
+  assert.equal(canRerollDisciplineRouse(2, 1), true);
+  assert.equal(canRerollDisciplineRouse(2, 2), false);
+  // BP 3 and BP 4 reroll up to Level 2
+  assert.equal(canRerollDisciplineRouse(3, 1), true);
+  assert.equal(canRerollDisciplineRouse(3, 2), true);
+  assert.equal(canRerollDisciplineRouse(3, 3), false);
+  // BP 5 rerolls up to Level 3; BP 9/10 reroll up to Level 5
+  assert.equal(canRerollDisciplineRouse(5, 3), true);
+  assert.equal(canRerollDisciplineRouse(5, 4), false);
+  assert.equal(canRerollDisciplineRouse(9, 5), true);
+  assert.equal(canRerollDisciplineRouse(10, 5), true);
+  // Invalid or omitted power levels are never eligible
+  assert.equal(canRerollDisciplineRouse(5, undefined), false);
+  assert.equal(canRerollDisciplineRouse(5, 0), false);
+  assert.equal(canRerollDisciplineRouse(5, -1), false);
+  assert.equal(canRerollDisciplineRouse(5, Number.NaN), false);
+
+  // BP 1 + Level 1: first fails (3), second passes (7) -> rerolled, +0 Hunger
+  let idxPass = 0;
+  const seqPass = [0.25, 0.65]; // [3, 7]
+  const rerollPass = executeDisciplineRouseCheck(1, 1, () => seqPass[idxPass++]);
+  assert.deepEqual(rerollPass, {
+    dice: [3, 7],
+    passed: true,
+    rerolledByBloodPotency: true,
+    hungerDelta: 0,
+  });
+
+  // BP 1 + Level 1: both fail (2, 4) -> rerolled, +1 Hunger
+  let idxFail = 0;
+  const seqFail = [0.15, 0.35]; // [2, 4]
+  const rerollFail = executeDisciplineRouseCheck(1, 1, () => seqFail[idxFail++]);
+  assert.deepEqual(rerollFail, {
+    dice: [2, 4],
+    passed: false,
+    rerolledByBloodPotency: true,
+    hungerDelta: 1,
+  });
+
+  // BP 1 + Level 1: first passes (8) -> no second die rolled, rng called once
+  let callsOnPass = 0;
+  const firstPass = executeDisciplineRouseCheck(1, 1, () => {
+    callsOnPass += 1;
+    return 0.75; // 8
+  });
+  assert.equal(callsOnPass, 1);
+  assert.deepEqual(firstPass, {
+    dice: [8],
+    passed: true,
+    rerolledByBloodPotency: false,
+    hungerDelta: 0,
+  });
+
+  // BP 1 + Level 2: first fails (3) -> not eligible for reroll, +1 Hunger
+  let callsIneligible = 0;
+  const ineligibleFail = executeDisciplineRouseCheck(1, 2, () => {
+    callsIneligible += 1;
+    return 0.25; // 3
+  });
+  assert.equal(callsIneligible, 1);
+  assert.deepEqual(ineligibleFail, {
+    dice: [3],
+    passed: false,
+    rerolledByBloodPotency: false,
+    hungerDelta: 1,
+  });
+
+  // BP 3 + Level 2: first fails (5), reroll passes (6) -> avoids +1 Hunger
+  let idxBp3 = 0;
+  const seqBp3 = [0.45, 0.55]; // [5, 6]
+  const bp3Pass = executeDisciplineRouseCheck(3, 2, () => seqBp3[idxBp3++]);
+  assert.deepEqual(bp3Pass, {
+    dice: [5, 6],
+    passed: true,
+    rerolledByBloodPotency: true,
+    hungerDelta: 0,
+  });
+
+  // Non-discipline Rouse Check (powerLevel undefined) never rerolls even at BP 3
+  const genericRouseFail = executeDisciplineRouseCheck(3, undefined, () => 0.35); // 4
+  assert.deepEqual(genericRouseFail, {
+    dice: [4],
+    passed: false,
+    rerolledByBloodPotency: false,
+    hungerDelta: 1,
+  });
 });
 
 

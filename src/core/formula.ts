@@ -492,6 +492,61 @@ export function executeRouseCheck(rng: () => number = Math.random): DiceRollResu
   };
 }
 
+export interface DisciplineRouseCheckResult {
+  dice: number[];
+  passed: boolean;
+  rerolledByBloodPotency: boolean;
+  hungerDelta: 0 | 1;
+}
+
+/**
+ * Returns true when Blood Potency grants an automatic free Rouse Check reroll
+ * for a Discipline power of the given level (V5 RAW).
+ */
+export function canRerollDisciplineRouse(bloodPotency: number, powerLevel?: number): boolean {
+  if (typeof powerLevel !== 'number' || !Number.isFinite(powerLevel) || powerLevel < 1) {
+    return false;
+  }
+  const maxLevel = getV5BloodPotencyStats(bloodPotency).rouseRerollMaxLevel;
+  return maxLevel >= 1 && powerLevel <= maxLevel;
+}
+
+/**
+ * Executes a V5 Discipline Rouse Check, automatically rolling a second advantage die
+ * on a failed first roll when eligible via Blood Potency `rouseRerollMaxLevel`.
+ */
+export function executeDisciplineRouseCheck(
+  bloodPotency: number,
+  powerLevel?: number,
+  rng: () => number = Math.random,
+): DisciplineRouseCheckResult {
+  const firstRoll = Math.floor(rng() * 10) + 1;
+  if (firstRoll >= 6) {
+    return {
+      dice: [firstRoll],
+      passed: true,
+      rerolledByBloodPotency: false,
+      hungerDelta: 0,
+    };
+  }
+  if (canRerollDisciplineRouse(bloodPotency, powerLevel)) {
+    const secondRoll = Math.floor(rng() * 10) + 1;
+    const passed = secondRoll >= 6;
+    return {
+      dice: [firstRoll, secondRoll],
+      passed,
+      rerolledByBloodPotency: true,
+      hungerDelta: passed ? 0 : 1,
+    };
+  }
+  return {
+    dice: [firstRoll],
+    passed: false,
+    rerolledByBloodPotency: false,
+    hungerDelta: 1,
+  };
+}
+
 export function rerollV5PoolDice(
   previousRolls: number[],
   hungerDiceCount: number,
