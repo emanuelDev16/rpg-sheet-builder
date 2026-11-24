@@ -119,5 +119,21 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERITY 4');
     expect(translate('es', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERIDAD 4');
     expect(translate('en', 'poolComposer.powerBonusBadge', { bonus: 2 })).toBe('+2 POWER (POTENCY)');
+
+    expect(translate('pt-BR', 'cards.structured.touchstonesAddBtn')).toBe('+ ADICIONAR CONVICÇÃO');
+    expect(translate('en', 'cards.structured.touchstonesAddBtn')).toBe('+ ADD CONVICTION');
+    expect(translate('es', 'cards.structured.touchstonesAddBtn')).toBe('+ AÑADIR CONVICCIÓN');
+    expect(
+      translate('pt-BR', 'cards.structured.meritsFlawsSummary', { merits: 4, flaws: 2 }),
+    ).toBe('+4 QUALIDADES · -2 DEFEITOS');
+    expect(
+      translate('en', 'cards.structured.meritsFlawsSummary', { merits: 4, flaws: 2 }),
+    ).toBe('+4 MERITS · -2 FLAWS');
+    expect(
+      translate('es', 'cards.structured.meritsFlawsSummary', { merits: 4, flaws: 2 }),
+    ).toBe('+4 MÉRITOS · -2 DEFECTOS');
+    expect(translate('pt-BR', 'cards.structured.havensAddBtn')).toBe('+ ADICIONAR REFÚGIO');
+    expect(translate('en', 'cards.structured.havensAddBtn')).toBe('+ ADD HAVEN');
+    expect(translate('es', 'cards.structured.havensAddBtn')).toBe('+ AÑADIR REFUGIO');
   });
 });

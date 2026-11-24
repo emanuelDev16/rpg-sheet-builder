@@ -8,12 +8,15 @@ import {
 import {
   AppMode,
   FieldKind,
+  HavenEntry,
+  MeritFlawEntry,
   reorderFieldInCard,
   RulePreset,
   SheetCard,
   SheetEvaluation,
   SheetField,
   SystemId,
+  TouchstoneEntry,
   V5WillpowerState,
   VirtuesState,
 } from '../core/sheetModel';
@@ -50,6 +53,7 @@ import {
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
+import { WodStructuredBlocks } from './WodStructuredBlocks';
 
 interface BentoCardProps {
   card: SheetCard;
@@ -120,6 +124,19 @@ interface BentoCardProps {
     patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'fields'>>,
   ) => void;
   onRemoveCard: (cardId: string) => void;
+  touchstones?: readonly TouchstoneEntry[];
+  meritsFlaws?: readonly MeritFlawEntry[];
+  havens?: readonly HavenEntry[];
+  searchQuery?: string;
+  onAddTouchstone?: (entry: TouchstoneEntry) => void;
+  onUpdateTouchstone?: (id: string, patch: Partial<Omit<TouchstoneEntry, 'id'>>) => void;
+  onRemoveTouchstone?: (id: string) => void;
+  onAddMeritFlaw?: (entry: MeritFlawEntry) => void;
+  onUpdateMeritFlaw?: (id: string, patch: Partial<Omit<MeritFlawEntry, 'id'>>) => void;
+  onRemoveMeritFlaw?: (id: string) => void;
+  onAddHaven?: (entry: HavenEntry) => void;
+  onUpdateHaven?: (id: string, patch: Partial<Omit<HavenEntry, 'id'>>) => void;
+  onRemoveHaven?: (id: string) => void;
 }
 
 type GuidedFieldTemplateId =
@@ -205,6 +222,19 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onAddField,
   onUpdateCard,
   onRemoveCard,
+  touchstones = [],
+  meritsFlaws = [],
+  havens = [],
+  searchQuery = '',
+  onAddTouchstone,
+  onUpdateTouchstone,
+  onRemoveTouchstone,
+  onAddMeritFlaw,
+  onUpdateMeritFlaw,
+  onRemoveMeritFlaw,
+  onAddHaven,
+  onUpdateHaven,
+  onRemoveHaven,
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -277,6 +307,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const selectedMeta = guided.templates[selectedTemplate];
 
   const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
+  const isWodDossierCard = card.id === 'card_wod_dossier' && Boolean(officialEdition);
   const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
   const showOfficialDisciplineCatalog =
     Boolean(officialEdition) && selectedTemplate === 'discipline';
@@ -1137,7 +1168,29 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             : 'flex flex-col'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
-        {fieldsToRender.length === 0 && (
+        {isWodDossierCard && officialEdition && (
+          <WodStructuredBlocks
+            edition={officialEdition}
+            cardTitle={card.title}
+            cardCode={card.code}
+            searchQuery={searchQuery}
+            touchstones={touchstones}
+            meritsFlaws={meritsFlaws}
+            havens={havens}
+            t={t}
+            onAddTouchstone={onAddTouchstone}
+            onUpdateTouchstone={onUpdateTouchstone}
+            onRemoveTouchstone={onRemoveTouchstone}
+            onAddMeritFlaw={onAddMeritFlaw}
+            onUpdateMeritFlaw={onUpdateMeritFlaw}
+            onRemoveMeritFlaw={onRemoveMeritFlaw}
+            onAddHaven={onAddHaven}
+            onUpdateHaven={onUpdateHaven}
+            onRemoveHaven={onRemoveHaven}
+          />
+        )}
+
+        {fieldsToRender.length === 0 && !isWodDossierCard && (
           <div
             data-testid={mode === 'jogo' ? `empty-card-play-${card.id}` : `empty-card-edit-${card.id}`}
             className="no-print print:hidden p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/45 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2"

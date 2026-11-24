@@ -4,13 +4,25 @@ import { type WodCatalogEdition, normalizeCatalogText } from './wodSkillsCatalog
 
 export type { WodCatalogEdition };
 
-export type WodAdvantageGroup = 'background' | 'merit';
+export type WodAdvantageGroup = 'background' | 'merit' | 'flaw';
 
 export interface WodAdvantageCatalogEntry {
   readonly id: string;
   readonly varName: string;
   readonly editions: readonly WodCatalogEdition[];
   readonly group: WodAdvantageGroup;
+  readonly maxDots: number;
+  readonly aliases?: readonly string[];
+  readonly name: Readonly<Record<AppLanguage, string>>;
+  readonly summary: Readonly<Record<AppLanguage, string>>;
+}
+
+export type WodHavenTraitKind = 'merit' | 'flaw';
+
+export interface WodHavenTraitCatalogEntry {
+  readonly id: string;
+  readonly editions: readonly WodCatalogEdition[];
+  readonly kind: WodHavenTraitKind;
   readonly maxDots: number;
   readonly aliases?: readonly string[];
   readonly name: Readonly<Record<AppLanguage, string>>;
@@ -29,6 +41,11 @@ export const WOD_ADVANTAGE_GROUP_LABELS: Readonly<
     'pt-BR': 'Méritos & Vantagens',
     en: 'Merits & Advantages',
     es: 'Méritos y Ventajas',
+  },
+  flaw: {
+    'pt-BR': 'Defeitos',
+    en: 'Flaws',
+    es: 'Defectos',
   },
 };
 
@@ -438,6 +455,598 @@ export const WOD_ADVANTAGES_CATALOG: readonly WodAdvantageCatalogEntry[] = [
   },
 ];
 
+export const WOD_FLAWS_CATALOG: readonly WodAdvantageCatalogEntry[] = [
+  // Shared V20 + V5 Flaws (2)
+  {
+    id: 'prey_exclusion',
+    varName: 'prey_exclusion',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['exclusao de presa', 'exclusión de presa', 'prey exclusion'],
+    name: {
+      'pt-BR': 'Exclusão de Presa',
+      en: 'Prey Exclusion',
+      es: 'Exclusión de Presa',
+    },
+    summary: {
+      'pt-BR': 'Recusa visceral ou moral em se alimentar de determinado tipo de recipiente mortal.',
+      en: 'Strict inability or refusal to feed from a specific category of mortal vessels.',
+      es: 'Incapacidad o rechazo estricto a alimentarse de un tipo concreto de recipientes.',
+    },
+  },
+  {
+    id: 'dark_secret',
+    varName: 'dark_secret',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['segredo sombrio', 'secreto oscuro', 'dark secret'],
+    name: {
+      'pt-BR': 'Segredo Sombrio',
+      en: 'Dark Secret',
+      es: 'Secreto Oscuro',
+    },
+    summary: {
+      'pt-BR': 'Crime, violação ou vínculo comprometedor que arruinaria sua posição se exposto.',
+      en: 'Compromising crime or secret that would shatter your standing if uncovered.',
+      es: 'Crimen o secreto comprometedor que destruiría tu reputación si se descubre.',
+    },
+  },
+
+  // V5-Only Flaws (10 -> 12 Flaws total in V5)
+  {
+    id: 'methuselahs_thirst',
+    varName: 'methuselahs_thirst',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['sede de matusalem', 'sed de matusalen', "methuselah's thirst"],
+    name: {
+      'pt-BR': 'Sede de Matusalém',
+      en: "Methuselah's Thirst",
+      es: 'Sed de Matusalén',
+    },
+    summary: {
+      'pt-BR': 'Sua Fome nunca cai abaixo de 1 sem vitae sobrenatural de outros Membros.',
+      en: 'Your Hunger cannot drop below 1 unless quenched by supernatural Kindred vitae.',
+      es: 'Tu Ansia no baja de 1 sin beber vitae sobrenatural de otros Vástagos.',
+    },
+  },
+  {
+    id: 'folkloric_bane',
+    varName: 'folkloric_bane',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['perdicao folclorica', 'perdición folclórica', 'folkloric bane'],
+    name: {
+      'pt-BR': 'Perdição Folclórica',
+      en: 'Folkloric Bane',
+      es: 'Perdición Folclórica',
+    },
+    summary: {
+      'pt-BR': 'Símbolos ou elementos míticos clássicos causam dano agravado real ao vampiro.',
+      en: 'Traditional folklore weaknesses (silver, garlic, etc.) inflict real Aggravated damage.',
+      es: 'Debilidades folclóricas clásicas (plata, ajo, etc.) infligen daño agravado real.',
+    },
+  },
+  {
+    id: 'folkloric_block',
+    varName: 'folkloric_block',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['bloqueio folclorico', 'bloqueo folclórico', 'folkloric block'],
+    name: {
+      'pt-BR': 'Bloqueio Folclórico',
+      en: 'Folkloric Block',
+      es: 'Bloqueo Folclórico',
+    },
+    summary: {
+      'pt-BR': 'Barreiras lendárias (soleiras sem convite, água corrente, símbolos) impedem sua passagem.',
+      en: 'Mythic barriers such as uninvited thresholds or running water repel or block you.',
+      es: 'Barreras míticas como umbrales sin invitación o agua corriente bloquean tu paso.',
+    },
+  },
+  {
+    id: 'stigmata',
+    varName: 'stigmata',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['estigmas'],
+    name: {
+      'pt-BR': 'Estigmas',
+      en: 'Stigmata',
+      es: 'Estigmas',
+    },
+    summary: {
+      'pt-BR': 'Chagas sangrentas se abrem em Fome elevada (4+), manchando roupas e traindo a Máscara.',
+      en: 'Bleeding wounds open at Hunger 4+, soaking clothes and risking Masquerade breaches.',
+      es: 'Llagas sangrantes se abren con Ansia 4+, manchando ropas y exponiendo la Mascarada.',
+    },
+  },
+  {
+    id: 'known_blankbody',
+    varName: 'known_blankbody',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['cadaver conhecido', 'cadáver conocido', 'known blankbody'],
+    name: {
+      'pt-BR': 'Cadáver Conhecido',
+      en: 'Known Blankbody',
+      es: 'Cadáver Conocido',
+    },
+    summary: {
+      'pt-BR': 'Agências de caçadores e Segunda Inquisição possuem seus registros biométricos e perfil.',
+      en: 'Second Inquisition intelligence holds active biometrics and dossiers identifying you.',
+      es: 'La Segunda Inquisición posee tus datos biométricos y un expediente activo.',
+    },
+  },
+  {
+    id: 'adversary',
+    varName: 'adversary',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['adversario', 'adversário'],
+    name: {
+      'pt-BR': 'Adversário',
+      en: 'Adversary',
+      es: 'Adversario',
+    },
+    summary: {
+      'pt-BR': 'Um Membro ou facção rival trabalha ativamente para sabotar e destruir você.',
+      en: 'A rival Kindred or faction actively schemes to undermine and destroy you.',
+      es: 'Un Vástago o facción rival conspira activamente para arruinarte.',
+    },
+  },
+  {
+    id: 'despised',
+    varName: 'despised',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['desprezado', 'despreciado'],
+    name: {
+      'pt-BR': 'Desprezado',
+      en: 'Despised',
+      es: 'Despreciado',
+    },
+    summary: {
+      'pt-BR': 'Um grupo mortal ou seita inteira guarda rancor profundo e nega ajuda a você.',
+      en: 'A specific mortal group or Kindred sect openly despises and shuns you.',
+      es: 'Un grupo mortal o secta te desprecia abiertamente y rechaza ayudarte.',
+    },
+  },
+  {
+    id: 'suspect',
+    varName: 'suspect',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['suspeito', 'sospechoso'],
+    name: {
+      'pt-BR': 'Suspeito',
+      en: 'Suspect',
+      es: 'Sospechoso',
+    },
+    summary: {
+      'pt-BR': 'Vigiado de perto pelo Xerife ou baronato após incidentes passados sem provas finais.',
+      en: 'Watched closely by the Sheriff or court after unresolved incidents (-2 Social with sect).',
+      es: 'Vigilado por el Sheriff o la corte tras incidentes previos sin resolver.',
+    },
+  },
+  {
+    id: 'haunted',
+    varName: 'haunted',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['assombrado', 'embrujado'],
+    name: {
+      'pt-BR': 'Assombrado',
+      en: 'Haunted',
+      es: 'Embrujado',
+    },
+    summary: {
+      'pt-BR': 'Um espectro hostil persegue sua presença, causando ruídos, frio e interferência.',
+      en: 'A hostile wraith follows your steps, manifesting cold spots and sabotage.',
+      es: 'Un espectro hostil te persigue provocando frío, susurros y sabotajes.',
+    },
+  },
+  {
+    id: 'compromised_haven',
+    varName: 'compromised_haven',
+    editions: ['vampire-v5'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['refugio comprometido', 'refúgio comprometido', 'compromised haven'],
+    name: {
+      'pt-BR': 'Refúgio Comprometido',
+      en: 'Compromised Haven',
+      es: 'Refugio Comprometido',
+    },
+    summary: {
+      'pt-BR': 'Seu abrigo já foi localizado ou vigiado por rivais, caçadores ou autoridades.',
+      en: 'Your shelter has been spotted or logged by rivals, hunters, or mortal surveillance.',
+      es: 'Tu refugio ha sido localizado o vigilado por rivales, cazadores o autoridades.',
+    },
+  },
+
+  // V20-Only Flaws (8 -> 10 Flaws total in V20)
+  {
+    id: 'enemy',
+    varName: 'enemy',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['inimigo', 'enemigo'],
+    name: {
+      'pt-BR': 'Inimigo',
+      en: 'Enemy',
+      es: 'Enemigo',
+    },
+    summary: {
+      'pt-BR': 'Oponente declarado com poder proporcional aos pontos investidos neste defeito.',
+      en: 'Declared foe whose influence and lethality scale with the flaw rating.',
+      es: 'Oponente declarado cuyo poder e influencia escalan con la puntuación.',
+    },
+  },
+  {
+    id: 'hunted',
+    varName: 'hunted',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['cacado', 'caçado', 'cazado'],
+    name: {
+      'pt-BR': 'Caçado',
+      en: 'Hunted',
+      es: 'Cazado',
+    },
+    summary: {
+      'pt-BR': 'Caçador de vampiros ou Inquisidor incansável segue seu rastro noite após noite.',
+      en: 'Relentless vampire hunter or Inquisitor stalks your trail night after night.',
+      es: 'Un cazador de vampiros o inquisidor implacable sigue tu rastro cada noche.',
+    },
+  },
+  {
+    id: 'nightmares',
+    varName: 'nightmares',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['pesadelos', 'pesadillas'],
+    name: {
+      'pt-BR': 'Pesadelos',
+      en: 'Nightmares',
+      es: 'Pesadillas',
+    },
+    summary: {
+      'pt-BR': 'Terrores diurnos perturbam o sono vampírico e impõem penalidades na noite seguinte.',
+      en: 'Horrific daytime visions disturb your slumber and impose penalties upon waking.',
+      es: 'Visiones diurnas perturbadoras afectan tu descanso y penalizan tus reservas.',
+    },
+  },
+  {
+    id: 'short_fuse',
+    varName: 'short_fuse',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['pavio curto', 'mecha corta', 'short fuse'],
+    name: {
+      'pt-BR': 'Pavio Curto',
+      en: 'Short Fuse',
+      es: 'Mecha Corta',
+    },
+    summary: {
+      'pt-BR': 'Dificuldade elevada (+2) em todos os testes para resistir ao Frenesi da Besta.',
+      en: 'Increased difficulty (+2 TN) on all Self-Control rolls to resist Frenzy.',
+      es: 'Dificultad aumentada (+2) en todas las tiradas para resistir el Frenesí.',
+    },
+  },
+  {
+    id: 'bad_sight',
+    varName: 'bad_sight',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['visao ruim', 'visão ruim', 'mala vista', 'bad sight'],
+    name: {
+      'pt-BR': 'Visão Ruim',
+      en: 'Bad Sight',
+      es: 'Mala Vista',
+    },
+    summary: {
+      'pt-BR': 'Deficiência visual severa (+2 de dificuldade em testes baseados em visão sem correção).',
+      en: 'Impaired vision imposing +2 difficulty on sight-based checks without glasses.',
+      es: 'Deficiencia visual que impone +2 de dificultad sin lentes correctivos.',
+    },
+  },
+  {
+    id: 'repulsive',
+    varName: 'repulsive',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['repulsivo'],
+    name: {
+      'pt-BR': 'Repulsivo',
+      en: 'Repulsive',
+      es: 'Repulsivo',
+    },
+    summary: {
+      'pt-BR': 'Deformidade marcante que impõe penalidades em Aparência e interações sociais.',
+      en: 'Disturbing deformity hindering Appearance and first-impression Social pools.',
+      es: 'Deformidad marcada que penaliza Apariencia e interacciones sociales.',
+    },
+  },
+  {
+    id: 'cursed',
+    varName: 'cursed',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['amaldicoado', 'amaldiçoado', 'maldito'],
+    name: {
+      'pt-BR': 'Amaldiçoado',
+      en: 'Cursed',
+      es: 'Maldito',
+    },
+    summary: {
+      'pt-BR': 'Maledicência sobrenatural distorce seus esforços em situações críticas da crônica.',
+      en: 'Supernatural hex twists fate against you during pivotal chronicle moments.',
+      es: 'Una maldición sobrenatural tuerce el destino en tu contra en momentos clave.',
+    },
+  },
+  {
+    id: 'notoriety',
+    varName: 'notoriety',
+    editions: ['storyteller-v20'],
+    group: 'flaw',
+    maxDots: 5,
+    aliases: ['notoriedade', 'notoriedad'],
+    name: {
+      'pt-BR': 'Notoriedade',
+      en: 'Notoriety',
+      es: 'Notoriedad',
+    },
+    summary: {
+      'pt-BR': 'Fama infame entre os Membros por falha grave, traição ou vergonha do Senhor.',
+      en: 'Infamous reputation among Kindred due to past disgrace or your Sire’s crimes.',
+      es: 'Reputación infame entre los Vástagos por una falta grave o deshonra de tu Sire.',
+    },
+  },
+];
+
+export const WOD_HAVEN_TRAITS_CATALOG: readonly WodHavenTraitCatalogEntry[] = [
+  {
+    id: 'hidden_armory',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 2,
+    aliases: ['arsenal oculto', 'hidden armory'],
+    name: {
+      'pt-BR': 'Arsenal Oculto',
+      en: 'Hidden Armory',
+      es: 'Arsenal Oculto',
+    },
+    summary: {
+      'pt-BR': 'Compartimento camuflado com armas de fogo, munição e lâminas táticas.',
+      en: 'Concealed cache stocked with firearms, ammunition, and melee weaponry.',
+      es: 'Compartimento oculto equipado con armas de fuego, munición y filos.',
+    },
+  },
+  {
+    id: 'cell',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 2,
+    aliases: ['cela', 'celda', 'cell'],
+    name: {
+      'pt-BR': 'Cela',
+      en: 'Cell',
+      es: 'Celda',
+    },
+    summary: {
+      'pt-BR': 'Recinto reforçado para manter prisioneiros mortais ou Membros contidos.',
+      en: 'Reinforced containment chamber able to hold mortal or Kindred captives.',
+      es: 'Cámara reforzada capaz de retener prisioneros mortales o Vástagos.',
+    },
+  },
+  {
+    id: 'watchmen',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 4,
+    aliases: ['vigilantes', 'watchmen'],
+    name: {
+      'pt-BR': 'Vigilantes',
+      en: 'Watchmen',
+      es: 'Vigilantes',
+    },
+    summary: {
+      'pt-BR': 'Guardas ou sentinelas leais patrulham o perímetro durante o dia e a noite.',
+      en: 'Loyal guards or sentries patrolling the haven perimeter day and night.',
+      es: 'Guardias o centinelas leales patrullan el perímetro día y noche.',
+    },
+  },
+  {
+    id: 'laboratory',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 3,
+    aliases: ['laboratorio', 'laboratório', 'laboratory'],
+    name: {
+      'pt-BR': 'Laboratório',
+      en: 'Laboratory',
+      es: 'Laboratorio',
+    },
+    summary: {
+      'pt-BR': 'Bancada equipada para Alquimia de Sangue-Fraco, química forense ou ocultismo.',
+      en: 'Equipped lab supporting Thin-Blood Alchemy, forensics, or occult research.',
+      es: 'Laboratorio equipado para Alquimia de Sangre Débil, ciencia u ocultismo.',
+    },
+  },
+  {
+    id: 'library',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 3,
+    aliases: ['biblioteca', 'library'],
+    name: {
+      'pt-BR': 'Biblioteca',
+      en: 'Library',
+      es: 'Biblioteca',
+    },
+    summary: {
+      'pt-BR': 'Acervo raro de tomos ocultos, arquivos históricos ou bases de dados.',
+      en: 'Curated collection of rare occult tomes, archives, or private intelligence.',
+      es: 'Colección selecta de tomos ocultos, archivos históricos o bases de datos.',
+    },
+  },
+  {
+    id: 'location',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 1,
+    aliases: ['localizacao privilegiada', 'localização privilegiada', 'ubicacion privilegiada', 'location'],
+    name: {
+      'pt-BR': 'Localização Privilegiada',
+      en: 'Location',
+      es: 'Ubicación Privilegiada',
+    },
+    summary: {
+      'pt-BR': 'Situado em área estratégica da cidade, próximo ao território de caça ou Elysium.',
+      en: 'Situated in a prime district near feeding grounds, transit, or Elysium.',
+      es: 'Situado en una zona estratégica cercana a cotos de caza o el Elíseo.',
+    },
+  },
+  {
+    id: 'luxury',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 3,
+    aliases: ['luxo', 'lujo', 'luxury'],
+    name: {
+      'pt-BR': 'Luxo',
+      en: 'Luxury',
+      es: 'Lujo',
+    },
+    summary: {
+      'pt-BR': 'Acabamento sofisticado, arte e conforto que elevam status social perante visitas.',
+      en: 'Opulent furnishings and prestige elevating Social impressions inside.',
+      es: 'Mobiliario opulento y prestigio que mejoran la impresión social.',
+    },
+  },
+  {
+    id: 'postern',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 2,
+    aliases: ['saida secreta', 'saída secreta', 'salida secreta', 'postern'],
+    name: {
+      'pt-BR': 'Saída Secreta',
+      en: 'Postern',
+      es: 'Salida Secreta',
+    },
+    summary: {
+      'pt-BR': 'Rota de fuga discreta por túneis, telhados ou garagem oculta em emergências.',
+      en: 'Discreet escape route through tunnels, rooftops, or hidden back exits.',
+      es: 'Ruta de escape discreta por túneles, tejados o salidas ocultas.',
+    },
+  },
+  {
+    id: 'security_system',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 3,
+    aliases: ['sistema de seguranca', 'sistema de segurança', 'sistema de seguridad', 'security system'],
+    name: {
+      'pt-BR': 'Sistema de Segurança',
+      en: 'Security System',
+      es: 'Sistema de Seguridad',
+    },
+    summary: {
+      'pt-BR': 'Câmeras, fechaduras biométricas, trancas reforçadas e alarmes contra invasão.',
+      en: 'Reinforced locks, cameras, motion sensors, and intrusion alarms.',
+      es: 'Cámaras, cerraduras reforzadas, sensores y alarmas anti-intrusión.',
+    },
+  },
+  {
+    id: 'surgery',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 2,
+    aliases: ['sala cirurgica', 'sala cirúrgica', 'sala quirurgica', 'surgery'],
+    name: {
+      'pt-BR': 'Sala Cirúrgica',
+      en: 'Surgery',
+      es: 'Sala Quirúrgica',
+    },
+    summary: {
+      'pt-BR': 'Estação médica estéril para tratar ferimentos de carniçais e aliados mortais.',
+      en: 'Sterile medical suite equipped to treat ghouls and mortal retainers.',
+      es: 'Suite médica estéril equipada para atender ghouls y criados mortales.',
+    },
+  },
+  {
+    id: 'warding',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'merit',
+    maxDots: 3,
+    aliases: ['protecao mistica', 'proteção mística', 'proteccion mistica', 'warding'],
+    name: {
+      'pt-BR': 'Proteção Mística',
+      en: 'Warding',
+      es: 'Protección Mística',
+    },
+    summary: {
+      'pt-BR': 'Selos arcanos, sal ou rituais de Feitiçaria de Sangue contra intrusos sobrenaturais.',
+      en: 'Occult wards, runes, or Blood Sorcery seals deterring supernatural intruders.',
+      es: 'Sellos arcanos o rituales de Hechicería de Sangre contra intrusos sobrenaturales.',
+    },
+  },
+  {
+    id: 'creepy',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'flaw',
+    maxDots: 1,
+    aliases: ['sinistro', 'siniestro', 'creepy'],
+    name: {
+      'pt-BR': 'Sinistro',
+      en: 'Creepy',
+      es: 'Siniestro',
+    },
+    summary: {
+      'pt-BR': 'Atmosfera macabra afasta mortais desavisados e impõe tensão em visitantes.',
+      en: 'Unsettling atmosphere repels mortal guests and penalizes social comfort.',
+      es: 'Atmósfera macabra que incomoda a visitantes y dificulta interacciones sociales.',
+    },
+  },
+  {
+    id: 'haunted',
+    editions: ['storyteller-v20', 'vampire-v5'],
+    kind: 'flaw',
+    maxDots: 1,
+    aliases: ['assombrado', 'embrujado', 'haunted'],
+    name: {
+      'pt-BR': 'Assombrado',
+      en: 'Haunted',
+      es: 'Embrujado',
+    },
+    summary: {
+      'pt-BR': 'Manifestação sobrenatural assombra os cômodos e ameaça quem repousa no refúgio.',
+      en: 'Restless spectral presence haunts the rooms and disturbs daytime shelter.',
+      es: 'Presencia espectral inquieta que acecha las estancias del refugio.',
+    },
+  },
+];
+
 function normalizeAdvantageKey(input: string): string {
   return normalizeCatalogText(input).replace(/[^a-z0-9]+/g, ' ').trim();
 }
@@ -446,30 +1055,22 @@ function normalizeAdvantageToken(input: string): string {
   return normalizeAdvantageKey(input).replace(/\s+/g, '_');
 }
 
-export function getAdvantagesForEdition(
-  edition: WodCatalogEdition,
-  group?: WodAdvantageGroup,
-): readonly WodAdvantageCatalogEntry[] {
-  return WOD_ADVANTAGES_CATALOG.filter(
-    (entry) =>
-      entry.editions.includes(edition) && (group === undefined || entry.group === group),
-  );
-}
-
-export function findAdvantageByIdOrName(
-  input: string | null | undefined,
-  edition?: WodCatalogEdition,
-): WodAdvantageCatalogEntry | null {
+function matchCatalogEntryByIdOrName<
+  T extends {
+    readonly id: string;
+    readonly varName?: string;
+    readonly aliases?: readonly string[];
+    readonly name: Readonly<Record<AppLanguage, string>>;
+  },
+>(pool: readonly T[], input: string | null | undefined): T | null {
   if (typeof input !== 'string') return null;
   const norm = normalizeAdvantageKey(input);
   if (!norm) return null;
 
-  const pool = edition ? getAdvantagesForEdition(edition) : WOD_ADVANTAGES_CATALOG;
-
   for (const entry of pool) {
     const candidates = [
       entry.id,
-      entry.varName,
+      ...(entry.varName ? [entry.varName] : []),
       entry.name['pt-BR'],
       entry.name.en,
       entry.name.es,
@@ -482,11 +1083,65 @@ export function findAdvantageByIdOrName(
   return null;
 }
 
+export function getAdvantagesForEdition(
+  edition: WodCatalogEdition,
+  group?: WodAdvantageGroup,
+): readonly WodAdvantageCatalogEntry[] {
+  if (group === 'flaw') {
+    return getFlawsForEdition(edition);
+  }
+  return WOD_ADVANTAGES_CATALOG.filter(
+    (entry) =>
+      entry.editions.includes(edition) && (group === undefined || entry.group === group),
+  );
+}
+
+export function getFlawsForEdition(
+  edition: WodCatalogEdition,
+): readonly WodAdvantageCatalogEntry[] {
+  return WOD_FLAWS_CATALOG.filter((entry) => entry.editions.includes(edition));
+}
+
+export function getHavenTraitsForEdition(
+  edition: WodCatalogEdition,
+  kind?: WodHavenTraitKind,
+): readonly WodHavenTraitCatalogEntry[] {
+  return WOD_HAVEN_TRAITS_CATALOG.filter(
+    (entry) => entry.editions.includes(edition) && (kind === undefined || entry.kind === kind),
+  );
+}
+
+export function findAdvantageByIdOrName(
+  input: string | null | undefined,
+  edition?: WodCatalogEdition,
+): WodAdvantageCatalogEntry | null {
+  const pool = edition ? getAdvantagesForEdition(edition) : WOD_ADVANTAGES_CATALOG;
+  return matchCatalogEntryByIdOrName(pool, input);
+}
+
+export function findFlawByIdOrName(
+  input: string | null | undefined,
+  edition?: WodCatalogEdition,
+): WodAdvantageCatalogEntry | null {
+  const pool = edition ? getFlawsForEdition(edition) : WOD_FLAWS_CATALOG;
+  return matchCatalogEntryByIdOrName(pool, input);
+}
+
+export function findHavenTraitByIdOrName(
+  input: string | null | undefined,
+  edition?: WodCatalogEdition,
+): WodHavenTraitCatalogEntry | null {
+  const pool = edition ? getHavenTraitsForEdition(edition) : WOD_HAVEN_TRAITS_CATALOG;
+  return matchCatalogEntryByIdOrName(pool, input);
+}
+
 export function isAdvantageCardCandidate(
   card: Pick<SheetCard, 'id' | 'code' | 'title'>,
 ): boolean {
   if (card.id === 'card_backgrounds') return true;
-  if (card.id === 'card_arcano' || card.id === 'card_grimorio') return false;
+  if (card.id === 'card_arcano' || card.id === 'card_grimorio' || card.id === 'card_wod_dossier') {
+    return false;
+  }
   const sig = `${card.code} ${card.title}`.toUpperCase();
   if (/ANTECEDENT|BACKGROUND|VANTAG|ADVANTAGE|TRASFONDO|VENTAJA|LORESHEET/.test(sig)) {
     return true;
