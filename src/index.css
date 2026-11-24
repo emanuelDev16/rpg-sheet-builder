@@ -282,6 +282,67 @@ body {
   row-gap: var(--field-gap);
 }
 
+/* ============================================================================
+   MODAL VIEWPORT SHELL (Header fixo + Body rolável + Footer fixo)
+   ============================================================================ */
+.mobile-modal-overlay {
+  align-items: center;
+  align-items: safe center;
+  padding: max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .mobile-modal-overlay {
+    padding: 16px;
+  }
+}
+
+.mobile-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  min-height: 0;
+  margin-block: auto;
+}
+
+@media (min-width: 640px) {
+  .mobile-modal-dialog {
+    max-height: calc(100dvh - 32px);
+  }
+}
+
+.modal-dialog-header {
+  flex-shrink: 0;
+}
+
+.modal-dialog-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-dialog-footer {
+  flex-shrink: 0;
+  background-color: var(--bg-card);
+  border-top: 1.5px solid var(--border-color);
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
+}
+
 /* Inputs técnicos */
 .cyber-input {
   font-family: var(--font-mono);
@@ -1945,12 +2006,12 @@ select:focus-visible,
     padding-top: max(12px, env(safe-area-inset-top, 0px));
     padding-left: max(12px, env(safe-area-inset-left, 0px));
     padding-right: max(12px, env(safe-area-inset-right, 0px));
-    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-modal-dialog {
-    max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    overflow-y: auto;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
   }
 }
 
@@ -2058,7 +2119,7 @@ select:focus-visible,
 
   .mobile-modal-dialog {
     max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    overflow-y: auto;
+    overflow: hidden;
   }
 }
 
