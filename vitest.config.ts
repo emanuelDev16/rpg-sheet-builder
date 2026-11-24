@@ -16,6 +16,7 @@ export const NODE_TEST_FILES = [
   'src/utils/bentoLayout.test.ts',
   'src/utils/dotRating.test.ts',
   'src/utils/theme.test.ts',
+  'src/utils/wodCreationWizard.test.ts',
   'src/utils/wodPoolComposer.test.ts',
 ] as const;
 

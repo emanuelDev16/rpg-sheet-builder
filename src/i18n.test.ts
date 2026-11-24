@@ -135,5 +135,12 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('pt-BR', 'cards.structured.havensAddBtn')).toBe('+ ADICIONAR REFÚGIO');
     expect(translate('en', 'cards.structured.havensAddBtn')).toBe('+ ADD HAVEN');
     expect(translate('es', 'cards.structured.havensAddBtn')).toBe('+ AÑADIR REFUGIO');
+
+    expect(translate('pt-BR', 'wizard.modeGuided')).toBe('ASSISTENTE GUIADO (4 PASSOS)');
+    expect(translate('en', 'wizard.modeGuided')).toBe('GUIDED WIZARD (4 STEPS)');
+    expect(translate('es', 'wizard.modeGuided')).toBe('ASISTENTE GUIADO (4 PASOS)');
+    expect(translate('pt-BR', 'wizard.finishBtn')).toBe('CONCLUIR E CRIAR FICHA');
+    expect(translate('en', 'wizard.finishBtn')).toBe('FINISH & CREATE SHEET');
+    expect(translate('es', 'wizard.finishBtn')).toBe('FINALIZAR Y CREAR HOJA');
   });
 });

@@ -13,7 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { AppLanguage, createTranslator } from '../core/i18n';
-import type { RulePreset, WodEdition } from '../core/sheetModel';
+import type { CharacterSheetState, RulePreset, WodEdition } from '../core/sheetModel';
 import { ThemeMode } from '../utils/theme';
 import { useFocusTrap } from '../utils/useFocusTrap';
 import {
@@ -24,6 +24,7 @@ import {
   WodEditionFieldset,
 } from './SheetModal';
 import { ThemeSelector } from './ThemeSelector';
+import { WodCreationWizard } from './WodCreationWizard';
 
 export interface HomeSheetItem {
   id: string;
@@ -53,6 +54,7 @@ export interface HomeViewProps {
     rulePreset?: RulePreset,
     clan?: string,
   ) => void;
+  onCreateWizardSheet?: (sheet: CharacterSheetState) => void;
   onDuplicateSheet: (id: string) => void;
   onDeleteSheet: (id: string) => void;
   onOpenImportExport: () => void;
@@ -98,6 +100,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onContinueSheet,
   onSelectSheet,
   onCreateSheet,
+  onCreateWizardSheet,
   onDuplicateSheet,
   onDeleteSheet,
   onOpenImportExport,
@@ -108,6 +111,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [selectedSystemFilter, setSelectedSystemFilter] = useState<string>('all');
   const [customSheetName, setCustomSheetName] = useState('');
   const [wodModalOpen, setWodModalOpen] = useState(false);
+  const [wodCreationMode, setWodCreationMode] = useState<'quick' | 'wizard'>('quick');
   const [wodEdition, setWodEdition] = useState<WodEdition>('vampire-v5');
   const [wodClanPreset, setWodClanPreset] = useState('');
   const [wodCustomClan, setWodCustomClan] = useState('');
@@ -117,12 +121,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const wodOverlayPointerDownRef = useRef(false);
 
   const closeWodModal = () => {
+    setWodCreationMode('quick');
     setWodModalOpen(false);
   };
 
   useFocusTrap(wodModalOpen, wodDialogRef, closeWodModal, wodCloseBtnRef);
 
   const openWodModal = (initialEdition: WodEdition) => {
+    setWodCreationMode('quick');
     setWodEdition(initialEdition);
     setWodClanPreset('');
     setWodCustomClan('');
@@ -705,7 +711,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           aria-modal="true"
           aria-labelledby="home-wod-modal-title"
           data-testid="home-wod-modal"
-          className="bento-card mobile-modal-dialog w-full max-w-md bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+          className={`bento-card mobile-modal-dialog w-full ${
+            wodCreationMode === 'wizard' ? 'max-w-3xl' : 'max-w-md'
+          } bg-[var(--bg-card)] shadow-[var(--shadow-modal)]`}
         >
           <header className="bento-card-header modal-dialog-header">
             <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
@@ -730,6 +738,48 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </header>
 
+          <div
+            role="group"
+            aria-label={t('wizard.modeAria')}
+            className="wod-creation-mode-strip"
+          >
+            <div className="wod-creation-mode-switch">
+              <button
+                type="button"
+                data-testid="home-wod-mode-quick"
+                aria-pressed={wodCreationMode === 'quick'}
+                onClick={() => setWodCreationMode('quick')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'quick' ? 'is-active' : ''
+                }`}
+              >
+                {t('wizard.modeQuick')}
+              </button>
+              <button
+                type="button"
+                data-testid="home-wod-mode-wizard"
+                aria-pressed={wodCreationMode === 'wizard'}
+                onClick={() => setWodCreationMode('wizard')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'wizard' ? 'is-active' : ''
+                }`}
+              >
+                {t('wizard.modeGuided')}
+              </button>
+            </div>
+          </div>
+
+          {wodCreationMode === 'wizard' ? (
+            <WodCreationWizard
+              initialEdition={wodEdition}
+              language={language}
+              onCancel={closeWodModal}
+              onComplete={(builtSheet) => {
+                onCreateWizardSheet?.(builtSheet);
+                closeWodModal();
+              }}
+            />
+          ) : (
           <form
             id="home-wod-create-form"
             aria-labelledby="home-wod-modal-title"
@@ -807,6 +857,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </button>
             </div>
           </form>
+          )}
         </div>
       </div>
     )}
