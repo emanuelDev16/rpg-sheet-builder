@@ -18,6 +18,7 @@ import {
 } from './src/core/roomSync.ts';
 import {
   type CanonicalSheet,
+  findDangerousKeyPath,
   fromCanonicalSheet,
   toCanonicalSheet,
 } from './src/core/sheetModel.ts';
@@ -50,7 +51,7 @@ export const SYNC_TOKEN: string =
     : (() => {
         const generated = crypto.randomBytes(16).toString('hex');
         console.log(
-          `[SYNC AUTH] SYNC_TOKEN ausente no ambiente. Token efêmero inicializado (${generated.slice(0, 4)}...).`,
+          '[SYNC AUTH] SYNC_TOKEN ausente no ambiente. Token efêmero inicializado (redacted).',
         );
         return generated;
       })();
@@ -195,8 +196,47 @@ function savePersistedMirror(mirror: WorkspaceMirrorPayload): void {
   }
 }
 
+export function hasDangerousObjectKeys(payload: unknown): boolean {
+  return findDangerousKeyPath(payload) !== null;
+}
+
+export function applySecurityHeaders(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void {
+  res.setHeader('X-Content-Type-Options', 'nosniff');
+  res.setHeader('X-Frame-Options', 'DENY');
+  if (
+    req.path.startsWith('/api/sync') ||
+    req.path.startsWith('/api/workspace-sync') ||
+    req.path.startsWith('/api/sheets')
+  ) {
+    res.setHeader('Cache-Control', 'no-store');
+  }
+  next();
+}
+
+export function rejectPrototypePollutionBody(
+  req: express.Request,
+  res: express.Response,
+  next: express.NextFunction,
+): void {
+  if (req.body !== undefined && hasDangerousObjectKeys(req.body)) {
+    res.status(400).json({
+      ok: false,
+      error: 'INVALID_PAYLOAD',
+      message: 'Payload contém chaves proibidas.',
+    });
+    return;
+  }
+  next();
+}
+
 export function createSyncApp(initialSheets?: CanonicalSheet[]) {
   const app = express();
+  app.disable('x-powered-by');
+  app.use(applySecurityHeaders);
   app.use(cors({ origins: resolveAllowedCorsOrigins() }));
   app.use(express.json({ limit: '1mb' }));
 
@@ -233,6 +273,14 @@ export function createSyncApp(initialSheets?: CanonicalSheet[]) {
 
     // Extract sheet payload for Ajv validation against @shared-specs/sheet.schema.json
     const rawBody = req.body as Record<string, unknown> | null | undefined;
+    if (rawBody !== undefined && hasDangerousObjectKeys(rawBody)) {
+      res.status(400).json({
+        ok: false,
+        error: 'INVALID_PAYLOAD',
+        message: 'Payload contém chaves proibidas.',
+      });
+      return;
+    }
     const isWorkspaceEnvelope =
       Boolean(
         rawBody &&
@@ -358,6 +406,13 @@ export function createSyncApp(initialSheets?: CanonicalSheet[]) {
   };
 
   app.use('/api/sync', requireSyncAuth);
+  if (process.env.ALLOW_LAN_SYNC === 'true') {
+    app.use('/api/workspace-sync', requireSyncAuth);
+    app.use('/api/sheets', requireSyncAuth);
+  }
+  app.use('/api/sync', rejectPrototypePollutionBody);
+  app.use('/api/workspace-sync', rejectPrototypePollutionBody);
+  app.use('/api/sheets', rejectPrototypePollutionBody);
   app.get('/api/sync', handleSheetSyncHttp);
   app.get('/api/sync/:id', handleSheetSyncHttp);
   app.post('/api/sync', handleSheetSyncHttp);
