@@ -64,6 +64,7 @@ import {
 } from './core/roomSync';
 import {
   type DiceRollResult,
+  executeDisciplineRouseCheck,
   executeRemorseCheck,
   executeRouseCheck,
   type FrenzyKind,
@@ -834,41 +835,70 @@ function HydratedAppWorkspace({
     setSheet((prev) => setSheetRulePreset(prev, preset));
   };
 
-  const handleRouseCheck = (options?: { label?: string; count?: number }) => {
+  const handleRouseCheck = (options?: {
+    label?: string;
+    count?: number;
+    powerLevel?: number;
+  }) => {
     const count =
       typeof options?.count === 'number' && Number.isFinite(options.count)
         ? Math.max(1, Math.min(5, Math.round(options.count)))
         : 1;
-    const checks = Array.from({ length: count }, () => executeRouseCheck(Math.random));
-    const rolls = checks.flatMap((res) => res.rolls);
-    const passedCount = checks.filter((res) => (res.hungerDelta ?? 0) === 0).length;
-    const totalHungerDelta = checks.reduce((sum, res) => sum + (res.hungerDelta ?? 0), 0);
+    const powerLevel =
+      typeof options?.powerLevel === 'number' && Number.isFinite(options.powerLevel)
+        ? Math.round(options.powerLevel)
+        : undefined;
+    const checks = Array.from({ length: count }, () =>
+      executeDisciplineRouseCheck(bloodPotency, powerLevel, Math.random),
+    );
+    const rolls: number[] = [];
+    const rerolledIndices: number[] = [];
+    for (const res of checks) {
+      rolls.push(res.dice[0]);
+      if (res.rerolledByBloodPotency && res.dice.length > 1) {
+        rolls.push(res.dice[1]);
+        rerolledIndices.push(rolls.length - 1);
+      }
+    }
+    const anyRerolledByBp = rerolledIndices.length > 0;
+    const passedCount = checks.filter((res) => res.passed).length;
+    const totalHungerDelta = checks.reduce((sum, res) => sum + res.hungerDelta, 0);
     const cleanPowerLabel = options?.label?.trim();
     const entryLabel = cleanPowerLabel
       ? `${t.t('cards.powers.rouseLogPrefix')} · ${cleanPowerLabel}`.slice(0, 120)
       : t.t('cards.vital.rouseCheckBtn');
+    const bpTag = anyRerolledByBp ? ` · ${t.t('sidebar.roll.rouseBpRerollBadge')}` : '';
     const formula =
       count === 1
-        ? checks[0].resolvedExpression
-        : `${count}d10 (ROUSE CHECK ×${count} · DIFF 6)`;
+        ? `${rolls.length}d10 (ROUSE CHECK · DIFF 6${bpTag})`
+        : `${rolls.length}d10 (ROUSE CHECK ×${count} · DIFF 6${bpTag})`;
     const breakdown =
       count === 1
-        ? checks[0].breakdown
-        : `${count}d10[${rolls.join(', ')}] ≥6 → ${passedCount}/${count} OK (+${totalHungerDelta} HUNGER)`;
+        ? `${rolls.length}d10[${rolls.join(', ')}] ≥6${bpTag} → ${
+            checks[0].passed
+              ? t.t('sidebar.roll.rousePass')
+              : t.t('sidebar.roll.rouseFail')
+          }`
+        : `${rolls.length}d10[${rolls.join(', ')}] ≥6${bpTag} → ${passedCount}/${count} OK (${
+            totalHungerDelta === 0
+              ? t.t('sidebar.roll.rousePass')
+              : `+${totalHungerDelta} ${t.t('poolComposer.hungerWord')}`
+          })`;
 
     const entry: RollLogEntry = {
       id: `log_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
       timestamp: nowTimeString(),
       label: entryLabel,
       total: passedCount,
-      formula,
-      breakdown,
+      formula: formula.slice(0, 256),
+      breakdown: breakdown.slice(0, 512),
       rolls,
       difficulty: 6,
       outcome: totalHungerDelta === 0 ? 'success' : 'failure',
       isPoolRoll: true,
       rulePreset: 'vampire-v5',
       isRouseCheck: true,
+      ...(anyRerolledByBp ? { rerolledIndices } : {}),
     };
     playDiceClatter({ diceCount: rolls.length, isCritical: false, isFumble: false });
     showMobileToastWithTimeout(entry);
@@ -2365,19 +2395,32 @@ function HydratedAppWorkspace({
                           );
                         }
                         if (mobileRollToast.isRouseCheck) {
+                          const isBpRouseReroll = Boolean(
+                            (mobileRollToast.rerolledIndices?.length ?? 0) > 0,
+                          );
                           return (
-                            <span
-                              data-testid="mobile-roll-toast-status"
-                              className={`font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 border rounded-[var(--radius-pill)] uppercase shrink-0 ${
-                                outcome === 'success'
-                                  ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
-                                  : 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
-                              }`}
-                            >
-                              {outcome === 'success'
-                                ? t.t('sidebar.roll.rousePass')
-                                : t.t('sidebar.roll.rouseFail')}
-                            </span>
+                            <>
+                              <span
+                                data-testid="mobile-roll-toast-status"
+                                className={`font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 border rounded-[var(--radius-pill)] uppercase shrink-0 ${
+                                  outcome === 'success'
+                                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                    : 'bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                                }`}
+                              >
+                                {outcome === 'success'
+                                  ? t.t('sidebar.roll.rousePass')
+                                  : t.t('sidebar.roll.rouseFail')}
+                              </span>
+                              {isBpRouseReroll && (
+                                <span
+                                  data-testid="mobile-roll-toast-bp-reroll-badge"
+                                  className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase shrink-0"
+                                >
+                                  {t.t('sidebar.roll.rouseBpRerollBadge')}
+                                </span>
+                              )}
+                            </>
                           );
                         }
                         if (v5ToastMessy) {
@@ -2453,7 +2496,9 @@ function HydratedAppWorkspace({
                     })()}
                   </div>
                   <div className="font-mono-tech text-[10px] text-[var(--ink-secondary)] truncate">
-                    {mobileRollToast.isPoolRoll && !mobileRollToast.isRemorseCheck
+                    {mobileRollToast.isPoolRoll &&
+                    !mobileRollToast.isRemorseCheck &&
+                    !mobileRollToast.isRouseCheck
                       ? mobileRollToast.rulePreset === 'vampire-v5' && !mobileRollToast.isRouseCheck
                         ? (() => {
                             const v5T = Math.max(

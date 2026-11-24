@@ -210,6 +210,9 @@ export const RollDiceChips: React.FC<RollDiceChipsProps> = ({
         const isDoubledTen = Boolean(entry.specialty) && dieVal === 10;
         const isSuccessDie = dieVal >= diffThreshold;
         const isOne = dieVal === 1;
+        const isBpRerollDie = Boolean(
+          entry.isRouseCheck && entry.rerolledIndices?.includes(dIdx),
+        );
         const dieClassName = `die-chip text-[10px] px-1.5 py-1 border ${
           isDoubledTen
             ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
@@ -221,7 +224,12 @@ export const RollDiceChips: React.FC<RollDiceChipsProps> = ({
         }`;
 
         return (
-          <span key={dIdx} className={dieClassName}>
+          <span
+            key={dIdx}
+            data-bp-reroll-die={isBpRerollDie ? 'true' : undefined}
+            title={isBpRerollDie ? t.t('sidebar.roll.rouseBpRerollBadge') : undefined}
+            className={dieClassName}
+          >
             {isDoubledTen ? '10×2' : dieVal}
           </span>
         );
@@ -476,6 +484,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                 const hungerCount = entry.hungerDice ?? 0;
                 const normalDiceCount = Math.max(0, (entry.rolls?.length ?? 0) - hungerCount);
                 const isRerollArmed = rerollArmedLogId === entry.id;
+                const isBpRouseReroll = Boolean(
+                  entry.isRouseCheck && (entry.rerolledIndices?.length ?? 0) > 0,
+                );
                 const canArmThisRollReroll =
                   Boolean(onArmWillpowerReroll) &&
                   isV5Pool &&
@@ -685,6 +696,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
 
                     {(entry.isFrenzyRoll ||
                       entry.isRemorseCheck ||
+                      isBpRouseReroll ||
                       entry.willpowerUsed ||
                       entry.isWillpowerReroll ||
                       entry.isBloodSurge ||
@@ -694,6 +706,16 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                       (entry.canceledOnes ?? 0) > 0 ||
                       (entry.doubledTensCount ?? 0) > 0) && (
                       <div className="flex flex-wrap items-center gap-1 mb-1">
+                        {isBpRouseReroll && (
+                          <span
+                            data-testid={
+                              idx === 0 ? 'latest-roll-bp-reroll-badge' : 'roll-log-bp-reroll-badge'
+                            }
+                            className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] uppercase"
+                          >
+                            {t.t('sidebar.roll.rouseBpRerollBadge')}
+                          </span>
+                        )}
                         {entry.isFrenzyRoll && (
                           <span
                             data-testid={idx === 0 ? 'latest-roll-frenzy-badge' : undefined}

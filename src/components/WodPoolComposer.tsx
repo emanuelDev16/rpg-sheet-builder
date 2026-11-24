@@ -79,6 +79,7 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
   const [specialty, setSpecialty] = useState<boolean>(false);
   const [useWillpower, setUseWillpower] = useState<boolean>(false);
   const [bloodSurgeActive, setBloodSurgeActive] = useState<boolean>(Boolean(bloodSurge));
+  const [applyPowerBonus, setApplyPowerBonus] = useState<boolean>(true);
 
   // Keep selected trait IDs valid when switching sheets or removing fields
   useEffect(() => {
@@ -100,6 +101,7 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
     const nextDefault = isV5 ? 2 : 6;
     setDifficulty(nextDefault);
     setDiffDraft(String(nextDefault));
+    setApplyPowerBonus(true);
     if (isV5) {
       setSpecialty(false);
       setUseWillpower(false);
@@ -167,6 +169,7 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
     bloodSurgeActive: isV5 && bloodSurgeActive,
     bloodSurgeBonus,
     bloodPotency,
+    applyPowerBonus,
     hunger: currentHunger,
     difficulty,
     specialty,
@@ -205,6 +208,7 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
     setSpecialty(false);
     setUseWillpower(false);
     setBloodSurgeActive(false);
+    setApplyPowerBonus(true);
   };
 
   const handleSubmit = (e: React.FormEvent) => {
@@ -561,13 +565,31 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
             <span className="font-mono-tech text-[10px] font-semibold uppercase text-[var(--ink-secondary)] tabular-nums">
               {breakdown.formulaSummary}
             </span>
-            {breakdown.powerBonusDiceApplied > 0 && (
-              <span
+            {isV5 && breakdown.availablePowerBonusDice > 0 && (
+              <button
+                type="button"
                 data-testid="pool-composer-power-bonus-badge"
-                className="wod-power-bonus-badge self-start inline-flex items-center px-1.5 py-0.5 text-[9px] font-extrabold uppercase tracking-wide"
+                aria-pressed={applyPowerBonus}
+                aria-label={t.t('poolComposer.powerBonusToggleAria', {
+                  bonus: breakdown.availablePowerBonusDice,
+                })}
+                onClick={() => setApplyPowerBonus((prev) => !prev)}
+                style={!applyPowerBonus ? { borderStyle: 'dashed' } : undefined}
+                className={`wod-composer-toggle self-start min-h-[36px] sm:min-h-[28px] inline-flex items-center gap-1.5 px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide rounded-[var(--radius-pill)] cursor-pointer ${
+                  applyPowerBonus ? 'is-active' : ''
+                }`}
               >
-                {t.t('poolComposer.powerBonusBadge', { bonus: breakdown.powerBonusDiceApplied })}
-              </span>
+                <span>
+                  {t.t('poolComposer.powerBonusBadge', {
+                    bonus: breakdown.availablePowerBonusDice,
+                  })}
+                </span>
+                <span className="font-mono-tech text-[8px] font-black px-1 py-0.5 border border-current rounded-[var(--radius-pill)] shrink-0">
+                  {applyPowerBonus
+                    ? t.t('poolComposer.powerBonusOnTag')
+                    : t.t('poolComposer.powerBonusOffTag')}
+                </span>
+              </button>
             )}
             {breakdown.isIncapacitated && !breakdown.canRoll && (
               <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-danger)]">

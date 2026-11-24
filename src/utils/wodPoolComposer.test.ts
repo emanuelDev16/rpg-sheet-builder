@@ -338,6 +338,8 @@ test('computeWodComposedPool adds V5 powerBonusDice only for Discipline pools in
     secondaryTrait: dominate,
     bloodPotency: 0,
   });
+  assert.equal(bp0.hasDisciplineTrait, true);
+  assert.equal(bp0.availablePowerBonusDice, 0);
   assert.equal(bp0.powerBonusDiceApplied, 0);
   assert.equal(bp0.rawPool, 7);
   assert.equal(bp0.effectivePool, 7);
@@ -349,6 +351,8 @@ test('computeWodComposedPool adds V5 powerBonusDice only for Discipline pools in
     secondaryTrait: dominate,
     bloodPotency: 2,
   });
+  assert.equal(bp2.hasDisciplineTrait, true);
+  assert.equal(bp2.availablePowerBonusDice, 1);
   assert.equal(bp2.powerBonusDiceApplied, 1);
   assert.equal(bp2.rawPool, 8);
   assert.equal(bp2.effectivePool, 8);
@@ -361,10 +365,37 @@ test('computeWodComposedPool adds V5 powerBonusDice only for Discipline pools in
     bloodPotency: 4,
     labels: { powerTag: 'POWER' },
   });
+  assert.equal(bp4.hasDisciplineTrait, true);
+  assert.equal(bp4.availablePowerBonusDice, 2);
   assert.equal(bp4.powerBonusDiceApplied, 2);
   assert.equal(bp4.rawPool, 9);
   assert.equal(bp4.effectivePool, 9);
   assert.equal(bp4.displayLabel, 'MANIPULAÇÃO (4) + DOMINAÇÃO (3) +2 POWER');
+
+  // Opting out with applyPowerBonus: false omits bonus dice & label while preserving availablePowerBonusDice
+  const bp4OptOut = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: manipulation,
+    secondaryTrait: dominate,
+    bloodPotency: 4,
+    applyPowerBonus: false,
+  });
+  assert.equal(bp4OptOut.hasDisciplineTrait, true);
+  assert.equal(bp4OptOut.availablePowerBonusDice, 2);
+  assert.equal(bp4OptOut.powerBonusDiceApplied, 0);
+  assert.equal(bp4OptOut.rawPool, 7);
+  assert.equal(bp4OptOut.effectivePool, 7);
+  assert.equal(bp4OptOut.displayLabel, 'MANIPULAÇÃO (4) + DOMINAÇÃO (3)');
+
+  const bp4OptInExplicit = computeWodComposedPool({
+    rulePreset: 'vampire-v5',
+    primaryTrait: manipulation,
+    secondaryTrait: dominate,
+    bloodPotency: 4,
+    applyPowerBonus: true,
+  });
+  assert.equal(bp4OptInExplicit.powerBonusDiceApplied, 2);
+  assert.equal(bp4OptInExplicit.effectivePool, 9);
 
   // Attribute + Skill without disciplines must receive 0 power bonus even at high Blood Potency
   const nonDiscipline = computeWodComposedPool({
@@ -373,6 +404,8 @@ test('computeWodComposedPool adds V5 powerBonusDice only for Discipline pools in
     secondaryTrait: { key: 'persuasion', label: 'PERSUASÃO', value: 3, group: 'skills' },
     bloodPotency: 4,
   });
+  assert.equal(nonDiscipline.hasDisciplineTrait, false);
+  assert.equal(nonDiscipline.availablePowerBonusDice, 0);
   assert.equal(nonDiscipline.powerBonusDiceApplied, 0);
   assert.equal(nonDiscipline.effectivePool, 6);
 
@@ -383,6 +416,8 @@ test('computeWodComposedPool adds V5 powerBonusDice only for Discipline pools in
     secondaryTrait: dominate,
     bloodPotency: 4,
   });
+  assert.equal(v20Discipline.hasDisciplineTrait, true);
+  assert.equal(v20Discipline.availablePowerBonusDice, 0);
   assert.equal(v20Discipline.powerBonusDiceApplied, 0);
   assert.equal(v20Discipline.effectivePool, 7);
 });
