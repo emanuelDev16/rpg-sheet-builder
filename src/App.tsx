@@ -1,4 +1,4 @@
-import { Suspense, use, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, Suspense, use, useEffect, useMemo, useRef, useState } from 'react';
 import { Dices, X } from 'lucide-react';
 import {
   addCardToSheet,
@@ -130,6 +130,10 @@ import {
   ThemeMode,
 } from './utils/theme';
 import { useFocusTrap } from './utils/useFocusTrap';
+import {
+  BENTO_TWO_COLUMN_MEDIA_QUERY,
+  partitionBentoCardSegments,
+} from './utils/bentoLayout';
 import { printActiveSheetView } from './core/printSheet';
 import {
   awardXp,
@@ -150,6 +154,65 @@ function nowTimeString(): string {
   const hh = String(d.getHours()).padStart(2, '0');
   const mm = String(d.getMinutes()).padStart(2, '0');
   return `${hh}:${mm}`;
+}
+
+function useTwoColBentoLayout(): boolean {
+  const [matchesTwoCol, setMatchesTwoCol] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return Boolean(window.matchMedia(BENTO_TWO_COLUMN_MEDIA_QUERY)?.matches);
+  });
+  const [isPrinting, setIsPrinting] = useState<boolean>(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return false;
+    }
+    return Boolean(window.matchMedia('print')?.matches);
+  });
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || typeof window.matchMedia !== 'function') {
+      return;
+    }
+
+    const twoColMql = window.matchMedia(BENTO_TWO_COLUMN_MEDIA_QUERY);
+    const printMql = window.matchMedia('print');
+
+    const updateTwoCol = () => setMatchesTwoCol(Boolean(twoColMql?.matches));
+    const updatePrint = () => setIsPrinting(Boolean(printMql?.matches));
+    const handleBeforePrint = () => setIsPrinting(true);
+    const handleAfterPrint = () => setIsPrinting(Boolean(printMql?.matches));
+
+    updateTwoCol();
+    updatePrint();
+
+    const addMqlListener = (mql: MediaQueryList | null | undefined, handler: () => void) => {
+      if (!mql) return () => {};
+      if (typeof mql.addEventListener === 'function') {
+        mql.addEventListener('change', handler);
+        return () => mql.removeEventListener('change', handler);
+      }
+      if (typeof mql.addListener === 'function') {
+        mql.addListener(handler);
+        return () => mql.removeListener(handler);
+      }
+      return () => {};
+    };
+
+    const cleanupTwoCol = addMqlListener(twoColMql, updateTwoCol);
+    const cleanupPrint = addMqlListener(printMql, updatePrint);
+    window.addEventListener('beforeprint', handleBeforePrint);
+    window.addEventListener('afterprint', handleAfterPrint);
+
+    return () => {
+      cleanupTwoCol();
+      cleanupPrint();
+      window.removeEventListener('beforeprint', handleBeforePrint);
+      window.removeEventListener('afterprint', handleAfterPrint);
+    };
+  }, []);
+
+  return matchesTwoCol && !isPrinting;
 }
 
 interface HydratedAppWorkspaceProps {
@@ -765,6 +828,12 @@ function HydratedAppWorkspace({
 
   const matchedFieldCount = useMemo(
     () => filteredCards.reduce((sum, entry) => sum + entry.matchedFields.length, 0),
+    [filteredCards],
+  );
+
+  const useTwoColMasonry = useTwoColBentoLayout();
+  const segmentedCards = useMemo(
+    () => partitionBentoCardSegments(filteredCards, (entry) => (entry.card.colSpan ?? 1) >= 2),
     [filteredCards],
   );
 
@@ -1919,6 +1988,105 @@ function HydratedAppWorkspace({
     setMobileSidebarOpen(true);
   };
 
+  const renderBentoCard = (entry: (typeof filteredCards)[number]) => (
+    <BentoCard
+      key={entry.card.id}
+      card={entry.card}
+      displayFields={entry.matchedFields}
+      filteredInfo={
+        entry.isFiltered
+          ? { shown: entry.matchedFields.length, total: entry.totalFieldCount }
+          : undefined
+      }
+      mode={mode}
+      systemId={activeSystemId}
+      rulePreset={rulePreset}
+      clan={sheetClan}
+      woundPenalty={effectiveWoundPenalty}
+      bloodPool={bloodPool}
+      virtues={virtues}
+      bloodSurge={bloodSurge}
+      bloodSurgeBonus={bloodSurgeBonus}
+      bloodPotency={bloodPotency}
+      lastSoakTotal={lastSoakTotal}
+      canWillpowerSurge={Boolean(latestEligibleV5Roll)}
+      v5WillpowerState={v5WillpowerState}
+      evaluation={evaluation}
+      t={t.cards}
+      onChangeValue={(fid, val) =>
+        setSheet((prev) => updateFieldValue(prev, fid, val))
+      }
+      onAdjustResource={(fid, delta) =>
+        setSheet((prev) => adjustResourceValue(prev, fid, delta))
+      }
+      onAdjustHealthDamage={(fid, dmgType, delta) =>
+        setSheet((prev) => adjustHealthDamage(prev, fid, dmgType, delta))
+      }
+      onCycleV20HealthCell={(fid, idx) =>
+        setSheet((prev) => cycleV20HealthCell(prev, fid, idx))
+      }
+      onAdjustV20HealthDamage={(fid, dmgType, delta) =>
+        setSheet((prev) => adjustV20HealthDamage(prev, fid, dmgType, delta))
+      }
+      onAdjustV5HealthDamage={(fid, dmgType, delta) =>
+        setSheet((prev) => adjustV5HealthDamage(prev, fid, dmgType, delta))
+      }
+      onAdjustV5WillpowerDamage={handleAdjustV5WillpowerDamage}
+      onAdjustHumanityStains={handleAdjustHumanityStains}
+      onTriggerRemorseCheck={handleTriggerRemorseCheck}
+      onTriggerFrenzyRoll={handleTriggerFrenzyRoll}
+      onApplyV5SuperficialHalving={(fid, rawDmg) =>
+        setSheet((prev) => applyV5SuperficialHalving(prev, fid, rawDmg).sheet)
+      }
+      onMendSuperficialWithRouse={handleMendSuperficialWithRouse}
+      onAdjustBloodPool={(delta) =>
+        setSheet((prev) => adjustSheetBloodPool(prev, delta))
+      }
+      onSetBloodPool={(nextVal) =>
+        setSheet((prev) => adjustSheetBloodPool(prev, nextVal, true))
+      }
+      onUpdateVirtue={(virtueKey, nextVal) =>
+        setSheet((prev) => updateSheetVirtue(prev, virtueKey, nextVal))
+      }
+      onRouseCheck={handleRouseCheck}
+      onSpendPowerBlood={handleSpendPowerBlood}
+      onToggleBloodSurge={() =>
+        setSheet((prev) => toggleSheetBloodSurge(prev))
+      }
+      onTriggerWillpowerSurge={handleTriggerWillpowerSurge}
+      onRoll={handleFieldRoll}
+      onAddRow={(fid) =>
+        setSheet((prev) =>
+          addRepeatableRow(
+            prev,
+            fid,
+            `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 4)}`,
+          ),
+        )
+      }
+      onUpdateRow={(fid, rid, col, val) =>
+        setSheet((prev) => updateRepeatableRow(prev, fid, rid, col, val))
+      }
+      onRemoveRow={(fid, rid) =>
+        setSheet((prev) => removeRepeatableRow(prev, fid, rid))
+      }
+      onUpdateSchema={(fid, patch) =>
+        setSheet((prev) => updateFieldSchema(prev, fid, patch))
+      }
+      onRemoveField={(cid, fid) =>
+        setSheet((prev) => removeFieldFromCard(prev, cid, fid))
+      }
+      onAddField={handleAddField}
+      onUpdateCard={(cid, patch) =>
+        setSheet((prev) => updateCardSchema(prev, cid, patch))
+      }
+      onRemoveCard={(cid) => {
+        setSheet((prev) => removeCardFromSheet(prev, cid));
+        triggerFlash(t.t('app.cardRemoved'));
+      }}
+    />
+  );
+
   return (
     <div className="print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden print:overflow-visible">
       <TopBar
@@ -2092,7 +2260,13 @@ function HydratedAppWorkspace({
                 onSelectRulePreset={handleSelectRulePreset}
               />
             ) : (
-              <div className="bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start">
+              <div
+                className={
+                  useTwoColMasonry
+                    ? 'bento-print-grid bento-masonry-stack'
+                    : 'bento-print-grid grid grid-cols-1 lg:grid-cols-2 gap-4 items-start'
+                }
+              >
                 {searchQuery.trim() && filteredCards.length === 0 ? (
                   <section
                     data-testid="sheet-search-empty"
@@ -2112,105 +2286,31 @@ function HydratedAppWorkspace({
                       {t.searchBar.clearText}
                     </button>
                   </section>
+                ) : useTwoColMasonry ? (
+                  segmentedCards.map((segment, segIdx) =>
+                    segment.type === 'full' ? (
+                      <Fragment
+                        key={`bento-full-${segment.items[0]?.originalIndex ?? segIdx}`}
+                      >
+                        {segment.items.map(({ card: entry }) => renderBentoCard(entry))}
+                      </Fragment>
+                    ) : (
+                      <div
+                        key={`bento-cols-${segment.left[0]?.originalIndex ?? segIdx}`}
+                        className="bento-columns-row"
+                        data-testid={`bento-columns-row-${segIdx}`}
+                      >
+                        <div className="bento-column" data-testid={`bento-column-left-${segIdx}`}>
+                          {segment.left.map(({ card: entry }) => renderBentoCard(entry))}
+                        </div>
+                        <div className="bento-column" data-testid={`bento-column-right-${segIdx}`}>
+                          {segment.right.map(({ card: entry }) => renderBentoCard(entry))}
+                        </div>
+                      </div>
+                    ),
+                  )
                 ) : (
-                  filteredCards.map((entry) => (
-                    <BentoCard
-                      key={entry.card.id}
-                      card={entry.card}
-                      displayFields={entry.matchedFields}
-                      filteredInfo={
-                        entry.isFiltered
-                          ? { shown: entry.matchedFields.length, total: entry.totalFieldCount }
-                          : undefined
-                      }
-                      mode={mode}
-                      systemId={activeSystemId}
-                      rulePreset={rulePreset}
-                      clan={sheetClan}
-                      woundPenalty={effectiveWoundPenalty}
-                      bloodPool={bloodPool}
-                      virtues={virtues}
-                      bloodSurge={bloodSurge}
-                      bloodSurgeBonus={bloodSurgeBonus}
-                      bloodPotency={bloodPotency}
-                      lastSoakTotal={lastSoakTotal}
-                      canWillpowerSurge={Boolean(latestEligibleV5Roll)}
-                      v5WillpowerState={v5WillpowerState}
-                      evaluation={evaluation}
-                      t={t.cards}
-                      onChangeValue={(fid, val) =>
-                        setSheet((prev) => updateFieldValue(prev, fid, val))
-                      }
-                      onAdjustResource={(fid, delta) =>
-                        setSheet((prev) => adjustResourceValue(prev, fid, delta))
-                      }
-                      onAdjustHealthDamage={(fid, dmgType, delta) =>
-                        setSheet((prev) => adjustHealthDamage(prev, fid, dmgType, delta))
-                      }
-                      onCycleV20HealthCell={(fid, idx) =>
-                        setSheet((prev) => cycleV20HealthCell(prev, fid, idx))
-                      }
-                      onAdjustV20HealthDamage={(fid, dmgType, delta) =>
-                        setSheet((prev) => adjustV20HealthDamage(prev, fid, dmgType, delta))
-                      }
-                      onAdjustV5HealthDamage={(fid, dmgType, delta) =>
-                        setSheet((prev) => adjustV5HealthDamage(prev, fid, dmgType, delta))
-                      }
-                      onAdjustV5WillpowerDamage={handleAdjustV5WillpowerDamage}
-                      onAdjustHumanityStains={handleAdjustHumanityStains}
-                      onTriggerRemorseCheck={handleTriggerRemorseCheck}
-                      onTriggerFrenzyRoll={handleTriggerFrenzyRoll}
-                      onApplyV5SuperficialHalving={(fid, rawDmg) =>
-                        setSheet((prev) => applyV5SuperficialHalving(prev, fid, rawDmg).sheet)
-                      }
-                      onMendSuperficialWithRouse={handleMendSuperficialWithRouse}
-                      onAdjustBloodPool={(delta) =>
-                        setSheet((prev) => adjustSheetBloodPool(prev, delta))
-                      }
-                      onSetBloodPool={(nextVal) =>
-                        setSheet((prev) => adjustSheetBloodPool(prev, nextVal, true))
-                      }
-                      onUpdateVirtue={(virtueKey, nextVal) =>
-                        setSheet((prev) => updateSheetVirtue(prev, virtueKey, nextVal))
-                      }
-                      onRouseCheck={handleRouseCheck}
-                      onSpendPowerBlood={handleSpendPowerBlood}
-                      onToggleBloodSurge={() =>
-                        setSheet((prev) => toggleSheetBloodSurge(prev))
-                      }
-                      onTriggerWillpowerSurge={handleTriggerWillpowerSurge}
-                      onRoll={handleFieldRoll}
-                      onAddRow={(fid) =>
-                        setSheet((prev) =>
-                          addRepeatableRow(
-                            prev,
-                            fid,
-                            `r_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 4)}`,
-                          ),
-                        )
-                      }
-                      onUpdateRow={(fid, rid, col, val) =>
-                        setSheet((prev) => updateRepeatableRow(prev, fid, rid, col, val))
-                      }
-                      onRemoveRow={(fid, rid) =>
-                        setSheet((prev) => removeRepeatableRow(prev, fid, rid))
-                      }
-                      onUpdateSchema={(fid, patch) =>
-                        setSheet((prev) => updateFieldSchema(prev, fid, patch))
-                      }
-                      onRemoveField={(cid, fid) =>
-                        setSheet((prev) => removeFieldFromCard(prev, cid, fid))
-                      }
-                      onAddField={handleAddField}
-                      onUpdateCard={(cid, patch) =>
-                        setSheet((prev) => updateCardSchema(prev, cid, patch))
-                      }
-                      onRemoveCard={(cid) => {
-                        setSheet((prev) => removeCardFromSheet(prev, cid));
-                        triggerFlash(t.t('app.cardRemoved'));
-                      }}
-                    />
-                  ))
+                  filteredCards.map((entry) => renderBentoCard(entry))
                 )}
                 {(visibleCards.length === 0 || mode === 'edicao') && (
                   <CustomCardBuilder

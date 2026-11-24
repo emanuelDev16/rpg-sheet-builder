@@ -254,6 +254,33 @@ body {
   gap: var(--grid-gap);
 }
 
+.bento-masonry-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  min-width: 0;
+}
+
+.bento-columns-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--grid-gap);
+  align-items: start;
+  min-width: 0;
+}
+
+.bento-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  min-width: 0;
+}
+
+.bento-masonry-stack > .bento-card,
+.bento-column > .bento-card {
+  min-width: 0;
+}
+
 .bento-card {
   background-color: var(--bg-card);
   border: var(--border-width) solid var(--border-color);
@@ -1891,6 +1918,26 @@ select:focus-visible,
 
   .bento-span-2 {
     grid-column: span 2 / span 2 !important;
+  }
+
+  .bento-print-grid.bento-masonry-stack {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+  }
+
+  .bento-columns-row {
+    display: grid !important;
+    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
+    gap: 12px !important;
+    align-items: start !important;
+  }
+
+  .bento-column {
+    display: flex !important;
+    flex-direction: column !important;
+    gap: 12px !important;
+    min-width: 0 !important;
   }
 
   .bento-card-two-col {
