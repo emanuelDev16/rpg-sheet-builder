@@ -1706,6 +1706,60 @@ function HydratedAppWorkspace({
     triggerFlash(t.t('app.newSheetCreated', { system: sysLabel }));
   };
 
+  const handleCreateWizardSheet = (builtSheet: CharacterSheetState) => {
+    void flushLocalPersistence();
+    const targetSystemId: SystemId = 'wod';
+    const existingTarget = workspaceRef.current.sheetsBySystem[targetSystemId];
+    const baseRev = baseRevisionsRef.current[targetSystemId] ?? existingTarget?.revision ?? 1;
+    baseRevisionsRef.current[targetSystemId] = baseRev;
+    dirtySystemsRef.current[targetSystemId] = true;
+
+    const defaultId = resolveSheetRecordId(builtSheet);
+    const hasCollision =
+      persistedSheetsRef.current.some((s) => resolveSheetRecordId(s) === defaultId) ||
+      Boolean(existingTarget);
+    const nextRecordId = hasCollision ? buildUniqueSheetId(targetSystemId) : defaultId;
+
+    const finalSheet: CharacterSheetState = withSafeXpState({
+      ...builtSheet,
+      id: nextRecordId,
+      systemId: targetSystemId,
+      revision: baseRev,
+    });
+
+    setWorkspace((prevWs) => ({
+      activeSystemId: targetSystemId,
+      sheetsBySystem: {
+        ...prevWs.sheetsBySystem,
+        [targetSystemId]: finalSheet,
+      },
+    }));
+    setPersistedSheets((prev) => [
+      finalSheet,
+      ...prev.filter((item) => resolveSheetRecordId(item) !== nextRecordId),
+    ]);
+    void sheetsStoreRef.current
+      .saveSheet(finalSheet)
+      .then(() =>
+        Promise.all([
+          sheetsStoreRef.current.setActiveSheetId(nextRecordId),
+          sheetsStoreRef.current.setActiveSystemId(targetSystemId),
+        ]),
+      )
+      .then(() => refreshPersistedSheets());
+    setActiveTab('geral');
+    setMode('jogo');
+    setSearchQuery('');
+    setMobileSidebarOpen(false);
+    setHomeRulesOpen(false);
+    setActiveView('sheet');
+    dismissMobileRollToast();
+    const sysLabel =
+      getLocalizedSystemOptions(language).find((s) => s.id === targetSystemId)?.shortLabel ??
+      targetSystemId;
+    triggerFlash(t.t('app.newSheetCreated', { system: sysLabel }));
+  };
+
   const handleSelectHomeSheet = async (sheetId: string) => {
     await flushLocalPersistence();
     const localMatch = allAvailableSheets.find(
@@ -2201,6 +2255,7 @@ function HydratedAppWorkspace({
                     : undefined;
                 handleCreateNewSheet(resolvedSys, identityInput);
               }}
+              onCreateWizardSheet={handleCreateWizardSheet}
               onDuplicateSheet={(id) => void handleDuplicateHomeSheet(id)}
               onDeleteSheet={(id) => void handleDeleteHomeSheet(id)}
               onOpenImportExport={() => setModalMode('open')}
@@ -2836,6 +2891,7 @@ function HydratedAppWorkspace({
         t={t.modal}
         onClose={() => setModalMode(null)}
         onCreateNewSheet={handleCreateNewSheet}
+        onCreateWizardSheet={handleCreateWizardSheet}
         onLoadPreset={handleLoadPreset}
         onPrintPdf={handlePrintPdf}
         onFlushSave={flushLocalPersistence}
