@@ -502,6 +502,14 @@
           ]
         },
         {
+          "id": "card_wod_dossier",
+          "tab": "magias",
+          "code": "//TRAITS_&_HAVENS",
+          "title": "QUALITIES, FLAWS & HAVENS",
+          "colSpan": 2,
+          "fields": []
+        },
+        {
           "id": "card_notas",
           "tab": "magias",
           "code": "//CHRONICLE_LOG",
@@ -516,6 +524,37 @@
               "value": "Elysium meeting confirmed at 02:00. Sheriff suspects Masquerade breach in the Harbor District; secure the obsidian ledger before sunrise."
             }
           ]
+        }
+      ],
+      "meritsFlaws": [
+        {
+          "id": "mf_v20_1",
+          "kind": "merit",
+          "name": "Status (Camarilla)",
+          "rating": 2,
+          "catalogId": "status",
+          "notes": "Recognized Neonate in the Harbor Court."
+        },
+        {
+          "id": "mf_v20_2",
+          "kind": "flaw",
+          "name": "Enemy",
+          "rating": 2,
+          "catalogId": "enemy",
+          "notes": "Rival Anarchs tracking Harbor investments."
+        }
+      ],
+      "havens": [
+        {
+          "id": "hv_v20_1",
+          "name": "Old Observatory",
+          "location": "Nocturne Heights",
+          "rating": 3,
+          "traits": [
+            "library",
+            "security_system"
+          ],
+          "notes": "Reinforced shutters and private occult archive."
         }
       ],
       "rollLogs": [
@@ -1103,6 +1142,14 @@
           ]
         },
         {
+          "id": "card_wod_dossier",
+          "tab": "magias",
+          "code": "//CHRONICLE_TRAITS",
+          "title": "CONVICTIONS, QUALITIES & HAVENS",
+          "colSpan": 2,
+          "fields": []
+        },
+        {
           "id": "card_notas",
           "tab": "magias",
           "code": "//CHRONICLE_LOG",
@@ -1117,6 +1164,45 @@
               "value": "Elysium meeting confirmed at 02:00. Sheriff suspects Masquerade breach in the Harbor District; secure the obsidian ledger before sunrise."
             }
           ]
+        }
+      ],
+      "touchstones": [
+        {
+          "id": "ts_v5_1",
+          "conviction": "Never break an oath sealed in blood",
+          "touchstone": "Mateo Voss (Archivist Cousin)",
+          "notes": "Keeps the old harbor ledgers safe during daylight."
+        }
+      ],
+      "meritsFlaws": [
+        {
+          "id": "mf_v5_1",
+          "kind": "merit",
+          "name": "Linguistics",
+          "rating": 2,
+          "catalogId": "linguistics",
+          "notes": "Latin and Old Venetian."
+        },
+        {
+          "id": "mf_v5_2",
+          "kind": "flaw",
+          "name": "Dark Secret",
+          "rating": 1,
+          "catalogId": "dark_secret",
+          "notes": "Smuggled an unauthorized fledgling into the city."
+        }
+      ],
+      "havens": [
+        {
+          "id": "hv_v5_1",
+          "name": "Harbor Sub-Vault",
+          "location": "Pier 14 Warehouse District",
+          "rating": 2,
+          "traits": [
+            "postern",
+            "security_system"
+          ],
+          "notes": "Floodgate escape tunnel to the canal."
         }
       ],
       "rollLogs": [],
@@ -1605,6 +1691,98 @@
             "label": "MILESTONE TRAINING POOL"
           }
         ]
+      },
+      "dnd5eState": {
+        "level": 5,
+        "inspiration": true,
+        "tempHp": 0,
+        "hitDice": {
+          "die": "d10",
+          "current": 5,
+          "max": 5
+        },
+        "deathSaves": {
+          "successes": 0,
+          "failures": 0
+        },
+        "saveProficiencies": {
+          "str": true,
+          "dex": false,
+          "con": true,
+          "int": false,
+          "wis": false,
+          "cha": false
+        },
+        "skillProficiencies": {
+          "acrobatics": "none",
+          "animal_handling": "none",
+          "arcana": "proficient",
+          "athletics": "proficient",
+          "deception": "none",
+          "history": "none",
+          "insight": "none",
+          "intimidation": "none",
+          "investigation": "none",
+          "medicine": "none",
+          "nature": "none",
+          "perception": "proficient",
+          "performance": "none",
+          "persuasion": "none",
+          "religion": "none",
+          "sleight_of_hand": "none",
+          "stealth": "proficient",
+          "survival": "none"
+        },
+        "spellcasting": {
+          "ability": "int",
+          "slots": [
+            {
+              "level": 1,
+              "max": 4,
+              "used": 1
+            },
+            {
+              "level": 2,
+              "max": 2,
+              "used": 0
+            },
+            {
+              "level": 3,
+              "max": 0,
+              "used": 0
+            },
+            {
+              "level": 4,
+              "max": 0,
+              "used": 0
+            },
+            {
+              "level": 5,
+              "max": 0,
+              "used": 0
+            },
+            {
+              "level": 6,
+              "max": 0,
+              "used": 0
+            },
+            {
+              "level": 7,
+              "max": 0,
+              "used": 0
+            },
+            {
+              "level": 8,
+              "max": 0,
+              "used": 0
+            },
+            {
+              "level": 9,
+              "max": 0,
+              "used": 0
+            }
+          ]
+        }
       }
     },
     "cyberpunk": {

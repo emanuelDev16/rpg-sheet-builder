@@ -41,8 +41,10 @@ import {
   getTranslations,
   type TranslateFn,
 } from '../core/i18n';
+import { localizeSystemName } from '../core/presetI18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 import { useFocusTrap } from '../utils/useFocusTrap';
+import { WodCreationWizard } from './WodCreationWizard';
 
 interface SheetModalProps {
   mode: 'new' | 'open' | 'save' | null;
@@ -54,6 +56,7 @@ interface SheetModalProps {
   t?: AppTranslations['modal'];
   onClose: () => void;
   onCreateNewSheet: (systemId: SystemId, identity?: NewSheetIdentityInput) => void;
+  onCreateWizardSheet?: (sheet: CharacterSheetState) => void;
   onLoadPreset: (presetId: SystemId) => void;
   onImportJson?: (nextSheet: CharacterSheetState) => void;
   onImportSheets?: (sheets: CharacterSheetState[], mode: 'overwrite' | 'keep') => void | Promise<void>;
@@ -116,11 +119,11 @@ export const WodEditionFieldset: React.FC<WodEditionFieldsetProps> = ({
   t,
   onSelectEdition,
 }) => (
-  <fieldset className="border-0 p-0 m-0 flex flex-col gap-1.5">
-    <legend className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)] mb-1.5">
+  <fieldset className="border-0 p-0 m-0 flex flex-col gap-1">
+    <legend className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)] mb-1">
       {t('modal.wodEditionLabel')}
     </legend>
-    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+    <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
       {(
         [
           {
@@ -142,7 +145,7 @@ export const WodEditionFieldset: React.FC<WodEditionFieldsetProps> = ({
           <label
             key={ed.id}
             data-testid={`${testIdPrefix}-${ed.suffix}`}
-            className={`wod-edition-segment cyber-btn-outline min-h-[44px] !rounded-[var(--radius-card)] p-2.5 text-left flex items-start justify-between gap-2 cursor-pointer ${
+            className={`wod-edition-segment cyber-btn-outline min-h-[40px] !rounded-[var(--radius-card)] px-2.5 py-2 text-left flex items-start justify-between gap-2 cursor-pointer ${
               active ? 'cyber-active-tint' : ''
             }`}
           >
@@ -222,6 +225,22 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
   const discNameById = new Map(
     getDisciplinesForEdition(edition).map((disc) => [disc.id, disc.name[language]]),
   );
+  const previewRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!selectedClan || !previewRef.current) return;
+    if (typeof previewRef.current.scrollIntoView !== 'function') return;
+    const isEink =
+      typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
+    const prefersReduced =
+      typeof window !== 'undefined' &&
+      typeof window.matchMedia === 'function' &&
+      window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    previewRef.current.scrollIntoView({
+      block: 'nearest',
+      behavior: isEink || prefersReduced ? 'auto' : 'smooth',
+    });
+  }, [selectedClan?.id]);
 
   return (
     <div className="flex flex-col gap-1.5">
@@ -238,7 +257,7 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
         aria-describedby={hintId}
         value={clanPreset}
         onChange={(e) => onChangeClanPreset(e.target.value)}
-        className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+        className="cyber-input mobile-touch-input min-h-[38px] px-2.5 py-1.5 text-base sm:text-xs font-semibold w-full"
       >
         <option value="">{t('modal.wodClanPlaceholder')}</option>
         {editionClans.map((clan) => (
@@ -254,8 +273,9 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
 
       {selectedClan && (
         <div
+          ref={previewRef}
           data-testid={`${selectTestId}-preview`}
-          className="p-2.5 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--bg-card-alt)] flex flex-col gap-1"
+          className="px-2.5 py-2 rounded-[var(--radius-card)] border border-[var(--border-subtle)] bg-[var(--bg-card-alt)] flex flex-col gap-0.5"
         >
           <div className="font-mono-tech text-[10px] leading-snug text-[var(--ink-primary)]">
             <span className="font-extrabold text-[var(--accent-wine)] uppercase">
@@ -312,7 +332,7 @@ export const WodClanField: React.FC<WodClanFieldProps> = ({
             onChange={(e) => onChangeCustomClan(e.target.value)}
             placeholder={t('modal.wodClanCustomPlaceholder')}
             enterKeyHint="done"
-            className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+            className="cyber-input mobile-touch-input min-h-[38px] px-2.5 py-1.5 text-base sm:text-xs font-semibold w-full"
           />
         </div>
       )}
@@ -330,6 +350,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   t = DEFAULT_MODAL_T,
   onClose,
   onCreateNewSheet,
+  onCreateWizardSheet,
   onLoadPreset,
   onImportJson,
   onImportSheets,
@@ -357,6 +378,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<SystemId>(activeSystemId);
+  const [wodCreationMode, setWodCreationMode] = useState<'quick' | 'wizard'>('quick');
   const [selectedWodEdition, setSelectedWodEdition] = useState<WodEdition>(() =>
     sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20',
   );
@@ -369,8 +391,6 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const overlayPointerDownRef = useRef(false);
-
-  useFocusTrap(Boolean(mode), dialogRef, onClose, closeButtonRef);
 
   const handleSelectWodEdition = (nextEdition: WodEdition) => {
     setSelectedWodEdition(nextEdition);
@@ -390,6 +410,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   useEffect(() => {
     if (mode === 'new') {
       setSelectedSystem(activeSystemId);
+      setWodCreationMode('quick');
       setSelectedWodEdition(sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20');
       setSelectedWodClanPreset('');
       setCustomWodClan('');
@@ -403,6 +424,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       void refreshSnapshots();
     }
   }, [mode, activeSystemId, sheet.characterName, sheet.rulePreset]);
+
+  const handleCloseModal = () => {
+    setWodCreationMode('quick');
+    onClose();
+  };
+
+  useFocusTrap(Boolean(mode), dialogRef, handleCloseModal, closeButtonRef);
 
   if (!mode) return null;
 
@@ -508,13 +536,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
 
   return (
     <div
-      className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex items-center justify-center p-4 bg-[var(--overlay-backdrop)]"
+      className="no-print print:hidden mobile-modal-overlay fixed inset-0 z-50 flex justify-center bg-[var(--overlay-backdrop)]"
       role="presentation"
       onPointerDown={(e) => {
         overlayPointerDownRef.current = e.target === e.currentTarget;
       }}
       onClick={(e) => {
-        if (overlayPointerDownRef.current && e.target === e.currentTarget) onClose();
+        if (overlayPointerDownRef.current && e.target === e.currentTarget) handleCloseModal();
         overlayPointerDownRef.current = false;
       }}
     >
@@ -523,9 +551,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="sheet-modal-title"
-        className="bento-card mobile-modal-dialog w-full max-w-lg max-h-[100dvh] overflow-y-auto overscroll-contain bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+        className={`bento-card mobile-modal-dialog w-full ${
+          mode === 'new' && selectedSystem === 'wod' && wodCreationMode === 'wizard'
+            ? 'max-w-3xl'
+            : 'max-w-lg'
+        } bg-[var(--bg-card)] shadow-[var(--shadow-modal)]`}
       >
-        <header className="bento-card-header sticky top-0 z-10">
+        <header className="bento-card-header modal-dialog-header">
           <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
             {mode !== 'new' && (
               <span className="font-mono-tech text-xs font-bold text-[var(--accent-wine)] shrink-0">
@@ -542,7 +574,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={onClose}
+            onClick={handleCloseModal}
             aria-label={t.closeAria}
             className="cyber-btn-outline mobile-touch-stepper min-h-[36px] min-w-[36px] w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center shrink-0 cursor-pointer"
           >
@@ -550,52 +582,97 @@ export const SheetModal: React.FC<SheetModalProps> = ({
           </button>
         </header>
 
-        <div className="p-4 flex flex-col gap-3">
-          {mode === 'new' ? (
-            <form
-              aria-labelledby="sheet-modal-title"
-              className="flex flex-col gap-4"
-              onSubmit={(e) => {
-                e.preventDefault();
-                const resolvedWodClan =
-                  selectedSystem === 'wod'
-                    ? resolveWodClanSelection(
-                        selectedWodEdition,
-                        selectedWodClanPreset,
-                        customWodClan,
-                        language,
-                      )
-                    : '';
-                onCreateNewSheet(selectedSystem, {
-                  characterName: charName,
-                  language,
-                  ...(selectedSystem === 'wod'
-                    ? {
-                        edition: selectedWodEdition,
-                        rulePreset: selectedWodEdition,
-                        ...(resolvedWodClan
-                          ? { clan: resolvedWodClan, secondaryTrait: resolvedWodClan }
-                          : {}),
-                      }
-                    : selectedSystem === 'blank'
-                      ? {}
-                      : { secondaryTrait }),
-                });
-                onClose();
+        {mode === 'new' && selectedSystem === 'wod' && (
+          <div
+            role="group"
+            aria-label={t.t('wizard.modeAria')}
+            className="wod-creation-mode-strip"
+          >
+            <div className="wod-creation-mode-switch">
+              <button
+                type="button"
+                data-testid="new-sheet-wod-mode-quick"
+                aria-pressed={wodCreationMode === 'quick'}
+                onClick={() => setWodCreationMode('quick')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'quick' ? 'is-active' : ''
+                }`}
+              >
+                {t.t('wizard.modeQuick')}
+              </button>
+              <button
+                type="button"
+                data-testid="new-sheet-wod-mode-wizard"
+                aria-pressed={wodCreationMode === 'wizard'}
+                onClick={() => setWodCreationMode('wizard')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'wizard' ? 'is-active' : ''
+                }`}
+              >
+                {t.t('wizard.modeGuided')}
+              </button>
+            </div>
+          </div>
+        )}
+
+        {mode === 'new' ? (
+          selectedSystem === 'wod' && wodCreationMode === 'wizard' ? (
+            <WodCreationWizard
+              initialEdition={selectedWodEdition}
+              language={language}
+              onCancel={handleCloseModal}
+              onComplete={(builtSheet) => {
+                onCreateWizardSheet?.(builtSheet);
+                handleCloseModal();
               }}
-            >
+            />
+          ) : (
+          <form
+            id="create-sheet-form"
+            aria-labelledby="sheet-modal-title"
+            className="modal-dialog-form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              const resolvedWodClan =
+                selectedSystem === 'wod'
+                  ? resolveWodClanSelection(
+                      selectedWodEdition,
+                      selectedWodClanPreset,
+                      customWodClan,
+                      language,
+                    )
+                  : '';
+              onCreateNewSheet(selectedSystem, {
+                characterName: charName,
+                language,
+                ...(selectedSystem === 'wod'
+                  ? {
+                      edition: selectedWodEdition,
+                      rulePreset: selectedWodEdition,
+                      ...(resolvedWodClan
+                        ? { clan: resolvedWodClan, secondaryTrait: resolvedWodClan }
+                        : {}),
+                    }
+                  : selectedSystem === 'blank'
+                    ? {}
+                    : { secondaryTrait }),
+              });
+              onClose();
+            }}
+          >
+            <div className="modal-dialog-body p-3.5 sm:p-4 flex flex-col gap-3">
               <p className="font-mono-tech text-xs text-[var(--ink-secondary)]">
                 {t.newSubtitle}
               </p>
 
-              <div className="flex flex-col gap-2">
+              <div className="flex flex-col gap-1.5">
                 <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
                   {t.newSystemListLabel}
                 </span>
                 <div
                   role="radiogroup"
                   aria-label={t.newSystemListLabel}
-                  className="grid grid-cols-1 gap-2"
+                  className="grid grid-cols-1 gap-1.5"
                 >
                   {[
                     ...localizedSystems.filter((opt) => opt.id !== 'blank' && opt.id === activeSystemId),
@@ -612,8 +689,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         role="radio"
                         aria-checked={isSelected}
                         data-testid={`new-sheet-system-${opt.id}`}
-                        onClick={() => setSelectedSystem(opt.id)}
-                        className={`cyber-btn-outline !rounded-[var(--radius-card)] p-3 text-left flex items-center justify-between gap-3 cursor-pointer ${
+                        onClick={() => {
+                          setSelectedSystem(opt.id);
+                          if (opt.id !== 'wod') {
+                            setWodCreationMode('quick');
+                          }
+                        }}
+                        className={`cyber-btn-outline !rounded-[var(--radius-card)] min-h-[40px] px-3 py-2 text-left flex items-center justify-between gap-3 cursor-pointer ${
                           isBlank ? 'border-dashed' : ''
                         } ${isSelected ? 'cyber-active-tint' : ''}`}
                       >
@@ -666,7 +748,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 />
               )}
 
-              <div className="pt-3 border-t border-[var(--border-subtle)] flex flex-col gap-2.5">
+              <div className="pt-2.5 border-t border-[var(--border-subtle)] flex flex-col gap-2">
                 <span className="font-mono-tech text-[10px] font-bold uppercase tracking-wider text-[var(--ink-muted)]">
                   {t.newIdentityHeading}
                 </span>
@@ -697,7 +779,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                             : t.newCharacterName
                     }
                     enterKeyHint="done"
-                    className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+                    className="cyber-input mobile-touch-input min-h-[38px] px-2.5 py-1.5 text-base sm:text-xs font-semibold w-full"
                   />
                 </div>
 
@@ -740,28 +822,41 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       onChange={(e) => setSecondaryTrait(e.target.value)}
                       placeholder={
                         selectedSystem === 'dnd5e'
-                          ? 'Fighter · Half-Elf'
+                          ? t.t('modal.dndTraitPlaceholder')
                           : selectedSystem === 'cyberpunk'
                             ? 'Netrunner'
                             : t.t('modal.defaultTraitPlaceholder')
                       }
                       enterKeyHint="done"
-                      className="cyber-input mobile-touch-input min-h-[40px] px-2.5 py-2 text-base sm:text-xs font-semibold w-full"
+                      className="cyber-input mobile-touch-input min-h-[38px] px-2.5 py-1.5 text-base sm:text-xs font-semibold w-full"
                     />
                   </div>
                 ) : null}
               </div>
+            </div>
 
+            <div className="modal-dialog-footer flex flex-wrap items-center justify-end gap-2">
+              <button
+                type="button"
+                data-testid="new-sheet-cancel-btn"
+                onClick={onClose}
+                className="cyber-btn-outline min-h-[38px] px-3.5 py-2 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                {t.t('home.wodModalCancel')}
+              </button>
               <button
                 type="submit"
                 data-testid="new-sheet-submit-btn"
-                className="cyber-roll-btn mobile-touch-input min-h-[40px] w-full px-4 py-2.5 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                className="cyber-roll-btn min-h-[38px] flex-1 sm:flex-initial px-4 py-2 text-xs font-bold uppercase tracking-wider cursor-pointer"
               >
                 {t.createAction}
               </button>
-            </form>
-          ) : mode === 'open' ? (
-            <>
+            </div>
+          </form>
+          )
+        ) : mode === 'open' ? (
+          <>
+            <div className="modal-dialog-body p-4 flex flex-col gap-3">
               <p className="font-mono-tech text-xs text-[var(--ink-secondary)]">
                 {t.presetsTitle}
               </p>
@@ -825,7 +920,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           <div className="min-w-0">
                             <div className="text-xs font-bold uppercase truncate">{tpl.name}</div>
                             <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
-                              {tpl.systemId} ·{' '}
+                              {localizeSystemName(tpl.systemId, '', language) || tpl.systemId} ·{' '}
                               {t.t('modal.templateBlocksCount', {
                                 count: tpl.sheet.cards.length,
                               })}
@@ -939,7 +1034,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                 )}
               </div>
 
-              <div className="pt-2 border-t border-[var(--border-subtle)] pb-[max(4px,env(safe-area-inset-bottom,0px))] flex flex-col gap-2">
+              <div className="pt-2 border-t border-[var(--border-subtle)] pb-1 flex flex-col gap-2">
                 <button
                   type="button"
                   aria-expanded={snapshotsExpanded}
@@ -1000,10 +1095,22 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   </div>
                 )}
               </div>
-            </>
+            </div>
+
+            <div className="modal-dialog-footer flex items-center justify-end">
+              <button
+                type="button"
+                onClick={onClose}
+                className="cyber-btn-outline min-h-[38px] px-3.5 py-2 text-xs font-bold uppercase tracking-wider cursor-pointer"
+              >
+                {t.t('cards.guided.cancelBtn')}
+              </button>
+            </div>
+          </>
           ) : (
             <>
-              <div className="grid grid-cols-1 gap-2.5">
+              <div className="modal-dialog-body p-4 flex flex-col gap-3">
+                <div className="grid grid-cols-1 gap-2.5">
                 <button
                   type="button"
                   onClick={() => {
@@ -1015,14 +1122,19 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     <div className="text-xs font-bold uppercase">{t.saveLocalTitle}</div>
                     <div className="text-[11px] opacity-80">{t.saveLocalDesc}</div>
                   </div>
-                  <span className="text-xs font-bold whitespace-nowrap shrink-0">OK ↗</span>
+                  <span className="text-xs font-bold whitespace-nowrap shrink-0">
+                    {t.t('modal.saveLocalAction')}
+                  </span>
                 </button>
 
                 {onSaveCustomTemplate && (
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      const clean = templateName.trim() || sheet.characterName || 'TEMPLATE';
+                      const clean =
+                        templateName.trim() ||
+                        sheet.characterName ||
+                        t.t('modal.defaultTemplateName');
                       void Promise.resolve(onSaveCustomTemplate(clean)).finally(() => onClose());
                     }}
                     className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 flex flex-col gap-2 bg-[var(--bg-card-alt)]"
@@ -1138,9 +1250,19 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                   )}
                 </button>
               </div>
+              </div>
+
+              <div className="modal-dialog-footer flex items-center justify-end">
+                <button
+                  type="button"
+                  onClick={onClose}
+                  className="cyber-btn-outline min-h-[38px] px-3.5 py-2 text-xs font-bold uppercase tracking-wider cursor-pointer"
+                >
+                  {t.t('cards.guided.cancelBtn')}
+                </button>
+              </div>
             </>
           )}
-        </div>
       </div>
     </div>
   );

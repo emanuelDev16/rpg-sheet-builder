@@ -20,20 +20,100 @@ import {
   SheetCard,
   SheetField,
   SystemId,
+  V5WillpowerState,
 } from '../core/sheetModel';
 import {
   computeRemainingDamageAfterSoak,
+  getV5BloodPotencyStats,
   parseWodPoolExpression,
   RulePreset,
   SoakDamageType,
   VariableMap,
 } from '../core/formula';
 import { AppTranslations, getTranslations } from '../core/i18n';
-import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
-import { parsePowerActivationCost } from '../core/wodClansDisciplinesCatalog';
+import {
+  localizeFieldLabel,
+  localizeFieldRollLabel,
+  localizeTableColumn,
+} from '../core/presetI18n';
+import { isOfficialVampireSheet, normalizeCatalogText } from '../core/wodSkillsCatalog';
+import {
+  getDisciplinesForEdition,
+  parsePowerActivationCost,
+} from '../core/wodClansDisciplinesCatalog';
 import { resolveWodDotRatingConfig } from '../utils/dotRating';
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
+
+const V5_POWER_LEVEL_BY_ID = new Map<string, number>();
+const V5_POWER_LEVEL_BY_NAME: Array<{ nameNorm: string; level: number }> = [];
+
+for (const disc of getDisciplinesForEdition('vampire-v5')) {
+  for (const power of disc.powers) {
+    V5_POWER_LEVEL_BY_ID.set(power.id, power.level);
+    for (const rawName of Object.values(power.name)) {
+      const nameNorm = normalizeCatalogText(rawName).replace(/[^a-z0-9]+/g, ' ').trim();
+      if (nameNorm.length >= 3) {
+        V5_POWER_LEVEL_BY_NAME.push({ nameNorm, level: power.level });
+      }
+    }
+  }
+}
+V5_POWER_LEVEL_BY_NAME.sort((a, b) => b.nameNorm.length - a.nameNorm.length);
+
+/**
+ * Resolves a V5 Discipline power level (1..5) from its catalog ID, explicit level label,
+ * parenthetical rating, dot glyphs, or catalog power name.
+ */
+function resolveV5PowerLevel(row: {
+  id: string;
+  col1: string;
+  col2: string | number;
+}): number | undefined {
+  if (row.id.startsWith('pwr_')) {
+    const catalogLevel = V5_POWER_LEVEL_BY_ID.get(row.id.slice(4));
+    if (catalogLevel !== undefined) return catalogLevel;
+  }
+
+  const col1Text = String(row.col1 ?? '');
+  const col2Text = String(row.col2 ?? '');
+
+  for (const candidate of [col1Text, col2Text]) {
+    const normalized = normalizeCatalogText(candidate);
+    const explicitMatch = normalized.match(/\b(?:niv(?:el)?|nv|lv|lvl|level)\.?\s*([1-5])\b/i);
+    if (explicitMatch) {
+      return Number(explicitMatch[1]);
+    }
+  }
+
+  const parenMatch = col1Text.match(/\([^)]*?\b([1-5])\s*\)/);
+  if (parenMatch) {
+    return Number(parenMatch[1]);
+  }
+
+  for (const candidate of [col1Text, col2Text]) {
+    const dotMatches = candidate.match(/[•●]+/g);
+    if (dotMatches) {
+      for (const run of dotMatches) {
+        if (run.length >= 1 && run.length <= 5) {
+          return run.length;
+        }
+      }
+    }
+  }
+
+  const normCol1 = normalizeCatalogText(col1Text).replace(/[^a-z0-9]+/g, ' ').trim();
+  if (normCol1) {
+    const paddedCol1 = ` ${normCol1} `;
+    for (const entry of V5_POWER_LEVEL_BY_NAME) {
+      if (normCol1 === entry.nameNorm || paddedCol1.includes(` ${entry.nameNorm} `)) {
+        return entry.level;
+      }
+    }
+  }
+
+  return undefined;
+}
 
 interface ClampedNumberInputProps {
   value: number;
@@ -144,6 +224,8 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [rawSoakIncoming, setRawSoakIncoming] = useState(4);
   const ctrlLabels = getEditCtrlLabels(t);
+  const lang = t.language ?? 'pt-BR';
+  const displayRollLabel = localizeFieldRollLabel(field, lang);
 
   const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
   const isV5 = rulePreset === 'vampire-v5';
@@ -186,7 +268,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   });
   const wpBlocked = isV5 || (isSoak && soakDamageType === 'aggravated');
   const wpArmed = !wpBlocked && Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
-  const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
+  const displayLabel = `${displayRollLabel} · ${previewExpr}`;
 
   const diffPillLabel = isV5Pool
     ? `${t.t('cards.pool.diffMeta')} ${difficulty}`
@@ -347,7 +429,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               <button
                 type="button"
                 data-testid={`roll-diff-dec-${field.id}`}
-                aria-label={`${ctrlLabels.diffMinus}: ${field.rollLabel ?? field.label}`}
+                aria-label={`${ctrlLabels.diffMinus}: ${displayRollLabel}`}
                 disabled={difficulty <= minDiff}
                 onClick={() => commitDifficulty(difficulty - 1)}
                 className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
@@ -357,7 +439,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               <button
                 type="button"
                 data-testid={`roll-diff-inc-${field.id}`}
-                aria-label={`${ctrlLabels.diffPlus}: ${field.rollLabel ?? field.label}`}
+                aria-label={`${ctrlLabels.diffPlus}: ${displayRollLabel}`}
                 disabled={difficulty >= 10}
                 onClick={() => commitDifficulty(difficulty + 1)}
                 className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center border-l border-[var(--border-ink)]/35 text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
@@ -381,7 +463,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
                   min={minDiff}
                   max={10}
                   ariaLabel={t.t(isV5Pool ? 'cards.pool.diffMetaAria' : 'cards.pool.diffAria', {
-                    label: field.rollLabel ?? field.label,
+                    label: displayRollLabel,
                   })}
                   testId={`roll-diff-${field.id}`}
                   value={difficulty}
@@ -394,7 +476,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
                 <ClampedNumberInput
                   min={-10}
                   max={20}
-                  ariaLabel={t.t('cards.pool.modAria', { label: field.rollLabel ?? field.label })}
+                  ariaLabel={t.t('cards.pool.modAria', { label: displayRollLabel })}
                   testId={`roll-mod-${field.id}`}
                   value={modifier}
                   onCommit={(next) => onUpdateSchema(field.id, { rollMod: next })}
@@ -434,8 +516,10 @@ interface FieldPrimitiveProps {
   woundPenalty?: number;
   bloodPool?: { current: number; max: number };
   bloodSurge?: boolean;
+  bloodPotency?: number;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
+  v5WillpowerState?: V5WillpowerState;
   variables: VariableMap;
   computed?: ComputedFieldInfo;
   totalCargoWeight: number;
@@ -464,8 +548,15 @@ interface FieldPrimitiveProps {
     damageType: 'superficial' | 'aggravated',
     delta: number,
   ) => void;
+  onAdjustV5WillpowerDamage?: (
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
+  onAdjustHumanityStains?: (delta: number) => void;
+  onTriggerRemorseCheck?: () => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
-  onRouseCheck?: (options?: { label?: string; count?: number }) => void;
+  onMendSuperficialWithRouse?: (fieldId: string) => void;
+  onRouseCheck?: (options?: { label?: string; count?: number; powerLevel?: number }) => void;
   onSpendPowerBlood?: (cost: number, powerName: string) => void;
   onTriggerWillpowerSurge?: () => void;
   onRoll: (field: SheetField) => void;
@@ -489,8 +580,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   woundPenalty = 0,
   bloodPool,
   bloodSurge = false,
+  bloodPotency,
   lastSoakTotal = null,
   canWillpowerSurge = false,
+  v5WillpowerState,
   variables,
   computed,
   totalCargoWeight,
@@ -507,7 +600,11 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   onCycleV20HealthCell,
   onAdjustV20HealthDamage,
   onAdjustV5HealthDamage,
+  onAdjustV5WillpowerDamage,
+  onAdjustHumanityStains,
+  onTriggerRemorseCheck,
   onApplyV5SuperficialHalving,
+  onMendSuperficialWithRouse,
   onRouseCheck,
   onSpendPowerBlood,
   onTriggerWillpowerSurge,
@@ -522,6 +619,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const inputId = `field_${field.id}`;
   const isCustomSystem = systemId === 'blank';
   const ctrlLabels = getEditCtrlLabels(t);
+  const lang = t.language ?? 'pt-BR';
+  const displayLabel = localizeFieldLabel(field, lang);
+  const displayRollLabel = localizeFieldRollLabel(field, lang);
   const prefersReducedMotion = useReducedMotion();
   const isEinkTheme =
     typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
@@ -530,6 +630,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     mode === 'edicao' && (onToggleEdit ? Boolean(isEditOpen) : true);
   const dotConfig = resolveWodDotRatingConfig(field, card, rulePreset, systemId);
   const useWodDots = mode === 'jogo' && dotConfig.enabled;
+  const resolvedBloodPotency =
+    typeof bloodPotency === 'number' && Number.isFinite(bloodPotency)
+      ? bloodPotency
+      : typeof variables.blood_potency === 'number' && Number.isFinite(variables.blood_potency)
+        ? variables.blood_potency
+        : 1;
+  const v5BloodPotencyStats =
+    rulePreset === 'vampire-v5' ? getV5BloodPotencyStats(resolvedBloodPotency) : null;
 
   const renderEditStrip = () => {
     if (!shouldShowEditStrip) return null;
@@ -546,7 +654,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           </span>
           <input
             type="text"
-            aria-label={t.t('cards.strip.editLabelAria', { label: field.label })}
+            aria-label={t.t('cards.strip.editLabelAria', { label: displayLabel })}
             value={field.label}
             onChange={(e) => onUpdateSchema(field.id, { label: e.target.value })}
             className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -559,7 +667,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </span>
             <input
               type="text"
-              aria-label={t.t('cards.strip.editVarAria', { label: field.label })}
+              aria-label={t.t('cards.strip.editVarAria', { label: displayLabel })}
               value={field.key}
               onChange={(e) => onUpdateSchema(field.id, { key: e.target.value })}
               className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -573,7 +681,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </span>
             <input
               type="text"
-              aria-label={t.t('cards.strip.editFormulaAria', { label: field.label })}
+              aria-label={t.t('cards.strip.editFormulaAria', { label: displayLabel })}
               value={field.formula ?? ''}
               onChange={(e) => onUpdateSchema(field.id, { formula: e.target.value })}
               className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -588,7 +696,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={t.t('cards.strip.editButtonAria', { label: field.label })}
+                aria-label={t.t('cards.strip.editButtonAria', { label: displayLabel })}
                 value={field.rollLabel ?? ''}
                 onChange={(e) => onUpdateSchema(field.id, { rollLabel: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -601,7 +709,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 </span>
                 <input
                   type="text"
-                  aria-label={t.t('cards.strip.editDiceAria', { label: field.label })}
+                  aria-label={t.t('cards.strip.editDiceAria', { label: displayLabel })}
                   value={field.rollExpr ?? ''}
                   onChange={(e) => onUpdateSchema(field.id, { rollExpr: e.target.value })}
                   className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -619,7 +727,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="number"
               min={1}
               max={999}
-              aria-label={t.t('cards.strip.editMaxAria', { label: field.label })}
+              aria-label={t.t('cards.strip.editMaxAria', { label: displayLabel })}
               value={field.max ?? 12}
               onChange={(e) => {
                 const nextMax = Math.max(1, Math.min(999, Number(e.target.value) || 1));
@@ -637,7 +745,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={t.t('cards.strip.editCol1Aria', { label: field.label })}
+                aria-label={t.t('cards.strip.editCol1Aria', { label: displayLabel })}
                 value={field.columns?.[0] ?? defaultCol1}
                 onChange={(e) =>
                   onUpdateSchema(field.id, {
@@ -653,7 +761,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={t.t('cards.strip.editCol2Aria', { label: field.label })}
+                aria-label={t.t('cards.strip.editCol2Aria', { label: displayLabel })}
                 value={field.columns?.[1] ?? defaultCol2}
                 onChange={(e) =>
                   onUpdateSchema(field.id, {
@@ -735,20 +843,20 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             >
               {useWodDots ? (
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words">
-                  {field.label}
+                  {displayLabel}
                 </span>
               ) : (
                 <label
                   htmlFor={inputId}
                   className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
                 >
-                  {field.label}
+                  {displayLabel}
                 </label>
               )}
               <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 max-w-full shrink-0">
                 {useWodDots ? (
                   <DotRating
-                    label={field.label}
+                    label={displayLabel}
                     value={numericValue}
                     min={dotConfig.min}
                     max={dotConfig.max}
@@ -769,7 +877,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <button
                   type="button"
                   data-testid={`roll-btn-${pairedRollField.id}`}
-                  aria-label={`${pairedRollField.rollLabel ?? pairedRollField.label} (${preview})`}
+                  aria-label={`${localizeFieldRollLabel(pairedRollField, lang)} (${preview})`}
                   onClick={() =>
                     onRoll(pairedIsV5Pool ? { ...pairedRollField, rollDifficulty: pairedDiff } : pairedRollField)
                   }
@@ -812,10 +920,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             }`}
           >
             <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words">
-              {field.label}
+              {displayLabel}
             </span>
             <DotRating
-              label={field.label}
+              label={displayLabel}
               value={numericValue}
               min={dotConfig.min}
               max={dotConfig.max}
@@ -834,7 +942,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             htmlFor={inputId}
             className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words"
           >
-            {field.label}
+            {displayLabel}
           </label>
           <input
             id={inputId}
@@ -849,6 +957,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
     if (field.kind === 'text') {
       const isLong = field.key === 'notas_campanha' || String(field.value ?? '').length > 48;
+      const isClanBane =
+        rulePreset === 'vampire-v5' &&
+        (field.key === 'clan_bane' || field.id === 'f_clan_bane') &&
+        Boolean(v5BloodPotencyStats);
       return (
         <div
           className={`py-1 ${
@@ -857,12 +969,22 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               : 'flex flex-wrap sm:flex-nowrap items-center justify-between gap-2 sm:gap-3'
           }`}
         >
-          <label
-            htmlFor={inputId}
-            className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase shrink-0"
-          >
-            {field.label}
-          </label>
+          <div className="flex flex-wrap items-center gap-1.5 shrink-0 max-w-full">
+            <label
+              htmlFor={inputId}
+              className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase shrink-0"
+            >
+              {displayLabel}
+            </label>
+            {isClanBane && v5BloodPotencyStats && (
+              <span
+                data-testid="v5-bane-severity-badge"
+                className="v5-bane-severity-badge inline-flex items-center px-2 py-0.5 text-[10px] font-extrabold uppercase tracking-wide shrink-0"
+              >
+                {t.t('cards.vital.baneSeverityBadge', { severity: v5BloodPotencyStats.baneSeverity })}
+              </span>
+            )}
+          </div>
           {isLong ? (
             <>
               <textarea
@@ -899,7 +1021,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase block truncate">
-                {field.label}
+                {displayLabel}
               </span>
               {showFormulaLine && (
                 <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] block truncate">
@@ -909,7 +1031,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
             <div
               role="status"
-              aria-label={`${field.label}: ${computed?.formatted ?? '0'}`}
+              aria-label={`${displayLabel}: ${computed?.formatted ?? '0'}`}
               title={
                 isErr
                   ? computed?.error
@@ -956,9 +1078,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                  {field.label}
+                  {displayLabel}
                 </span>
-                <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
+                <span className="v5-overflow-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                   {t.t('cards.vital.v5OverflowRule')}
                 </span>
                 {isImpaired && (
@@ -983,7 +1105,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div
               className="seg-meter-track flex items-center gap-[3px]"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={max}
               aria-valuenow={healthy}
@@ -1014,12 +1136,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                           }
                         : undefined
                   }
-                  className={`seg-block h-[22px] flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
+                  className={`seg-block flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
                     state === 'aggravated'
-                      ? 'eink-health-solid'
+                      ? 'eink-health-solid v5-health-box--aggravated'
                       : state === 'superficial'
-                        ? 'eink-health-slash'
-                        : 'bg-[var(--bg-card)] border-[var(--border-ink)]/40 text-transparent'
+                        ? 'eink-health-slash v5-health-box--superficial'
+                        : 'v5-health-box--empty text-transparent'
                   }`}
                 >
                   {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
@@ -1028,7 +1150,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
 
             <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
                   {t.aggravatedDmg} (X)
                 </span>
@@ -1060,7 +1182,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 </div>
               </div>
 
-              <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
                 <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
                   {t.superficialDmg} (/)
                 </span>
@@ -1099,7 +1221,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
                   {t.t('cards.vital.reduceSupLabel')}
                 </span>
-                <div className="flex items-center gap-1.5 shrink-0">
+                <div className="flex flex-wrap items-center justify-end gap-1.5 shrink-0 max-w-full">
                   <input
                     type="number"
                     min={0}
@@ -1117,10 +1239,27 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     data-testid="v5-halve-superficial-btn"
                     disabled={halvedIncoming <= 0}
                     onClick={() => onApplyV5SuperficialHalving?.(field.id, v5RawSupDamage)}
-                    className="cyber-btn-outline min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                    className="cyber-btn-outline min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer"
                   >
                     {t.t('cards.vital.reduceSupApply', { amount: halvedIncoming })}
                   </button>
+                  {v5BloodPotencyStats && (
+                    <button
+                      type="button"
+                      data-testid="v5-mend-superficial-rouse-btn"
+                      disabled={sup <= 0}
+                      aria-disabled={sup <= 0}
+                      aria-label={t.t('cards.vital.mendRouseAria', {
+                        amount: v5BloodPotencyStats.mendSuperficialPerRouse,
+                      })}
+                      onClick={() => onMendSuperficialWithRouse?.(field.id)}
+                      className="wod-mend-rouse-btn min-h-[36px] px-2.5 py-1 text-[10px] font-extrabold uppercase cursor-pointer shrink-0"
+                    >
+                      {t.t('cards.vital.mendRouseBtn', {
+                        amount: v5BloodPotencyStats.mendSuperficialPerRouse,
+                      })}
+                    </button>
+                  )}
                 </div>
               </div>
             </div>
@@ -1175,7 +1314,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                {field.label}
+                {displayLabel}
               </span>
               <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                 {t.t('cards.vital.v20TrackRule')}
@@ -1202,17 +1341,26 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div
             className="seg-meter-track flex items-center gap-[3px]"
             role="meter"
-            aria-label={field.label}
+            aria-label={displayLabel}
             aria-valuemin={0}
             aria-valuemax={max}
             aria-valuenow={healthy}
           >
-            {boxes.map((state, idx) => (
+            {boxes.map((state, idx) => {
+              const stateLabel =
+                state === 'aggravated'
+                  ? t.t('cards.aggravatedDmg')
+                  : state === 'lethal'
+                    ? t.t('cards.vital.lethalDmg')
+                    : state === 'bashing'
+                      ? t.t('cards.vital.bashingDmg')
+                      : t.t('cards.vital.emptyBoxLabel');
+              return (
               <button
                 key={idx}
                 type="button"
                 data-testid={`v20-health-box-${idx}`}
-                aria-label={`${field.label} ${idx + 1}: ${state}`}
+                aria-label={`${displayLabel} ${idx + 1}: ${stateLabel}`}
                 onClick={() => onCycleV20HealthCell?.(field.id, idx)}
                 style={v20CellStyle(state)}
                 className={`seg-block min-h-[36px] sm:min-h-[26px] flex items-center justify-center font-mono-tech text-xs font-extrabold select-none cursor-pointer ${
@@ -1233,7 +1381,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                       ? '/'
                       : ''}
               </button>
-            ))}
+              );
+            })}
           </div>
 
           <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
@@ -1337,11 +1486,317 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       );
     }
 
-    // 3B. Recurso Padrão
+    // 3B. Recurso Padrão (com trilhas especiais V5 de Humanidade+Manchas e Força de Vontade)
     if (field.kind === 'resource') {
+      const isHumanityField = field.id === 'f_humanity' || field.key === 'humanity';
+      if (isHumanityField && rulePreset === 'vampire-v5') {
+        const humanity = Math.max(
+          0,
+          Math.min(10, Math.round(typeof field.value === 'number' ? field.value : 7)),
+        );
+        const stains = Math.max(
+          0,
+          Math.min(10 - humanity, Math.round(field.stains ?? 0)),
+        );
+        const remorsePool = Math.max(1, 10 - humanity - stains);
+        const isTrackFull = humanity + stains >= 10;
+        const boxes = Array.from({ length: 10 }, (_, idx) => {
+          if (idx < humanity) return 'humanity' as const;
+          if (idx >= 10 - stains) return 'stain' as const;
+          return 'empty' as const;
+        });
+
+        return (
+          <div
+            data-testid={`v5-humanity-track-${field.id}`}
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2 min-w-0 max-w-full overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                  {displayLabel}
+                </span>
+                {isTrackFull && (
+                  <span
+                    data-testid="humanity-degeneration-hint"
+                    className="font-mono-tech text-[9px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] uppercase"
+                  >
+                    {t.t('cards.vital.degenerationHint')}
+                  </span>
+                )}
+              </div>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-testid="humanity-dec"
+                  aria-label={t.t('cards.decreaseAria', { label: displayLabel })}
+                  disabled={humanity <= 0}
+                  onClick={() => onAdjustResource(field.id, -1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  -
+                </button>
+                <span
+                  data-testid="humanity-value"
+                  className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums"
+                  aria-live="polite"
+                >
+                  <AnimatedCounter value={humanity} /> / 10
+                </span>
+                <button
+                  type="button"
+                  data-testid="humanity-inc"
+                  aria-label={t.t('cards.increaseAria', { label: displayLabel })}
+                  disabled={humanity >= 10}
+                  onClick={() => onAdjustResource(field.id, 1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <div
+              data-testid="v5-humanity-track"
+              className="seg-meter-track flex items-center gap-[3px]"
+              role="meter"
+              aria-label={t.t('cards.vital.humanityStainsTrackAria')}
+              aria-valuemin={0}
+              aria-valuemax={10}
+              aria-valuenow={humanity}
+            >
+              {boxes.map((boxState, idx) => (
+                <div
+                  key={idx}
+                  aria-hidden="true"
+                  className={`v5-humanity-box ${
+                    boxState === 'humanity'
+                      ? 'is-humanity'
+                      : boxState === 'stain'
+                        ? 'is-stain'
+                        : 'is-empty'
+                  }`}
+                >
+                  <span className="v5-humanity-glyph" aria-hidden="true">
+                    {boxState === 'humanity' ? '●' : boxState === 'stain' ? '/' : ''}
+                  </span>
+                </div>
+              ))}
+            </div>
+
+            <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-[var(--border-subtle)]">
+              <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase">
+                {t.t('cards.vital.stainsLabel')}
+              </span>
+              <div className="flex items-center gap-1.5 shrink-0">
+                <button
+                  type="button"
+                  data-testid="humanity-stains-dec"
+                  aria-label={t.t('cards.vital.stainsDecAria')}
+                  disabled={stains <= 0}
+                  onClick={() => onAdjustHumanityStains?.(-1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  -
+                </button>
+                <span
+                  data-testid="humanity-stains-value"
+                  className="font-mono-tech text-xs font-bold px-1.5 min-w-[40px] text-center tabular-nums text-[var(--accent-wine)]"
+                >
+                  <AnimatedCounter value={stains} />
+                </span>
+                <button
+                  type="button"
+                  data-testid="humanity-stains-inc"
+                  aria-label={t.t('cards.vital.stainsIncAria')}
+                  onClick={() => onAdjustHumanityStains?.(1)}
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                >
+                  +
+                </button>
+              </div>
+            </div>
+
+            <button
+              type="button"
+              data-testid="v5-remorse-check-btn"
+              disabled={stains <= 0}
+              onClick={() => onTriggerRemorseCheck?.()}
+              className="no-print print:hidden cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+            >
+              {t.t('cards.vital.remorseCheckBtn', { pool: remorsePool })} ↗
+            </button>
+          </div>
+        );
+      }
+
+      const isWillpowerField = field.id === 'f_willpower' || field.key === 'willpower';
+      if (isWillpowerField && rulePreset === 'vampire-v5') {
+        const wpMax = v5WillpowerState?.max ?? Math.max(1, field.max ?? 5);
+        const wpAgg =
+          v5WillpowerState?.aggravated ??
+          Math.max(0, Math.min(wpMax, Math.round(field.aggravatedDamage ?? 0)));
+        const wpSup =
+          v5WillpowerState?.superficial ??
+          Math.max(0, Math.min(wpMax - wpAgg, Math.round(field.superficialDamage ?? 0)));
+        const wpAvailable = v5WillpowerState?.available ?? Math.max(0, wpMax - wpAgg - wpSup);
+        const wpImpaired =
+          v5WillpowerState?.isImpaired ?? (wpMax > 0 && wpAgg + wpSup >= wpMax);
+        const wpBoxes = Array.from({ length: wpMax }, (_, idx) => {
+          if (idx < wpAgg) return 'aggravated' as const;
+          if (idx < wpAgg + wpSup) return 'superficial' as const;
+          return 'free' as const;
+        });
+
+        return (
+          <div
+            data-testid="v5-willpower-track"
+            className="p-2.5 bg-[var(--bg-card-alt)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] flex flex-col gap-2 min-w-0 max-w-full overflow-hidden"
+          >
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
+                <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
+                  {displayLabel}
+                </span>
+                <span className="v5-overflow-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
+                  {t.t('cards.vital.v5OverflowRule')}
+                </span>
+                {wpImpaired && (
+                  <span
+                    data-testid="willpower-impaired-badge"
+                    className="font-mono-tech text-[10px] font-extrabold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)] whitespace-nowrap"
+                  >
+                    {t.t('cards.vital.wpImpairedBadge')}
+                  </span>
+                )}
+              </div>
+              <span
+                data-testid="willpower-available-summary"
+                className="font-mono-tech text-[11px] font-bold text-[var(--ink-primary)] tabular-nums whitespace-nowrap"
+                aria-live="polite"
+              >
+                <AnimatedCounter value={wpAvailable} /> / <AnimatedCounter value={wpMax} pulseOnChange={false} />{' '}
+                {t.t('cards.vital.wpAvailableLabel')}
+              </span>
+            </div>
+
+            <div
+              className="seg-meter-track flex items-center gap-[3px]"
+              role="meter"
+              aria-label={displayLabel}
+              aria-valuemin={0}
+              aria-valuemax={wpMax}
+              aria-valuenow={wpAvailable}
+            >
+              {wpBoxes.map((state, idx) => (
+                <div
+                  key={idx}
+                  aria-hidden="true"
+                  style={
+                    state === 'aggravated'
+                      ? {
+                          backgroundColor: 'var(--ink-primary)',
+                          color: 'var(--bg-card)',
+                          borderColor: 'var(--border-color)',
+                        }
+                      : state === 'superficial'
+                        ? {
+                            backgroundImage:
+                              'repeating-linear-gradient(135deg, color-mix(in srgb, var(--ink-primary) 18%, transparent) 0 3px, transparent 3px 6px)',
+                            backgroundColor: 'var(--bg-card)',
+                            color: 'var(--ink-primary)',
+                            borderColor: 'var(--border-color)',
+                          }
+                        : undefined
+                  }
+                  className={`seg-block flex items-center justify-center font-mono-tech text-[11px] font-extrabold select-none ${
+                    state === 'aggravated'
+                      ? 'eink-health-solid v5-wp-box--aggravated'
+                      : state === 'superficial'
+                        ? 'eink-health-slash v5-wp-box--superficial'
+                        : 'v5-wp-box--empty text-transparent'
+                  }`}
+                >
+                  {state === 'aggravated' ? 'X' : state === 'superficial' ? '/' : ''}
+                </div>
+              ))}
+            </div>
+
+            <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--ink-primary)] uppercase break-words min-w-0">
+                  {t.t('cards.vital.wpAggravatedDmg')}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    data-testid="willpower-aggravated-dec"
+                    aria-label={`${t.t('cards.vital.wpAggravatedDmg')} -`}
+                    disabled={wpAgg <= 0}
+                    onClick={() => onAdjustV5WillpowerDamage?.('aggravated', -1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span
+                    data-testid="willpower-aggravated-value"
+                    className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--ink-primary)]"
+                  >
+                    <AnimatedCounter value={wpAgg} /> / <AnimatedCounter value={wpMax} pulseOnChange={false} />
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="willpower-aggravated-inc"
+                    aria-label={`${t.t('cards.vital.wpAggravatedDmg')} +`}
+                    disabled={wpAgg >= wpMax}
+                    onClick={() => onAdjustV5WillpowerDamage?.('aggravated', 1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+
+              <div className="v5-vital-control-row flex flex-wrap items-center justify-between gap-2">
+                <span className="font-mono-tech text-[10px] font-bold text-[var(--accent-wine)] uppercase break-words min-w-0">
+                  {t.t('cards.vital.wpSuperficialDmg')}
+                </span>
+                <div className="flex items-center gap-1 shrink-0">
+                  <button
+                    type="button"
+                    data-testid="willpower-superficial-dec"
+                    aria-label={`${t.t('cards.vital.wpSuperficialDmg')} -`}
+                    disabled={wpSup <= 0}
+                    onClick={() => onAdjustV5WillpowerDamage?.('superficial', -1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    -
+                  </button>
+                  <span
+                    data-testid="willpower-superficial-value"
+                    className="font-mono-tech text-xs font-bold px-1.5 min-w-[46px] text-center tabular-nums text-[var(--accent-wine)]"
+                  >
+                    <AnimatedCounter value={wpSup} /> / <AnimatedCounter value={wpMax} pulseOnChange={false} />
+                  </span>
+                  <button
+                    type="button"
+                    data-testid="willpower-superficial-inc"
+                    aria-label={`${t.t('cards.vital.wpSuperficialDmg')} +`}
+                    disabled={wpAgg >= wpMax}
+                    onClick={() => onAdjustV5WillpowerDamage?.('superficial', 1)}
+                    className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
+                  >
+                    +
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+        );
+      }
+
       const max = Math.max(1, field.max ?? 12);
       const current = Math.max(0, Math.min(max, typeof field.value === 'number' ? field.value : 0));
-      const isWillpowerField = field.id === 'f_willpower' || field.key === 'willpower';
       const wpSuperficial =
         isWillpowerField && rulePreset === 'vampire-v5'
           ? Math.max(0, Math.min(max - current, field.superficialDamage ?? 0))
@@ -1357,12 +1812,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         >
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words min-w-0">
-              {field.label}
+              {displayLabel}
             </span>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                aria-label={t.t('cards.decreaseAria', { label: field.label })}
+                aria-label={t.t('cards.decreaseAria', { label: displayLabel })}
                 onClick={() => onAdjustResource(field.id, -1)}
                 className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
@@ -1376,7 +1831,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <button
                 type="button"
-                aria-label={t.t('cards.increaseAria', { label: field.label })}
+                aria-label={t.t('cards.increaseAria', { label: displayLabel })}
                 onClick={() => onAdjustResource(field.id, 1)}
                 className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
@@ -1390,7 +1845,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               data-testid={`resource-continuous-bar-${field.id}`}
               className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer overflow-hidden"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={max}
               aria-valuenow={current}
@@ -1426,7 +1881,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
           ) : useWodDots && max === dotConfig.max ? (
             <DotRating
-              label={field.label}
+              label={displayLabel}
               value={current}
               min={dotConfig.min}
               max={dotConfig.max}
@@ -1440,7 +1895,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               data-testid={`resource-segmented-bar-${field.id}`}
               className="seg-meter-track flex items-center gap-[3px]"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={max}
               aria-valuenow={current}
@@ -1452,7 +1907,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   <motion.button
                     key={idx}
                     type="button"
-                    aria-label={t.t('cards.setResourceAria', { label: field.label, value: idx + 1 })}
+                    aria-label={t.t('cards.setResourceAria', { label: displayLabel, value: idx + 1 })}
                     onClick={() => onChangeValue(field.id, idx + 1 === current ? idx : idx + 1)}
                     initial={false}
                     animate={{ scale: filled ? 1 : 0.95 }}
@@ -1491,11 +1946,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
 
       if (isWillpowerAutoSuccess && rulePreset === 'vampire-v5') {
         const currentWillpower = typeof variables.willpower === 'number' ? variables.willpower : 0;
-        const isDisabled = currentWillpower <= 0 || !canWillpowerSurge;
+        const isWillpowerBlocked = v5WillpowerState
+          ? v5WillpowerState.isFullyAggravated
+          : currentWillpower <= 0;
+        const isDisabled = isWillpowerBlocked || !canWillpowerSurge;
         return (
           <div
             data-testid="willpower-surge-panel"
-            className="py-1 flex flex-col gap-1.5 p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)]"
+            className="flex flex-col gap-1.5 p-2.5 bg-[var(--bg-card-alt)] border-[1.5px] border-[var(--border-ink)] rounded-[var(--radius-control)]"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="min-w-0 flex-1">
@@ -1510,8 +1968,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 type="button"
                 data-testid="willpower-surge-btn"
                 disabled={isDisabled}
+                title={isWillpowerBlocked ? t.t('sidebar.roll.wpAllAggravated') : undefined}
                 onClick={() => onTriggerWillpowerSurge?.()}
-                className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-extrabold uppercase shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-extrabold uppercase shrink-0 cursor-pointer"
               >
                 {canWillpowerSurge
                   ? t.t('cards.vital.wpSurgeBtn')
@@ -1566,7 +2025,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     isEmpty ? 'text-[var(--ink-secondary)]' : 'text-[var(--ink-primary)]'
                   }`}
                 >
-                  {field.label}
+                  {displayLabel}
                 </span>
               </div>
               <span
@@ -1606,7 +2065,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <Check className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
               </span>
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words leading-snug">
-                {field.label}
+                {displayLabel}
               </span>
             </div>
             {field.hint && (
@@ -1643,7 +2102,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       }
 
       const previewExpr = resolveRollPreview(field.rollExpr ?? '1d20', variables);
-      const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
+      const displayButtonLabel = `${displayRollLabel} · ${previewExpr}`;
       return (
         <div className="py-0.5">
           <button
@@ -1653,7 +2112,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
           >
             <span className="text-left break-words whitespace-normal leading-snug min-w-0">
-              {displayLabel}
+              {displayButtonLabel}
             </span>
             <span className="text-sm leading-none shrink-0" aria-hidden="true">
               ↗
@@ -1666,8 +2125,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     // 6. Lista Repetível
     if (field.kind === 'repeatable') {
       const rows = field.rows ?? [];
-      const col1Title = field.columns?.[0] ?? t.t('cards.defaultItemCol');
-      const col2Title = field.columns?.[1] ?? t.t('cards.defaultValueCol');
+      const col1Title = field.columns?.[0]
+        ? localizeTableColumn(field.columns[0], lang)
+        : t.t('cards.defaultItemCol');
+      const col2Title = field.columns?.[1]
+        ? localizeTableColumn(field.columns[1], lang)
+        : t.t('cards.defaultValueCol');
       const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
       const parsedCostByRowId = new Map(
         mode === 'jogo' && officialEdition && field.col2Type !== 'number'
@@ -1687,7 +2150,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono-tech text-xs font-bold tracking-wider text-[var(--ink-primary)] uppercase">
-              {field.label}
+              {displayLabel}
             </span>
             {field.col2Type === 'number' && (
               <span className="font-mono-tech text-[11px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
@@ -1793,9 +2256,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                                   btn: rouseBtnText,
                                   power: row.col1,
                                 })}
-                                onClick={() =>
-                                  onRouseCheck?.({ label: row.col1, count: costInfo.costAmount })
-                                }
+                                onClick={() => {
+                                  const powerLevel = resolveV5PowerLevel(row);
+                                  onRouseCheck?.({
+                                    label: row.col1,
+                                    count: costInfo.costAmount,
+                                    ...(powerLevel !== undefined ? { powerLevel } : {}),
+                                  });
+                                }}
                                 className="wod-power-trigger-btn"
                               >
                                 {rouseBtnText}
@@ -1878,14 +2346,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     >
       <div className="no-print print:hidden flex items-center justify-between gap-2 pb-1 mb-0.5 border-b border-[var(--border-subtle)]/70">
         <span className="font-mono-tech text-[9px] font-bold uppercase tracking-wider text-[var(--ink-muted)] truncate">
-          {shouldShowEditStrip ? `${ctrlLabels.editingTag} · ${field.key}` : field.kind.toUpperCase()}
+          {shouldShowEditStrip ? `${ctrlLabels.editingTag} · ${field.key}` : t.t(`cards.fieldKind.${field.kind}`)}
         </span>
         <div className="flex items-center gap-1 shrink-0">
           {onMoveUp && (
             <button
               type="button"
               data-testid={`move-field-up-${field.id}`}
-              aria-label={`${ctrlLabels.moveUp}: ${field.label}`}
+              aria-label={`${ctrlLabels.moveUp}: ${displayLabel}`}
               disabled={!canMoveUp}
               onClick={onMoveUp}
               className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)]/55 bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
@@ -1897,7 +2365,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <button
               type="button"
               data-testid={`move-field-down-${field.id}`}
-              aria-label={`${ctrlLabels.moveDown}: ${field.label}`}
+              aria-label={`${ctrlLabels.moveDown}: ${displayLabel}`}
               disabled={!canMoveDown}
               onClick={onMoveDown}
               className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)]/55 bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
@@ -1910,7 +2378,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="button"
               data-testid={`edit-field-toggle-${field.id}`}
               aria-expanded={Boolean(isEditOpen)}
-              aria-label={`${isEditOpen ? ctrlLabels.closeEdit : ctrlLabels.editField}: ${field.label}`}
+              aria-label={`${isEditOpen ? ctrlLabels.closeEdit : ctrlLabels.editField}: ${displayLabel}`}
               onClick={onToggleEdit}
               className={`min-h-[28px] px-2 inline-flex items-center gap-1 rounded-[var(--radius-pill)] border font-mono-tech text-[9px] font-bold uppercase cursor-pointer transition-colors ${
                 isEditOpen

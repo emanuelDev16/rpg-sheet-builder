@@ -79,6 +79,11 @@
     "bloodSurge": {
       "type": "boolean"
     },
+    "stains": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 10
+    },
     "virtues": {
       "type": "object",
       "additionalProperties": false,
@@ -87,7 +92,23 @@
         "selfControl": { "type": "integer", "minimum": 1, "maximum": 5 },
         "courage": { "type": "integer", "minimum": 1, "maximum": 5 }
       }
-    }
+    },
+    "touchstones": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/TouchstoneEntry" }
+    },
+    "meritsFlaws": {
+      "type": "array",
+      "maxItems": 100,
+      "items": { "$ref": "#/$defs/MeritFlawEntry" }
+    },
+    "havens": {
+      "type": "array",
+      "maxItems": 20,
+      "items": { "$ref": "#/$defs/HavenEntry" }
+    },
+    "dnd5eState": { "$ref": "#/$defs/Dnd5eState" }
   },
   "$defs": {
     "TabDefinition": {
@@ -153,6 +174,7 @@
         "damageTrack": { "type": "boolean" },
         "superficialDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "aggravatedDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "stains": { "type": "integer", "minimum": 0, "maximum": 10 },
         "bashingDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "lethalDamage": { "type": "integer", "minimum": 0, "maximum": 100000 },
         "soakDamageType": { "type": "string", "enum": ["bashing", "lethal", "aggravated"] },
@@ -173,6 +195,7 @@
             "skill",
             "discipline",
             "virtue",
+            "advantage",
             "discipline_clan",
             "discipline_out_of_clan",
             "discipline_caitiff"
@@ -251,10 +274,26 @@
         "isRouseCheck": { "type": "boolean" },
         "isBloodSurge": { "type": "boolean" },
         "isWillpowerReroll": { "type": "boolean" },
+        "isRemorseCheck": { "type": "boolean" },
+        "isFrenzyRoll": { "type": "boolean" },
+        "frenzyKind": { "type": "string", "enum": ["frenzy", "rotschreck"] },
+        "humanityLost": { "type": "boolean" },
         "rerolledIndices": {
           "type": "array",
           "items": { "type": "integer" }
-        }
+        },
+        "d20Mode": {
+          "type": "string",
+          "enum": ["normal", "advantage", "disadvantage"]
+        },
+        "d20Dice": {
+          "type": "array",
+          "maxItems": 2,
+          "items": { "type": "integer", "minimum": 1, "maximum": 20 }
+        },
+        "d20Kept": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "d20Discarded": { "type": ["integer", "null"], "minimum": 1, "maximum": 20 },
+        "isDeathSave": { "type": "boolean" }
       }
     },
     "XpLedgerEntry": {
@@ -273,6 +312,11 @@
         "fromValue": { "type": "integer" },
         "toValue": { "type": "integer" },
         "createdField": { "type": "boolean" },
+        "createdFieldIds": {
+          "type": "array",
+          "maxItems": 8,
+          "items": { "type": "string", "maxLength": 64 }
+        },
         "createdCardId": { "type": "string", "maxLength": 64 },
         "prevSpecialtyLabel": { "type": "string", "maxLength": 120 },
         "prevRollSpecialty": { "type": "boolean" }
@@ -305,6 +349,170 @@
         "customUseNewLevelBase": {
           "type": "boolean"
         }
+      }
+    },
+    "TouchstoneEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "conviction", "touchstone"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "conviction": { "type": "string", "maxLength": 240 },
+        "touchstone": { "type": "string", "maxLength": 160 },
+        "notes": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "MeritFlawEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "kind", "name", "rating"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "kind": { "type": "string", "enum": ["merit", "flaw"] },
+        "name": { "type": "string", "maxLength": 120 },
+        "rating": { "type": "integer", "minimum": 1, "maximum": 5 },
+        "notes": { "type": "string", "maxLength": 500 },
+        "catalogId": { "type": "string", "minLength": 1, "maxLength": 64 }
+      }
+    },
+    "HavenEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "rating", "traits"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "maxLength": 120 },
+        "location": { "type": "string", "maxLength": 200 },
+        "rating": { "type": "integer", "minimum": 0, "maximum": 5 },
+        "traits": {
+          "type": "array",
+          "maxItems": 30,
+          "items": { "type": "string", "minLength": 1, "maxLength": 80 }
+        },
+        "notes": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "Dnd5eHitDice": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["die", "current", "max"],
+      "properties": {
+        "die": { "type": "string", "enum": ["d6", "d8", "d10", "d12"] },
+        "current": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "max": { "type": "integer", "minimum": 1, "maximum": 20 }
+      }
+    },
+    "Dnd5eDeathSaves": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["successes", "failures"],
+      "properties": {
+        "successes": { "type": "integer", "minimum": 0, "maximum": 3 },
+        "failures": { "type": "integer", "minimum": 0, "maximum": 3 }
+      }
+    },
+    "Dnd5eSaveProficiencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["str", "dex", "con", "int", "wis", "cha"],
+      "properties": {
+        "str": { "type": "boolean" },
+        "dex": { "type": "boolean" },
+        "con": { "type": "boolean" },
+        "int": { "type": "boolean" },
+        "wis": { "type": "boolean" },
+        "cha": { "type": "boolean" }
+      }
+    },
+    "Dnd5eSkillProficiencies": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "acrobatics",
+        "animal_handling",
+        "arcana",
+        "athletics",
+        "deception",
+        "history",
+        "insight",
+        "intimidation",
+        "investigation",
+        "medicine",
+        "nature",
+        "perception",
+        "performance",
+        "persuasion",
+        "religion",
+        "sleight_of_hand",
+        "stealth",
+        "survival"
+      ],
+      "properties": {
+        "acrobatics": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "animal_handling": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "arcana": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "athletics": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "deception": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "history": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "insight": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "intimidation": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "investigation": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "medicine": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "nature": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "perception": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "performance": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "persuasion": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "religion": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "sleight_of_hand": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "stealth": { "type": "string", "enum": ["none", "proficient", "expertise"] },
+        "survival": { "type": "string", "enum": ["none", "proficient", "expertise"] }
+      }
+    },
+    "Dnd5eSpellSlot": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["level", "max", "used"],
+      "properties": {
+        "level": { "type": "integer", "minimum": 1, "maximum": 9 },
+        "max": { "type": "integer", "minimum": 0, "maximum": 20 },
+        "used": { "type": "integer", "minimum": 0, "maximum": 20 }
+      }
+    },
+    "Dnd5eSpellcasting": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["ability", "slots"],
+      "properties": {
+        "ability": { "type": "string", "enum": ["int", "wis", "cha"] },
+        "slots": {
+          "type": "array",
+          "maxItems": 9,
+          "items": { "$ref": "#/$defs/Dnd5eSpellSlot" }
+        }
+      }
+    },
+    "Dnd5eState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "level",
+        "inspiration",
+        "tempHp",
+        "hitDice",
+        "deathSaves",
+        "saveProficiencies",
+        "skillProficiencies",
+        "spellcasting"
+      ],
+      "properties": {
+        "level": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "inspiration": { "type": "boolean" },
+        "tempHp": { "type": "integer", "minimum": 0, "maximum": 100000 },
+        "hitDice": { "$ref": "#/$defs/Dnd5eHitDice" },
+        "deathSaves": { "$ref": "#/$defs/Dnd5eDeathSaves" },
+        "saveProficiencies": { "$ref": "#/$defs/Dnd5eSaveProficiencies" },
+        "skillProficiencies": { "$ref": "#/$defs/Dnd5eSkillProficiencies" },
+        "spellcasting": { "$ref": "#/$defs/Dnd5eSpellcasting" }
       }
     }
   }

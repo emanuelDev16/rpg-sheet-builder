@@ -7,13 +7,21 @@ import addFormats from 'ajv-formats';
 import {
   addCardToSheet,
   addFieldToCard,
+  addHaven,
+  addMeritFlaw,
   addRepeatableRow,
+  addTouchstone,
   adjustHealthDamage,
   adjustResourceValue,
   adjustSheetBloodPool,
+  adjustSheetHumanityStains,
   adjustV20HealthDamage,
   adjustV5HealthDamage,
+  adjustV5WillpowerDamage,
+  applyHumanityStains,
+  applyRemorseOutcomeToSheet,
   applyV5SuperficialHalving,
+  applyV5WillpowerDamage,
   applyV5WillpowerSuperficialDamage,
   computeWoundPenalty,
   consumeWillpowerForRoll,
@@ -32,26 +40,39 @@ import {
   getBloodPoolMaxByGeneration,
   getOrCreateDeviceId,
   getSheetBloodPool,
+  getSheetHumanityStains,
   getSheetVirtues,
   getV20HealthBreakdown,
   getV5HealthBreakdown,
+  getV5WillpowerState,
   getWodClansForEdition,
+  healV5WillpowerDamage,
   isValidIsoDateTime,
   migrateLegacySheetMetadata,
   migrateLegacyWodSheet,
   migrateLocalStorageSheet,
+  parseAndValidateImportPayload,
   removeCardFromSheet,
+  removeHaven,
+  removeMeritFlaw,
   removeRepeatableRow,
+  removeTouchstone,
   resolveRollPreview,
   resolveRulePreset,
   setSheetRulePreset,
+  type CharacterSheetState,
+  type SheetField,
   toCanonicalSheet,
   updateCardSchema,
   updateFieldSchema,
   updateFieldValue,
+  updateHaven,
+  updateMeritFlaw,
   updateSheetVirtue,
+  updateTouchstone,
   validateSheetPayload,
 } from './sheetModel';
+import { getV5BloodPotencyStats } from './formula';
 
 test('World of Darkness default sheet computes derived traits, Skill/Soak pools, and Willpower (+1 Auto Success)', () => {
   let sheet = createDefaultSheet();
@@ -1148,5 +1169,443 @@ test('createFreshSheetForSystem initializes WoD V5 and V20 with edition attribut
   assert.equal(detectSystemId(blankEmpty), 'blank');
   assert.equal(blankEmpty.characterName, 'NOVO PERSONAGEM');
   assert.equal(blankEmpty.cards.length, 0);
+});
+
+test('Phase 3 Block 1: V5 Humanity Stains invariant, Willpower Superficial/Aggravated overflow & Impaired, and strict schema validation', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. applyHumanityStains clamps 0..10 and computes degeneration overflow
+  const withinBounds = applyHumanityStains(7, 1, 2);
+  assert.deepEqual(withinBounds, {
+    humanity: 7,
+    stains: 3,
+    overflowStains: 0,
+    isDegenerating: false,
+    remorsePool: 1,
+  });
+
+  const overflowed = applyHumanityStains(7, 3, 2); // 7 + 5 > 10 -> stains capped at 3, overflowStains = 2
+  assert.deepEqual(overflowed, {
+    humanity: 7,
+    stains: 3,
+    overflowStains: 2,
+    isDegenerating: true,
+    remorsePool: 1,
+  });
+
+  const clampedFloor = applyHumanityStains(-2, 1, -5);
+  assert.equal(clampedFloor.humanity, 0);
+  assert.equal(clampedFloor.stains, 0);
+  assert.equal(clampedFloor.remorsePool, 10);
+
+  // 2. applyV5WillpowerDamage, healV5WillpowerDamage, overflow, and isImpaired
+  let wpField: SheetField = {
+    id: 'f_willpower',
+    key: 'willpower',
+    label: 'WILLPOWER',
+    kind: 'resource',
+    value: 5,
+    max: 5,
+    superficialDamage: 0,
+    aggravatedDamage: 0,
+  };
+  wpField = applyV5WillpowerDamage(wpField, 'superficial', 3);
+  assert.equal(wpField.superficialDamage, 3);
+  assert.equal(wpField.aggravatedDamage, 0);
+  assert.equal(wpField.value, 2);
+
+  // Fill remaining 2 boxes -> Impaired
+  wpField = applyV5WillpowerDamage(wpField, 'superficial', 2);
+  assert.equal(wpField.superficialDamage, 5);
+  assert.equal(wpField.aggravatedDamage, 0);
+  assert.equal(wpField.value, 0);
+
+  // +2 Superficial overflow converts 2 superficial into 2 aggravated
+  wpField = applyV5WillpowerDamage(wpField, 'superficial', 2);
+  assert.equal(wpField.superficialDamage, 3);
+  assert.equal(wpField.aggravatedDamage, 2);
+  assert.equal(wpField.value, 0);
+
+  // Healing superficial and aggravated restores available boxes
+  wpField = healV5WillpowerDamage(wpField, 'superficial', 2);
+  assert.equal(wpField.superficialDamage, 1);
+  assert.equal(wpField.aggravatedDamage, 2);
+  assert.equal(wpField.value, 2);
+
+  wpField = healV5WillpowerDamage(wpField, 'aggravated', 1);
+  assert.equal(wpField.superficialDamage, 1);
+  assert.equal(wpField.aggravatedDamage, 1);
+  assert.equal(wpField.value, 3);
+
+  // Direct aggravated damage caps at max and trims superficial
+  wpField = applyV5WillpowerDamage(wpField, 'aggravated', 10);
+  assert.equal(wpField.aggravatedDamage, 5);
+  assert.equal(wpField.superficialDamage, 0);
+  assert.equal(wpField.value, 0);
+
+  // 3. Sheet-level V5 Willpower state, Degeneration -> Aggravated WP, and Remorse update
+  let v5 = createWorldOfDarknessV5Sheet(); // Composure 3 + Resolve 2 = max 5 WP; Humanity 7
+  assert.equal(getV5WillpowerState(v5).available, 5);
+  assert.equal(getV5WillpowerState(v5).isImpaired, false);
+
+  v5 = adjustV5WillpowerDamage(v5, 'superficial', 5);
+  let wpState = getV5WillpowerState(v5);
+  assert.equal(wpState.available, 0);
+  assert.equal(wpState.superficial, 5);
+  assert.equal(wpState.aggravated, 0);
+  assert.equal(wpState.isImpaired, true);
+  assert.equal(wpState.isFullyAggravated, false);
+
+  // Triggering 1 more superficial WP damage via reroll overflows 1 superficial -> aggravated
+  v5 = applyV5WillpowerSuperficialDamage(v5, 1);
+  wpState = getV5WillpowerState(v5);
+  assert.equal(wpState.superficial, 4);
+  assert.equal(wpState.aggravated, 1);
+  assert.equal(wpState.isImpaired, true);
+  assert.equal(wpState.isFullyAggravated, false);
+
+  // Adding stains beyond 10 - Humanity (7 + 4 -> overflow 1) adds 1 Aggravated WP damage
+  const stainRes = adjustSheetHumanityStains(v5, 4);
+  assert.equal(stainRes.stains, 3);
+  assert.equal(stainRes.overflowStains, 1);
+  v5 = stainRes.sheet;
+  assert.deepEqual(getSheetHumanityStains(v5), { humanity: 7, stains: 3, remorsePool: 1 });
+  wpState = getV5WillpowerState(v5);
+  assert.equal(wpState.aggravated, 2);
+  assert.equal(wpState.superficial, 3);
+
+  // Applying Remorse failure clears stains and lowers Humanity by 1
+  v5 = applyRemorseOutcomeToSheet(v5, 6);
+  assert.deepEqual(getSheetHumanityStains(v5), { humanity: 6, stains: 0, remorsePool: 4 });
+
+  // 4. Schema v2.0 + validateSheetPayload accept persisted stains, WP damages, and Remorse/Frenzy logs
+  v5 = {
+    ...v5,
+    stains: 0,
+    rollLogs: [
+      {
+        id: 'log_remorse_1',
+        timestamp: '00:10',
+        label: 'TESTE DE REMORSO',
+        total: 0,
+        formula: '1d10 (REMORSO)',
+        breakdown: '1d10[3] ≥6 → FALHA (-1 HUMANIDADE)',
+        rolls: [3],
+        difficulty: 6,
+        outcome: 'failure',
+        isPoolRoll: true,
+        rulePreset: 'vampire-v5',
+        isRemorseCheck: true,
+        humanityLost: true,
+      },
+      {
+        id: 'log_frenzy_1',
+        timestamp: '00:12',
+        label: 'FRENESI / RÖTSCHRECK',
+        total: 2,
+        formula: '2d10 (V5 · DIFF (META) 2)',
+        breakdown: '2d10[7, 8] ≥6 → 2 / 2 SUCESSOS',
+        rolls: [7, 8],
+        difficulty: 2,
+        outcome: 'success',
+        isPoolRoll: true,
+        rulePreset: 'vampire-v5',
+        isFrenzyRoll: true,
+        frenzyKind: 'rotschreck',
+      },
+    ],
+  };
+
+  assert.equal(validateAjv(v5), true, `V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(v5).valid, true);
+
+  // Rejects out-of-bounds stains and invalid frenzyKind
+  const badStainsSheet = { ...v5, stains: 11 };
+  assert.equal(validateAjv(badStainsSheet), false);
+  assert.equal(validateSheetPayload(badStainsSheet).valid, false);
+
+  const badFrenzyLogSheet = {
+    ...v5,
+    rollLogs: [
+      {
+        ...v5.rollLogs[1],
+        frenzyKind: 'berserk',
+      },
+    ],
+  };
+  assert.equal(validateAjv(badFrenzyLogSheet), false);
+  assert.equal(validateSheetPayload(badFrenzyLogSheet).valid, false);
+});
+
+test('Phase 3 Block 1 round-trip: export -> JSON.stringify -> parseAndValidateImportPayload preserves V5 stains, willpower damage, blood_potency, and BP reroll log', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  let v5: CharacterSheetState = {
+    ...createWorldOfDarknessV5Sheet(),
+    stains: 0,
+  };
+
+  // Apply stains: 3 via runtime helper (updates both root stains and f_humanity.stains)
+  v5 = adjustSheetHumanityStains(v5, 3).sheet;
+  // Apply Willpower damage: 1 aggravated + 2 superficial (Composure 3 + Resolve 2 = max 5 -> 2 available)
+  v5 = adjustV5WillpowerDamage(v5, 'aggravated', 1);
+  v5 = adjustV5WillpowerDamage(v5, 'superficial', 2);
+  // Set blood_potency: 3 as numeric field (matching V5 XP-upgraded Blood Potency)
+  v5 = {
+    ...v5,
+    cards: v5.cards.map((card) =>
+      card.id === 'card_identidade'
+        ? {
+            ...card,
+            fields: card.fields.map((f) =>
+              f.id === 'f_blood_potency' || f.key === 'blood_potency'
+                ? {
+                    id: 'f_blood_potency',
+                    key: 'blood_potency',
+                    label: 'BLOOD_POTENCY',
+                    kind: 'number' as const,
+                    value: 3,
+                    max: 10,
+                  }
+                : f,
+            ),
+          }
+        : card,
+    ),
+    rollLogs: [
+      {
+        id: 'log_rouse_bp_1',
+        timestamp: '21:15',
+        label: 'ROUSE · Sussurros Selvagens (Animalismo 2)',
+        total: 1,
+        formula: '2d10 (ROUSE CHECK · DIFF 6 · REROLL POTÊNCIA)',
+        breakdown: '2d10[3, 8] ≥6 · REROLL POTÊNCIA → ROUSE OK',
+        rolls: [3, 8],
+        difficulty: 6,
+        outcome: 'success',
+        isPoolRoll: true,
+        rulePreset: 'vampire-v5',
+        isRouseCheck: true,
+        rerolledIndices: [1],
+      },
+      ...v5.rollLogs,
+    ],
+  };
+
+  const exportedJson = JSON.stringify(v5, null, 2);
+  const parsedRaw = JSON.parse(exportedJson) as unknown;
+
+  assert.equal(validateAjv(parsedRaw), true, `AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(parsedRaw).valid, true);
+
+  const imported = parseAndValidateImportPayload(exportedJson);
+  assert.equal(imported.valid, true, `Import errors: ${imported.errors.join('; ')}`);
+  assert.equal(imported.errors.length, 0);
+  assert.equal(imported.sheets.length, 1);
+
+  const restored = imported.sheets[0];
+  assert.equal(restored.stains, 3);
+  assert.deepEqual(getSheetHumanityStains(restored), {
+    humanity: 7,
+    stains: 3,
+    remorsePool: 1,
+  });
+  const restoredHum = restored.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_humanity');
+  assert.equal(restoredHum?.stains, 3);
+
+  const restoredWp = restored.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_willpower');
+  assert.equal(restoredWp?.superficialDamage, 2);
+  assert.equal(restoredWp?.aggravatedDamage, 1);
+  assert.equal(restoredWp?.value, 2);
+  assert.equal(restoredWp?.max, 5);
+  assert.deepEqual(getV5WillpowerState(restored), {
+    max: 5,
+    superficial: 2,
+    aggravated: 1,
+    available: 2,
+    isImpaired: false,
+    isFullyAggravated: false,
+  });
+
+  const restoredBp = restored.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_blood_potency');
+  assert.equal(restoredBp?.value, 3);
+  const restoredEval = evaluateSheet(restored);
+  assert.equal(restoredEval.variables.blood_potency, 3);
+  assert.equal(getV5BloodPotencyStats(restoredEval.variables.blood_potency).rouseRerollMaxLevel, 2);
+
+  assert.equal(restored.rollLogs[0]?.isRouseCheck, true);
+  assert.deepEqual(restored.rollLogs[0]?.rolls, [3, 8]);
+  assert.deepEqual(restored.rollLogs[0]?.rerolledIndices, [1]);
+});
+
+test('Phase 3 Block 2: touchstones, meritsFlaws, and havens CRUD, schema validation, legacy migration, and JSON round-trip', () => {
+  const schemaRaw = JSON.parse(
+    fs.readFileSync(path.resolve(process.cwd(), 'shared/presets/schema.v2.json'), 'utf8'),
+  ) as Record<string, unknown>;
+  const AjvCtor = (Ajv2020 as unknown as { default?: typeof Ajv2020 }).default ?? Ajv2020;
+  const ajv = new AjvCtor({ allErrors: true, strict: false });
+  const applyFormats = (addFormats as unknown as { default?: typeof addFormats }).default ?? addFormats;
+  applyFormats(ajv);
+  const validateAjv = ajv.compile(schemaRaw);
+
+  // 1. Fresh V5 and V20 sheets initialize clean empty arrays and include card_wod_dossier
+  let v5 = createNewSheetForSystem('wod', { edition: 'vampire-v5', clan: 'Toreador', name: 'Camille' });
+  assert.deepEqual(v5.touchstones, []);
+  assert.deepEqual(v5.meritsFlaws, []);
+  assert.deepEqual(v5.havens, []);
+  assert.ok(v5.cards.some((c) => c.id === 'card_wod_dossier' && c.tab === 'magias'));
+
+  const v20 = createNewSheetForSystem('wod', { edition: 'storyteller-v20', clan: 'Ventrue', name: 'Marcus' });
+  assert.equal(v20.touchstones, undefined);
+  assert.deepEqual(v20.meritsFlaws, []);
+  assert.deepEqual(v20.havens, []);
+  assert.ok(v20.cards.some((c) => c.id === 'card_wod_dossier' && c.tab === 'magias'));
+
+  const dnd = createNewSheetForSystem('dnd5e');
+  assert.equal(dnd.touchstones, undefined);
+  assert.equal(dnd.meritsFlaws, undefined);
+  assert.equal(dnd.havens, undefined);
+  assert.equal(dnd.cards.some((c) => c.id === 'card_wod_dossier'), false);
+
+  // 2. Immutable CRUD helpers & rating clamping
+  v5 = addTouchstone(v5, {
+    id: 'ts_1',
+    conviction: 'Nunca trair a arte verdadeira',
+    touchstone: 'Clara Mendes (Restauradora)',
+    notes: 'Trabalha no Museu do Porto.',
+  });
+  v5 = updateTouchstone(v5, 'ts_1', { notes: 'Atualizada: protege o ateliê.' });
+  assert.equal(v5.touchstones?.length, 1);
+  assert.equal(v5.touchstones?.[0].notes, 'Atualizada: protege o ateliê.');
+
+  v5 = addMeritFlaw(v5, {
+    id: 'mf_1',
+    kind: 'merit',
+    name: 'Linguística',
+    rating: 9, // clamps to 5
+    catalogId: 'linguistics',
+  });
+  v5 = addMeritFlaw(v5, {
+    id: 'mf_2',
+    kind: 'flaw',
+    name: 'Sede de Matusalém',
+    rating: 0, // clamps to 1
+    catalogId: 'methuselahs_thirst',
+  });
+  assert.equal(v5.meritsFlaws?.[0].rating, 5);
+  assert.equal(v5.meritsFlaws?.[1].rating, 1);
+  v5 = updateMeritFlaw(v5, 'mf_1', { rating: 2, notes: 'Latim e Grego' });
+  assert.equal(v5.meritsFlaws?.[0].rating, 2);
+
+  v5 = addHaven(v5, {
+    id: 'hv_1',
+    name: 'Galeria Subterrânea',
+    location: 'Zona Portuária',
+    rating: 8, // clamps to 5
+    traits: ['hidden_armory', 'security_system'],
+    notes: 'Acesso pelo elevador de carga.',
+  });
+  assert.equal(v5.havens?.[0].rating, 5);
+  v5 = updateHaven(v5, 'hv_1', { rating: 3, traits: ['hidden_armory', 'warding'] });
+  assert.equal(v5.havens?.[0].rating, 3);
+  assert.deepEqual(v5.havens?.[0].traits, ['hidden_armory', 'warding']);
+
+  // 3. Round-trip JSON + AJV + validateSheetPayload
+  const jsonText = JSON.stringify(v5, null, 2);
+  const parsedRaw = JSON.parse(jsonText) as unknown;
+  assert.equal(validateAjv(parsedRaw), true, `AJV errors: ${JSON.stringify(validateAjv.errors)}`);
+  assert.equal(validateSheetPayload(parsedRaw).valid, true);
+
+  const imported = parseAndValidateImportPayload(jsonText);
+  assert.equal(imported.valid, true, `Import errors: ${imported.errors.join('; ')}`);
+  const restored = imported.sheets[0];
+  assert.deepEqual(restored.touchstones, v5.touchstones);
+  assert.deepEqual(restored.meritsFlaws, v5.meritsFlaws);
+  assert.deepEqual(restored.havens, v5.havens);
+
+  // Removals work cleanly
+  const trimmed = removeHaven(removeMeritFlaw(removeTouchstone(restored, 'ts_1'), 'mf_2'), 'hv_1');
+  assert.equal(trimmed.touchstones?.length, 0);
+  assert.equal(trimmed.meritsFlaws?.length, 1);
+  assert.equal(trimmed.havens?.length, 0);
+
+  // 4. Rejects malformed entries and extra properties (additionalProperties: false)
+  const badTouchstoneExtra = {
+    ...v5,
+    touchstones: [{ id: 'ts_bad', conviction: 'X', touchstone: 'Y', extraProp: 1 }],
+  };
+  assert.equal(validateAjv(badTouchstoneExtra), false);
+  assert.equal(validateSheetPayload(badTouchstoneExtra).valid, false);
+
+  const badMeritRating = {
+    ...v5,
+    meritsFlaws: [{ id: 'mf_bad', kind: 'merit', name: 'X', rating: 0 }],
+  };
+  assert.equal(validateAjv(badMeritRating), false);
+  assert.equal(validateSheetPayload(badMeritRating).valid, false);
+
+  const badMeritKind = {
+    ...v5,
+    meritsFlaws: [{ id: 'mf_bad2', kind: 'curse', name: 'X', rating: 2 }],
+  };
+  assert.equal(validateAjv(badMeritKind), false);
+  assert.equal(validateSheetPayload(badMeritKind).valid, false);
+
+  const badHavenExtra = {
+    ...v5,
+    havens: [{ id: 'hv_bad', name: 'Crypt', rating: 2, traits: ['library'], extraField: true }],
+  };
+  assert.equal(validateAjv(badHavenExtra), false);
+  assert.equal(validateSheetPayload(badHavenExtra).valid, false);
+
+  const badHavenRating = {
+    ...v5,
+    havens: [{ id: 'hv_bad2', name: 'Crypt', rating: 6, traits: [] }],
+  };
+  assert.equal(validateAjv(badHavenRating), false);
+  assert.equal(validateSheetPayload(badHavenRating).valid, false);
+
+  // 5. Legacy WoD migration initializes missing arrays cleanly without overwriting existing values
+  const legacyV5 = createWorldOfDarknessV5Sheet();
+  const {
+    touchstones: _dropTs,
+    meritsFlaws: _dropMf,
+    havens: _dropHv,
+    ...legacyV5WithoutStructured
+  } = legacyV5;
+  legacyV5WithoutStructured.cards = legacyV5WithoutStructured.cards.filter(
+    (c) => c.id !== 'card_wod_dossier',
+  );
+  const upcastV5 = migrateLegacyWodSheet(legacyV5WithoutStructured, { storage: null });
+  assert.deepEqual(upcastV5.touchstones, []);
+  assert.deepEqual(upcastV5.meritsFlaws, []);
+  assert.deepEqual(upcastV5.havens, []);
+  assert.ok(upcastV5.cards.some((c) => c.id === 'card_wod_dossier'));
+  assert.equal(validateAjv(upcastV5), true);
+
+  const prefilledV5 = migrateLegacyWodSheet(v5, { storage: null });
+  assert.deepEqual(prefilledV5.touchstones, v5.touchstones);
+  assert.deepEqual(prefilledV5.meritsFlaws, v5.meritsFlaws);
+  assert.deepEqual(prefilledV5.havens, v5.havens);
 });
 

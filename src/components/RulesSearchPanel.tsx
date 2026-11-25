@@ -179,14 +179,23 @@ export const RulesSearchPanel: React.FC<RulesSearchPanelProps> = ({
 
   const suggestions = useMemo(() => {
     const upper = systemName.toUpperCase();
-    if (upper.includes('DARKNESS') || upper.includes('VAMPIRE') || upper.includes('STORYTELLER')) {
-      return ['Frenzy', 'Superficial', 'Hunger', 'Rouse'];
+    if (
+      effectiveSystemId === 'wod' ||
+      upper.includes('DARKNESS') ||
+      upper.includes('VAMPIRE') ||
+      upper.includes('STORYTELLER')
+    ) {
+      return t.t('rules.suggestions.wod').split(',');
     }
-    if (upper.includes('CYBERPUNK') || upper.includes('RUNNER')) {
-      return ['Netrunning', 'Armor SP', 'Critical', 'Fumble'];
+    if (
+      effectiveSystemId === 'cyberpunk' ||
+      upper.includes('CYBERPUNK') ||
+      upper.includes('RUNNER')
+    ) {
+      return t.t('rules.suggestions.cyberpunk').split(',');
     }
-    return ['Grapple', 'Advantage', 'Concentration', 'Opportunity'];
-  }, [systemName]);
+    return t.t('rules.suggestions.default').split(',');
+  }, [effectiveSystemId, systemName, t]);
 
   const executeLocalSearch = useCallback(
     async (

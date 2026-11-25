@@ -1,9 +1,20 @@
 @import "tailwindcss";
+@import "./styles/paperPrint.css";
 
 /* ============================================================================
    GRIDSHEET — MULTI-THEME DESIGN TOKENS (light | dark | eink)
    Controlado por data-theme no elemento <html>
    ============================================================================ */
+:root {
+  /* --- Escala Canônica de Camadas (z-index) --- */
+  --z-sticky: 20;
+  --z-topbar: 40;
+  --z-drawer: 60;
+  --z-popover: 80;
+  --z-modal: 100;
+  --z-toast: 120;
+}
+
 :root,
 [data-theme="light"] {
   color-scheme: light;
@@ -250,6 +261,39 @@ body {
 }
 
 /* Cartão Bento Brutalista */
+.bento-print-grid {
+  gap: var(--grid-gap);
+}
+
+.bento-masonry-stack {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  width: 100%;
+  min-width: 0;
+}
+
+.bento-columns-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--grid-gap);
+  align-items: start;
+  width: 100%;
+  min-width: 0;
+}
+
+.bento-column {
+  display: flex;
+  flex-direction: column;
+  gap: var(--grid-gap);
+  min-width: 0;
+}
+
+.bento-masonry-stack > .bento-card,
+.bento-column > .bento-card {
+  min-width: 0;
+}
+
 .bento-card {
   background-color: var(--bg-card);
   border: var(--border-width) solid var(--border-color);
@@ -268,6 +312,75 @@ body {
   padding: var(--card-header-padding);
   background-color: var(--bg-strip);
   border-bottom: var(--border-width) solid var(--border-color);
+}
+
+.bento-card-body {
+  padding: var(--card-padding);
+}
+
+.bento-card-body.flex-col {
+  row-gap: var(--field-gap);
+}
+
+/* ============================================================================
+   MODAL VIEWPORT SHELL (Header fixo + Body rolável + Footer fixo)
+   ============================================================================ */
+.mobile-modal-overlay {
+  align-items: center;
+  align-items: safe center;
+  padding: max(12px, env(safe-area-inset-top, 0px))
+    max(12px, env(safe-area-inset-right, 0px))
+    max(12px, env(safe-area-inset-bottom, 0px))
+    max(12px, env(safe-area-inset-left, 0px));
+  overflow-y: auto;
+}
+
+@media (min-width: 640px) {
+  .mobile-modal-overlay {
+    padding: 16px;
+  }
+}
+
+.mobile-modal-dialog {
+  display: flex;
+  flex-direction: column;
+  max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+  overflow: hidden;
+  min-height: 0;
+  margin-block: auto;
+}
+
+@media (min-width: 640px) {
+  .mobile-modal-dialog {
+    max-height: calc(100dvh - 32px);
+  }
+}
+
+.modal-dialog-header {
+  flex-shrink: 0;
+}
+
+.modal-dialog-form {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.modal-dialog-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  -webkit-overflow-scrolling: touch;
+}
+
+.modal-dialog-footer {
+  flex-shrink: 0;
+  background-color: var(--bg-card);
+  border-top: 1.5px solid var(--border-color);
+  padding: 10px 16px calc(12px + env(safe-area-inset-bottom, 0px));
 }
 
 /* Inputs técnicos */
@@ -318,6 +431,11 @@ textarea.cyber-input {
   box-shadow: none;
 }
 
+.cyber-btn-outline:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
 button:focus-visible,
 select:focus-visible,
 .cyber-btn-outline:focus-visible,
@@ -348,6 +466,11 @@ select:focus-visible,
 
 .cyber-roll-btn:active {
   transform: translateY(0);
+}
+
+.cyber-roll-btn:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
 }
 
 /* Botão compacto de acionamento direto de poderes (Rouse V5 / Gasto de Sangue V20) */
@@ -855,132 +978,1406 @@ select:focus-visible,
 }
 
 /* ============================================================================
-   MODO IMPRESSÃO / EXPORTAÇÃO PDF
+   WOD POOL COMPOSER (Rolador Combinado Livre V20 & V5)
    ============================================================================ */
-@page {
-  size: A4 portrait;
-  margin: 10mm;
+.wod-pool-composer {
+  min-width: 0;
+  max-width: 100%;
 }
 
-@media print {
-  :root,
-  [data-theme="light"],
-  [data-theme="dark"],
-  [data-theme="eink"] {
-    --bg-base: #FFFFFF !important;
-    --bg-canvas: #FFFFFF !important;
-    --bg-card: #FFFFFF !important;
-    --bg-card-alt: #F5F5F5 !important;
-    --bg-strip: #F0F0F0 !important;
-    --bg-header-strip: #F0F0F0 !important;
-    --ink-primary: #0B0B0B !important;
-    --ink-secondary: #1F1F1F !important;
-    --ink-muted: #333333 !important;
-    --text-primary: #0B0B0B !important;
-    --text-secondary: #1F1F1F !important;
-    --text-muted: #333333 !important;
-    --border-color: #0B0B0B !important;
-    --border-ink: #0B0B0B !important;
-    --accent-black: #0B0B0B !important;
-    --shadow-card: none !important;
-    --shadow-btn: none !important;
-    --shadow-btn-hover: none !important;
-    --shadow-drawer: none !important;
-    --shadow-modal: none !important;
-    color-scheme: light !important;
+.wod-composer-header {
+  min-block-size: 36px;
+  transition: background-color 120ms ease;
+}
+
+.wod-composer-header:focus-visible,
+.wod-composer-select:focus-visible,
+.wod-composer-stepper-btn:focus-visible,
+.wod-composer-toggle:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.wod-composer-toggle {
+  font-family: var(--font-mono);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: var(--border-width) solid var(--border-color);
+  transition: background-color 120ms ease, border-color 120ms ease, color 120ms ease;
+}
+
+.wod-composer-toggle:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+.wod-composer-toggle.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+}
+
+.wod-composer-toggle:disabled {
+  background-color: var(--bg-strip);
+  color: var(--text-secondary);
+  border: var(--border-width) dashed var(--border-color);
+  box-shadow: none;
+  cursor: not-allowed;
+}
+
+.wod-composer-hunger-pill {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: var(--border-width) solid var(--hunger-border);
+}
+
+[data-theme="eink"] .wod-composer-header,
+[data-theme="eink"] .wod-composer-toggle,
+[data-theme="eink"] .wod-composer-stepper-btn {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-composer-toggle.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+}
+
+[data-theme="eink"] .wod-composer-toggle:disabled {
+  border-color: var(--border-color);
+}
+
+@media (forced-colors: active) {
+  .wod-composer-toggle {
+    border: 2px solid ButtonText;
+    background-color: Canvas;
+    color: ButtonText;
   }
 
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
+  .wod-composer-toggle.is-active {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
   }
 
-  html,
-  body,
-  #root {
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    background-color: #FFFFFF !important;
-    color: #0B0B0B !important;
+  .wod-composer-toggle:disabled {
+    border: 2px dashed GrayText;
+    color: GrayText;
   }
 
-  .cyber-grid-canvas {
+  .wod-composer-hunger-pill {
+    border: 2px solid ButtonText;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+}
+
+/* ============================================================================
+   XP CATALOG ACQUISITION & OFFICIAL SELECTORS (Light · Dark · E-Ink · Forced Colors)
+   ============================================================================ */
+.xp-acquire-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.xp-acquire-clan-badge {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-primary);
+  border: 1px solid var(--accent-primary);
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="dark"] .xp-acquire-clan-badge {
+  color: var(--accent-hover);
+}
+
+.xp-acquire-locked-btn {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  min-block-size: 36px;
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: var(--border-width) dashed var(--accent-danger);
+  border-radius: var(--radius-control);
+  cursor: not-allowed;
+}
+
+.xp-catalog-present-btn {
+  min-block-size: 36px;
+  background-color: var(--bg-strip);
+  color: var(--text-primary);
+  border: var(--border-width) dashed var(--border-color);
+  border-radius: var(--radius-control);
+  cursor: not-allowed;
+}
+
+[data-theme="eink"] .xp-acquire-panel,
+[data-theme="eink"] .xp-acquire-locked-btn,
+[data-theme="eink"] .xp-acquire-clan-badge,
+[data-theme="eink"] .xp-catalog-present-btn {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .xp-acquire-locked-btn {
+  background-color: var(--bg-strip);
+  color: var(--text-primary);
+  border-color: var(--border-color);
+}
+
+@media (forced-colors: active) {
+  .xp-acquire-clan-badge {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .xp-acquire-locked-btn,
+  .xp-catalog-present-btn {
+    background-color: Canvas;
+    color: GrayText;
+    border: 2px dashed GrayText;
+  }
+}
+
+/* ============================================================================
+   PHASE 3: V5 HUMANITY/STAINS, BLOOD POTENCY TABLE, FRENZY/RÖTSCHRECK & LOG BADGES
+   ============================================================================ */
+.v5-humanity-box {
+  flex: 1 1 0;
+  min-width: 1px;
+  height: 22px;
+  border-radius: 2px;
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: transparent;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-family: var(--font-mono);
+  font-size: 11px;
+  font-weight: 800;
+  user-select: none;
+}
+
+.v5-humanity-box.is-humanity {
+  background-color: var(--accent-black);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+}
+
+.v5-humanity-box.is-stain {
+  background-image: repeating-linear-gradient(
+    135deg,
+    color-mix(in srgb, var(--accent-wine) 24%, transparent) 0 3px,
+    transparent 3px 6px
+  );
+  background-color: var(--bg-card);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.v5-humanity-box.is-empty {
+  border-color: var(--border-subtle);
+}
+
+.v5-bp-stats-panel {
+  background-color: var(--bg-card-alt);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.v5-bp-stat-cell {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.wod-frenzy-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-frenzy-chip {
+  font-family: var(--font-mono);
+  background-color: var(--bg-card);
+  color: var(--text-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.wod-frenzy-chip:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+}
+
+.wod-frenzy-chip.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--accent-primary);
+}
+
+.wod-frenzy-chip:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.roll-badge-frenzy {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 1.5px solid var(--hunger-border);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.roll-badge-remorse {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.wod-mend-rouse-btn {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 1.5px solid var(--hunger-border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  transition: background-color 120ms ease, color 120ms ease, border-color 120ms ease;
+}
+
+.wod-mend-rouse-btn:hover:not(:disabled) {
+  background-color: var(--accent-wine-hover);
+  color: var(--accent-contrast);
+  border-color: var(--accent-wine-hover);
+}
+
+.wod-mend-rouse-btn:focus-visible {
+  outline: 2px solid var(--accent-primary);
+  outline-offset: 2px;
+}
+
+.wod-mend-rouse-btn:disabled,
+.wod-mend-rouse-btn[aria-disabled="true"] {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.v5-bane-severity-badge {
+  background-color: var(--hunger-bg);
+  color: var(--hunger-text);
+  border: 1.5px solid var(--hunger-border);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+.wod-power-bonus-badge {
+  background-color: var(--bg-card-alt);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .v5-humanity-box {
+  border-radius: 9999px;
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .v5-humanity-box.is-humanity {
+  background-image: none;
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .v5-humanity-box.is-stain {
+  background-image: repeating-linear-gradient(45deg, transparent 0 3px, #1A1A1A 3px 4.5px);
+  background-color: #F8F8F8;
+  color: #0B0B0B;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .v5-humanity-box.is-empty {
+  background-color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .v5-bp-stats-panel,
+[data-theme="eink"] .v5-bp-stat-cell,
+[data-theme="eink"] .wod-frenzy-panel,
+[data-theme="eink"] .wod-frenzy-chip,
+[data-theme="eink"] .roll-badge-frenzy,
+[data-theme="eink"] .roll-badge-remorse,
+[data-theme="eink"] .wod-mend-rouse-btn,
+[data-theme="eink"] .v5-bane-severity-badge,
+[data-theme="eink"] .wod-power-bonus-badge {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-frenzy-chip.is-active {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .roll-badge-frenzy {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .roll-badge-remorse {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mend-rouse-btn {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mend-rouse-btn:hover:not(:disabled) {
+  background-color: #0B0B0B;
+  color: #FFFFFF;
+  border-color: #0B0B0B;
+}
+
+[data-theme="eink"] .wod-mend-rouse-btn:disabled,
+[data-theme="eink"] .wod-mend-rouse-btn[aria-disabled="true"] {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+  opacity: 0.6;
+}
+
+[data-theme="eink"] .v5-bane-severity-badge {
+  background-color: #1A1A1A;
+  color: #FFFFFF;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-power-bonus-badge {
+  background-color: #F8F8F8;
+  color: #0B0B0B;
+  border-color: #1A1A1A;
+}
+
+/* ============================================================================
+   WOD BLOCOS ESTRUTURADOS (Pedras de Toque, Qualidades/Defeitos & Refúgios)
+   ============================================================================ */
+.wod-structured-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-structured-item {
+  background-color: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.wod-structured-summary-pill {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+}
+
+.wod-mf-badge--merit {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+}
+
+.wod-mf-badge--flaw {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: 1.5px solid var(--accent-danger);
+  border-radius: var(--radius-pill);
+}
+
+.wod-structured-filter-chip,
+.wod-haven-trait-chip,
+.wod-structured-catalog-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
+}
+
+.wod-structured-filter-chip:hover,
+.wod-haven-trait-chip:hover,
+.wod-structured-catalog-btn:hover {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-structured-filter-chip.is-active,
+.wod-haven-trait-chip.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-haven-trait-chip.is-flaw:not(.is-active) {
+  border-style: dashed;
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+.wod-haven-trait-chip.is-flaw.is-active {
+  background-color: var(--accent-danger);
+  color: var(--accent-danger-contrast);
+  border-color: var(--border-color);
+}
+
+.wod-structured-danger-btn {
+  background-color: var(--accent-danger);
+  color: var(--accent-danger-contrast);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+.wod-structured-added-pill {
+  background-color: var(--bg-strip);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="eink"] .wod-structured-panel,
+[data-theme="eink"] .wod-structured-item,
+[data-theme="eink"] .wod-structured-summary-pill,
+[data-theme="eink"] .wod-mf-badge--merit,
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-structured-filter-chip,
+[data-theme="eink"] .wod-haven-trait-chip,
+[data-theme="eink"] .wod-structured-catalog-btn,
+[data-theme="eink"] .wod-structured-danger-btn {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-structured-filter-chip:hover,
+[data-theme="eink"] .wod-haven-trait-chip:hover,
+[data-theme="eink"] .wod-structured-catalog-btn:hover {
+  box-shadow: none;
+}
+
+[data-theme="eink"] .wod-structured-filter-chip.is-active,
+[data-theme="eink"] .wod-haven-trait-chip.is-active,
+[data-theme="eink"] .wod-haven-trait-chip.is-flaw.is-active {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mf-badge--merit {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-haven-trait-chip.is-flaw:not(.is-active) {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-structured-danger-btn {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+/* ============================================================================
+   WOD ASSISTENTE GUIADO DE CRIAÇÃO (4 PASSOS) & MODO DE CRIAÇÃO
+   ============================================================================ */
+.wod-creation-mode-strip {
+  flex-shrink: 0;
+  border-bottom: 1.5px solid var(--border-color);
+  background-color: var(--bg-card-alt);
+  padding: 8px 14px;
+}
+
+.wod-creation-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wod-creation-mode-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-control);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.wod-creation-mode-btn:hover {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-creation-mode-btn.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-topbar {
+  flex-shrink: 0;
+  border-bottom: 1.5px solid var(--border-subtle);
+  background-color: var(--bg-card-alt);
+}
+
+.wod-wizard-step-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-control);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.wod-wizard-step-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-step-btn.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-step-btn.is-done:not(.is-active) {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.wod-wizard-step-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.wod-wizard-rules-toggle {
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.wod-wizard-rules-toggle.is-strict {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.wod-wizard-rules-toggle.is-free {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-wizard-subcard {
+  background-color: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.wod-wizard-budget-pill {
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+}
+
+.wod-wizard-budget-pill.is-ok {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.wod-wizard-budget-pill.is-warn {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+.wod-wizard-alert {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: 1.5px solid var(--accent-danger);
+  border-radius: var(--radius-card);
+}
+
+[data-theme="eink"] .wod-creation-mode-btn,
+[data-theme="eink"] .wod-wizard-step-btn,
+[data-theme="eink"] .wod-wizard-rules-toggle,
+[data-theme="eink"] .wod-wizard-panel,
+[data-theme="eink"] .wod-wizard-subcard,
+[data-theme="eink"] .wod-wizard-budget-pill,
+[data-theme="eink"] .wod-wizard-alert {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-creation-mode-btn:hover,
+[data-theme="eink"] .wod-wizard-step-btn:hover:not(:disabled) {
+  box-shadow: none;
+}
+
+[data-theme="eink"] .wod-creation-mode-btn.is-active,
+[data-theme="eink"] .wod-wizard-step-btn.is-active,
+[data-theme="eink"] .wod-wizard-rules-toggle.is-free {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-wizard-step-btn.is-done:not(.is-active),
+[data-theme="eink"] .wod-wizard-rules-toggle.is-strict,
+[data-theme="eink"] .wod-wizard-budget-pill.is-ok {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-wizard-budget-pill.is-warn,
+[data-theme="eink"] .wod-wizard-alert {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+}
+
+@media (forced-colors: active) {
+  .v5-humanity-box {
+    border: 2px solid ButtonText;
+    background-color: Canvas;
+    color: CanvasText;
+  }
+
+  .v5-humanity-box.is-humanity {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .v5-humanity-box.is-stain {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px dashed Highlight;
+  }
+
+  .v5-bp-stats-panel,
+  .v5-bp-stat-cell,
+  .wod-frenzy-panel {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-frenzy-chip {
+    background-color: Canvas;
+    color: ButtonText;
+    border-color: ButtonText;
+  }
+
+  .wod-frenzy-chip.is-active,
+  .roll-badge-frenzy {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .roll-badge-remorse {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-mend-rouse-btn {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-mend-rouse-btn:disabled,
+  .wod-mend-rouse-btn[aria-disabled="true"] {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  .v5-bane-severity-badge,
+  .wod-power-bonus-badge,
+  .wod-structured-summary-pill,
+  .wod-mf-badge--merit,
+  .wod-mf-badge--flaw {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px solid Highlight;
+  }
+
+  .wod-structured-panel,
+  .wod-structured-item {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-structured-filter-chip,
+  .wod-haven-trait-chip,
+  .wod-structured-catalog-btn {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-structured-filter-chip.is-active,
+  .wod-haven-trait-chip.is-active,
+  .wod-structured-danger-btn {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .wod-creation-mode-strip,
+  .wod-wizard-topbar,
+  .wod-wizard-panel,
+  .wod-wizard-subcard {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-creation-mode-btn,
+  .wod-wizard-step-btn,
+  .wod-wizard-rules-toggle,
+  .wod-wizard-budget-pill {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-creation-mode-btn.is-active,
+  .wod-wizard-step-btn.is-active,
+  .wod-wizard-rules-toggle.is-free {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .wod-wizard-step-btn:disabled {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  .wod-wizard-budget-pill.is-warn,
+  .wod-wizard-alert {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px dashed Highlight;
+  }
+}
+
+/* ============================================================================
+   LIGHT THEME HARMONIZATION & COMPACT DENSITY (Light Cyber Brutalism ONLY)
+   Estritamente escopado a screen + forced-colors: none + tema claro.
+   Nenhuma regra afeta [data-theme="dark"], [data-theme="eink"], forced-colors ou print.
+   ============================================================================ */
+@media screen and (forced-colors: none) {
+  /* 0. Tokens de densidade compactos estritos do tema claro */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) {
+    --grid-gap: 12px;
+    --card-padding: 12px 14px;
+    --card-header-padding: 7px 12px;
+    --field-gap: 7px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .bento-card-body.bento-card-two-col {
+    column-gap: 20px;
+    row-gap: 6px;
+  }
+
+  /* 0A. Card //CHRONICLE_ID & POTÊNCIA DE SANGUE */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_identidade"] .bento-card-body {
+    row-gap: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_identidade"] .bento-card-body > div:not(.v5-bp-stats-panel) {
+    padding-top: 0;
+    padding-bottom: 0;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stats-panel {
+    background-color: var(--bg-base);
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stats-panel > .grid {
+    gap: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bp-stat-cell {
+    background-color: var(--bg-card);
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    padding: 5px 8px;
+    gap: 2px;
+  }
+
+  /* 0B. Card //ATTRIBUTES */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-grid {
+    gap: 10px 12px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-group-col {
+    gap: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-dot-row {
+    padding-top: 1px;
+    padding-bottom: 1px;
+    gap: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-trailing {
+    margin-top: 0;
+    padding-top: 6px;
+    gap: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-trailing > div {
+    padding-top: 1px;
+    padding-bottom: 1px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-trailing .cyber-calc-box {
+    padding: 3px 10px;
+  }
+
+  /* 1. Card //VITAL_STATUS & Sub-blocos unificados (1.5px solid #0B0B0B, radius 4px, fundo #F8F1E7) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] .bento-card-body {
+    row-gap: 8px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-section"] {
+    padding-top: 0;
+    gap: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-panel"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-frenzy-panel {
+    background-color: #F8F1E7;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    padding: 8px 10px;
+    gap: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] > div:first-child {
+    margin-bottom: 6px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] > .grid,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] > .grid {
+    gap: 4px;
+    padding-top: 6px;
+  }
+
+  /* Badge EXCESSO SUP -> AGRAV */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-overflow-badge {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+    border-radius: 2px;
+  }
+
+  /* Badge SEVERIDADE (Bane Severity) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-bane-severity-badge {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 2px;
+  }
+
+  /* 2. Segmentos & Caixas Unificados (HEALTH, WILLPOWER, HUNGER, HUMANITY) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .seg-block,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-empty,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-health-box--empty,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-wp-box--empty,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-continuous-bar-"] {
+    background-color: #FFFDF9;
+    border: 1px solid #8A7D70;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .seg-block.is-filled {
+    background-color: #5B0F18;
+    border: 1px solid #3A040A;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box {
+    height: 14px;
+    border-radius: 2px;
+    font-size: 0;
+    line-height: 0;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box .v5-humanity-glyph {
+    display: none;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-humanity {
+    background-color: #5B0F18;
+    background-image: none;
+    color: transparent;
+    border: 1px solid #3A040A;
+    border-radius: 2px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-humanity-box.is-stain {
+    background-color: #EFE3D2;
+    background-image: repeating-linear-gradient(45deg, #5B0F18 0 1.5px, #EFE3D2 1.5px 5px);
+    color: transparent;
+    border: 1px solid #5B0F18;
+    border-radius: 2px;
+  }
+
+  /* HEALTH & WILLPOWER V5: Superficial (/) e Agravado (X) — sobrepõe style inline apenas no tema claro */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-health-box--superficial,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--superficial {
+    background-color: #EFE3D2 !important;
+    background-image: repeating-linear-gradient(45deg, #5B0F18 0 1.5px, #EFE3D2 1.5px 5px) !important;
+    color: #5B0F18 !important;
+    border: 1px solid #5B0F18 !important;
+    border-radius: 2px;
+    font-size: 9px;
+    line-height: 1;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .v5-health-box--aggravated,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .seg-block.v5-wp-box--aggravated {
+    background-color: #5B0F18 !important;
     background-image: none !important;
-    background-color: #FFFFFF !important;
+    color: #FFFDF9 !important;
+    border: 1px solid #3A040A !important;
+    border-radius: 2px;
+    font-size: 9px;
+    line-height: 1;
   }
 
-  .print-shell {
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    display: block !important;
+  /* 3. Botões Ativos vs. Desabilitados — Eliminação de preto/cinza lavado e opacity baixa */
+  /* 3A. CTA Primário de Sangue (ROUSE CHECK, TESTE DE REMORSO ativo, CURAR +X ROUSE ativo, WILLPOWER SURGE ativo, FRENESI roll, BLOOD SURGE armado) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-rouse-check-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-remorse-check-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:not(:disabled):not([aria-disabled="true"]),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-roll-btn"]:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"][aria-pressed="true"] {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
   }
 
-  .print-main {
-    overflow: visible !important;
-    height: auto !important;
-    padding: 0 !important;
-    background-color: #FFFFFF !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-rouse-check-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-remorse-check-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:not(:disabled):not([aria-disabled="true"]):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-roll-btn"]:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"][aria-pressed="true"]:hover {
+    background-color: #7A1622;
+    color: #FFFDF9;
+    border-color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+    transform: translateY(-1px);
   }
 
-  .bento-print-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 12px !important;
-    align-items: start !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-rouse-check-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-remorse-check-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:not(:disabled):not([aria-disabled="true"]):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="willpower-surge-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-roll-btn"]:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"][aria-pressed="true"]:active {
+    transform: translateY(0);
+    box-shadow: none;
   }
 
-  .bento-span-2 {
-    grid-column: span 2 / span 2 !important;
+  /* 3B. CTA Secundário (BLOOD SURGE inativo, FRENESI / RÖTSCHRECK, steppers + / - ativos em //VITAL_STATUS) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"]:not([aria-pressed="true"]),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-toggle-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] .cyber-btn-outline:not(:disabled),
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-panel"] .cyber-btn-outline:not(:disabled) {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
   }
 
-  .bento-card-two-col {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    column-gap: 24px !important;
-    row-gap: 8px !important;
-    align-items: center !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"]:not([aria-pressed="true"]):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-toggle-btn"]:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] .cyber-btn-outline:not(:disabled):hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-panel"] .cyber-btn-outline:not(:disabled):hover {
+    background-color: #EAE0D0;
+    color: #0B0B0B;
+    border-color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+    transform: translate(-1px, -1px);
   }
 
-  .bento-card {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-    box-shadow: none !important;
-    background-color: #FFFFFF !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-blood-surge-toggle"]:not([aria-pressed="true"]):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-toggle-btn"]:active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="health-damage-track-"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-willpower-track"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="v5-humanity-track-"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid^="resource-field-"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-blood-pool-panel"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v20-virtues-panel"] .cyber-btn-outline:not(:disabled):active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="wod-frenzy-panel"] .cyber-btn-outline:not(:disabled):active {
+    transform: translate(0, 0);
+    box-shadow: none;
   }
 
-  .cyber-btn,
-  .cyber-btn-outline,
-  .cyber-roll-btn {
-    box-shadow: none !important;
+  /* Chips de Frenesi / Rötschreck no tema claro */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-frenzy-chip {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
   }
 
-  .dot-rating-pip {
-    border-color: #0B0B0B !important;
-    background-color: #FFFFFF !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-frenzy-chip.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
   }
 
-  .dot-rating-btn[aria-pressed="true"] .dot-rating-pip {
-    background-color: #0B0B0B !important;
-    border-color: #0B0B0B !important;
+  /* 3C. Estados Desabilitados WCAG AA no tema claro sem opacity baixa */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-roll-btn:disabled,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-btn-outline:disabled,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:disabled,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn[aria-disabled="true"] {
+    opacity: 1;
+    background-color: #EFE3D2;
+    color: #4A433D;
+    border: 1.5px dashed #6E6258;
+    border-radius: 4px;
+    box-shadow: none;
+    transform: none;
+    cursor: not-allowed;
   }
 
-  .dot-rating-value-btn {
-    box-shadow: none !important;
-    background-color: #F5F5F5 !important;
-    color: #0B0B0B !important;
-    border-color: #0B0B0B !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-roll-btn:disabled:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .cyber-btn-outline:disabled:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn:disabled:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mend-rouse-btn[aria-disabled="true"]:hover {
+    background-color: #EFE3D2;
+    color: #4A433D;
+    border-color: #6E6258;
+    box-shadow: none;
+    transform: none;
   }
 
-  .no-print {
-    display: none !important;
+  /* 4. Blocos Estruturados WoD — Light Cyber Brutalism (#FFFDF9, #EFE3D2, #0B0B0B, #5B0F18, 4px) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-panel {
+    background-color: #F8F1E7;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
   }
 
-  .print-only-header {
-    display: flex !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-item {
+    background-color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-summary-pill,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--merit {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--flaw {
+    background-color: #FEE2E2;
+    color: #8C1313;
+    border: 1.5px solid #8C1313;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-catalog-btn {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-catalog-btn:hover {
+    background-color: #EFE3D2;
+    color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw:not(.is-active) {
+    background-color: #FFFDF9;
+    color: #8C1313;
+    border: 1.5px dashed #8C1313;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-danger-btn {
+    background-color: #8C1313;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  /* 5. Assistente Guiado WoD — Light Cyber Brutalism (#FFFDF9, #F8F1E7, #EFE3D2, #0B0B0B, #5B0F18, 4px) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-strip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-topbar,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-panel {
+    background-color: #F8F1E7;
+    border-color: #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-panel,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-subcard {
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-subcard {
+    background-color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-btn,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-btn:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn:hover:not(:disabled) {
+    background-color: #EFE3D2;
+    color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-btn.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn.is-done:not(.is-active) {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn:disabled {
+    opacity: 1;
+    background-color: #EFE3D2;
+    color: #4A433D;
+    border: 1.5px dashed #6E6258;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-rules-toggle {
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-rules-toggle.is-strict {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-rules-toggle.is-free {
+    background-color: #0B0B0B;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    box-shadow: 2px 2px 0px #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-budget-pill {
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-budget-pill.is-ok {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-budget-pill.is-warn,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-alert {
+    background-color: #FEE2E2;
+    color: #8C1313;
+    border: 1.5px solid #8C1313;
+    border-radius: 4px;
+  }
+}
+
+/* Compactação Desktop (> 768px) restrita ao tema claro */
+@media screen and (forced-colors: none) and (min-width: 769px) {
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_identidade"] input.cyber-input:not([type="checkbox"]):not([type="radio"]) {
+    height: 30px;
+    min-height: 30px;
+    padding: 4px 8px;
+    line-height: 1.2;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-dot-row .dot-rating,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-dot-row .dot-rating-group,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_atributos"] .wod-attr-dot-row .dot-rating-btn {
+    min-block-size: 26px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] .v5-vital-control-row {
+    min-height: 28px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="health-aggravated-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="health-aggravated-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="health-superficial-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="health-superficial-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="willpower-aggravated-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="willpower-aggravated-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="willpower-superficial-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="willpower-superficial-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="humanity-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="humanity-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="humanity-stains-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="humanity-stains-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="v20-blood-pool-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid^="v20-virtue-"][data-testid$="-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid^="v20-virtue-"][data-testid$="-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="wod-frenzy-diff-dec"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="wod-frenzy-diff-inc"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid^="resource-field-"] .cyber-btn-outline {
+    width: 28px;
+    height: 28px;
+    min-width: 28px;
+    min-height: 28px;
+    padding: 0;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="v5-rouse-check-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="v5-blood-surge-toggle"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="v5-remorse-check-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="willpower-surge-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="wod-frenzy-toggle-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="wod-frenzy-roll-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] [data-testid="v5-halve-superficial-btn"],
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] .wod-mend-rouse-btn {
+    min-height: 30px;
+    padding-top: 4px;
+    padding-bottom: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-testid="v5-halve-superficial-input"] {
+    height: 30px;
+    min-height: 30px;
+    padding: 3px 6px;
+  }
+}
+
+/* Preservação Mobile (<= 768px) no tema claro */
+@media screen and (forced-colors: none) and (max-width: 768px) {
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) {
+    --card-padding: 12px;
+    --card-header-padding: 9px 12px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_identidade"] input.cyber-input:not([type="checkbox"]):not([type="radio"]) {
+    height: auto;
+    min-height: 36px;
+    font-size: 16px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) [data-card-id="card_combate"] .cyber-btn-outline {
+    min-height: 36px;
   }
 }
 
@@ -1048,12 +2445,12 @@ select:focus-visible,
     padding-top: max(12px, env(safe-area-inset-top, 0px));
     padding-left: max(12px, env(safe-area-inset-left, 0px));
     padding-right: max(12px, env(safe-area-inset-right, 0px));
-    padding-bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    padding-bottom: max(12px, env(safe-area-inset-bottom, 0px));
   }
 
   .mobile-modal-dialog {
-    max-height: calc(100dvh - 28px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    overflow-y: auto;
+    max-height: calc(100dvh - 24px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
+    overflow: hidden;
   }
 }
 
@@ -1062,6 +2459,17 @@ select:focus-visible,
   .print-shell input,
   .print-shell select,
   .print-shell textarea,
+  .wod-pool-composer input,
+  .wod-pool-composer select,
+  .wod-frenzy-panel input,
+  .wod-frenzy-panel select,
+  .wod-structured-blocks input,
+  .wod-structured-blocks select,
+  .wod-structured-blocks textarea,
+  .wod-creation-wizard input,
+  .wod-creation-wizard select,
+  .wod-creation-wizard textarea,
+  .xp-acquire-panel input,
   .mobile-modal-dialog input,
   .mobile-modal-dialog select,
   .mobile-modal-dialog textarea {
@@ -1156,12 +2564,12 @@ select:focus-visible,
 
   .mobile-modal-dialog {
     max-height: calc(100dvh - 16px - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px));
-    overflow-y: auto;
+    overflow: hidden;
   }
 }
 
 @media (max-width: 932px) and (min-width: 560px) and (orientation: landscape) {
-  .bento-print-grid {
+  .bento-print-grid:not(.bento-masonry-stack) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 
@@ -1287,13 +2695,108 @@ select:focus-visible,
 [data-theme="eink"] [data-testid="health-healthy-summary"],
 [data-theme="eink"] [data-testid="health-aggravated-value"],
 [data-theme="eink"] [data-testid="health-superficial-value"],
+[data-theme="eink"] [data-testid="willpower-available-summary"],
+[data-theme="eink"] [data-testid="willpower-aggravated-value"],
+[data-theme="eink"] [data-testid="willpower-superficial-value"],
+[data-theme="eink"] [data-testid="humanity-stains-value"],
+[data-theme="eink"] [data-testid="v5-blood-potency-panel"],
 [data-theme="eink"] [data-testid="willpower-auto-success-badge"],
 [data-theme="eink"] [data-testid="xp-active-formula-badge"],
 [data-theme="eink"] [data-testid^="xp-trait-formula-"],
 [data-theme="eink"] .die-chip,
 [data-theme="eink"] .die-chip--hunger,
 [data-theme="eink"] .v5-status-badge--messy,
-[data-theme="eink"] .v5-status-badge--bestial {
+[data-theme="eink"] .v5-status-badge--bestial,
+[data-theme="eink"] .wod-structured-summary-pill,
+[data-theme="eink"] .wod-mf-badge--merit,
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-wizard-budget-pill,
+[data-theme="eink"] .dnd5e-panel .tabular-nums,
+[data-theme="eink"] .dnd-d20-badge,
+[data-theme="eink"] .dnd-die-chip--kept,
+[data-theme="eink"] .dnd-die-chip--discarded {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .dnd5e-panel *,
+[data-theme="eink"] .dnd5e-roll-mode-bar * {
+  box-shadow: none !important;
+  background-image: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme="eink"] .dnd5e-roll-mode-btn[aria-pressed="true"],
+[data-theme="eink"] .dnd5e-prof-btn.is-active {
+  background-color: var(--ink-primary) !important;
+  color: var(--bg-card) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+[data-theme="eink"] .dnd-die-chip--discarded {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+@media (forced-colors: active) {
+  .dnd5e-roll-mode-btn[aria-pressed="true"],
+  .dnd5e-prof-btn.is-active {
+    background-color: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+    forced-color-adjust: none;
+  }
+
+  .dnd-die-chip--discarded {
+    text-decoration: line-through;
+    color: GrayText !important;
+    border-color: GrayText !important;
+  }
+}
+
+/* ============================================================================
+   CAMADAS DE EMPILHAMENTO (Z-LAYERING) & POPOVER PORTAL
+   ============================================================================ */
+.topbar-root {
+  z-index: var(--z-topbar);
+}
+
+.anchored-popover-portal {
+  position: fixed;
+  z-index: var(--z-popover);
+}
+
+div.mobile-modal-overlay {
+  z-index: var(--z-modal);
+}
+
+.mobile-roll-toast {
+  z-index: var(--z-toast);
+}
+
+div:has(> [data-testid="mobile-sidebar-drawer"]),
+div:has(> [data-testid="home-rules-drawer"]) {
+  z-index: var(--z-drawer);
+}
+
+/* Final cascade guard for Ctrl+P isolation */
+@media print {
+  html body #root > .app-screen-root,
+  body .app-screen-root,
+  .app-screen-root,
+  .print-only-header,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  html body #root > .paper-print-root,
+  body .paper-print-root,
+  .paper-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    visibility: visible !important;
+  }
 }

@@ -1,12 +1,17 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
+  canRerollDisciplineRouse,
   computeRemainingDamageAfterSoak,
   evaluateFormula,
   evaluateV5Rolls,
+  executeDisciplineRouseCheck,
+  executeRemorseCheck,
   executeRouseCheck,
+  getV5BloodPotencyStats,
   getV5BloodSurgeBonus,
   rerollV5PoolDice,
+  resolveFrenzyRoll,
   rollDiceExpression,
 } from './formula';
 
@@ -351,6 +356,261 @@ test('V20 regression: 3 successes vs Difficulty 6 remains SUCCESS (100% isolated
   assert.equal(res.total, 3);
   assert.equal(res.outcome, 'success');
   assert.equal(res.isFumble, false);
+});
+
+test('getV5BloodPotencyStats covers levels 0..10 with clamping and matches getV5BloodSurgeBonus', () => {
+  const expected = [
+    { level: 0, bloodSurgeDice: 1, mendSuperficialPerRouse: 1, powerBonusDice: 0, rouseRerollMaxLevel: 0, baneSeverity: 0, feedingPenaltyKey: '0' },
+    { level: 1, bloodSurgeDice: 2, mendSuperficialPerRouse: 1, powerBonusDice: 0, rouseRerollMaxLevel: 1, baneSeverity: 2, feedingPenaltyKey: '1' },
+    { level: 2, bloodSurgeDice: 2, mendSuperficialPerRouse: 2, powerBonusDice: 1, rouseRerollMaxLevel: 1, baneSeverity: 2, feedingPenaltyKey: '2' },
+    { level: 3, bloodSurgeDice: 3, mendSuperficialPerRouse: 2, powerBonusDice: 1, rouseRerollMaxLevel: 2, baneSeverity: 3, feedingPenaltyKey: '3' },
+    { level: 4, bloodSurgeDice: 3, mendSuperficialPerRouse: 3, powerBonusDice: 2, rouseRerollMaxLevel: 2, baneSeverity: 3, feedingPenaltyKey: '4' },
+    { level: 5, bloodSurgeDice: 4, mendSuperficialPerRouse: 3, powerBonusDice: 2, rouseRerollMaxLevel: 3, baneSeverity: 4, feedingPenaltyKey: '5+' },
+    { level: 6, bloodSurgeDice: 4, mendSuperficialPerRouse: 3, powerBonusDice: 3, rouseRerollMaxLevel: 3, baneSeverity: 4, feedingPenaltyKey: '5+' },
+    { level: 7, bloodSurgeDice: 5, mendSuperficialPerRouse: 4, powerBonusDice: 3, rouseRerollMaxLevel: 4, baneSeverity: 5, feedingPenaltyKey: '5+' },
+    { level: 8, bloodSurgeDice: 5, mendSuperficialPerRouse: 4, powerBonusDice: 4, rouseRerollMaxLevel: 4, baneSeverity: 5, feedingPenaltyKey: '5+' },
+    { level: 9, bloodSurgeDice: 6, mendSuperficialPerRouse: 5, powerBonusDice: 4, rouseRerollMaxLevel: 5, baneSeverity: 6, feedingPenaltyKey: '5+' },
+    { level: 10, bloodSurgeDice: 6, mendSuperficialPerRouse: 5, powerBonusDice: 5, rouseRerollMaxLevel: 5, baneSeverity: 6, feedingPenaltyKey: '5+' },
+  ] as const;
+
+  for (const row of expected) {
+    assert.deepEqual(getV5BloodPotencyStats(row.level), row);
+    assert.equal(getV5BloodSurgeBonus(row.level), row.bloodSurgeDice);
+  }
+  assert.deepEqual(getV5BloodPotencyStats(-3), expected[0]);
+  assert.deepEqual(getV5BloodPotencyStats(14), expected[10]);
+  assert.deepEqual(getV5BloodPotencyStats(Number.NaN), expected[0]);
+  assert.equal(getV5BloodSurgeBonus(undefined), 2);
+});
+
+test('executeRemorseCheck handles pass, fail, minimum 1 die, and humanity 0 floor', () => {
+  // Humanity 6, Stains 2 -> 2d10; [7, 2] -> 1 success -> pass, stains cleared, humanity stays 6
+  const seqPass = [0.65, 0.15];
+  let idxPass = 0;
+  const passRes = executeRemorseCheck(6, 2, () => seqPass[idxPass++]);
+  assert.equal(passRes.pool, 2);
+  assert.deepEqual(passRes.dice, [7, 2]);
+  assert.equal(passRes.successes, 1);
+  assert.equal(passRes.passed, true);
+  assert.equal(passRes.nextHumanity, 6);
+  assert.equal(passRes.nextStains, 0);
+
+  // Humanity 7, Stains 1 -> 2d10; [4, 5] -> 0 successes -> fail, humanity drops 7 -> 6, stains cleared
+  const seqFail = [0.35, 0.45];
+  let idxFail = 0;
+  const failRes = executeRemorseCheck(7, 1, () => seqFail[idxFail++]);
+  assert.equal(failRes.pool, 2);
+  assert.equal(failRes.successes, 0);
+  assert.equal(failRes.passed, false);
+  assert.equal(failRes.nextHumanity, 6);
+  assert.equal(failRes.nextStains, 0);
+
+  // Minimum 1 die when humanity + stains >= 10
+  const minPoolPass = executeRemorseCheck(8, 2, () => 0.75);
+  assert.equal(minPoolPass.pool, 1);
+  assert.deepEqual(minPoolPass.dice, [8]);
+  assert.equal(minPoolPass.passed, true);
+
+  const minPoolOverflow = executeRemorseCheck(9, 2, () => 0.15);
+  assert.equal(minPoolOverflow.pool, 1);
+  assert.equal(minPoolOverflow.passed, false);
+  assert.equal(minPoolOverflow.nextHumanity, 8);
+
+  // Humanity cannot drop below 0
+  const floorZero = executeRemorseCheck(0, 10, () => 0.05);
+  assert.equal(floorZero.pool, 1);
+  assert.equal(floorZero.passed, false);
+  assert.equal(floorZero.nextHumanity, 0);
+  assert.equal(floorZero.nextStains, 0);
+});
+
+test('resolveFrenzyRoll computes V5 and V20 pools exempt from wounds and Hunger dice', () => {
+  // V5: Composure 3 + Resolve 2 = max WP 5, 2 superficial damage -> 3 WP free; Humanity 7 -> floor(7/3)=2 -> 5d10
+  // Health fully damaged (impaired -2) and Hunger 4 MUST be ignored
+  const v5Sheet = {
+    rulePreset: 'vampire-v5' as const,
+    cards: [
+      {
+        fields: [
+          { id: 'f_composure', key: 'composure', kind: 'number', value: 3 },
+          { id: 'f_resolve', key: 'resolve', kind: 'number', value: 2 },
+          { id: 'f_health', key: 'health', kind: 'resource', value: 0, max: 6, superficialDamage: 6, aggravatedDamage: 0 },
+          { id: 'f_willpower', key: 'willpower', kind: 'resource', value: 3, max: 5, superficialDamage: 2, aggravatedDamage: 0 },
+          { id: 'f_hunger', key: 'hunger', kind: 'resource', value: 4, max: 5 },
+          { id: 'f_humanity', key: 'humanity', kind: 'resource', value: 7, max: 10 },
+        ],
+      },
+    ],
+  };
+
+  const v5Seq = [0.65, 0.75, 0.85, 0.25, 0.35]; // [7, 8, 9, 3, 4] -> 3 successes vs difficulty 3
+  let v5Idx = 0;
+  const v5Res = resolveFrenzyRoll(v5Sheet, {
+    difficulty: 3,
+    kind: 'frenzy',
+    rng: () => v5Seq[v5Idx++],
+  });
+  assert.equal(v5Res.ok, true);
+  assert.equal(v5Res.isFrenzyRoll, true);
+  assert.equal(v5Res.frenzyKind, 'frenzy');
+  assert.equal(v5Res.poolSize, 5);
+  assert.equal(v5Res.rolls.length, 5);
+  assert.equal(v5Res.hungerDice, 0);
+  assert.deepEqual(v5Res.hungerRolls, []);
+  assert.equal(v5Res.woundPenalty, undefined);
+  assert.equal(v5Res.total, 3);
+  assert.equal(v5Res.resisted, true);
+
+  // V5 minimum 1 die when WP free is 0 and Humanity < 3
+  const v5MinSheet = {
+    rulePreset: 'vampire-v5' as const,
+    cards: [
+      {
+        fields: [
+          { id: 'f_composure', key: 'composure', kind: 'number', value: 1 },
+          { id: 'f_resolve', key: 'resolve', kind: 'number', value: 1 },
+          { id: 'f_willpower', key: 'willpower', kind: 'resource', value: 0, max: 2, superficialDamage: 2, aggravatedDamage: 0 },
+          { id: 'f_humanity', key: 'humanity', kind: 'resource', value: 2, max: 10 },
+        ],
+      },
+    ],
+  };
+  const v5MinRes = resolveFrenzyRoll(v5MinSheet, { difficulty: 2, rng: () => 0.95 });
+  assert.equal(v5MinRes.poolSize, 1);
+  assert.equal(v5MinRes.rolls.length, 1);
+  assert.equal(v5MinRes.resisted, false);
+
+  // V20: Self-Control 3 vs TN 6, and Courage 4 vs TN 7 (Rötschreck) ignoring -5 wound penalty
+  const v20Sheet = {
+    rulePreset: 'storyteller-v20' as const,
+    virtues: { conscience: 3, selfControl: 3, courage: 4 },
+    cards: [
+      {
+        fields: [
+          { id: 'f_health', key: 'health', kind: 'resource', value: 1, max: 7, aggravatedDamage: 6 },
+        ],
+      },
+    ],
+  };
+  const v20Frenzy = resolveFrenzyRoll(v20Sheet, {
+    virtue: 'autocontrole',
+    difficulty: 6,
+    rng: () => 0.65,
+  });
+  assert.equal(v20Frenzy.frenzyKind, 'frenzy');
+  assert.equal(v20Frenzy.virtueUsed, 'selfControl');
+  assert.equal(v20Frenzy.poolSize, 3);
+  assert.equal(v20Frenzy.rolls.length, 3);
+  assert.equal(v20Frenzy.woundPenalty, undefined);
+  assert.equal(v20Frenzy.hungerDice, 0);
+  assert.equal(v20Frenzy.total, 3);
+  assert.equal(v20Frenzy.resisted, true);
+
+  const v20Rotschreck = resolveFrenzyRoll(v20Sheet, {
+    virtue: 'coragem',
+    difficulty: 7,
+    rng: () => 0.55, // rolls 6 < TN 7 -> failure
+  });
+  assert.equal(v20Rotschreck.frenzyKind, 'rotschreck');
+  assert.equal(v20Rotschreck.virtueUsed, 'courage');
+  assert.equal(v20Rotschreck.poolSize, 4);
+  assert.equal(v20Rotschreck.difficulty, 7);
+  assert.equal(v20Rotschreck.total, 0);
+  assert.equal(v20Rotschreck.resisted, false);
+});
+
+test('canRerollDisciplineRouse and executeDisciplineRouseCheck enforce Blood Potency reroll levels', () => {
+  // BP 0 allows no rerolls
+  assert.equal(canRerollDisciplineRouse(0, 1), false);
+  // BP 1 and BP 2 reroll Level 1 only
+  assert.equal(canRerollDisciplineRouse(1, 1), true);
+  assert.equal(canRerollDisciplineRouse(1, 2), false);
+  assert.equal(canRerollDisciplineRouse(2, 1), true);
+  assert.equal(canRerollDisciplineRouse(2, 2), false);
+  // BP 3 and BP 4 reroll up to Level 2
+  assert.equal(canRerollDisciplineRouse(3, 1), true);
+  assert.equal(canRerollDisciplineRouse(3, 2), true);
+  assert.equal(canRerollDisciplineRouse(3, 3), false);
+  // BP 5 rerolls up to Level 3; BP 9/10 reroll up to Level 5
+  assert.equal(canRerollDisciplineRouse(5, 3), true);
+  assert.equal(canRerollDisciplineRouse(5, 4), false);
+  assert.equal(canRerollDisciplineRouse(9, 5), true);
+  assert.equal(canRerollDisciplineRouse(10, 5), true);
+  // Invalid or omitted power levels are never eligible
+  assert.equal(canRerollDisciplineRouse(5, undefined), false);
+  assert.equal(canRerollDisciplineRouse(5, 0), false);
+  assert.equal(canRerollDisciplineRouse(5, -1), false);
+  assert.equal(canRerollDisciplineRouse(5, Number.NaN), false);
+
+  // BP 1 + Level 1: first fails (3), second passes (7) -> rerolled, +0 Hunger
+  let idxPass = 0;
+  const seqPass = [0.25, 0.65]; // [3, 7]
+  const rerollPass = executeDisciplineRouseCheck(1, 1, () => seqPass[idxPass++]);
+  assert.deepEqual(rerollPass, {
+    dice: [3, 7],
+    passed: true,
+    rerolledByBloodPotency: true,
+    hungerDelta: 0,
+  });
+
+  // BP 1 + Level 1: both fail (2, 4) -> rerolled, +1 Hunger
+  let idxFail = 0;
+  const seqFail = [0.15, 0.35]; // [2, 4]
+  const rerollFail = executeDisciplineRouseCheck(1, 1, () => seqFail[idxFail++]);
+  assert.deepEqual(rerollFail, {
+    dice: [2, 4],
+    passed: false,
+    rerolledByBloodPotency: true,
+    hungerDelta: 1,
+  });
+
+  // BP 1 + Level 1: first passes (8) -> no second die rolled, rng called once
+  let callsOnPass = 0;
+  const firstPass = executeDisciplineRouseCheck(1, 1, () => {
+    callsOnPass += 1;
+    return 0.75; // 8
+  });
+  assert.equal(callsOnPass, 1);
+  assert.deepEqual(firstPass, {
+    dice: [8],
+    passed: true,
+    rerolledByBloodPotency: false,
+    hungerDelta: 0,
+  });
+
+  // BP 1 + Level 2: first fails (3) -> not eligible for reroll, +1 Hunger
+  let callsIneligible = 0;
+  const ineligibleFail = executeDisciplineRouseCheck(1, 2, () => {
+    callsIneligible += 1;
+    return 0.25; // 3
+  });
+  assert.equal(callsIneligible, 1);
+  assert.deepEqual(ineligibleFail, {
+    dice: [3],
+    passed: false,
+    rerolledByBloodPotency: false,
+    hungerDelta: 1,
+  });
+
+  // BP 3 + Level 2: first fails (5), reroll passes (6) -> avoids +1 Hunger
+  let idxBp3 = 0;
+  const seqBp3 = [0.45, 0.55]; // [5, 6]
+  const bp3Pass = executeDisciplineRouseCheck(3, 2, () => seqBp3[idxBp3++]);
+  assert.deepEqual(bp3Pass, {
+    dice: [5, 6],
+    passed: true,
+    rerolledByBloodPotency: true,
+    hungerDelta: 0,
+  });
+
+  // Non-discipline Rouse Check (powerLevel undefined) never rerolls even at BP 3
+  const genericRouseFail = executeDisciplineRouseCheck(3, undefined, () => 0.35); // 4
+  assert.deepEqual(genericRouseFail, {
+    dice: [4],
+    passed: false,
+    rerolledByBloodPotency: false,
+    hungerDelta: 1,
+  });
 });
 
 

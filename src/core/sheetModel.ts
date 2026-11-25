@@ -1,5 +1,6 @@
 import {
   evaluateFormula,
+  type FrenzyKind,
   getV5BloodSurgeBonus,
   normalizeRulePreset,
   parseWodPoolExpression,
@@ -16,8 +17,36 @@ import {
   findClanByIdOrName,
   getClansForEdition,
 } from './wodClansDisciplinesCatalog.ts';
+import {
+  createDefaultDnd5eSlots,
+  createDefaultDnd5eState,
+  DND5E_SKILLS,
+  type Dnd5eAbilityKey,
+  type Dnd5eHitDieType,
+  type Dnd5eRollMode,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  type Dnd5eSpellcastingAbilityKey,
+  type Dnd5eState,
+  normalizeDnd5eState,
+} from './dnd5eRules.ts';
 
 export type { RulePreset, SoakDamageType };
+export type {
+  Dnd5eAbilityKey,
+  Dnd5eDeathSavesState,
+  Dnd5eHitDiceState,
+  Dnd5eHitDieType,
+  Dnd5eRollMode,
+  Dnd5eSaveProficiencies,
+  Dnd5eSkillKey,
+  Dnd5eSkillProficiencies,
+  Dnd5eSkillProficiency,
+  Dnd5eSpellcastingAbilityKey,
+  Dnd5eSpellcastingState,
+  Dnd5eSpellSlotEntry,
+  Dnd5eState,
+} from './dnd5eRules.ts';
 
 export const DEVICE_ID_STORAGE_KEY = 'grid_sheet_device_id_v1';
 
@@ -153,6 +182,7 @@ export interface SheetField {
   lethalDamage?: number;
   superficialDamage?: number;
   aggravatedDamage?: number;
+  stains?: number;
   soakDamageType?: SoakDamageType;
   formula?: string;
   showPlus?: boolean;
@@ -216,17 +246,53 @@ export interface RollLogEntry {
   isRouseCheck?: boolean;
   isBloodSurge?: boolean;
   isWillpowerReroll?: boolean;
+  isRemorseCheck?: boolean;
+  isFrenzyRoll?: boolean;
+  frenzyKind?: FrenzyKind;
+  humanityLost?: boolean;
   rerolledIndices?: number[];
+  d20Mode?: Dnd5eRollMode;
+  d20Dice?: number[];
+  d20Kept?: number;
+  d20Discarded?: number | null;
+  isDeathSave?: boolean;
 }
 
 export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
-export type FieldXpCategory = XpUpgradeCategory | DisciplineAffinity;
+export type FieldXpCategory = XpUpgradeCategory | DisciplineAffinity | 'advantage';
 export type XpRulePreset = RulePreset;
 
 export interface VirtuesState {
   conscience: number;
   selfControl: number;
   courage: number;
+}
+
+export interface TouchstoneEntry {
+  id: string;
+  conviction: string;
+  touchstone: string;
+  notes?: string;
+}
+
+export type MeritFlawKind = 'merit' | 'flaw';
+
+export interface MeritFlawEntry {
+  id: string;
+  kind: MeritFlawKind;
+  name: string;
+  rating: number;
+  notes?: string;
+  catalogId?: string;
+}
+
+export interface HavenEntry {
+  id: string;
+  name: string;
+  location?: string;
+  rating: number;
+  traits: string[];
+  notes?: string;
 }
 
 export interface XpLedgerEntry {
@@ -241,6 +307,7 @@ export interface XpLedgerEntry {
   fromValue?: number;
   toValue?: number;
   createdField?: boolean;
+  createdFieldIds?: string[];
   createdCardId?: string;
   prevSpecialtyLabel?: string;
   prevRollSpecialty?: boolean;
@@ -266,7 +333,12 @@ export interface CharacterSheetState {
   customUseNewLevelBase?: boolean;
   bloodPool?: number;
   bloodSurge?: boolean;
+  stains?: number;
   virtues?: VirtuesState;
+  touchstones?: TouchstoneEntry[];
+  meritsFlaws?: MeritFlawEntry[];
+  havens?: HavenEntry[];
+  dnd5eState?: Dnd5eState;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
   xp?: XpState;
@@ -738,6 +810,14 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
         ],
       },
       {
+        id: 'card_wod_dossier',
+        tab: 'magias',
+        code: '//TRAITS_&_HAVENS',
+        title: 'QUALITIES, FLAWS & HAVENS',
+        colSpan: 2,
+        fields: [],
+      },
+      {
         id: 'card_notas',
         tab: 'magias',
         code: '//CHRONICLE_LOG',
@@ -753,6 +833,34 @@ export function createWorldOfDarknessSheet(): CharacterSheetState {
               'Elysium meeting confirmed at 02:00. Sheriff suspects Masquerade breach in the Harbor District; secure the obsidian ledger before sunrise.',
           },
         ],
+      },
+    ],
+    meritsFlaws: [
+      {
+        id: 'mf_v20_1',
+        kind: 'merit',
+        name: 'Status (Camarilla)',
+        rating: 2,
+        catalogId: 'status',
+        notes: 'Recognized Neonate in the Harbor Court.',
+      },
+      {
+        id: 'mf_v20_2',
+        kind: 'flaw',
+        name: 'Enemy',
+        rating: 2,
+        catalogId: 'enemy',
+        notes: 'Rival Anarchs tracking Harbor investments.',
+      },
+    ],
+    havens: [
+      {
+        id: 'hv_v20_1',
+        name: 'Old Observatory',
+        location: 'Nocturne Heights',
+        rating: 3,
+        traits: ['library', 'security_system'],
+        notes: 'Reinforced shutters and private occult archive.',
       },
     ],
     rollLogs: [
@@ -892,7 +1000,13 @@ export function createWorldOfDarknessV5Sheet(): CharacterSheetState {
     return card;
   });
 
-  const { bloodPool: _droppedBloodPool, virtues: _droppedVirtues, ...baseClean } = base;
+  const {
+    bloodPool: _droppedBloodPool,
+    virtues: _droppedVirtues,
+    meritsFlaws: _droppedMeritsFlaws,
+    havens: _droppedHavens,
+    ...baseClean
+  } = base;
 
   return {
     ...baseClean,
@@ -904,6 +1018,42 @@ export function createWorldOfDarknessV5Sheet(): CharacterSheetState {
     rulePreset: 'vampire-v5',
     xpRulePreset: 'vampire-v5',
     cards: transformedCards,
+    touchstones: [
+      {
+        id: 'ts_v5_1',
+        conviction: 'Never break an oath sealed in blood',
+        touchstone: 'Mateo Voss (Archivist Cousin)',
+        notes: 'Keeps the old harbor ledgers safe during daylight.',
+      },
+    ],
+    meritsFlaws: [
+      {
+        id: 'mf_v5_1',
+        kind: 'merit',
+        name: 'Linguistics',
+        rating: 2,
+        catalogId: 'linguistics',
+        notes: 'Latin and Old Venetian.',
+      },
+      {
+        id: 'mf_v5_2',
+        kind: 'flaw',
+        name: 'Dark Secret',
+        rating: 1,
+        catalogId: 'dark_secret',
+        notes: 'Smuggled an unauthorized fledgling into the city.',
+      },
+    ],
+    havens: [
+      {
+        id: 'hv_v5_1',
+        name: 'Harbor Sub-Vault',
+        location: 'Pier 14 Warehouse District',
+        rating: 2,
+        traits: ['postern', 'security_system'],
+        notes: 'Floodgate escape tunnel to the canal.',
+      },
+    ],
     rollLogs: [],
     xp: {
       totalEarned: 15,
@@ -1295,6 +1445,44 @@ export function createDnd5ePreset(): CharacterSheetState {
         },
       ],
     },
+    dnd5eState: createDefaultDnd5eState({
+      level: 5,
+      inspiration: true,
+      tempHp: 0,
+      hitDice: { die: 'd10', current: 5, max: 5 },
+      deathSaves: { successes: 0, failures: 0 },
+      saveProficiencies: { str: true, dex: false, con: true, int: false, wis: false, cha: false },
+      skillProficiencies: {
+        acrobatics: 'none',
+        animal_handling: 'none',
+        arcana: 'proficient',
+        athletics: 'proficient',
+        deception: 'none',
+        history: 'none',
+        insight: 'none',
+        intimidation: 'none',
+        investigation: 'none',
+        medicine: 'none',
+        nature: 'none',
+        perception: 'proficient',
+        performance: 'none',
+        persuasion: 'none',
+        religion: 'none',
+        sleight_of_hand: 'none',
+        stealth: 'proficient',
+        survival: 'none',
+      },
+      spellcasting: {
+        ability: 'int',
+        slots: createDefaultDnd5eSlots().map((s) =>
+          s.level === 1
+            ? { level: 1, max: 4, used: 1 }
+            : s.level === 2
+              ? { level: 2, max: 2, used: 0 }
+              : s,
+        ),
+      },
+    }),
   };
 }
 
@@ -2086,7 +2274,23 @@ export function updateFieldValue(
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
-      fields: card.fields.map((f) => (f.id === fieldId ? { ...f, value: nextValue } : f)),
+      fields: card.fields.map((f) => {
+        if (f.id !== fieldId) return f;
+        if (
+          (f.id === 'f_humanity' || f.key === 'humanity') &&
+          typeof nextValue === 'number' &&
+          Number.isFinite(nextValue) &&
+          typeof f.stains === 'number'
+        ) {
+          const clampedH = Math.max(0, Math.min(10, Math.round(nextValue)));
+          return {
+            ...f,
+            value: clampedH,
+            stains: Math.max(0, Math.min(10 - clampedH, Math.round(f.stains))),
+          };
+        }
+        return { ...f, value: nextValue };
+      }),
     })),
   });
   const withDerivedTracks =
@@ -2118,6 +2322,13 @@ export function adjustResourceValue(
             value: clamped,
             aggravatedDamage: nextAgg,
             superficialDamage: nextSup,
+          };
+        }
+        if ((f.id === 'f_humanity' || f.key === 'humanity') && typeof f.stains === 'number') {
+          return {
+            ...f,
+            value: clamped,
+            stains: Math.max(0, Math.min(10 - clamped, Math.round(f.stains))),
           };
         }
         return { ...f, value: clamped };
@@ -2601,36 +2812,305 @@ export function computeWoundPenalty(
   return -5;
 }
 
+export interface HumanityStainsResult {
+  humanity: number;
+  stains: number;
+  overflowStains: number;
+  isDegenerating: boolean;
+  remorsePool: number;
+}
+
+export function applyHumanityStains(
+  humanity: number,
+  currentStains: number,
+  delta: number,
+): HumanityStainsResult {
+  const clampedHumanity =
+    typeof humanity === 'number' && Number.isFinite(humanity)
+      ? Math.max(0, Math.min(10, Math.round(humanity)))
+      : 7;
+  const clampedCurrentStains =
+    typeof currentStains === 'number' && Number.isFinite(currentStains)
+      ? Math.max(0, Math.min(10, Math.round(currentStains)))
+      : 0;
+  const roundedDelta =
+    typeof delta === 'number' && Number.isFinite(delta) ? Math.round(delta) : 0;
+
+  const maxFitStains = Math.max(0, 10 - clampedHumanity);
+  const rawNextStains = Math.max(0, clampedCurrentStains + roundedDelta);
+  const overflowStains = Math.max(0, rawNextStains - maxFitStains);
+  const stains = Math.min(maxFitStains, rawNextStains);
+  const remorsePool = Math.max(1, 10 - clampedHumanity - stains);
+
+  return {
+    humanity: clampedHumanity,
+    stains,
+    overflowStains,
+    isDegenerating: overflowStains > 0,
+    remorsePool,
+  };
+}
+
+export function getSheetHumanityStains(sheet: CharacterSheetState): {
+  humanity: number;
+  stains: number;
+  remorsePool: number;
+} {
+  const humField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity');
+  const rawHumanity =
+    typeof humField?.value === 'number' && Number.isFinite(humField.value) ? humField.value : 7;
+  const humanity = Math.max(0, Math.min(10, Math.round(rawHumanity)));
+  const rawStains =
+    typeof humField?.stains === 'number' && Number.isFinite(humField.stains)
+      ? humField.stains
+      : typeof sheet.stains === 'number' && Number.isFinite(sheet.stains)
+        ? sheet.stains
+        : 0;
+  const stains = Math.max(0, Math.min(10 - humanity, Math.round(rawStains)));
+  const remorsePool = Math.max(1, 10 - humanity - stains);
+  return { humanity, stains, remorsePool };
+}
+
+export interface V5WillpowerState {
+  max: number;
+  superficial: number;
+  aggravated: number;
+  available: number;
+  isImpaired: boolean;
+  isFullyAggravated: boolean;
+}
+
+export function applyV5WillpowerDamage(
+  willpowerField: SheetField,
+  type: 'superficial' | 'aggravated',
+  amount: number,
+): SheetField {
+  const max = Math.max(1, Math.round(willpowerField.max ?? 5));
+  let nextAgg = Math.max(0, Math.min(max, Math.round(willpowerField.aggravatedDamage ?? 0)));
+  let nextSup = Math.max(
+    0,
+    Math.min(max - nextAgg, Math.round(willpowerField.superficialDamage ?? 0)),
+  );
+  const delta = typeof amount === 'number' && Number.isFinite(amount) ? Math.round(amount) : 0;
+
+  if (delta > 0) {
+    for (let step = 0; step < delta; step += 1) {
+      if (type === 'superficial') {
+        if (nextAgg + nextSup < max) {
+          nextSup += 1;
+        } else if (nextSup > 0) {
+          // Official V5 overflow: superficial on a full track converts 1 superficial into aggravated
+          nextSup -= 1;
+          nextAgg = Math.min(max, nextAgg + 1);
+        }
+      } else if (nextAgg < max) {
+        nextAgg += 1;
+        nextSup = Math.min(nextSup, max - nextAgg);
+      }
+    }
+  } else if (delta < 0) {
+    const steps = Math.abs(delta);
+    if (type === 'superficial') {
+      nextSup = Math.max(0, nextSup - steps);
+    } else {
+      nextAgg = Math.max(0, nextAgg - steps);
+    }
+  }
+
+  const available = Math.max(0, max - nextAgg - nextSup);
+  return {
+    ...willpowerField,
+    max,
+    value: available,
+    superficialDamage: nextSup,
+    aggravatedDamage: nextAgg,
+  };
+}
+
+export function healV5WillpowerDamage(
+  willpowerField: SheetField,
+  type: 'superficial' | 'aggravated',
+  amount = 1,
+): SheetField {
+  const healSteps =
+    typeof amount === 'number' && Number.isFinite(amount) ? Math.max(0, Math.round(amount)) : 0;
+  return applyV5WillpowerDamage(willpowerField, type, -healSteps);
+}
+
+export function getV5WillpowerState(sheet: CharacterSheetState): V5WillpowerState {
+  const allFields = sheet.cards.flatMap((c) => c.fields);
+  const wpField = allFields.find(
+    (f) => f.id === 'f_willpower' || f.key.trim().toLowerCase() === 'willpower',
+  );
+  const composureField = allFields.find(
+    (f) => f.kind === 'number' && f.key.trim().toLowerCase() === 'composure',
+  );
+  const resolveField = allFields.find(
+    (f) => f.kind === 'number' && f.key.trim().toLowerCase() === 'resolve',
+  );
+  const hasDerivedAttrs =
+    resolveRulePreset(sheet) === 'vampire-v5' &&
+    typeof composureField?.value === 'number' &&
+    Number.isFinite(composureField.value) &&
+    typeof resolveField?.value === 'number' &&
+    Number.isFinite(resolveField.value);
+
+  const max = hasDerivedAttrs
+    ? Math.max(1, Math.round(composureField!.value as number) + Math.round(resolveField!.value as number))
+    : Math.max(1, Math.round(wpField?.max ?? 5));
+  const aggravated = Math.max(0, Math.min(max, Math.round(wpField?.aggravatedDamage ?? 0)));
+  const remainingAfterAgg = Math.max(0, max - aggravated);
+  const hasExplicitTrack =
+    typeof wpField?.superficialDamage === 'number' ||
+    typeof wpField?.aggravatedDamage === 'number';
+  const superficial = hasExplicitTrack
+    ? Math.max(0, Math.min(remainingAfterAgg, Math.round(wpField?.superficialDamage ?? 0)))
+    : Math.max(
+        0,
+        Math.min(
+          remainingAfterAgg,
+          max -
+            Math.round(
+              typeof wpField?.value === 'number' && Number.isFinite(wpField.value)
+                ? wpField.value
+                : max,
+            ),
+        ),
+      );
+  const available = Math.max(0, max - superficial - aggravated);
+  return {
+    max,
+    superficial,
+    aggravated,
+    available,
+    isImpaired: max > 0 && superficial + aggravated >= max,
+    isFullyAggravated: max > 0 && aggravated >= max,
+  };
+}
+
+export function adjustV5WillpowerDamage(
+  sheet: CharacterSheetState,
+  damageType: 'superficial' | 'aggravated',
+  delta: number,
+): CharacterSheetState {
+  const { max: derivedMax } = getV5WillpowerState(sheet);
+  const updated = touchSheetMetadata({
+    ...sheet,
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        if ((f.id !== 'f_willpower' && f.key !== 'willpower') || f.kind !== 'resource') return f;
+        const nextField = applyV5WillpowerDamage(
+          { ...f, max: f.max ?? derivedMax },
+          damageType,
+          delta,
+        );
+        return nextField;
+      }),
+    })),
+  });
+  return syncWillpowerToggleWithResource(updated);
+}
+
+export function adjustSheetHumanityStains(
+  sheet: CharacterSheetState,
+  delta: number,
+): {
+  sheet: CharacterSheetState;
+  humanity: number;
+  stains: number;
+  overflowStains: number;
+} {
+  const { humanity, stains } = getSheetHumanityStains(sheet);
+  const res = applyHumanityStains(humanity, stains, delta);
+  const hasHumField = sheet.cards
+    .flatMap((c) => c.fields)
+    .some((f) => f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity');
+
+  let nextSheet: CharacterSheetState = touchSheetMetadata({
+    ...sheet,
+    ...(sheet.stains !== undefined ? { stains: res.stains } : {}),
+    cards: hasHumField
+      ? sheet.cards.map((card) => ({
+          ...card,
+          fields: card.fields.map((f) =>
+            f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity'
+              ? { ...f, value: res.humanity, max: 10, stains: res.stains }
+              : f,
+          ),
+        }))
+      : sheet.cards,
+  });
+
+  if (res.overflowStains > 0 && resolveRulePreset(nextSheet) === 'vampire-v5') {
+    nextSheet = adjustV5WillpowerDamage(nextSheet, 'aggravated', res.overflowStains);
+  }
+
+  return {
+    sheet: nextSheet,
+    humanity: res.humanity,
+    stains: res.stains,
+    overflowStains: res.overflowStains,
+  };
+}
+
+export function applyRemorseOutcomeToSheet(
+  sheet: CharacterSheetState,
+  nextHumanity: number,
+): CharacterSheetState {
+  const clampedHumanity = Math.max(0, Math.min(10, Math.round(nextHumanity)));
+  return touchSheetMetadata({
+    ...sheet,
+    ...(sheet.stains !== undefined ? { stains: 0 } : {}),
+    cards: sheet.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) =>
+        f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity'
+          ? { ...f, value: clampedHumanity, max: 10, stains: 0 }
+          : f,
+      ),
+    })),
+  });
+}
+
 export function applyV5WillpowerSuperficialDamage(
   sheet: CharacterSheetState,
   delta = 1,
 ): CharacterSheetState {
-  return touchSheetMetadata({
+  const updated = touchSheetMetadata({
     ...sheet,
     cards: sheet.cards.map((card) => ({
       ...card,
       fields: card.fields.map((f) => {
         if ((f.id !== 'f_willpower' && f.key !== 'willpower') || f.kind !== 'resource') return f;
         const max = Math.max(1, f.max ?? 8);
+        const hasExplicitTrack =
+          typeof f.superficialDamage === 'number' || typeof f.aggravatedDamage === 'number';
         const currentVal = typeof f.value === 'number' ? Math.max(0, Math.min(max, f.value)) : max;
-        const currentSup = Math.max(0, Math.min(max, f.superficialDamage ?? 0));
-        if (delta > 0) {
-          const spent = Math.min(currentVal, delta);
+        if (!hasExplicitTrack && currentVal < max) {
+          const currentSup = Math.max(0, Math.min(max, f.superficialDamage ?? 0));
+          if (delta > 0) {
+            const spent = Math.min(currentVal, delta);
+            return {
+              ...f,
+              value: Math.max(0, currentVal - spent),
+              superficialDamage: Math.min(max, currentSup + spent),
+            };
+          }
+          const healed = Math.min(currentSup, Math.abs(delta));
           return {
             ...f,
-            value: Math.max(0, currentVal - spent),
-            superficialDamage: Math.min(max, currentSup + spent),
+            value: Math.min(max, currentVal + healed),
+            superficialDamage: Math.max(0, currentSup - healed),
           };
         }
-        const healed = Math.min(currentSup, Math.abs(delta));
-        return {
-          ...f,
-          value: Math.min(max, currentVal + healed),
-          superficialDamage: Math.max(0, currentSup - healed),
-        };
+        return applyV5WillpowerDamage(f, 'superficial', delta);
       }),
     })),
   });
+  return syncWillpowerToggleWithResource(updated);
 }
 
 export function applyRouseCheckHunger(
@@ -2652,6 +3132,201 @@ export function toggleSheetBloodSurge(
   });
 }
 
+function createWodDossierCard(isV5: boolean): SheetCard {
+  return {
+    id: 'card_wod_dossier',
+    tab: 'magias',
+    code: isV5 ? '//CHRONICLE_TRAITS' : '//TRAITS_&_HAVENS',
+    title: isV5 ? 'CONVICTIONS, QUALITIES & HAVENS' : 'QUALITIES, FLAWS & HAVENS',
+    colSpan: 2,
+    fields: [],
+  };
+}
+
+function clampMeritFlawRating(rating: number): number {
+  return Number.isFinite(rating) ? Math.max(1, Math.min(5, Math.round(rating))) : 1;
+}
+
+function clampHavenRating(rating: number): number {
+  return Number.isFinite(rating) ? Math.max(0, Math.min(5, Math.round(rating))) : 0;
+}
+
+export function addTouchstone(
+  sheet: CharacterSheetState,
+  entry: TouchstoneEntry,
+): CharacterSheetState {
+  const existing = Array.isArray(sheet.touchstones) ? sheet.touchstones : [];
+  return touchSheetMetadata({
+    ...sheet,
+    touchstones: [...existing, entry],
+  });
+}
+
+export function updateTouchstone(
+  sheet: CharacterSheetState,
+  id: string,
+  patch: Partial<Omit<TouchstoneEntry, 'id'>>,
+): CharacterSheetState {
+  const existing = Array.isArray(sheet.touchstones) ? sheet.touchstones : [];
+  return touchSheetMetadata({
+    ...sheet,
+    touchstones: existing.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+  });
+}
+
+export function removeTouchstone(sheet: CharacterSheetState, id: string): CharacterSheetState {
+  const existing = Array.isArray(sheet.touchstones) ? sheet.touchstones : [];
+  return touchSheetMetadata({
+    ...sheet,
+    touchstones: existing.filter((item) => item.id !== id),
+  });
+}
+
+export function addMeritFlaw(
+  sheet: CharacterSheetState,
+  entry: MeritFlawEntry,
+): CharacterSheetState {
+  const existing = Array.isArray(sheet.meritsFlaws) ? sheet.meritsFlaws : [];
+  return touchSheetMetadata({
+    ...sheet,
+    meritsFlaws: [...existing, { ...entry, rating: clampMeritFlawRating(entry.rating) }],
+  });
+}
+
+export function updateMeritFlaw(
+  sheet: CharacterSheetState,
+  id: string,
+  patch: Partial<Omit<MeritFlawEntry, 'id'>>,
+): CharacterSheetState {
+  const existing = Array.isArray(sheet.meritsFlaws) ? sheet.meritsFlaws : [];
+  return touchSheetMetadata({
+    ...sheet,
+    meritsFlaws: existing.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            ...patch,
+            rating:
+              patch.rating !== undefined ? clampMeritFlawRating(patch.rating) : item.rating,
+          }
+        : item,
+    ),
+  });
+}
+
+export function removeMeritFlaw(sheet: CharacterSheetState, id: string): CharacterSheetState {
+  const existing = Array.isArray(sheet.meritsFlaws) ? sheet.meritsFlaws : [];
+  return touchSheetMetadata({
+    ...sheet,
+    meritsFlaws: existing.filter((item) => item.id !== id),
+  });
+}
+
+export function addHaven(sheet: CharacterSheetState, entry: HavenEntry): CharacterSheetState {
+  const existing = Array.isArray(sheet.havens) ? sheet.havens : [];
+  return touchSheetMetadata({
+    ...sheet,
+    havens: [
+      ...existing,
+      {
+        ...entry,
+        rating: clampHavenRating(entry.rating),
+        traits: Array.isArray(entry.traits) ? [...entry.traits] : [],
+      },
+    ],
+  });
+}
+
+export function updateHaven(
+  sheet: CharacterSheetState,
+  id: string,
+  patch: Partial<Omit<HavenEntry, 'id'>>,
+): CharacterSheetState {
+  const existing = Array.isArray(sheet.havens) ? sheet.havens : [];
+  return touchSheetMetadata({
+    ...sheet,
+    havens: existing.map((item) =>
+      item.id === id
+        ? {
+            ...item,
+            ...patch,
+            rating: patch.rating !== undefined ? clampHavenRating(patch.rating) : item.rating,
+            traits: patch.traits !== undefined ? [...patch.traits] : item.traits,
+          }
+        : item,
+    ),
+  });
+}
+
+export function removeHaven(sheet: CharacterSheetState, id: string): CharacterSheetState {
+  const existing = Array.isArray(sheet.havens) ? sheet.havens : [];
+  return touchSheetMetadata({
+    ...sheet,
+    havens: existing.filter((item) => item.id !== id),
+  });
+}
+
+export function migrateLegacyDnd5eSheet(sheet: CharacterSheetState): CharacterSheetState {
+  if (detectSystemId(sheet) !== 'dnd5e') return sheet;
+  const allFields = sheet.cards.flatMap((c) => c.fields);
+  const byKey = (k: string) => allFields.find((f) => f.key.trim().toLowerCase() === k);
+  const levelVal = Number(byKey('level')?.value ?? byKey('nivel')?.value ?? 1);
+  const level = Number.isFinite(levelVal) ? Math.max(1, Math.min(20, Math.trunc(levelVal))) : 1;
+  const inspField = byKey('inspiration');
+  const hdField = byKey('hit_dice');
+  const hdMatch = String(hdField?.label ?? '').match(/\b(d6|d8|d10|d12)\b/i);
+  const hdDie = (hdMatch ? hdMatch[1].toLowerCase() : 'd8') as Dnd5eHitDieType;
+  const hdMax = typeof hdField?.max === 'number' && hdField.max >= 1 ? hdField.max : level;
+  const hdCur = typeof hdField?.value === 'number' ? Math.max(0, Math.min(hdMax, Math.trunc(hdField.value))) : hdMax;
+
+  const saveProficiencies = { str: false, dex: false, con: false, int: false, wis: false, cha: false };
+  for (const ab of ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const) {
+    if (allFields.some((f) => new RegExp(`(?:roll_${ab}_save|save_${ab})`, 'i').test(f.key) && /prof/i.test(f.rollExpr ?? ''))) {
+      saveProficiencies[ab] = true;
+    }
+  }
+
+  const skillProficiencies = Object.fromEntries(
+    DND5E_SKILLS.map((s) => {
+      const f = byKey(s.key);
+      const val = typeof f?.value === 'number' ? f.value : 0;
+      const prof: Dnd5eSkillProficiency = val > 0 ? 'proficient' : 'none';
+      return [s.key, prof];
+    }),
+  ) as Record<Dnd5eSkillKey, Dnd5eSkillProficiency>;
+
+  const spellField = byKey('spell_dc') ?? byKey('spell_atk');
+  const spellFormula = String(spellField?.formula ?? '').toLowerCase();
+  const spellAbility: Dnd5eSpellcastingAbilityKey = spellFormula.includes('mod_wis')
+    ? 'wis'
+    : spellFormula.includes('mod_cha')
+      ? 'cha'
+      : 'int';
+  const slots = createDefaultDnd5eSlots().map((def) => {
+    const sf = allFields.find((f) => f.kind === 'resource' && new RegExp(`^slots_${def.level}(?:st|nd|rd|th)?$`, 'i').test(f.key));
+    if (!sf) return def;
+    const max = Math.max(0, Math.min(20, Math.trunc(sf.max ?? 0)));
+    const avail = Math.max(0, Math.min(max, Math.trunc(typeof sf.value === 'number' ? sf.value : max)));
+    return { level: def.level, max, used: Math.max(0, max - avail) };
+  });
+
+  const normalized = normalizeDnd5eState(sheet.dnd5eState, {
+    level,
+    inspiration: Boolean(inspField?.value),
+    tempHp: 0,
+    hitDice: { die: hdDie, current: hdCur, max: hdMax },
+    deathSaves: { successes: 0, failures: 0 },
+    saveProficiencies,
+    skillProficiencies,
+    spellcasting: { ability: spellAbility, slots },
+  });
+
+  if (sheet.dnd5eState && JSON.stringify(sheet.dnd5eState) === JSON.stringify(normalized)) {
+    return sheet;
+  }
+  return { ...sheet, dnd5eState: normalized };
+}
+
 export function migrateLegacyWodSheet(
   sheet: CharacterSheetState,
   options?: {
@@ -2661,7 +3336,9 @@ export function migrateLegacyWodSheet(
   },
 ): CharacterSheetState {
   const withMeta = migrateLegacySheetMetadata(sheet, options);
-  if (detectSystemId(withMeta) !== 'wod') return withMeta;
+  const sysId = detectSystemId(withMeta);
+  if (sysId === 'dnd5e') return migrateLegacyDnd5eSheet(withMeta);
+  if (sysId !== 'wod') return withMeta;
   const isV5 = resolveRulePreset(withMeta) === 'vampire-v5';
   const expectedAttrs = isV5 ? WOD_V5_ATTRIBUTE_SPECS : WOD_V20_ATTRIBUTE_SPECS;
   const attrGroupByKey = new Map(expectedAttrs.map((spec) => [spec.key, spec.attributeGroup]));
@@ -2722,13 +3399,50 @@ export function migrateLegacyWodSheet(
         isV5 &&
         field.kind === 'resource' &&
         (field.id === 'f_willpower' || fk === 'willpower') &&
-        !field.maxFormula
+        (!field.maxFormula ||
+          field.superficialDamage === undefined ||
+          field.aggravatedDamage === undefined)
       ) {
         cardChanged = true;
+        const wpMax = Math.max(1, Math.round(field.max ?? 5));
+        const wpAgg = Math.max(0, Math.min(wpMax, Math.round(field.aggravatedDamage ?? 0)));
+        const wpVal =
+          typeof field.value === 'number' && Number.isFinite(field.value)
+            ? Math.max(0, Math.min(wpMax, Math.round(field.value)))
+            : wpMax - wpAgg;
+        const wpSup =
+          typeof field.superficialDamage === 'number'
+            ? Math.max(0, Math.min(wpMax - wpAgg, Math.round(field.superficialDamage)))
+            : Math.max(0, Math.min(wpMax - wpAgg, wpMax - wpAgg - wpVal));
         return {
           ...field,
-          maxFormula: 'composure + resolve',
+          maxFormula: field.maxFormula || 'composure + resolve',
+          superficialDamage: wpSup,
+          aggravatedDamage: wpAgg,
         };
+      }
+      if (
+        card.id === 'card_combate' &&
+        isV5 &&
+        field.kind === 'resource' &&
+        (field.id === 'f_humanity' || fk === 'humanity')
+      ) {
+        const humVal =
+          typeof field.value === 'number' && Number.isFinite(field.value)
+            ? Math.max(0, Math.min(10, Math.round(field.value)))
+            : 7;
+        const rawStains = field.stains ?? withMeta.stains;
+        const clampedStains =
+          typeof rawStains === 'number' && Number.isFinite(rawStains)
+            ? Math.max(0, Math.min(10 - humVal, Math.round(rawStains)))
+            : 0;
+        if (field.stains !== clampedStains || field.stains === undefined) {
+          cardChanged = true;
+          return {
+            ...field,
+            stains: clampedStains,
+          };
+        }
       }
       if (
         card.id === 'card_atributos' &&
@@ -2849,9 +3563,30 @@ export function migrateLegacyWodSheet(
     return card;
   });
 
-  return changed
-    ? syncWillpowerToggleWithResource({ ...withMeta, cards })
-    : syncWillpowerToggleWithResource(withMeta);
+  let nextCards = changed ? cards : withMeta.cards;
+  let nextSheet: CharacterSheetState = changed ? { ...withMeta, cards: nextCards } : { ...withMeta };
+
+  if (resolveRulePreset(nextSheet) !== 'custom' && !nextCards.some((c) => c.id === 'card_wod_dossier')) {
+    const dossierCard = createWodDossierCard(isV5);
+    const notesIdx = nextCards.findIndex((c) => c.id === 'card_notas');
+    nextCards =
+      notesIdx >= 0
+        ? [...nextCards.slice(0, notesIdx), dossierCard, ...nextCards.slice(notesIdx)]
+        : [...nextCards, dossierCard];
+    nextSheet = { ...nextSheet, cards: nextCards };
+  }
+
+  if (nextSheet.meritsFlaws === undefined) {
+    nextSheet = { ...nextSheet, meritsFlaws: [] };
+  }
+  if (nextSheet.havens === undefined) {
+    nextSheet = { ...nextSheet, havens: [] };
+  }
+  if (isV5 && nextSheet.touchstones === undefined) {
+    nextSheet = { ...nextSheet, touchstones: [] };
+  }
+
+  return syncWillpowerToggleWithResource(nextSheet);
 }
 
 export function migrateLocalStorageSheet(
@@ -2884,7 +3619,12 @@ export function migrateLocalStorageSheet(
       customUseNewLevelBase: candidate.customUseNewLevelBase,
       bloodPool: candidate.bloodPool,
       bloodSurge: candidate.bloodSurge,
+      stains: candidate.stains,
       virtues: candidate.virtues,
+      touchstones: candidate.touchstones,
+      meritsFlaws: candidate.meritsFlaws,
+      havens: candidate.havens,
+      ...(candidate.dnd5eState !== undefined ? { dnd5eState: candidate.dnd5eState } : {}),
       cards: candidate.cards,
       rollLogs: Array.isArray(candidate.rollLogs) ? candidate.rollLogs : [],
       xp: candidate.xp,
@@ -3260,6 +4000,14 @@ function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
   return cards.map((card) => {
     let nextFields = card.fields;
 
+    if (card.id === 'card_wod_dossier') {
+      return {
+        ...card,
+        code: '//CHRONICLE_TRAITS',
+        title: 'CONVICTIONS, QUALITIES & HAVENS',
+      };
+    }
+
     if (card.id === 'card_identidade') {
       const baseIdentity = nextFields.filter(
         (f) => !V20_ONLY_IDENTITY_IDS.has(f.id) && !['nature', 'demeanor', 'clan_weakness'].includes((f.key ?? '').trim().toLowerCase()),
@@ -3300,7 +4048,7 @@ function buildWodV5EditionCards(cards: SheetCard[]): SheetCard[] {
           return { ...f, value: 1 };
         }
         if (f.id === 'f_humanity' || k === 'humanity') {
-          return { ...f, value: 7 };
+          return { ...f, value: 7, stains: 0 };
         }
         return f;
       });
@@ -3452,8 +4200,15 @@ export function createNewSheetForSystem(
 
   const isWodV5 = resolvedId === 'wod' && defaultXpRulePreset === 'vampire-v5';
   const isWodV20 = resolvedId === 'wod' && !isWodV5;
-  const { bloodPool: _dropBloodPool, virtues: _dropVirtues, ...presetWithoutV20 } = preset;
-  const basePreset = isWodV5 ? presetWithoutV20 : preset;
+  const {
+    bloodPool: _dropBloodPool,
+    virtues: _dropVirtues,
+    meritsFlaws: _dropMeritsFlaws,
+    havens: _dropHavens,
+    touchstones: _dropTouchstones,
+    ...presetClean
+  } = preset;
+  const basePreset = resolvedId === 'wod' ? presetClean : preset;
 
   const editionCards = isWodV5 ? buildWodV5EditionCards(freshCards) : freshCards;
   const wodEdition =
@@ -3505,12 +4260,27 @@ export function createNewSheetForSystem(
       ? {
           systemName: 'VAMPIRE: THE MASQUERADE // V5',
           systemCode: '/SYS: WORLD OF DARKNESS · VAMPIRE V5',
+          touchstones: [],
+          meritsFlaws: [],
+          havens: [],
         }
       : {}),
     ...(isWodV20
       ? {
           bloodPool: getBloodPoolMaxByGeneration(13),
           virtues: { conscience: 1, selfControl: 1, courage: 1 },
+          meritsFlaws: [],
+          havens: [],
+        }
+      : {}),
+    ...(resolvedId === 'dnd5e'
+      ? {
+          dnd5eState: createDefaultDnd5eState({
+            level: 1,
+            inspiration: false,
+            tempHp: 0,
+            hitDice: { die: 'd8', current: 1, max: 1 },
+          }),
         }
       : {}),
     systemId: resolvedId,
@@ -3673,7 +4443,40 @@ export interface SheetPayloadValidationResult {
   errors: string[];
 }
 
+export const MAX_IMPORT_PAYLOAD_BYTES = 2 * 1024 * 1024;
+export const MAX_IMPORT_SHEETS = 100;
+export const MAX_VALIDATION_DEPTH = 32;
+
 const DANGEROUS_OBJECT_KEYS = new Set(['__proto__', 'constructor', 'prototype']);
+
+export function findDangerousKeyPath(
+  value: unknown,
+  path = '$',
+  depth = 0,
+): string | null {
+  if (depth > MAX_VALIDATION_DEPTH) {
+    return `${path} (profundidade máxima excedida)`;
+  }
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+  if (Array.isArray(value)) {
+    for (let i = 0; i < value.length; i += 1) {
+      const hit = findDangerousKeyPath(value[i], `${path}[${i}]`, depth + 1);
+      if (hit) return hit;
+    }
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  for (const key of Object.getOwnPropertyNames(record)) {
+    if (DANGEROUS_OBJECT_KEYS.has(key)) {
+      return `${path}.${key}`;
+    }
+    const hit = findDangerousKeyPath(record[key], `${path}.${key}`, depth + 1);
+    if (hit) return hit;
+  }
+  return null;
+}
 const ALLOWED_SYSTEM_IDS = new Set(['wod', 'dnd5e', 'cyberpunk', 'default', 'blank']);
 const ALLOWED_TAB_IDS = new Set(['geral', 'magias', 'xp']);
 const ALLOWED_FIELD_KINDS = new Set([
@@ -3691,6 +4494,7 @@ const ALLOWED_FIELD_XP_CATEGORIES = new Set([
   'skill',
   'discipline',
   'virtue',
+  'advantage',
   'discipline_clan',
   'discipline_out_of_clan',
   'discipline_caitiff',
@@ -3718,12 +4522,20 @@ const ROOT_SHEET_KEYS = new Set([
   'customUseNewLevelBase',
   'bloodPool',
   'bloodSurge',
+  'stains',
   'virtues',
+  'touchstones',
+  'meritsFlaws',
+  'havens',
+  'dnd5eState',
   'tabs',
   'cards',
   'rollLogs',
   'xp',
 ]);
+const TOUCHSTONE_KEYS = new Set(['id', 'conviction', 'touchstone', 'notes']);
+const MERIT_FLAW_KEYS = new Set(['id', 'kind', 'name', 'rating', 'notes', 'catalogId']);
+const HAVEN_KEYS = new Set(['id', 'name', 'location', 'rating', 'traits', 'notes']);
 const CARD_KEYS = new Set(['id', 'tab', 'code', 'title', 'colSpan', 'fields']);
 const FIELD_KEYS = new Set([
   'id',
@@ -3742,6 +4554,7 @@ const FIELD_KEYS = new Set([
   'lethalDamage',
   'superficialDamage',
   'aggravatedDamage',
+  'stains',
   'soakDamageType',
   'formula',
   'showPlus',
@@ -3797,8 +4610,34 @@ const ROLL_LOG_KEYS = new Set([
   'isRouseCheck',
   'isBloodSurge',
   'isWillpowerReroll',
+  'isRemorseCheck',
+  'isFrenzyRoll',
+  'frenzyKind',
+  'humanityLost',
   'rerolledIndices',
+  'd20Mode',
+  'd20Dice',
+  'd20Kept',
+  'd20Discarded',
+  'isDeathSave',
 ]);
+const DND5E_STATE_KEYS = new Set([
+  'level',
+  'inspiration',
+  'tempHp',
+  'hitDice',
+  'deathSaves',
+  'saveProficiencies',
+  'skillProficiencies',
+  'spellcasting',
+]);
+const DND5E_HIT_DICE_KEYS = new Set(['die', 'current', 'max']);
+const DND5E_DEATH_SAVE_KEYS = new Set(['successes', 'failures']);
+const DND5E_ABILITY_KEYS = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha']);
+const DND5E_SKILL_KEYS = new Set(DND5E_SKILLS.map((s) => s.key));
+const DND5E_SKILL_PROF_VALUES = new Set(['none', 'proficient', 'expertise']);
+const DND5E_SPELLCASTING_KEYS = new Set(['ability', 'slots']);
+const DND5E_SPELL_SLOT_KEYS = new Set(['level', 'max', 'used']);
 const XP_STATE_KEYS = new Set([
   'totalEarned',
   'spent',
@@ -3820,6 +4659,7 @@ const XP_LEDGER_KEYS = new Set([
   'fromValue',
   'toValue',
   'createdField',
+  'createdFieldIds',
   'createdCardId',
   'prevSpecialtyLabel',
   'prevRollSpecialty',
@@ -3848,6 +4688,11 @@ function checkPlainObject(
 
 export function validateSheetPayload(data: unknown): SheetPayloadValidationResult {
   const errors: string[] = [];
+  const dangerousPath = findDangerousKeyPath(data);
+  if (dangerousPath) {
+    errors.push(`${dangerousPath}: chave proibida (risco de Prototype Pollution).`);
+    return { valid: false, errors };
+  }
   if (!checkPlainObject(data, '$', ROOT_SHEET_KEYS, errors)) {
     return { valid: false, errors };
   }
@@ -3909,6 +4754,12 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
   }
   if (data.bloodSurge !== undefined && typeof data.bloodSurge !== 'boolean') {
     errors.push('$.bloodSurge: deve ser booleano.');
+  }
+  if (
+    data.stains !== undefined &&
+    (typeof data.stains !== 'number' || !Number.isInteger(data.stains) || data.stains < 0 || data.stains > 10)
+  ) {
+    errors.push('$.stains: deve ser inteiro entre 0 e 10.');
   }
   if (data.virtues !== undefined) {
     if (checkPlainObject(data.virtues, '$.virtues', new Set(['conscience', 'selfControl', 'courage']), errors)) {
@@ -3992,6 +4843,24 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         if (!ALLOWED_FIELD_KINDS.has(String(field.kind))) {
           errors.push(`${fPath}.kind: tipo de campo inválido "${String(field.kind)}".`);
         }
+        if (field.value !== undefined && field.value !== null) {
+          const isValidValue =
+            typeof field.value === 'boolean' ||
+            (typeof field.value === 'string' && field.value.length <= 20000) ||
+            (typeof field.value === 'number' && Number.isFinite(field.value));
+          if (!isValidValue) {
+            errors.push(`${fPath}.value: valor inválido ou excede limite permitido.`);
+          }
+        }
+        if (
+          (field.id === 'f_blood_potency' ||
+            (typeof field.key === 'string' && field.key.trim().toLowerCase() === 'blood_potency')) &&
+          field.kind === 'number' &&
+          typeof field.value === 'number' &&
+          (!Number.isInteger(field.value) || field.value < 0 || field.value > 10)
+        ) {
+          errors.push(`${fPath}.value: blood_potency deve ser inteiro entre 0 e 10.`);
+        }
         if (
           field.max !== undefined &&
           (typeof field.max !== 'number' || !Number.isInteger(field.max) || field.max < 1 || field.max > 100000)
@@ -4003,6 +4872,27 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           (typeof field.maxFormula !== 'string' || field.maxFormula.length > 256)
         ) {
           errors.push(`${fPath}.maxFormula: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.formula !== undefined &&
+          (typeof field.formula !== 'string' || field.formula.length > 256)
+        ) {
+          errors.push(`${fPath}.formula: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.rollExpr !== undefined &&
+          (typeof field.rollExpr !== 'string' || field.rollExpr.length > 256)
+        ) {
+          errors.push(`${fPath}.rollExpr: deve ser string (máx 256 caracteres).`);
+        }
+        if (
+          field.rollMod !== undefined &&
+          (typeof field.rollMod !== 'number' ||
+            !Number.isInteger(field.rollMod) ||
+            field.rollMod < -100 ||
+            field.rollMod > 100)
+        ) {
+          errors.push(`${fPath}.rollMod: deve ser inteiro entre -100 e 100.`);
         }
         if (
           field.attributeGroup !== undefined &&
@@ -4039,6 +4929,51 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           !ALLOWED_FIELD_XP_CATEGORIES.has(String(field.xpCategory))
         ) {
           errors.push(`${fPath}.xpCategory: categoria XP inválida "${String(field.xpCategory)}".`);
+        }
+        if (
+          field.bashingDamage !== undefined &&
+          (typeof field.bashingDamage !== 'number' ||
+            !Number.isInteger(field.bashingDamage) ||
+            field.bashingDamage < 0 ||
+            field.bashingDamage > 100000)
+        ) {
+          errors.push(`${fPath}.bashingDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.lethalDamage !== undefined &&
+          (typeof field.lethalDamage !== 'number' ||
+            !Number.isInteger(field.lethalDamage) ||
+            field.lethalDamage < 0 ||
+            field.lethalDamage > 100000)
+        ) {
+          errors.push(`${fPath}.lethalDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.superficialDamage !== undefined &&
+          (typeof field.superficialDamage !== 'number' ||
+            !Number.isInteger(field.superficialDamage) ||
+            field.superficialDamage < 0 ||
+            field.superficialDamage > 100000)
+        ) {
+          errors.push(`${fPath}.superficialDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.aggravatedDamage !== undefined &&
+          (typeof field.aggravatedDamage !== 'number' ||
+            !Number.isInteger(field.aggravatedDamage) ||
+            field.aggravatedDamage < 0 ||
+            field.aggravatedDamage > 100000)
+        ) {
+          errors.push(`${fPath}.aggravatedDamage: deve ser inteiro entre 0 e 100000.`);
+        }
+        if (
+          field.stains !== undefined &&
+          (typeof field.stains !== 'number' ||
+            !Number.isInteger(field.stains) ||
+            field.stains < 0 ||
+            field.stains > 10)
+        ) {
+          errors.push(`${fPath}.stains: deve ser inteiro entre 0 e 10.`);
         }
         if (field.rows !== undefined) {
           if (!Array.isArray(field.rows) || field.rows.length > 200) {
@@ -4079,6 +5014,58 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         if (typeof log.formula !== 'string' || typeof log.breakdown !== 'string') {
           errors.push(`${lPath}: formula e breakdown obrigatórios.`);
         }
+        if (log.isRemorseCheck !== undefined && typeof log.isRemorseCheck !== 'boolean') {
+          errors.push(`${lPath}.isRemorseCheck: deve ser booleano.`);
+        }
+        if (log.isFrenzyRoll !== undefined && typeof log.isFrenzyRoll !== 'boolean') {
+          errors.push(`${lPath}.isFrenzyRoll: deve ser booleano.`);
+        }
+        if (
+          log.frenzyKind !== undefined &&
+          log.frenzyKind !== 'frenzy' &&
+          log.frenzyKind !== 'rotschreck'
+        ) {
+          errors.push(`${lPath}.frenzyKind: deve ser "frenzy" ou "rotschreck".`);
+        }
+        if (log.humanityLost !== undefined && typeof log.humanityLost !== 'boolean') {
+          errors.push(`${lPath}.humanityLost: deve ser booleano.`);
+        }
+        if (
+          log.d20Mode !== undefined &&
+          log.d20Mode !== 'normal' &&
+          log.d20Mode !== 'advantage' &&
+          log.d20Mode !== 'disadvantage'
+        ) {
+          errors.push(`${lPath}.d20Mode: modo inválido.`);
+        }
+        if (log.d20Dice !== undefined) {
+          if (
+            !Array.isArray(log.d20Dice) ||
+            log.d20Dice.length > 2 ||
+            log.d20Dice.some((d) => typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > 20)
+          ) {
+            errors.push(`${lPath}.d20Dice: esperado array de 1..2 inteiros entre 1 e 20.`);
+          }
+        }
+        if (
+          log.d20Kept !== undefined &&
+          (typeof log.d20Kept !== 'number' || !Number.isInteger(log.d20Kept) || log.d20Kept < 1 || log.d20Kept > 20)
+        ) {
+          errors.push(`${lPath}.d20Kept: deve ser inteiro entre 1 e 20.`);
+        }
+        if (
+          log.d20Discarded !== undefined &&
+          log.d20Discarded !== null &&
+          (typeof log.d20Discarded !== 'number' ||
+            !Number.isInteger(log.d20Discarded) ||
+            log.d20Discarded < 1 ||
+            log.d20Discarded > 20)
+        ) {
+          errors.push(`${lPath}.d20Discarded: deve ser null ou inteiro entre 1 e 20.`);
+        }
+        if (log.isDeathSave !== undefined && typeof log.isDeathSave !== 'boolean') {
+          errors.push(`${lPath}.isDeathSave: deve ser booleano.`);
+        }
       });
     }
   }
@@ -4095,8 +5082,8 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       if (typeof data.xp.spent !== 'number' || !Number.isInteger(data.xp.spent) || data.xp.spent < 0) {
         errors.push('$.xp.spent: deve ser inteiro >= 0.');
       }
-      if (!Array.isArray(data.xp.ledger)) {
-        errors.push('$.xp.ledger: array obrigatório.');
+      if (!Array.isArray(data.xp.ledger) || data.xp.ledger.length > 500) {
+        errors.push('$.xp.ledger: array obrigatório (máx 500 itens).');
       } else {
         data.xp.ledger.forEach((entry, xIdx) => {
           const xPath = `$.xp.ledger[${xIdx}]`;
@@ -4113,7 +5100,236 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           ) {
             errors.push(`${xPath}.xpSpent: deve ser número >= 0.`);
           }
+          if (entry.createdFieldIds !== undefined) {
+            if (
+              !Array.isArray(entry.createdFieldIds) ||
+              entry.createdFieldIds.length > 8 ||
+              entry.createdFieldIds.some(
+                (fid) => typeof fid !== 'string' || fid.length < 1 || fid.length > 64,
+              )
+            ) {
+              errors.push(`${xPath}.createdFieldIds: esperado array de até 8 IDs válidos.`);
+            }
+          }
         });
+      }
+      if (data.xp.outOfClanFieldIds !== undefined) {
+        if (
+          !Array.isArray(data.xp.outOfClanFieldIds) ||
+          data.xp.outOfClanFieldIds.some(
+            (fid) => typeof fid !== 'string' || fid.length < 1 || fid.length > 64,
+          )
+        ) {
+          errors.push('$.xp.outOfClanFieldIds: esperado array de IDs válidos (1..64 caracteres).');
+        }
+      }
+      if (data.xp.customMultipliers !== undefined) {
+        if (
+          !data.xp.customMultipliers ||
+          typeof data.xp.customMultipliers !== 'object' ||
+          Array.isArray(data.xp.customMultipliers)
+        ) {
+          errors.push('$.xp.customMultipliers: esperado objeto JSON.');
+        } else {
+          const multObj = data.xp.customMultipliers as Record<string, unknown>;
+          for (const mk of Object.getOwnPropertyNames(multObj)) {
+            if (DANGEROUS_OBJECT_KEYS.has(mk)) {
+              errors.push(`$.xp.customMultipliers.${mk}: chave proibida (risco de Prototype Pollution).`);
+              continue;
+            }
+            const mv = multObj[mk];
+            if (typeof mv !== 'number' || !Number.isInteger(mv) || mv < 1) {
+              errors.push(`$.xp.customMultipliers.${mk}: deve ser inteiro >= 1.`);
+            }
+          }
+        }
+      }
+      if (
+        data.xp.xpRulePreset !== undefined &&
+        !ALLOWED_XP_RULE_PRESETS.has(String(data.xp.xpRulePreset))
+      ) {
+        errors.push(`$.xp.xpRulePreset: preset de XP inválido "${String(data.xp.xpRulePreset)}".`);
+      }
+      if (
+        data.xp.customUseNewLevelBase !== undefined &&
+        typeof data.xp.customUseNewLevelBase !== 'boolean'
+      ) {
+        errors.push('$.xp.customUseNewLevelBase: deve ser booleano.');
+      }
+    }
+  }
+
+  if (data.touchstones !== undefined) {
+    if (!Array.isArray(data.touchstones) || data.touchstones.length > 20) {
+      errors.push('$.touchstones: esperado array com até 20 entradas.');
+    } else {
+      data.touchstones.forEach((item, tIdx) => {
+        const tPath = `$.touchstones[${tIdx}]`;
+        if (!checkPlainObject(item, tPath, TOUCHSTONE_KEYS, errors)) return;
+        if (typeof item.id !== 'string' || item.id.length < 1 || item.id.length > 64) {
+          errors.push(`${tPath}.id: string obrigatória (1..64 caracteres).`);
+        }
+        if (typeof item.conviction !== 'string' || item.conviction.length > 240) {
+          errors.push(`${tPath}.conviction: string obrigatória (máx 240 caracteres).`);
+        }
+        if (typeof item.touchstone !== 'string' || item.touchstone.length > 160) {
+          errors.push(`${tPath}.touchstone: string obrigatória (máx 160 caracteres).`);
+        }
+        if (item.notes !== undefined && (typeof item.notes !== 'string' || item.notes.length > 500)) {
+          errors.push(`${tPath}.notes: string inválida (máx 500 caracteres).`);
+        }
+      });
+    }
+  }
+
+  if (data.meritsFlaws !== undefined) {
+    if (!Array.isArray(data.meritsFlaws) || data.meritsFlaws.length > 100) {
+      errors.push('$.meritsFlaws: esperado array com até 100 entradas.');
+    } else {
+      data.meritsFlaws.forEach((item, mIdx) => {
+        const mPath = `$.meritsFlaws[${mIdx}]`;
+        if (!checkPlainObject(item, mPath, MERIT_FLAW_KEYS, errors)) return;
+        if (typeof item.id !== 'string' || item.id.length < 1 || item.id.length > 64) {
+          errors.push(`${mPath}.id: string obrigatória (1..64 caracteres).`);
+        }
+        if (item.kind !== 'merit' && item.kind !== 'flaw') {
+          errors.push(`${mPath}.kind: deve ser "merit" ou "flaw".`);
+        }
+        if (typeof item.name !== 'string' || item.name.length > 120) {
+          errors.push(`${mPath}.name: string obrigatória (máx 120 caracteres).`);
+        }
+        if (
+          typeof item.rating !== 'number' ||
+          !Number.isInteger(item.rating) ||
+          item.rating < 1 ||
+          item.rating > 5
+        ) {
+          errors.push(`${mPath}.rating: deve ser inteiro entre 1 e 5.`);
+        }
+        if (item.notes !== undefined && (typeof item.notes !== 'string' || item.notes.length > 500)) {
+          errors.push(`${mPath}.notes: string inválida (máx 500 caracteres).`);
+        }
+        if (
+          item.catalogId !== undefined &&
+          (typeof item.catalogId !== 'string' ||
+            item.catalogId.length < 1 ||
+            item.catalogId.length > 64)
+        ) {
+          errors.push(`${mPath}.catalogId: string inválida (1..64 caracteres).`);
+        }
+      });
+    }
+  }
+
+  if (data.havens !== undefined) {
+    if (!Array.isArray(data.havens) || data.havens.length > 20) {
+      errors.push('$.havens: esperado array com até 20 entradas.');
+    } else {
+      data.havens.forEach((item, hIdx) => {
+        const hPath = `$.havens[${hIdx}]`;
+        if (!checkPlainObject(item, hPath, HAVEN_KEYS, errors)) return;
+        if (typeof item.id !== 'string' || item.id.length < 1 || item.id.length > 64) {
+          errors.push(`${hPath}.id: string obrigatória (1..64 caracteres).`);
+        }
+        if (typeof item.name !== 'string' || item.name.length > 120) {
+          errors.push(`${hPath}.name: string obrigatória (máx 120 caracteres).`);
+        }
+        if (
+          item.location !== undefined &&
+          (typeof item.location !== 'string' || item.location.length > 200)
+        ) {
+          errors.push(`${hPath}.location: string inválida (máx 200 caracteres).`);
+        }
+        if (
+          typeof item.rating !== 'number' ||
+          !Number.isInteger(item.rating) ||
+          item.rating < 0 ||
+          item.rating > 5
+        ) {
+          errors.push(`${hPath}.rating: deve ser inteiro entre 0 e 5.`);
+        }
+        if (
+          !Array.isArray(item.traits) ||
+          item.traits.length > 30 ||
+          item.traits.some(
+            (trait) => typeof trait !== 'string' || trait.length < 1 || trait.length > 80,
+          )
+        ) {
+          errors.push(`${hPath}.traits: esperado array de até 30 strings (1..80 caracteres).`);
+        }
+        if (item.notes !== undefined && (typeof item.notes !== 'string' || item.notes.length > 500)) {
+          errors.push(`${hPath}.notes: string inválida (máx 500 caracteres).`);
+        }
+      });
+    }
+  }
+
+  if (data.dnd5eState !== undefined) {
+    const ds = data.dnd5eState;
+    if (checkPlainObject(ds, '$.dnd5eState', DND5E_STATE_KEYS, errors)) {
+      if (typeof ds.level !== 'number' || !Number.isInteger(ds.level) || ds.level < 1 || ds.level > 20) {
+        errors.push('$.dnd5eState.level: deve ser inteiro entre 1 e 20.');
+      }
+      if (typeof ds.inspiration !== 'boolean') {
+        errors.push('$.dnd5eState.inspiration: deve ser booleano.');
+      }
+      if (typeof ds.tempHp !== 'number' || !Number.isInteger(ds.tempHp) || ds.tempHp < 0 || ds.tempHp > 100000) {
+        errors.push('$.dnd5eState.tempHp: deve ser inteiro >= 0.');
+      }
+      if (checkPlainObject(ds.hitDice, '$.dnd5eState.hitDice', DND5E_HIT_DICE_KEYS, errors)) {
+        if (!['d6', 'd8', 'd10', 'd12'].includes(String(ds.hitDice.die))) {
+          errors.push('$.dnd5eState.hitDice.die: dado inválido.');
+        }
+        if (typeof ds.hitDice.current !== 'number' || !Number.isInteger(ds.hitDice.current) || ds.hitDice.current < 0 || ds.hitDice.current > 20) {
+          errors.push('$.dnd5eState.hitDice.current: deve ser inteiro entre 0 e 20.');
+        }
+        if (typeof ds.hitDice.max !== 'number' || !Number.isInteger(ds.hitDice.max) || ds.hitDice.max < 1 || ds.hitDice.max > 20) {
+          errors.push('$.dnd5eState.hitDice.max: deve ser inteiro entre 1 e 20.');
+        }
+      }
+      if (checkPlainObject(ds.deathSaves, '$.dnd5eState.deathSaves', DND5E_DEATH_SAVE_KEYS, errors)) {
+        if (typeof ds.deathSaves.successes !== 'number' || !Number.isInteger(ds.deathSaves.successes) || ds.deathSaves.successes < 0 || ds.deathSaves.successes > 3) {
+          errors.push('$.dnd5eState.deathSaves.successes: deve ser inteiro entre 0 e 3.');
+        }
+        if (typeof ds.deathSaves.failures !== 'number' || !Number.isInteger(ds.deathSaves.failures) || ds.deathSaves.failures < 0 || ds.deathSaves.failures > 3) {
+          errors.push('$.dnd5eState.deathSaves.failures: deve ser inteiro entre 0 e 3.');
+        }
+      }
+      if (checkPlainObject(ds.saveProficiencies, '$.dnd5eState.saveProficiencies', DND5E_ABILITY_KEYS, errors)) {
+        for (const ab of DND5E_ABILITY_KEYS) {
+          if (typeof ds.saveProficiencies[ab] !== 'boolean') {
+            errors.push(`$.dnd5eState.saveProficiencies.${ab}: deve ser booleano.`);
+          }
+        }
+      }
+      if (checkPlainObject(ds.skillProficiencies, '$.dnd5eState.skillProficiencies', DND5E_SKILL_KEYS, errors)) {
+        for (const sk of DND5E_SKILL_KEYS) {
+          if (!DND5E_SKILL_PROF_VALUES.has(String(ds.skillProficiencies[sk]))) {
+            errors.push(`$.dnd5eState.skillProficiencies.${sk}: valor inválido.`);
+          }
+        }
+      }
+      if (checkPlainObject(ds.spellcasting, '$.dnd5eState.spellcasting', DND5E_SPELLCASTING_KEYS, errors)) {
+        if (!['int', 'wis', 'cha'].includes(String(ds.spellcasting.ability))) {
+          errors.push('$.dnd5eState.spellcasting.ability: atributo inválido.');
+        }
+        if (!Array.isArray(ds.spellcasting.slots) || ds.spellcasting.slots.length > 9) {
+          errors.push('$.dnd5eState.spellcasting.slots: esperado array com até 9 itens.');
+        } else {
+          ds.spellcasting.slots.forEach((slot, sIdx) => {
+            const sp = `$.dnd5eState.spellcasting.slots[${sIdx}]`;
+            if (!checkPlainObject(slot, sp, DND5E_SPELL_SLOT_KEYS, errors)) return;
+            if (typeof slot.level !== 'number' || !Number.isInteger(slot.level) || slot.level < 1 || slot.level > 9) {
+              errors.push(`${sp}.level: deve ser inteiro entre 1 e 9.`);
+            }
+            if (typeof slot.max !== 'number' || !Number.isInteger(slot.max) || slot.max < 0 || slot.max > 20) {
+              errors.push(`${sp}.max: deve ser inteiro entre 0 e 20.`);
+            }
+            if (typeof slot.used !== 'number' || !Number.isInteger(slot.used) || slot.used < 0 || slot.used > 20) {
+              errors.push(`${sp}.used: deve ser inteiro entre 0 e 20.`);
+            }
+          });
+        }
       }
     }
   }
@@ -4128,6 +5344,16 @@ export interface ParsedImportPayloadResult {
 }
 
 export function parseAndValidateImportPayload(rawText: string): ParsedImportPayloadResult {
+  if (
+    typeof rawText !== 'string' ||
+    new TextEncoder().encode(rawText).byteLength > MAX_IMPORT_PAYLOAD_BYTES
+  ) {
+    return {
+      valid: false,
+      sheets: [],
+      errors: ['Payload JSON excede o tamanho máximo permitido (2 MB).'],
+    };
+  }
   let parsed: unknown;
   try {
     parsed = JSON.parse(rawText);
@@ -4139,12 +5365,28 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
     };
   }
 
+  const dangerousPath = findDangerousKeyPath(parsed);
+  if (dangerousPath) {
+    return {
+      valid: false,
+      sheets: [],
+      errors: [`${dangerousPath}: chave proibida (risco de Prototype Pollution).`],
+    };
+  }
+
   if (Array.isArray(parsed)) {
     if (parsed.length === 0) {
       return {
         valid: false,
         sheets: [],
         errors: ['O arquivo JSON contém uma lista vazia de fichas.'],
+      };
+    }
+    if (parsed.length > MAX_IMPORT_SHEETS) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: [`O arquivo JSON excede o limite de ${MAX_IMPORT_SHEETS} fichas por importação.`],
       };
     }
     const validSheets: CharacterSheetState[] = [];
@@ -4185,6 +5427,13 @@ export function parseAndValidateImportPayload(rawText: string): ParsedImportPayl
         valid: false,
         sheets: [],
         errors: ['O pacote JSON não contém nenhuma ficha.'],
+      };
+    }
+    if (bundleSheets.length > MAX_IMPORT_SHEETS) {
+      return {
+        valid: false,
+        sheets: [],
+        errors: [`O pacote JSON excede o limite de ${MAX_IMPORT_SHEETS} fichas por importação.`],
       };
     }
     const validSheets: CharacterSheetState[] = [];

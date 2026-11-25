@@ -281,7 +281,9 @@ export function resolveWodDotRatingConfig(
     /VIRTUE|VIRTUDE|MORAL|TRILHA|PATH|CONVIC/.test(cardSig);
 
   const isBackground =
+    field.xpCategory === 'advantage' ||
     card?.id === 'card_backgrounds' ||
+    field.id.startsWith('f_adv_') ||
     field.id.startsWith('f_bg_') ||
     BACKGROUND_KEYS.has(key) ||
     /ANTECEDENT|BACKGROUND|VANTAG|ADVANTAGE|MERIT|MÉRITO/.test(cardSig);

@@ -29,6 +29,74 @@ export type WodOutcome = 'success' | 'failure' | 'botch';
 export type V5RollStatus = 'success' | 'critical' | 'messy_critical' | 'failure' | 'bestial_failure';
 export type RulePreset = 'storyteller-v20' | 'vampire-v5' | 'custom';
 export type SoakDamageType = 'bashing' | 'lethal' | 'aggravated';
+export type FrenzyKind = 'frenzy' | 'rotschreck';
+export type V5FeedingPenaltyKey = '0' | '1' | '2' | '3' | '4' | '5+';
+export type V20FrenzyVirtue =
+  | 'autocontrole'
+  | 'instinto'
+  | 'coragem'
+  | 'selfControl'
+  | 'instinct'
+  | 'courage';
+
+export interface V5BloodPotencyStats {
+  level: number;
+  bloodSurgeDice: number;
+  mendSuperficialPerRouse: number;
+  powerBonusDice: number;
+  rouseRerollMaxLevel: number;
+  baneSeverity: number;
+  feedingPenaltyKey: V5FeedingPenaltyKey;
+}
+
+export interface RemorseCheckResult {
+  passed: boolean;
+  pool: number;
+  dice: number[];
+  successes: number;
+  previousHumanity: number;
+  previousStains: number;
+  nextHumanity: number;
+  nextStains: 0;
+}
+
+export interface FrenzySheetFieldInput {
+  id: string;
+  key: string;
+  kind: string;
+  value?: number | string | boolean;
+  max?: number;
+  superficialDamage?: number;
+  aggravatedDamage?: number;
+}
+
+export interface FrenzySheetInput {
+  rulePreset?: RulePreset;
+  xpRulePreset?: RulePreset;
+  virtues?: {
+    conscience?: number;
+    selfControl?: number;
+    courage?: number;
+  };
+  cards: Array<{
+    fields: FrenzySheetFieldInput[];
+  }>;
+}
+
+export interface FrenzyRollOptions {
+  rulePreset?: RulePreset;
+  difficulty?: number;
+  virtue?: V20FrenzyVirtue;
+  kind?: FrenzyKind;
+  rng?: () => number;
+}
+
+export interface FrenzyRollResult extends DiceRollResult {
+  frenzyKind: FrenzyKind;
+  poolSize: number;
+  virtueUsed?: 'selfControl' | 'instinct' | 'courage';
+  resisted: boolean;
+}
 
 export interface WodPoolOptions {
   difficulty?: number;
@@ -78,6 +146,10 @@ export interface DiceRollResult {
   hungerDelta?: number;
   isBloodSurge?: boolean;
   isWillpowerReroll?: boolean;
+  isRemorseCheck?: boolean;
+  isFrenzyRoll?: boolean;
+  frenzyKind?: FrenzyKind;
+  humanityLost?: boolean;
   rerolledIndices?: number[];
   error?: string;
 }
@@ -96,14 +168,49 @@ export function computeRemainingDamageAfterSoak(
   return remaining;
 }
 
+const V5_BLOOD_SURGE_TABLE = [1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6] as const;
+const V5_MEND_SUPERFICIAL_TABLE = [1, 1, 2, 2, 3, 3, 3, 4, 4, 5, 5] as const;
+const V5_POWER_BONUS_TABLE = [0, 0, 1, 1, 2, 2, 3, 3, 4, 4, 5] as const;
+const V5_ROUSE_REROLL_MAX_LEVEL_TABLE = [0, 1, 1, 2, 2, 3, 3, 4, 4, 5, 5] as const;
+const V5_BANE_SEVERITY_TABLE = [0, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6] as const;
+const V5_FEEDING_PENALTY_KEYS: readonly V5FeedingPenaltyKey[] = [
+  '0',
+  '1',
+  '2',
+  '3',
+  '4',
+  '5+',
+  '5+',
+  '5+',
+  '5+',
+  '5+',
+  '5+',
+];
+
+/**
+ * Deterministic V5 Blood Potency stats lookup clamped to [0..10].
+ */
+export function getV5BloodPotencyStats(bloodPotency: number): V5BloodPotencyStats {
+  const safeLevel =
+    typeof bloodPotency === 'number' && Number.isFinite(bloodPotency)
+      ? Math.max(0, Math.min(10, Math.round(bloodPotency)))
+      : 0;
+  return {
+    level: safeLevel,
+    bloodSurgeDice: V5_BLOOD_SURGE_TABLE[safeLevel],
+    mendSuperficialPerRouse: V5_MEND_SUPERFICIAL_TABLE[safeLevel],
+    powerBonusDice: V5_POWER_BONUS_TABLE[safeLevel],
+    rouseRerollMaxLevel: V5_ROUSE_REROLL_MAX_LEVEL_TABLE[safeLevel],
+    baneSeverity: V5_BANE_SEVERITY_TABLE[safeLevel],
+    feedingPenaltyKey: V5_FEEDING_PENALTY_KEYS[safeLevel],
+  };
+}
+
 export function getV5BloodSurgeBonus(bloodPotency?: number): number {
-  if (typeof bloodPotency !== 'number' || !Number.isFinite(bloodPotency)) return 2;
-  const bp = Math.max(0, Math.round(bloodPotency));
-  if (bp <= 2) return 2;
-  if (bp <= 4) return 3;
-  if (bp <= 6) return 4;
-  if (bp <= 8) return 5;
-  return 6;
+  if (typeof bloodPotency !== 'number' || !Number.isFinite(bloodPotency)) {
+    return getV5BloodPotencyStats(1).bloodSurgeDice;
+  }
+  return getV5BloodPotencyStats(bloodPotency).bloodSurgeDice;
 }
 
 export function evaluateV5Rolls(
@@ -183,6 +290,187 @@ export function evaluateV5Rolls(
   };
 }
 
+export function executeRemorseCheck(
+  humanity: number,
+  stains: number,
+  rng: () => number = Math.random,
+): RemorseCheckResult {
+  const previousHumanity =
+    typeof humanity === 'number' && Number.isFinite(humanity)
+      ? Math.max(0, Math.min(10, Math.round(humanity)))
+      : 7;
+  const previousStains =
+    typeof stains === 'number' && Number.isFinite(stains)
+      ? Math.max(0, Math.min(10, Math.round(stains)))
+      : 0;
+  const pool = Math.max(1, 10 - previousHumanity - previousStains);
+  const dice: number[] = [];
+  let successes = 0;
+  for (let i = 0; i < pool; i += 1) {
+    const roll = Math.floor(rng() * 10) + 1;
+    dice.push(roll);
+    if (roll >= 6) successes += 1;
+  }
+  const passed = successes >= 1;
+  return {
+    passed,
+    pool,
+    dice,
+    successes,
+    previousHumanity,
+    previousStains,
+    nextHumanity: passed ? previousHumanity : Math.max(0, previousHumanity - 1),
+    nextStains: 0,
+  };
+}
+
+function getNumericFieldValue(
+  fields: readonly FrenzySheetFieldInput[],
+  keys: readonly string[],
+): number | null {
+  for (const field of fields) {
+    if (field.kind !== 'number' && field.kind !== 'resource') continue;
+    const fk = field.key.trim().toLowerCase();
+    const fid = field.id.trim().toLowerCase();
+    if (keys.includes(fk) || keys.includes(fid)) {
+      if (typeof field.value === 'number' && Number.isFinite(field.value)) {
+        return Math.round(field.value);
+      }
+    }
+  }
+  return null;
+}
+
+export function resolveFrenzyRoll(
+  sheet: FrenzySheetInput,
+  options: FrenzyRollOptions = {},
+): FrenzyRollResult {
+  const rng = options.rng ?? Math.random;
+  const preset = normalizeRulePreset(options.rulePreset ?? sheet.rulePreset ?? sheet.xpRulePreset);
+  const allFields = sheet.cards.flatMap((c) => c.fields);
+
+  if (preset === 'vampire-v5') {
+    const wpField = allFields.find(
+      (f) => f.id === 'f_willpower' || f.key.trim().toLowerCase() === 'willpower',
+    );
+    const composureVal = getNumericFieldValue(allFields, ['composure', 'f_composure']);
+    const resolveVal = getNumericFieldValue(allFields, ['resolve', 'f_resolve']);
+    const wpMax =
+      composureVal !== null && resolveVal !== null
+        ? Math.max(1, composureVal + resolveVal)
+        : Math.max(1, Math.round(wpField?.max ?? 5));
+    const agg = Math.max(0, Math.min(wpMax, Math.round(wpField?.aggravatedDamage ?? 0)));
+    const remaining = Math.max(0, wpMax - agg);
+    const sup =
+      typeof wpField?.superficialDamage === 'number'
+        ? Math.max(0, Math.min(remaining, Math.round(wpField.superficialDamage)))
+        : typeof wpField?.aggravatedDamage === 'number'
+          ? 0
+          : Math.max(
+              0,
+              Math.min(
+                remaining,
+                wpMax -
+                  Math.round(
+                    typeof wpField?.value === 'number' && Number.isFinite(wpField.value)
+                      ? wpField.value
+                      : wpMax,
+                  ),
+              ),
+            );
+    const willpowerAvailable = Math.max(0, wpMax - agg - sup);
+    const humField = allFields.find(
+      (f) => f.id === 'f_humanity' || f.key.trim().toLowerCase() === 'humanity',
+    );
+    const humanity =
+      typeof humField?.value === 'number' && Number.isFinite(humField.value)
+        ? Math.max(0, Math.min(10, Math.round(humField.value)))
+        : 7;
+
+    const poolSize = Math.max(1, willpowerAvailable + Math.floor(humanity / 3));
+    const difficulty =
+      typeof options.difficulty === 'number' && Number.isFinite(options.difficulty)
+        ? Math.max(1, Math.min(10, Math.round(options.difficulty)))
+        : 2;
+    const frenzyKind: FrenzyKind = options.kind ?? 'frenzy';
+
+    const rollRes = rollDiceExpression(`pool(${poolSize}, ${difficulty})`, {}, rng, {
+      rulePreset: 'vampire-v5',
+      difficulty,
+      hungerDice: 0,
+      woundPenalty: 0,
+      isWoundExempt: true,
+      bloodSurge: false,
+    });
+    const resisted = rollRes.total >= difficulty;
+
+    return {
+      ...rollRes,
+      isFrenzyRoll: true,
+      frenzyKind,
+      poolSize,
+      resisted,
+      hungerDice: 0,
+      hungerRolls: [],
+      woundPenalty: undefined,
+    };
+  }
+
+  const rawVirtue = options.virtue ?? 'autocontrole';
+  let virtueUsed: 'selfControl' | 'instinct' | 'courage' = 'selfControl';
+  let defaultKind: FrenzyKind = 'frenzy';
+  let rawVirtueValue = 3;
+
+  if (rawVirtue === 'coragem' || rawVirtue === 'courage') {
+    virtueUsed = 'courage';
+    defaultKind = 'rotschreck';
+    rawVirtueValue =
+      getNumericFieldValue(allFields, ['courage', 'coragem']) ?? sheet.virtues?.courage ?? 4;
+  } else if (rawVirtue === 'instinto' || rawVirtue === 'instinct') {
+    virtueUsed = 'instinct';
+    defaultKind = 'frenzy';
+    rawVirtueValue =
+      getNumericFieldValue(allFields, ['instinct', 'instinto']) ??
+      sheet.virtues?.selfControl ??
+      3;
+  } else {
+    virtueUsed = 'selfControl';
+    defaultKind = 'frenzy';
+    rawVirtueValue =
+      getNumericFieldValue(allFields, ['self_control', 'selfcontrol', 'autocontrole']) ??
+      sheet.virtues?.selfControl ??
+      3;
+  }
+
+  const frenzyKind: FrenzyKind = options.kind ?? defaultKind;
+  const poolSize = Math.max(1, Math.min(10, Math.round(rawVirtueValue)));
+  const difficulty =
+    typeof options.difficulty === 'number' && Number.isFinite(options.difficulty)
+      ? Math.max(2, Math.min(10, Math.round(options.difficulty)))
+      : 6;
+
+  const rollRes = rollDiceExpression(`pool(${poolSize}, ${difficulty})`, {}, rng, {
+    rulePreset: 'storyteller-v20',
+    difficulty,
+    woundPenalty: 0,
+    isWoundExempt: true,
+    specialty: false,
+    willpowerAutoSuccess: false,
+  });
+  const resisted = rollRes.outcome === 'success';
+
+  return {
+    ...rollRes,
+    isFrenzyRoll: true,
+    frenzyKind,
+    poolSize,
+    virtueUsed,
+    resisted,
+    hungerDice: 0,
+    woundPenalty: undefined,
+  };
+}
+
 export function executeRouseCheck(rng: () => number = Math.random): DiceRollResult {
   const roll = Math.floor(rng() * 10) + 1;
   const passed = roll >= 6;
@@ -201,6 +489,61 @@ export function executeRouseCheck(rng: () => number = Math.random): DiceRollResu
     rulePreset: 'vampire-v5',
     isRouseCheck: true,
     hungerDelta,
+  };
+}
+
+export interface DisciplineRouseCheckResult {
+  dice: number[];
+  passed: boolean;
+  rerolledByBloodPotency: boolean;
+  hungerDelta: 0 | 1;
+}
+
+/**
+ * Returns true when Blood Potency grants an automatic free Rouse Check reroll
+ * for a Discipline power of the given level (V5 RAW).
+ */
+export function canRerollDisciplineRouse(bloodPotency: number, powerLevel?: number): boolean {
+  if (typeof powerLevel !== 'number' || !Number.isFinite(powerLevel) || powerLevel < 1) {
+    return false;
+  }
+  const maxLevel = getV5BloodPotencyStats(bloodPotency).rouseRerollMaxLevel;
+  return maxLevel >= 1 && powerLevel <= maxLevel;
+}
+
+/**
+ * Executes a V5 Discipline Rouse Check, automatically rolling a second advantage die
+ * on a failed first roll when eligible via Blood Potency `rouseRerollMaxLevel`.
+ */
+export function executeDisciplineRouseCheck(
+  bloodPotency: number,
+  powerLevel?: number,
+  rng: () => number = Math.random,
+): DisciplineRouseCheckResult {
+  const firstRoll = Math.floor(rng() * 10) + 1;
+  if (firstRoll >= 6) {
+    return {
+      dice: [firstRoll],
+      passed: true,
+      rerolledByBloodPotency: false,
+      hungerDelta: 0,
+    };
+  }
+  if (canRerollDisciplineRouse(bloodPotency, powerLevel)) {
+    const secondRoll = Math.floor(rng() * 10) + 1;
+    const passed = secondRoll >= 6;
+    return {
+      dice: [firstRoll, secondRoll],
+      passed,
+      rerolledByBloodPotency: true,
+      hungerDelta: passed ? 0 : 1,
+    };
+  }
+  return {
+    dice: [firstRoll],
+    passed: false,
+    rerolledByBloodPotency: false,
+    hungerDelta: 1,
   };
 }
 
@@ -446,8 +789,13 @@ class Parser {
     const tok = this.peek();
     if (tok?.type === 'op' && (tok.value === '+' || tok.value === '-')) {
       this.consume();
-      const val = this.parseUnary();
-      return tok.value === '-' ? -val : val;
+      this.enterDepth();
+      try {
+        const val = this.parseUnary();
+        return tok.value === '-' ? -val : val;
+      } finally {
+        this.leaveDepth();
+      }
     }
     return this.parsePrimary();
   }
@@ -597,7 +945,7 @@ export function parseWodPoolExpression(
   expression: string,
 ): { countExpr: string; diffExpr: string; hasExplicitDiff: boolean } | null {
   const cleaned = expression.trim();
-  if (!cleaned) return null;
+  if (!cleaned || cleaned.length > MAX_FORMULA_LENGTH) return null;
 
   const poolFnMatch = cleaned.match(/^pool\((.+)\)$/i);
   if (poolFnMatch) {
@@ -918,6 +1266,17 @@ export function rollDiceExpression(
       breakdown: 'Expressão vazia',
       rolls: [],
       error: 'Expressão de rolagem vazia',
+    };
+  }
+  if (cleaned.length > MAX_FORMULA_LENGTH) {
+    const message = `Expressão excede o tamanho máximo (${MAX_FORMULA_LENGTH} caracteres)`;
+    return {
+      ok: false,
+      total: 0,
+      resolvedExpression: cleaned.slice(0, MAX_FORMULA_LENGTH),
+      breakdown: message,
+      rolls: [],
+      error: message,
     };
   }
 

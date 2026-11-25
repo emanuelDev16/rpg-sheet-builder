@@ -17,15 +17,9 @@ permissions:
   id-token: write
 
 jobs:
-  # 1. Build da Demo Web (React + Vite) e publicação no GitHub Pages
-  deploy-web:
+  # 1. Build e validação da Demo Web (React + Vite)
+  build-web:
     runs-on: ubuntu-latest
-    concurrency:
-      group: github-pages
-      cancel-in-progress: false
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - name: Checkout do código
         uses: actions/checkout@v7
@@ -42,14 +36,22 @@ jobs:
       - name: Verificar tipagem TypeScript
         run: npm run lint
 
-      - name: Executar testes unitários (Vitest)
-        run: npm run test:vitest
+      - name: Executar suíte completa de testes (Vitest + node:test)
+        run: npm run test:all
 
-      - name: Executar testes unitários (node:test)
-        run: npm run test:node
-
-      - name: Gerar build estático (Vite)
-        run: npx vite build --base=/rpg-sheet-builder/
+      - name: Gerar build estático (Vite) e verificar ausência de segredos/sourcemaps
+        env:
+          SYNC_TOKEN: CANARY_SECRET_CI_GUARD
+        run: |
+          npx vite build --base=/rpg-sheet-builder/
+          if grep -rn "CANARY_SECRET_CI_GUARD" dist/; then
+            echo "ERROR: Canary secret leaked into dist/"
+            exit 1
+          fi
+          if [ -n "$(find dist -name '*.map')" ]; then
+            echo "ERROR: Source maps generated in production dist/"
+            exit 1
+          fi
 
       - name: Configurar GitHub Pages
         uses: actions/configure-pages@v6
@@ -59,11 +61,22 @@ jobs:
         with:
           path: './dist'
 
+  # 2. Publicação no GitHub Pages em job separado (evita race condition na API de artefatos)
+  deploy-web:
+    needs: build-web
+    runs-on: ubuntu-latest
+    concurrency:
+      group: github-pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
       - name: Publicar no GitHub Pages
         id: deployment
         uses: actions/deploy-pages@v5
 
-  # 2. Compilação do APK Android (Gradle 8.10.2 / JDK 17)
+  # 3. Compilação do APK Android (Gradle 8.10.2 / JDK 17)
   build-android:
     if: ${{ github.event_name == 'workflow_dispatch' && inputs.build_android == true }}
     runs-on: ubuntu-latest

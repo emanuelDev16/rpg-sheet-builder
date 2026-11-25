@@ -1,17 +1,34 @@
-import React, { useEffect, useMemo, useRef, useState } from 'react';
-import { Plus, Search, Trash2, X } from 'lucide-react';
+import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { ChevronDown, Flame, Minus, Plus, Search, Trash2, X } from 'lucide-react';
+import {
+  FrenzyKind,
+  getV5BloodPotencyStats,
+  V20FrenzyVirtue,
+} from '../core/formula';
 import {
   AppMode,
+  type Dnd5eAbilityKey,
+  type Dnd5eDeathSavesState,
+  type Dnd5eHitDieType,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  type Dnd5eSpellcastingAbilityKey,
+  type Dnd5eState,
   FieldKind,
+  HavenEntry,
+  MeritFlawEntry,
   reorderFieldInCard,
   RulePreset,
   SheetCard,
   SheetEvaluation,
   SheetField,
   SystemId,
+  TouchstoneEntry,
+  V5WillpowerState,
   VirtuesState,
 } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { localizeCardTag, localizeCardTitle } from '../core/presetI18n';
 import {
   buildCatalogSkillFields,
   getGroupedWodSkillsCatalog,
@@ -33,9 +50,47 @@ import {
   WodDisciplinePower,
   WodPowerCostType,
 } from '../core/wodClansDisciplinesCatalog';
+import {
+  buildCatalogAdvantageField,
+  getAdvantagesForEdition,
+  isAdvantageCardCandidate,
+  isCatalogAdvantagePresentInCardFields,
+  WodAdvantageCatalogEntry,
+  WodAdvantageGroup,
+} from '../core/wodAdvantagesCatalog';
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
+import { WodStructuredBlocks } from './WodStructuredBlocks';
+import { Dnd5eAbilitiesSkills } from './dnd5e/Dnd5eAbilitiesSkills';
+import { Dnd5eCombatPanel } from './dnd5e/Dnd5eCombatPanel';
+import { Dnd5eSpellSlotsPanel } from './dnd5e/Dnd5eSpellSlotsPanel';
+import { isFullWidthBentoCard } from '../utils/bentoLayout';
+
+export interface Dnd5eCardContext {
+  state: Dnd5eState;
+  abilityScores: Record<Dnd5eAbilityKey, number>;
+  hp: { current: number; max: number };
+  armorClass: string;
+  initiativeMod: number;
+  onChangeAbilityScore: (ability: Dnd5eAbilityKey, score: number) => void;
+  onToggleSaveProf: (ability: Dnd5eAbilityKey) => void;
+  onCycleSkillProf: (skill: Dnd5eSkillKey, next: Dnd5eSkillProficiency) => void;
+  onRollCheck: (label: string, bonus: number) => void;
+  onDamage: (amount: number) => void;
+  onHeal: (amount: number) => void;
+  onSetTempHp: (amount: number) => void;
+  onToggleInspiration: () => void;
+  onChangeHitDieType: (die: Dnd5eHitDieType) => void;
+  onShortRest: () => void;
+  onLongRest: () => void;
+  onSetDeathSaves: (next: Dnd5eDeathSavesState) => void;
+  onRollDeathSave: () => void;
+  onRollInitiative: () => void;
+  onChangeSpellAbility: (ability: Dnd5eSpellcastingAbilityKey) => void;
+  onAdjustSlotMax: (level: number, delta: number) => void;
+  onToggleSlotUsed: (level: number, slotIndex: number) => void;
+}
 
 interface BentoCardProps {
   card: SheetCard;
@@ -50,8 +105,10 @@ interface BentoCardProps {
   virtues?: VirtuesState;
   bloodSurge?: boolean;
   bloodSurgeBonus?: number;
+  bloodPotency?: number;
   lastSoakTotal?: number | null;
   canWillpowerSurge?: boolean;
+  v5WillpowerState?: V5WillpowerState;
   evaluation: SheetEvaluation;
   t?: AppTranslations['cards'];
   onChangeValue: (fieldId: string, value: number | string | boolean) => void;
@@ -72,7 +129,19 @@ interface BentoCardProps {
     damageType: 'superficial' | 'aggravated',
     delta: number,
   ) => void;
+  onAdjustV5WillpowerDamage?: (
+    damageType: 'superficial' | 'aggravated',
+    delta: number,
+  ) => void;
+  onAdjustHumanityStains?: (delta: number) => void;
+  onTriggerRemorseCheck?: () => void;
+  onTriggerFrenzyRoll?: (options: {
+    difficulty?: number;
+    virtue?: V20FrenzyVirtue;
+    kind?: FrenzyKind;
+  }) => void;
   onApplyV5SuperficialHalving?: (fieldId: string, rawDamage: number) => void;
+  onMendSuperficialWithRouse?: (fieldId: string) => void;
   onAdjustBloodPool?: (delta: number) => void;
   onSetBloodPool?: (nextVal: number) => void;
   onUpdateVirtue?: (virtue: keyof VirtuesState, nextVal: number) => void;
@@ -92,12 +161,27 @@ interface BentoCardProps {
     patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'fields'>>,
   ) => void;
   onRemoveCard: (cardId: string) => void;
+  touchstones?: readonly TouchstoneEntry[];
+  meritsFlaws?: readonly MeritFlawEntry[];
+  havens?: readonly HavenEntry[];
+  searchQuery?: string;
+  onAddTouchstone?: (entry: TouchstoneEntry) => void;
+  onUpdateTouchstone?: (id: string, patch: Partial<Omit<TouchstoneEntry, 'id'>>) => void;
+  onRemoveTouchstone?: (id: string) => void;
+  onAddMeritFlaw?: (entry: MeritFlawEntry) => void;
+  onUpdateMeritFlaw?: (id: string, patch: Partial<Omit<MeritFlawEntry, 'id'>>) => void;
+  onRemoveMeritFlaw?: (id: string) => void;
+  onAddHaven?: (entry: HavenEntry) => void;
+  onUpdateHaven?: (id: string, patch: Partial<Omit<HavenEntry, 'id'>>) => void;
+  onRemoveHaven?: (id: string) => void;
+  dnd5eContext?: Dnd5eCardContext;
 }
 
 type GuidedFieldTemplateId =
   | 'skill_d10'
   | 'attribute'
   | 'discipline'
+  | 'advantage'
   | 'resource'
   | 'calculated'
   | 'text'
@@ -110,6 +194,7 @@ const TEMPLATE_ORDER: GuidedFieldTemplateId[] = [
   'skill_d10',
   'attribute',
   'discipline',
+  'advantage',
   'resource',
   'calculated',
   'text',
@@ -119,6 +204,7 @@ const TEMPLATE_ORDER: GuidedFieldTemplateId[] = [
 
 function inferDefaultTemplateForCard(card: SheetCard): GuidedFieldTemplateId {
   if (card.id === 'card_arcano' || card.id === 'card_grimorio') return 'discipline';
+  if (isAdvantageCardCandidate(card)) return 'advantage';
   const sig = `${card.code} ${card.title}`.toUpperCase();
   if (/ATTRIBUTE|ATRIBUTO/.test(sig)) return 'attribute';
   if (/DISCIPLIN|PODER|POWER|ARCANO|GRIMOR|MERIT/.test(sig)) return 'discipline';
@@ -140,8 +226,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   virtues,
   bloodSurge = false,
   bloodSurgeBonus = 2,
+  bloodPotency,
   lastSoakTotal = null,
   canWillpowerSurge = false,
+  v5WillpowerState,
   evaluation,
   t = DEFAULT_CARDS_T,
   onChangeValue,
@@ -150,7 +238,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onCycleV20HealthCell,
   onAdjustV20HealthDamage,
   onAdjustV5HealthDamage,
+  onAdjustV5WillpowerDamage,
+  onAdjustHumanityStains,
+  onTriggerRemorseCheck,
+  onTriggerFrenzyRoll,
   onApplyV5SuperficialHalving,
+  onMendSuperficialWithRouse,
   onAdjustBloodPool,
   onSetBloodPool,
   onUpdateVirtue,
@@ -167,6 +260,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onAddField,
   onUpdateCard,
   onRemoveCard,
+  touchstones = [],
+  meritsFlaws = [],
+  havens = [],
+  searchQuery = '',
+  onAddTouchstone,
+  onUpdateTouchstone,
+  onRemoveTouchstone,
+  onAddMeritFlaw,
+  onUpdateMeritFlaw,
+  onRemoveMeritFlaw,
+  onAddHaven,
+  onUpdateHaven,
+  onRemoveHaven,
+  dnd5eContext,
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -178,13 +285,24 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const [customDiscName, setCustomDiscName] = useState('');
   const [customPowerName, setCustomPowerName] = useState('');
   const [customPowerCost, setCustomPowerCost] = useState('free');
+  const [advGroupFilter, setAdvGroupFilter] = useState<'all' | WodAdvantageGroup>('all');
+  const [customAdvName, setCustomAdvName] = useState('');
   const [editingFieldId, setEditingFieldId] = useState<string | null>(null);
   const [composerOpen, setComposerOpen] = useState(false);
+  const [frenzyOpen, setFrenzyOpen] = useState(false);
+  const [frenzyKind, setFrenzyKind] = useState<FrenzyKind>('frenzy');
+  const [frenzyV5Diff, setFrenzyV5Diff] = useState<number>(2);
+  const [frenzyV20Virtue, setFrenzyV20Virtue] = useState<'autocontrole' | 'instinto' | 'coragem'>(
+    'autocontrole',
+  );
+  const [frenzyV20Diff, setFrenzyV20Diff] = useState<number>(6);
   const [selectedTemplate, setSelectedTemplate] = useState<GuidedFieldTemplateId>(() =>
     inferDefaultTemplateForCard(card),
   );
   const labelInputRef = useRef<HTMLInputElement | null>(null);
   const catalogSearchRef = useRef<HTMLInputElement | null>(null);
+  const advSearchId = useId();
+  const frenzyPanelId = useId();
 
   useEffect(() => {
     if (mode !== 'edicao') {
@@ -193,10 +311,17 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       setCatalogQuery('');
       setCustomDiscName('');
       setCustomPowerName('');
+      setAdvGroupFilter('all');
+      setCustomAdvName('');
+    }
+    if (mode !== 'jogo') {
+      setFrenzyOpen(false);
     }
   }, [mode]);
 
   const lang: AppLanguage = t.language ?? 'pt-BR';
+  const displayCardTitle = localizeCardTitle(card, lang);
+  const displayCardCode = localizeCardTag(card, lang);
   const getTemplateMeta = (tplId: GuidedFieldTemplateId) => ({
     label: t.t(`cards.guided.${tplId}.label`),
     hint: t.t(`cards.guided.${tplId}.hint`),
@@ -212,6 +337,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       skill_d10: getTemplateMeta('skill_d10'),
       attribute: getTemplateMeta('attribute'),
       discipline: getTemplateMeta('discipline'),
+      advantage: getTemplateMeta('advantage'),
       resource: getTemplateMeta('resource'),
       calculated: getTemplateMeta('calculated'),
       text: getTemplateMeta('text'),
@@ -222,9 +348,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const selectedMeta = guided.templates[selectedTemplate];
 
   const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
+  const isWodDossierCard = card.id === 'card_wod_dossier' && Boolean(officialEdition);
   const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
   const showOfficialDisciplineCatalog =
     Boolean(officialEdition) && selectedTemplate === 'discipline';
+  const showOfficialAdvantageCatalog =
+    Boolean(officialEdition) && selectedTemplate === 'advantage';
 
   const existingSheetKeys = useMemo(
     () => [
@@ -320,9 +449,59 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     });
   }, [officialEdition, catalogQuery, matchedClanEntry, lang]);
 
-  const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
+  const advantageCatalogList = useMemo(() => {
+    if (!officialEdition) return [];
+    const groupParam =
+      officialEdition === 'vampire-v5' && advGroupFilter !== 'all' ? advGroupFilter : undefined;
+    const list = getAdvantagesForEdition(officialEdition, groupParam);
+    const normQ = normalizeCatalogText(catalogQuery);
+    if (!normQ) return list;
+    return list.filter((adv) =>
+      [
+        adv.id,
+        adv.varName,
+        adv.name['pt-BR'],
+        adv.name.en,
+        adv.name.es,
+        adv.summary['pt-BR'],
+        adv.summary.en,
+        adv.summary.es,
+        ...(adv.aliases ?? []),
+      ]
+        .map(normalizeCatalogText)
+        .some((item) => item.includes(normQ)),
+    );
+  }, [officialEdition, advGroupFilter, catalogQuery]);
+
+  const evaluationVarKeys = useMemo(
+    () => Object.keys(evaluation.variables),
+    [evaluation.variables],
+  );
+
+  const spanClass = isFullWidthBentoCard(card) ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
   const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
+  const isDnd5eInteractive = Boolean(
+    systemId === 'dnd5e' &&
+      mode === 'jogo' &&
+      dnd5eContext &&
+      (card.id === 'card_atributos' ||
+        card.id === 'card_skills' ||
+        card.id === 'card_combate' ||
+        card.id === 'card_arcano'),
+  );
+  const DND_SUPPRESSED_IDS_BY_CARD: Record<string, Set<string>> = {
+    card_atributos: new Set([
+      'f_strength', 'f_mod_str', 'f_dexterity', 'f_mod_dex', 'f_constitution', 'f_mod_con',
+      'f_intelligence', 'f_mod_int', 'f_wisdom', 'f_mod_wis', 'f_charisma', 'f_mod_cha',
+    ]),
+    card_skills: new Set([
+      'f_athletics', 'f_perception', 'f_arcana', 'f_stealth',
+      'f_roll_athletics', 'f_roll_perception', 'f_roll_con_save',
+    ]),
+    card_combate: new Set(['f_hp', 'f_hit_dice', 'f_ac', 'f_initiative', 'f_inspiration']),
+    card_arcano: new Set(['f_spell_dc', 'f_spell_atk', 'f_slots_1', 'f_slots_2']),
+  };
   const fieldsToRender =
     isWodCombatCard && mode === 'jogo'
       ? rawFieldsToRender.filter((f) => {
@@ -334,7 +513,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           }
           return true;
         })
-      : rawFieldsToRender;
+      : isDnd5eInteractive
+        ? rawFieldsToRender.filter((f) => !(DND_SUPPRESSED_IDS_BY_CARD[card.id]?.has(f.id)))
+        : rawFieldsToRender;
 
   // Pair numeric skill/stat fields with their matching roll button in Play mode
   const pairedRollByNumberId = new Map<string, SheetField>();
@@ -397,6 +578,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     setDiscCatalogTab(hasPowerTable ? 'powers' : 'disciplines');
     setCustomDiscName('');
     setCustomPowerName('');
+    setAdvGroupFilter('all');
+    setCustomAdvName('');
     setCustomPowerCost(
       officialEdition === 'vampire-v5'
         ? 'rouse_1'
@@ -406,7 +589,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     );
     setComposerOpen(true);
     window.setTimeout(() => {
-      if (officialEdition && (defaultTpl === 'skill_d10' || defaultTpl === 'discipline')) {
+      if (
+        officialEdition &&
+        (defaultTpl === 'skill_d10' || defaultTpl === 'discipline' || defaultTpl === 'advantage')
+      ) {
         catalogSearchRef.current?.focus();
       } else {
         labelInputRef.current?.focus();
@@ -500,6 +686,49 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     setCustomPowerName('');
   };
 
+  const handleAddOfficialAdvantage = (adv: WodAdvantageCatalogEntry) => {
+    if (!officialEdition) return;
+    if (isCatalogAdvantagePresentInCardFields(adv, card.fields, evaluationVarKeys)) return;
+    const baseField = buildCatalogAdvantageField(adv, lang, 1);
+    const idExists = card.fields.some((f) => f.id === baseField.id);
+    const resolvedField = idExists
+      ? { ...baseField, id: `${baseField.id}_${Date.now().toString(36).slice(-4)}` }
+      : baseField;
+    onUpdateCard(card.id, {
+      fields: [...card.fields, resolvedField],
+    });
+  };
+
+  const handleAddCustomAdvantage = () => {
+    const clean = customAdvName.trim();
+    const resolved = clean || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
+    const slug =
+      normalizeCatalogText(resolved)
+        .replace(/[^a-z0-9]+/g, '_')
+        .replace(/^_+|_+$/g, '') || 'custom_adv';
+    const keyBase = slug === 'generation' ? 'generation_bg' : slug;
+    const existingKeys = new Set(card.fields.map((f) => f.key));
+    let uniqueKey = keyBase;
+    let suffix = 2;
+    while (existingKeys.has(uniqueKey)) {
+      uniqueKey = `${keyBase}_${suffix++}`;
+    }
+    const uid = `${Date.now().toString(36).slice(-4)}_${Math.random().toString(36).slice(2, 5)}`;
+    const newField: SheetField = {
+      id: `f_adv_${uniqueKey}_${uid}`,
+      key: uniqueKey,
+      label: resolved.toUpperCase(),
+      kind: 'number',
+      value: 1,
+      max: 5,
+      xpCategory: 'advantage',
+    };
+    onUpdateCard(card.id, {
+      fields: [...card.fields, newField],
+    });
+    setCustomAdvName('');
+  };
+
   const handleCreateGuidedField = (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     if (showOfficialSkillCatalog) return;
@@ -511,6 +740,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       }
       return;
     }
+    if (showOfficialAdvantageCatalog) {
+      if (customAdvName.trim()) {
+        handleAddCustomAdvantage();
+      }
+      return;
+    }
     const trimmed = newFieldLabel.trim();
     const resolvedLabel =
       trimmed || `${selectedMeta.fallbackName} ${card.fields.length + 1}`;
@@ -518,7 +753,11 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     if (selectedTemplate === 'skill_d10') {
       onAddField(card.id, 'number', resolvedLabel);
       onAddField(card.id, 'roll', resolvedLabel);
-    } else if (selectedTemplate === 'attribute' || selectedTemplate === 'discipline') {
+    } else if (
+      selectedTemplate === 'attribute' ||
+      selectedTemplate === 'discipline' ||
+      selectedTemplate === 'advantage'
+    ) {
       onAddField(card.id, 'number', resolvedLabel);
     } else {
       onAddField(card.id, selectedTemplate, resolvedLabel);
@@ -550,6 +789,17 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       mode === 'jogo' &&
       rulePreset === 'vampire-v5' &&
       (field.id === 'f_hunger' || field.key === 'hunger');
+    const showV5BloodPotencyPanel =
+      mode === 'jogo' &&
+      rulePreset === 'vampire-v5' &&
+      (field.id === 'f_blood_potency' || field.key.trim().toLowerCase() === 'blood_potency');
+    const bpComputed = evaluation.computedByFieldId[field.id];
+    const bpRawLevel = bpComputed?.ok
+      ? bpComputed.value
+      : typeof field.value === 'number'
+        ? field.value
+        : evaluation.variables.blood_potency ?? 1;
+    const bpStats = showV5BloodPotencyPanel ? getV5BloodPotencyStats(bpRawLevel) : null;
 
     return (
       <React.Fragment key={field.id}>
@@ -598,7 +848,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                           aria-label={`${vLabel} -`}
                           disabled={val <= 1}
                           onClick={() => onUpdateVirtue?.(vKey, val - 1)}
-                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                         >
                           -
                         </button>
@@ -614,7 +864,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                           aria-label={`${vLabel} +`}
                           disabled={val >= 5}
                           onClick={() => onUpdateVirtue?.(vKey, val + 1)}
-                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-35"
+                          className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                         >
                           +
                         </button>
@@ -638,8 +888,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           woundPenalty={woundPenalty}
           bloodPool={bloodPool}
           bloodSurge={bloodSurge}
+          bloodPotency={bloodPotency}
           lastSoakTotal={lastSoakTotal}
           canWillpowerSurge={canWillpowerSurge}
+          v5WillpowerState={v5WillpowerState}
           variables={evaluation.variables}
           computed={evaluation.computedByFieldId[field.id]}
           totalCargoWeight={evaluation.totalCargoWeight}
@@ -666,7 +918,11 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           onCycleV20HealthCell={onCycleV20HealthCell}
           onAdjustV20HealthDamage={onAdjustV20HealthDamage}
           onAdjustV5HealthDamage={onAdjustV5HealthDamage}
+          onAdjustV5WillpowerDamage={onAdjustV5WillpowerDamage}
+          onAdjustHumanityStains={onAdjustHumanityStains}
+          onTriggerRemorseCheck={onTriggerRemorseCheck}
           onApplyV5SuperficialHalving={onApplyV5SuperficialHalving}
+          onMendSuperficialWithRouse={onMendSuperficialWithRouse}
           onRouseCheck={onRouseCheck}
           onSpendPowerBlood={
             onSpendPowerBlood ?? ((cost) => onAdjustBloodPool?.(-cost))
@@ -698,7 +954,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   data-testid="v20-spend-blood-btn"
                   disabled={bloodPool.current <= 0}
                   onClick={() => onAdjustBloodPool?.(-1)}
-                  className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-40"
+                  className="no-print print:hidden cyber-btn-outline min-h-[36px] sm:min-h-[26px] px-2 py-0.5 text-[10px] font-extrabold uppercase cursor-pointer"
                 >
                   {t.t('cards.vital.spendBloodBtn')}
                 </button>
@@ -716,7 +972,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   aria-label={`${t.t('cards.vital.bloodPoolLabel')} +`}
                   disabled={bloodPool.current >= bloodPool.max}
                   onClick={() => onAdjustBloodPool?.(1)}
-                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer disabled:opacity-40"
+                  className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
                 >
                   +
                 </button>
@@ -810,8 +1066,75 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               }`}
             >
               {t.t('cards.vital.bloodSurgeLabel', { bonus: bloodSurgeBonus })}
-              {bloodSurge ? ' · ON' : ''}
+              {bloodSurge ? ` · ${t.t('poolComposer.powerBonusOnTag')}` : ''}
             </button>
+          </div>
+        )}
+
+        {showV5BloodPotencyPanel && bpStats && (
+          <div
+            data-testid="v5-blood-potency-panel"
+            className={`v5-bp-stats-panel p-2.5 flex flex-col gap-2 ${
+              useTwoColBody ? 'md:col-span-2' : ''
+            }`}
+          >
+            <div className="flex items-center justify-between gap-2">
+              <span className="font-mono-tech text-[10px] font-extrabold tracking-wider uppercase text-[var(--accent-wine)]">
+                {t.t('cards.vital.bpPanelTitle', { level: bpStats.level })}
+              </span>
+            </div>
+            <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpSurge')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  +{bpStats.bloodSurgeDice}d10
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpMend')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  {t.t('cards.vital.bpMendValue', { amount: bpStats.mendSuperficialPerRouse })}
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpPowerBonus')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  +{bpStats.powerBonusDice}d10
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpRouseReroll')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  {bpStats.rouseRerollMaxLevel > 0
+                    ? t.t('cards.vital.bpRouseRerollValue', { level: bpStats.rouseRerollMaxLevel })
+                    : t.t('cards.vital.bpRouseRerollNone')}
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpBaneSeverity')}
+                </span>
+                <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
+                  {bpStats.baneSeverity}
+                </span>
+              </div>
+              <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
+                <span className="font-mono-tech text-[9px] font-bold uppercase text-[var(--ink-muted)]">
+                  {t.t('cards.vital.bpFeedingLabel')}
+                </span>
+                <span className="font-mono-tech text-[10px] font-bold leading-snug text-[var(--ink-secondary)]">
+                  {t.t(`cards.vital.bpFeeding.${bpStats.feedingPenaltyKey}`)}
+                </span>
+              </div>
+            </div>
           </div>
         )}
       </React.Fragment>
@@ -819,21 +1142,21 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   };
 
   return (
-    <section className={`bento-card ${spanClass}`} aria-label={card.title}>
+    <section className={`bento-card ${spanClass}`} data-card-id={card.id} aria-label={displayCardTitle}>
       <header className="bento-card-header">
         {mode === 'edicao' ? (
           <>
             <div className="no-print print:hidden flex flex-wrap items-center gap-2 flex-1 min-w-0">
               <input
                 type="text"
-                aria-label={t.t('cards.editCodeAria', { title: card.title })}
+                aria-label={t.t('cards.editCodeAria', { title: displayCardTitle })}
                 value={card.code}
                 onChange={(e) => onUpdateCard(card.id, { code: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-wine)] w-28"
               />
               <input
                 type="text"
-                aria-label={t.t('cards.editTitleAria', { title: card.title })}
+                aria-label={t.t('cards.editTitleAria', { title: displayCardTitle })}
                 value={card.title}
                 onChange={(e) => onUpdateCard(card.id, { title: e.target.value })}
                 className="cyber-input mobile-touch-input px-2 py-0.5 text-xs font-extrabold uppercase flex-1 min-w-[140px]"
@@ -841,20 +1164,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             </div>
             <div className="hidden print:flex items-center gap-2.5 min-w-0">
               <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-                {card.code}
+                {displayCardCode}
               </span>
               <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
-                {card.title}
+                {displayCardTitle}
               </h2>
             </div>
           </>
         ) : (
           <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-              {card.code}
+              {displayCardCode}
             </span>
             <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
-              {card.title}
+              {displayCardTitle}
             </h2>
           </div>
         )}
@@ -879,7 +1202,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 </button>
                 <button
                   type="button"
-                  aria-label={t.t('cards.removeCardAria', { title: card.title })}
+                  aria-label={t.t('cards.removeCardAria', { title: displayCardTitle })}
                   onClick={() => onRemoveCard(card.id)}
                   className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
                 >
@@ -901,15 +1224,37 @@ export const BentoCard: React.FC<BentoCardProps> = ({
       </header>
 
       <div
-        className={`bento-card-body p-4 flex-1 ${
+        className={`bento-card-body flex-1 ${
           useTwoColBody
             ? `grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-2.5 ${
                 consumedRollIds.size > 0 ? 'items-start' : 'items-center'
               }`
-            : 'flex flex-col gap-3'
+            : 'flex flex-col'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
-        {fieldsToRender.length === 0 && (
+        {isWodDossierCard && officialEdition && (
+          <WodStructuredBlocks
+            edition={officialEdition}
+            cardTitle={displayCardTitle}
+            cardCode={displayCardCode}
+            searchQuery={searchQuery}
+            touchstones={touchstones}
+            meritsFlaws={meritsFlaws}
+            havens={havens}
+            t={t}
+            onAddTouchstone={onAddTouchstone}
+            onUpdateTouchstone={onUpdateTouchstone}
+            onRemoveTouchstone={onRemoveTouchstone}
+            onAddMeritFlaw={onAddMeritFlaw}
+            onUpdateMeritFlaw={onUpdateMeritFlaw}
+            onRemoveMeritFlaw={onRemoveMeritFlaw}
+            onAddHaven={onAddHaven}
+            onUpdateHaven={onUpdateHaven}
+            onRemoveHaven={onRemoveHaven}
+          />
+        )}
+
+        {fieldsToRender.length === 0 && !isWodDossierCard && !isDnd5eInteractive && (
           <div
             data-testid={mode === 'jogo' ? `empty-card-play-${card.id}` : `empty-card-edit-${card.id}`}
             className="no-print print:hidden p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/45 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2"
@@ -931,6 +1276,65 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           </div>
         )}
 
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_atributos' && (
+          <Dnd5eAbilitiesSkills
+            view="abilities"
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
+            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
+            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
+            onRollCheck={dnd5eContext.onRollCheck}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_skills' && (
+          <Dnd5eAbilitiesSkills
+            view="skills"
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
+            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
+            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
+            onRollCheck={dnd5eContext.onRollCheck}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_combate' && (
+          <Dnd5eCombatPanel
+            dnd5eState={dnd5eContext.state}
+            currentHp={dnd5eContext.hp.current}
+            maxHp={dnd5eContext.hp.max}
+            armorClass={dnd5eContext.armorClass}
+            initiativeMod={dnd5eContext.initiativeMod}
+            t={t}
+            onDamage={dnd5eContext.onDamage}
+            onHeal={dnd5eContext.onHeal}
+            onSetTempHp={dnd5eContext.onSetTempHp}
+            onToggleInspiration={dnd5eContext.onToggleInspiration}
+            onChangeHitDieType={dnd5eContext.onChangeHitDieType}
+            onShortRest={dnd5eContext.onShortRest}
+            onLongRest={dnd5eContext.onLongRest}
+            onSetDeathSaves={dnd5eContext.onSetDeathSaves}
+            onRollDeathSave={dnd5eContext.onRollDeathSave}
+            onRollInitiative={dnd5eContext.onRollInitiative}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_arcano' && (
+          <Dnd5eSpellSlotsPanel
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeSpellAbility={dnd5eContext.onChangeSpellAbility}
+            onAdjustSlotMax={dnd5eContext.onAdjustSlotMax}
+            onToggleSlotUsed={dnd5eContext.onToggleSlotUsed}
+            onRollSpellAttack={dnd5eContext.onRollCheck}
+          />
+        )}
+
         {wodAttributeGroups ? (
           <>
             <div data-testid={`wod-attr-grid-${card.id}`} className="wod-attr-grid-container">
@@ -948,13 +1352,286 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               </div>
             </div>
             {wodAttributeGroups.trailingFields.length > 0 && (
-              <div className="pt-2 border-t border-dashed border-[var(--border-ink)]/35 flex flex-col gap-2">
+              <div className="wod-attr-trailing pt-2 border-t border-dashed border-[var(--border-ink)]/35 flex flex-col gap-2">
                 {wodAttributeGroups.trailingFields.map((field) => renderFieldEntry(field, false))}
               </div>
             )}
           </>
         ) : (
           fieldsToRender.map((field) => renderFieldEntry(field, false))
+        )}
+
+        {isWodCombatCard && mode === 'jogo' && officialEdition && (
+          <div data-testid="wod-frenzy-section" className="no-print print:hidden flex flex-col gap-2 pt-1">
+            <button
+              type="button"
+              data-testid="wod-frenzy-toggle-btn"
+              aria-expanded={frenzyOpen}
+              aria-controls={frenzyPanelId}
+              onClick={() => setFrenzyOpen((prev) => !prev)}
+              className="cyber-btn-outline min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider flex items-center justify-between gap-2 cursor-pointer"
+            >
+              <span className="inline-flex items-center gap-1.5">
+                <Flame className="w-3.5 h-3.5 text-[var(--accent-wine)] shrink-0" aria-hidden="true" />
+                <span>{t.t('cards.vital.frenzyBtn')}</span>
+              </span>
+              <ChevronDown
+                className={`w-3.5 h-3.5 shrink-0 ${frenzyOpen ? 'rotate-180' : ''}`}
+                aria-hidden="true"
+              />
+            </button>
+
+            {frenzyOpen && (
+              <div
+                id={frenzyPanelId}
+                data-testid="wod-frenzy-panel"
+                className="wod-frenzy-panel p-2.5 flex flex-col gap-2.5"
+              >
+                {rulePreset === 'vampire-v5' ? (
+                  (() => {
+                    const wpFree =
+                      v5WillpowerState?.available ??
+                      Math.max(0, Math.round(evaluation.variables.willpower ?? 0));
+                    const humVal = Math.max(
+                      0,
+                      Math.min(10, Math.round(evaluation.variables.humanity ?? 7)),
+                    );
+                    const humBonus = Math.floor(humVal / 3);
+                    const v5Pool = Math.max(1, wpFree + humBonus);
+                    return (
+                      <>
+                        <div className="grid grid-cols-2 gap-1.5">
+                          {(
+                            [
+                              ['frenzy', t.t('cards.vital.frenzyKindFrenzy')],
+                              ['rotschreck', t.t('cards.vital.frenzyKindRotschreck')],
+                            ] as const
+                          ).map(([kindId, kindLabel]) => (
+                            <button
+                              key={kindId}
+                              type="button"
+                              data-testid={`wod-frenzy-kind-${kindId}`}
+                              aria-pressed={frenzyKind === kindId}
+                              onClick={() => setFrenzyKind(kindId)}
+                              className={`wod-frenzy-chip min-h-[36px] px-2 py-1 text-[10px] font-extrabold uppercase cursor-pointer ${
+                                frenzyKind === kindId ? 'is-active' : ''
+                              }`}
+                            >
+                              {kindLabel}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap gap-1.5">
+                          {(
+                            [
+                              [2, t.t('cards.vital.frenzyV5Diff2')],
+                              [3, t.t('cards.vital.frenzyV5Diff3')],
+                              [4, t.t('cards.vital.frenzyV5Diff4')],
+                            ] as const
+                          ).map(([diffVal, diffLabel]) => (
+                            <button
+                              key={diffVal}
+                              type="button"
+                              data-testid={`wod-frenzy-v5-diff-${diffVal}`}
+                              aria-pressed={frenzyV5Diff === diffVal}
+                              onClick={() => setFrenzyV5Diff(diffVal)}
+                              className={`wod-frenzy-chip min-h-[36px] flex-1 min-w-[110px] px-2 py-1 text-[10px] font-bold uppercase cursor-pointer ${
+                                frenzyV5Diff === diffVal ? 'is-active' : ''
+                              }`}
+                            >
+                              {diffLabel}
+                            </button>
+                          ))}
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                            {t.t('cards.vital.frenzyDiffLabel')}
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-dec"
+                              aria-label={t.t('cards.vital.frenzyDiffDecAria')}
+                              disabled={frenzyV5Diff <= 1}
+                              onClick={() => setFrenzyV5Diff((d) => Math.max(1, d - 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                            <span
+                              data-testid="wod-frenzy-diff-value"
+                              className="font-mono-tech text-xs font-extrabold min-w-[28px] text-center tabular-nums"
+                            >
+                              {frenzyV5Diff}
+                            </span>
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-inc"
+                              aria-label={t.t('cards.vital.frenzyDiffIncAria')}
+                              disabled={frenzyV5Diff >= 10}
+                              onClick={() => setFrenzyV5Diff((d) => Math.min(10, d + 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="font-mono-tech text-[10px] font-semibold text-[var(--ink-secondary)]">
+                          {t.t('cards.vital.frenzyFormulaV5', { wp: wpFree, humBonus })}
+                        </p>
+
+                        <button
+                          type="button"
+                          data-testid="wod-frenzy-roll-btn"
+                          onClick={() =>
+                            onTriggerFrenzyRoll?.({
+                              difficulty: frenzyV5Diff,
+                              kind: frenzyKind,
+                            })
+                          }
+                          className="cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+                        >
+                          {t.t('cards.vital.frenzyRollBtn', { pool: v5Pool })}
+                        </button>
+                      </>
+                    );
+                  })()
+                ) : (
+                  (() => {
+                    const instVar =
+                      typeof evaluation.variables.instinct === 'number'
+                        ? evaluation.variables.instinct
+                        : typeof evaluation.variables.instinto === 'number'
+                          ? evaluation.variables.instinto
+                          : null;
+                    const selfControlVal =
+                      typeof evaluation.variables.self_control === 'number'
+                        ? evaluation.variables.self_control
+                        : virtues?.selfControl ?? 3;
+                    const courageVal =
+                      typeof evaluation.variables.courage === 'number'
+                        ? evaluation.variables.courage
+                        : virtues?.courage ?? 4;
+                    const rawVirtuePool =
+                      frenzyV20Virtue === 'coragem'
+                        ? courageVal
+                        : frenzyV20Virtue === 'instinto'
+                          ? instVar ?? selfControlVal
+                          : selfControlVal;
+                    const v20Pool = Math.max(1, Math.min(10, Math.round(rawVirtuePool)));
+                    const virtueOptions = [
+                      {
+                        id: 'autocontrole' as const,
+                        label: t.t('cards.vital.frenzyVirtueSelfControl'),
+                        kind: 'frenzy' as const,
+                      },
+                      {
+                        id: 'instinto' as const,
+                        label: t.t('cards.vital.frenzyVirtueInstinct'),
+                        kind: 'frenzy' as const,
+                      },
+                      {
+                        id: 'coragem' as const,
+                        label: t.t('cards.vital.frenzyVirtueCourage'),
+                        kind: 'rotschreck' as const,
+                      },
+                    ];
+                    const selectedVirtueLabel =
+                      virtueOptions.find((opt) => opt.id === frenzyV20Virtue)?.label ?? '';
+
+                    return (
+                      <>
+                        <div className="flex flex-col gap-1">
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                            {t.t('cards.vital.frenzyVirtueLabel')}
+                          </span>
+                          <div className="grid grid-cols-3 gap-1">
+                            {virtueOptions.map((opt) => (
+                              <button
+                                key={opt.id}
+                                type="button"
+                                data-testid={`wod-frenzy-virtue-${opt.id}`}
+                                aria-pressed={frenzyV20Virtue === opt.id}
+                                onClick={() => {
+                                  setFrenzyV20Virtue(opt.id);
+                                  setFrenzyKind(opt.kind);
+                                }}
+                                className={`wod-frenzy-chip min-h-[36px] px-1.5 py-1 text-[9px] font-extrabold uppercase cursor-pointer truncate ${
+                                  frenzyV20Virtue === opt.id ? 'is-active' : ''
+                                }`}
+                              >
+                                {opt.label}
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        <div className="flex flex-wrap items-center justify-between gap-2">
+                          <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">
+                            {t.t('cards.vital.frenzyDiffLabel')} (TN)
+                          </span>
+                          <div className="flex items-center gap-1 shrink-0">
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-dec"
+                              aria-label={t.t('cards.vital.frenzyDiffDecAria')}
+                              disabled={frenzyV20Diff <= 2}
+                              onClick={() => setFrenzyV20Diff((d) => Math.max(2, d - 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                            >
+                              <Minus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                            <span
+                              data-testid="wod-frenzy-diff-value"
+                              className="font-mono-tech text-xs font-extrabold min-w-[28px] text-center tabular-nums"
+                            >
+                              {frenzyV20Diff}
+                            </span>
+                            <button
+                              type="button"
+                              data-testid="wod-frenzy-diff-inc"
+                              aria-label={t.t('cards.vital.frenzyDiffIncAria')}
+                              disabled={frenzyV20Diff >= 10}
+                              onClick={() => setFrenzyV20Diff((d) => Math.min(10, d + 1))}
+                              className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer"
+                            >
+                              <Plus className="w-3 h-3" aria-hidden="true" />
+                            </button>
+                          </div>
+                        </div>
+
+                        <p className="font-mono-tech text-[10px] font-semibold text-[var(--ink-secondary)]">
+                          {t.t('cards.vital.frenzyFormulaV20', {
+                            virtue: selectedVirtueLabel,
+                            pool: v20Pool,
+                            diff: frenzyV20Diff,
+                          })}
+                        </p>
+
+                        <button
+                          type="button"
+                          data-testid="wod-frenzy-roll-btn"
+                          onClick={() =>
+                            onTriggerFrenzyRoll?.({
+                              virtue: frenzyV20Virtue,
+                              difficulty: frenzyV20Diff,
+                              kind: frenzyV20Virtue === 'coragem' ? 'rotschreck' : 'frenzy',
+                            })
+                          }
+                          className="cyber-roll-btn min-h-[36px] w-full px-3 py-1.5 text-[10px] font-extrabold uppercase tracking-wider cursor-pointer"
+                        >
+                          {t.t('cards.vital.frenzyRollBtn', { pool: v20Pool })}
+                        </button>
+                      </>
+                    );
+                  })()
+                )}
+              </div>
+            )}
+          </div>
         )}
 
         {mode === 'edicao' && (fieldsToRender.length > 0 || composerOpen) && (
@@ -1019,7 +1696,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 <p className="font-mono-tech text-[10px] text-[var(--ink-secondary)]">
                   {showOfficialSkillCatalog && officialEdition
                     ? t.t('cards.catalog.clickHint')
-                    : selectedMeta.hint}
+                    : showOfficialAdvantageCatalog && officialEdition
+                      ? t.t('cards.advantages.clickHint')
+                      : selectedMeta.hint}
                 </p>
 
                 {showOfficialSkillCatalog && officialEdition ? (
@@ -1358,7 +2037,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                             data-testid={`custom-power-add-${card.id}`}
                             disabled={!customPowerName.trim()}
                             onClick={handleAddCustomPower}
-                            className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer disabled:opacity-45 disabled:cursor-not-allowed"
+                            className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
                           >
                             {t.t('cards.disciplines.customAddBtn')}
                           </button>
@@ -1366,12 +2045,167 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                       )}
                     </div>
                   </div>
+                ) : showOfficialAdvantageCatalog && officialEdition ? (
+                  <div
+                    data-testid={`official-advantages-catalog-${card.id}`}
+                    className="flex flex-col gap-2.5"
+                  >
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <span className="font-mono-tech text-[10px] font-extrabold uppercase text-[var(--accent-wine)]">
+                        {officialEdition === 'vampire-v5'
+                          ? t.t('cards.advantages.headingV5')
+                          : t.t('cards.advantages.headingV20')}
+                      </span>
+                      {officialEdition === 'vampire-v5' && (
+                        <div className="flex flex-wrap items-center gap-1">
+                          {(
+                            [
+                              ['all', t.t('cards.advantages.tabAll')],
+                              ['background', t.t('cards.advantages.tabBackgrounds')],
+                              ['merit', t.t('cards.advantages.tabMerits')],
+                            ] as const
+                          ).map(([groupId, groupLabel]) => {
+                            const active = advGroupFilter === groupId;
+                            return (
+                              <button
+                                key={groupId}
+                                type="button"
+                                data-testid={`adv-catalog-group-${groupId}-${card.id}`}
+                                aria-pressed={active}
+                                onClick={() => setAdvGroupFilter(groupId)}
+                                className={`font-mono-tech min-h-[36px] sm:min-h-[28px] px-2.5 py-1 text-[10px] font-bold uppercase rounded-[var(--radius-pill)] border transition-colors cursor-pointer ${
+                                  active
+                                    ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                    : 'bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/60 hover:bg-[var(--bg-hover)]'
+                                }`}
+                              >
+                                {groupLabel}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      )}
+                    </div>
+
+                    <div className="relative">
+                      <label htmlFor={advSearchId} className="sr-only">
+                        {t.t('cards.advantages.searchAria')}
+                      </label>
+                      <Search
+                        className="w-3.5 h-3.5 text-[var(--ink-muted)] absolute left-2.5 top-1/2 -translate-y-1/2 pointer-events-none"
+                        aria-hidden="true"
+                      />
+                      <input
+                        id={advSearchId}
+                        ref={catalogSearchRef}
+                        type="search"
+                        autoCorrect="off"
+                        autoCapitalize="none"
+                        spellCheck={false}
+                        data-testid={`official-adv-search-${card.id}`}
+                        value={catalogQuery}
+                        onChange={(e) => setCatalogQuery(e.target.value)}
+                        placeholder={t.t('cards.advantages.searchPlaceholder')}
+                        className="cyber-input mobile-touch-input min-h-[36px] pl-8 pr-2.5 py-1 text-[16px] sm:text-[11px] w-full"
+                      />
+                    </div>
+
+                    <div className="max-h-60 overflow-y-auto pr-0.5 grid grid-cols-1 gap-1.5">
+                      {advantageCatalogList.length === 0 ? (
+                        <p className="font-mono-tech text-[11px] text-[var(--ink-muted)] text-center py-2">
+                          {t.t('cards.advantages.emptySearch', { query: catalogQuery })}
+                        </p>
+                      ) : (
+                        advantageCatalogList.map((adv) => {
+                          const alreadyOnSheet = isCatalogAdvantagePresentInCardFields(
+                            adv,
+                            card.fields,
+                            evaluationVarKeys,
+                          );
+                          return (
+                            <button
+                              key={adv.id}
+                              type="button"
+                              aria-disabled={alreadyOnSheet}
+                              data-testid={`catalog-adv-${adv.varName}`}
+                              onClick={() => handleAddOfficialAdvantage(adv)}
+                              className={`font-mono-tech min-h-[36px] px-2.5 py-1.5 text-[10px] font-bold rounded-[var(--radius-control)] border flex items-center justify-between gap-2 text-left transition-colors ${
+                                alreadyOnSheet
+                                  ? 'xp-catalog-present-btn'
+                                  : 'group bg-[var(--bg-card)] text-[var(--ink-primary)] border-[var(--border-ink)]/65 hover:bg-[var(--accent-primary)] hover:text-[var(--accent-contrast)] hover:border-[var(--border-color)] cursor-pointer'
+                              }`}
+                            >
+                              <div className="flex flex-col gap-0.5 min-w-0">
+                                <span className="uppercase truncate">{adv.name[lang]}</span>
+                                <span
+                                  className={`text-[9px] font-normal normal-case line-clamp-1 ${
+                                    alreadyOnSheet
+                                      ? 'text-[var(--ink-primary)]'
+                                      : 'text-[var(--ink-secondary)] group-hover:text-[var(--accent-contrast)]'
+                                  }`}
+                                >
+                                  {adv.summary[lang]}
+                                </span>
+                              </div>
+                              <span className="flex items-center gap-1 shrink-0">
+                                {officialEdition === 'vampire-v5' && (
+                                  <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
+                                    {adv.group === 'merit'
+                                      ? t.t('cards.advantages.groupMerit')
+                                      : t.t('cards.advantages.groupBackground')}
+                                  </span>
+                                )}
+                                {alreadyOnSheet ? (
+                                  <span className="text-[8px] font-extrabold uppercase px-1.5 py-0.5 bg-[var(--bg-card)] text-[var(--ink-primary)] border border-[var(--border-color)] rounded-[var(--radius-pill)]">
+                                    {t.t('cards.catalog.alreadyOnSheet')}
+                                  </span>
+                                ) : (
+                                  <Plus className="w-3 h-3 shrink-0" aria-hidden="true" />
+                                )}
+                              </span>
+                            </button>
+                          );
+                        })
+                      )}
+                    </div>
+
+                    <div className="pt-2 border-t border-dashed border-[var(--border-ink)]/40 flex flex-col gap-1.5">
+                      <span className="font-mono-tech text-[9px] font-extrabold uppercase text-[var(--ink-muted)]">
+                        {t.t('cards.advantages.customHeading')}
+                      </span>
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
+                        <input
+                          type="text"
+                          data-testid={`custom-adv-input-${card.id}`}
+                          aria-label={t.t('cards.advantages.customPlaceholder')}
+                          value={customAdvName}
+                          onChange={(e) => setCustomAdvName(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.nativeEvent.isComposing) {
+                              e.preventDefault();
+                              handleAddCustomAdvantage();
+                            }
+                          }}
+                          placeholder={t.t('cards.advantages.customPlaceholder')}
+                          className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1 text-[16px] sm:text-[11px] flex-1 min-w-[140px]"
+                        />
+                        <button
+                          type="button"
+                          data-testid={`custom-adv-add-${card.id}`}
+                          onClick={handleAddCustomAdvantage}
+                          className="cyber-roll-btn min-h-[36px] px-3 py-1 text-[10px] font-bold uppercase whitespace-nowrap shrink-0 cursor-pointer"
+                        >
+                          {t.t('cards.advantages.customAddBtn')}
+                        </button>
+                      </div>
+                    </div>
+                  </div>
                 ) : (
                   <div className="flex flex-wrap sm:flex-nowrap items-center gap-1.5">
                     <input
                       ref={labelInputRef}
                       type="text"
-                      aria-label={t.t('cards.newFieldNameAria', { title: card.title })}
+                      aria-label={t.t('cards.newFieldNameAria', { title: displayCardTitle })}
                       value={newFieldLabel}
                       onChange={(e) => setNewFieldLabel(e.target.value)}
                       placeholder={t.newFieldPlaceholder}

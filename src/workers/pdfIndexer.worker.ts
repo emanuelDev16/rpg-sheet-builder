@@ -115,7 +115,6 @@ function joinPageTextItems(items: Array<{ str?: string; hasEOL?: boolean }>): st
 async function handleExtractRequest(
   request: Extract<PdfIndexWorkerRequest, { type: 'extract' }>,
 ): Promise<void> {
-  let bufferRef: ArrayBuffer | null = request.buffer;
   let bytesRef: Uint8Array | null = new Uint8Array(request.buffer);
   let loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null;
   let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
@@ -209,7 +208,6 @@ async function handleExtractRequest(
     pdfDoc = null;
     loadingTask = null;
     bytesRef = null;
-    bufferRef = null;
   }
 }
 
@@ -464,6 +462,13 @@ if (typeof self !== 'undefined' && typeof self.addEventListener === 'function') 
     }
 
     if (payload.type === 'START_OCR_INDEXING') {
+      if (activeTesseractWorker) {
+        const previousWorker = activeTesseractWorker;
+        activeTesseractWorker = null;
+        void previousWorker.terminate().catch(() => {
+          // Ignore terminate errors for previous worker
+        });
+      }
       const jobId =
         payload.payload.jobId?.trim() ||
         `ocr_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
