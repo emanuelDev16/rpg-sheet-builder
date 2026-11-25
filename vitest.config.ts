@@ -17,6 +17,7 @@ export const NODE_TEST_FILES = [
   'src/core/xpSystem.test.ts',
   'src/utils/bentoLayout.test.ts',
   'src/utils/dotRating.test.ts',
+  'src/utils/popoverPosition.test.ts',
   'src/utils/theme.test.ts',
   'src/utils/wodCreationWizard.test.ts',
   'src/utils/wodPoolComposer.test.ts',
