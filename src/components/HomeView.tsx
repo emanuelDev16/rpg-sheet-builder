@@ -13,7 +13,8 @@ import {
   X,
 } from 'lucide-react';
 import { AppLanguage, createTranslator } from '../core/i18n';
-import type { RulePreset, WodEdition } from '../core/sheetModel';
+import { localizeSystemName } from '../core/presetI18n';
+import type { CharacterSheetState, RulePreset, WodEdition } from '../core/sheetModel';
 import { ThemeMode } from '../utils/theme';
 import { useFocusTrap } from '../utils/useFocusTrap';
 import {
@@ -24,6 +25,7 @@ import {
   WodEditionFieldset,
 } from './SheetModal';
 import { ThemeSelector } from './ThemeSelector';
+import { WodCreationWizard } from './WodCreationWizard';
 
 export interface HomeSheetItem {
   id: string;
@@ -53,6 +55,7 @@ export interface HomeViewProps {
     rulePreset?: RulePreset,
     clan?: string,
   ) => void;
+  onCreateWizardSheet?: (sheet: CharacterSheetState) => void;
   onDuplicateSheet: (id: string) => void;
   onDeleteSheet: (id: string) => void;
   onOpenImportExport: () => void;
@@ -83,9 +86,13 @@ function formatUpdatedAt(value: string, language: AppLanguage): string {
   }
 }
 
-function resolveSystemName(systemId: string, systems: HomeSystemItem[]): string {
+function resolveSystemName(
+  systemId: string,
+  systems: HomeSystemItem[],
+  language: AppLanguage,
+): string {
   const found = systems.find((sys) => sys.id === systemId);
-  return found ? found.name : systemId.toUpperCase();
+  return localizeSystemName(systemId, found ? found.name : '', language) || systemId.toUpperCase();
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -98,6 +105,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   onContinueSheet,
   onSelectSheet,
   onCreateSheet,
+  onCreateWizardSheet,
   onDuplicateSheet,
   onDeleteSheet,
   onOpenImportExport,
@@ -108,6 +116,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const [selectedSystemFilter, setSelectedSystemFilter] = useState<string>('all');
   const [customSheetName, setCustomSheetName] = useState('');
   const [wodModalOpen, setWodModalOpen] = useState(false);
+  const [wodCreationMode, setWodCreationMode] = useState<'quick' | 'wizard'>('quick');
   const [wodEdition, setWodEdition] = useState<WodEdition>('vampire-v5');
   const [wodClanPreset, setWodClanPreset] = useState('');
   const [wodCustomClan, setWodCustomClan] = useState('');
@@ -117,12 +126,14 @@ export const HomeView: React.FC<HomeViewProps> = ({
   const wodOverlayPointerDownRef = useRef(false);
 
   const closeWodModal = () => {
+    setWodCreationMode('quick');
     setWodModalOpen(false);
   };
 
   useFocusTrap(wodModalOpen, wodDialogRef, closeWodModal, wodCloseBtnRef);
 
   const openWodModal = (initialEdition: WodEdition) => {
+    setWodCreationMode('quick');
     setWodEdition(initialEdition);
     setWodClanPreset('');
     setWodCustomClan('');
@@ -165,19 +176,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
     for (const sys of systems) {
       if (!seen.has(sys.id)) {
         seen.add(sys.id);
-        list.push({ id: sys.id, label: sys.name });
+        list.push({
+          id: sys.id,
+          label: localizeSystemName(sys.id, sys.name, language) || sys.id.toUpperCase(),
+        });
       }
     }
 
     for (const sheet of sheets) {
       if (!seen.has(sheet.systemId)) {
         seen.add(sheet.systemId);
-        list.push({ id: sheet.systemId, label: sheet.systemId.toUpperCase() });
+        list.push({
+          id: sheet.systemId,
+          label: localizeSystemName(sheet.systemId, '', language) || sheet.systemId.toUpperCase(),
+        });
       }
     }
 
     return list;
-  }, [systems, sheets]);
+  }, [systems, sheets, language]);
 
   const filteredSheets = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -245,7 +262,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono-tech rounded-[var(--radius-sm)] border border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2 py-0.5 text-[11px] font-bold tracking-wider text-[var(--ink-primary)] uppercase">
-                    {resolveSystemName(activeSheet.systemId, systems)}
+                    {resolveSystemName(activeSheet.systemId, systems, language)}
                   </span>
                   <span className="font-mono-tech text-[11px] font-medium text-[var(--ink-muted)]">
                     {t('home.updatedAt', { date: formatUpdatedAt(activeSheet.updatedAt, language) })}
@@ -320,11 +337,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono-tech rounded-[var(--radius-sm)] border border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2 py-0.5 text-[10px] font-bold tracking-wider text-[var(--accent-wine)] uppercase">
-                    SYS::{sys.id}
+                    {t('home.systemCodeBadge', { id: sys.id.toUpperCase() })}
                   </span>
                 </div>
                 <h3 className="font-display text-lg leading-snug font-extrabold tracking-wide text-[var(--ink-primary)] uppercase">
-                  {sys.name}
+                  {localizeSystemName(sys.id, sys.name, language)}
                 </h3>
                 <p className="text-xs leading-relaxed text-[var(--ink-secondary)]">
                   {sys.description}
@@ -556,7 +573,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-1.5">
                         <span className="font-mono-tech rounded-[var(--radius-sm)] border border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2 py-0.5 text-[10px] font-bold tracking-wider text-[var(--ink-primary)] uppercase">
-                          {resolveSystemName(item.systemId, systems)}
+                          {resolveSystemName(item.systemId, systems, language)}
                         </span>
 
                         {isCurrentActive && (
@@ -705,7 +722,9 @@ export const HomeView: React.FC<HomeViewProps> = ({
           aria-modal="true"
           aria-labelledby="home-wod-modal-title"
           data-testid="home-wod-modal"
-          className="bento-card mobile-modal-dialog w-full max-w-md bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+          className={`bento-card mobile-modal-dialog w-full ${
+            wodCreationMode === 'wizard' ? 'max-w-3xl' : 'max-w-md'
+          } bg-[var(--bg-card)] shadow-[var(--shadow-modal)]`}
         >
           <header className="bento-card-header modal-dialog-header">
             <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
@@ -730,6 +749,48 @@ export const HomeView: React.FC<HomeViewProps> = ({
             </button>
           </header>
 
+          <div
+            role="group"
+            aria-label={t('wizard.modeAria')}
+            className="wod-creation-mode-strip"
+          >
+            <div className="wod-creation-mode-switch">
+              <button
+                type="button"
+                data-testid="home-wod-mode-quick"
+                aria-pressed={wodCreationMode === 'quick'}
+                onClick={() => setWodCreationMode('quick')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'quick' ? 'is-active' : ''
+                }`}
+              >
+                {t('wizard.modeQuick')}
+              </button>
+              <button
+                type="button"
+                data-testid="home-wod-mode-wizard"
+                aria-pressed={wodCreationMode === 'wizard'}
+                onClick={() => setWodCreationMode('wizard')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'wizard' ? 'is-active' : ''
+                }`}
+              >
+                {t('wizard.modeGuided')}
+              </button>
+            </div>
+          </div>
+
+          {wodCreationMode === 'wizard' ? (
+            <WodCreationWizard
+              initialEdition={wodEdition}
+              language={language}
+              onCancel={closeWodModal}
+              onComplete={(builtSheet) => {
+                onCreateWizardSheet?.(builtSheet);
+                closeWodModal();
+              }}
+            />
+          ) : (
           <form
             id="home-wod-create-form"
             aria-labelledby="home-wod-modal-title"
@@ -807,6 +868,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               </button>
             </div>
           </form>
+          )}
         </div>
       </div>
     )}

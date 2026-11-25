@@ -13,9 +13,15 @@ import {
 import {
   WOD_ADVANTAGES_CATALOG,
   WOD_ADVANTAGE_GROUP_LABELS,
+  WOD_FLAWS_CATALOG,
+  WOD_HAVEN_TRAITS_CATALOG,
   buildCatalogAdvantageField,
   findAdvantageByIdOrName,
+  findFlawByIdOrName,
+  findHavenTraitByIdOrName,
   getAdvantagesForEdition,
+  getFlawsForEdition,
+  getHavenTraitsForEdition,
   isAdvantageCardCandidate,
   isCatalogAdvantagePresent,
 } from './wodAdvantagesCatalog.ts';
@@ -65,7 +71,7 @@ const EXPECTED_V5_MERIT_IDS = [
 test('Official WoD Advantages catalog exposes exact V20 (13) and V5 (11 backgrounds + 7 merits) rosters with pt-BR/en/es parity', () => {
   assert.equal(WOD_ADVANTAGES_CATALOG.length, 22);
 
-  for (const group of ['background', 'merit'] as const) {
+  for (const group of ['background', 'merit', 'flaw'] as const) {
     for (const lang of LANGUAGES) {
       assert.ok(WOD_ADVANTAGE_GROUP_LABELS[group][lang].trim().length > 0);
     }
@@ -227,4 +233,124 @@ test('isCatalogAdvantagePresent avoids f_generation false positive and buildCata
   assert.equal(isCatalogAdvantagePresent(v5Mutated, 'loresheet', 'vampire-v5'), true);
   assert.equal(validateAjv(v5Mutated), true, `V5 AJV errors: ${JSON.stringify(validateAjv.errors)}`);
   assert.equal(validateSheetPayload(v5Mutated).valid, true);
+});
+
+const EXPECTED_V5_FLAW_IDS = [
+  'prey_exclusion',
+  'methuselahs_thirst',
+  'folkloric_bane',
+  'folkloric_block',
+  'stigmata',
+  'known_blankbody',
+  'adversary',
+  'dark_secret',
+  'despised',
+  'suspect',
+  'haunted',
+  'compromised_haven',
+] as const;
+
+const EXPECTED_V20_FLAW_IDS = [
+  'prey_exclusion',
+  'dark_secret',
+  'enemy',
+  'hunted',
+  'nightmares',
+  'short_fuse',
+  'bad_sight',
+  'repulsive',
+  'cursed',
+  'notoriety',
+] as const;
+
+const EXPECTED_HAVEN_TRAIT_IDS = [
+  'hidden_armory',
+  'cell',
+  'watchmen',
+  'laboratory',
+  'library',
+  'location',
+  'luxury',
+  'postern',
+  'security_system',
+  'surgery',
+  'warding',
+  'creepy',
+  'haunted',
+] as const;
+
+test('Official WoD Flaws & Haven Traits catalogs expose complete V5/V20 rosters with pt-BR/en/es parity', () => {
+  assert.equal(WOD_FLAWS_CATALOG.length, 20);
+  const v5Flaws = getFlawsForEdition('vampire-v5');
+  const v20Flaws = getFlawsForEdition('storyteller-v20');
+
+  assert.equal(v5Flaws.length, 12);
+  assert.equal(v20Flaws.length, 10);
+  assert.deepEqual(
+    v5Flaws.map((f) => f.id).sort(),
+    [...EXPECTED_V5_FLAW_IDS].sort(),
+  );
+  assert.deepEqual(
+    v20Flaws.map((f) => f.id).sort(),
+    [...EXPECTED_V20_FLAW_IDS].sort(),
+  );
+  assert.deepEqual(getAdvantagesForEdition('vampire-v5', 'flaw'), v5Flaws);
+  assert.deepEqual(getAdvantagesForEdition('storyteller-v20', 'flaw'), v20Flaws);
+
+  for (const flaw of WOD_FLAWS_CATALOG) {
+    assert.equal(flaw.group, 'flaw');
+    assert.equal(flaw.maxDots, 5);
+    for (const lang of LANGUAGES) {
+      assert.ok(flaw.name[lang].trim().length > 0, `Missing flaw name (${lang}) for ${flaw.id}`);
+      assert.ok(
+        flaw.summary[lang].trim().length > 0,
+        `Missing flaw summary (${lang}) for ${flaw.id}`,
+      );
+    }
+  }
+
+  assert.equal(findFlawByIdOrName('Sede de Matusalém', 'vampire-v5')?.id, 'methuselahs_thirst');
+  assert.equal(findFlawByIdOrName('methuselahs_thirst', 'storyteller-v20'), null);
+  assert.equal(findFlawByIdOrName('Pavio Curto', 'storyteller-v20')?.id, 'short_fuse');
+  assert.equal(findFlawByIdOrName('short_fuse', 'vampire-v5'), null);
+  assert.equal(findFlawByIdOrName('Exclusión de Presa', 'vampire-v5')?.id, 'prey_exclusion');
+  assert.equal(findFlawByIdOrName('Segredo Sombrio', 'storyteller-v20')?.id, 'dark_secret');
+
+  assert.equal(WOD_HAVEN_TRAITS_CATALOG.length, 13);
+  for (const edition of ['vampire-v5', 'storyteller-v20'] as const) {
+    const allTraits = getHavenTraitsForEdition(edition);
+    const merits = getHavenTraitsForEdition(edition, 'merit');
+    const flaws = getHavenTraitsForEdition(edition, 'flaw');
+    assert.equal(allTraits.length, 13);
+    assert.equal(merits.length, 11);
+    assert.equal(flaws.length, 2);
+    assert.deepEqual(
+      allTraits.map((t) => t.id).sort(),
+      [...EXPECTED_HAVEN_TRAIT_IDS].sort(),
+    );
+  }
+
+  for (const trait of WOD_HAVEN_TRAITS_CATALOG) {
+    assert.ok(trait.maxDots >= 1 && trait.maxDots <= 5);
+    for (const lang of LANGUAGES) {
+      assert.ok(trait.name[lang].trim().length > 0, `Missing haven trait name (${lang}) for ${trait.id}`);
+      assert.ok(
+        trait.summary[lang].trim().length > 0,
+        `Missing haven trait summary (${lang}) for ${trait.id}`,
+      );
+    }
+  }
+
+  assert.equal(findHavenTraitByIdOrName('Arsenal Oculto', 'vampire-v5')?.id, 'hidden_armory');
+  assert.equal(findHavenTraitByIdOrName('Protección Mística', 'storyteller-v20')?.id, 'warding');
+  assert.equal(findHavenTraitByIdOrName('Sinistro', 'vampire-v5')?.kind, 'flaw');
+
+  assert.equal(
+    isAdvantageCardCandidate({
+      id: 'card_wod_dossier',
+      code: '//CHRONICLE_TRAITS',
+      title: 'CONVICTIONS, QUALITIES & HAVENS',
+    }),
+    false,
+  );
 });

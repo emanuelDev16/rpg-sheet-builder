@@ -47,6 +47,16 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'statusBar.mobileRulesBtn')).toBe('// RULES');
     expect(translate('es', 'statusBar.mobileRulesBtn')).toBe('// REGLAS');
 
+    expect(translate('pt-BR', 'topBar.pdfStyleGothic')).toBe('Gótico Bordô');
+    expect(translate('en', 'topBar.pdfStyleGothic')).toBe('Gothic Crimson');
+    expect(translate('es', 'topBar.pdfStyleGothic')).toBe('Gótico Burdeos');
+    expect(translate('pt-BR', 'topBar.pdfStyleClassic')).toBe('Clássico P&B');
+    expect(translate('en', 'topBar.pdfStyleClassic')).toBe('Classic B&W');
+    expect(translate('es', 'topBar.pdfStyleClassic')).toBe('Clásico B&N');
+    expect(translate('pt-BR', 'topBar.pdfStyleMinimal')).toBe('Minimalista');
+    expect(translate('en', 'topBar.pdfStyleMinimal')).toBe('Minimalist');
+    expect(translate('es', 'topBar.pdfStyleMinimal')).toBe('Minimalista');
+
     expect(translate('en', 'xp.insufficientBadge', { missing: 5 })).toBe('NEED 5 XP');
     expect(translate('es', 'xp.catalogCount', { possible: 3, total: 10 })).toBe(
       '3 COMPRABLES · 10 TOTAL',
@@ -119,5 +129,130 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERITY 4');
     expect(translate('es', 'cards.vital.baneSeverityBadge', { severity: 4 })).toBe('SEVERIDAD 4');
     expect(translate('en', 'poolComposer.powerBonusBadge', { bonus: 2 })).toBe('+2 POWER (POTENCY)');
+
+    expect(translate('pt-BR', 'cards.structured.touchstonesAddBtn')).toBe('+ ADICIONAR CONVICÇÃO');
+    expect(translate('en', 'cards.structured.touchstonesAddBtn')).toBe('+ ADD CONVICTION');
+    expect(translate('es', 'cards.structured.touchstonesAddBtn')).toBe('+ AÑADIR CONVICCIÓN');
+    expect(
+      translate('pt-BR', 'cards.structured.meritsFlawsSummary', { merits: 4, flaws: 2 }),
+    ).toBe('+4 QUALIDADES · -2 DEFEITOS');
+    expect(
+      translate('en', 'cards.structured.meritsFlawsSummary', { merits: 4, flaws: 2 }),
+    ).toBe('+4 MERITS · -2 FLAWS');
+    expect(
+      translate('es', 'cards.structured.meritsFlawsSummary', { merits: 4, flaws: 2 }),
+    ).toBe('+4 MÉRITOS · -2 DEFECTOS');
+    expect(translate('pt-BR', 'cards.structured.havensAddBtn')).toBe('+ ADICIONAR REFÚGIO');
+    expect(translate('en', 'cards.structured.havensAddBtn')).toBe('+ ADD HAVEN');
+    expect(translate('es', 'cards.structured.havensAddBtn')).toBe('+ AÑADIR REFUGIO');
+
+    expect(translate('pt-BR', 'wizard.modeGuided')).toBe('ASSISTENTE GUIADO (4 PASSOS)');
+    expect(translate('en', 'wizard.modeGuided')).toBe('GUIDED WIZARD (4 STEPS)');
+    expect(translate('es', 'wizard.modeGuided')).toBe('ASISTENTE GUIADO (4 PASOS)');
+    expect(translate('pt-BR', 'wizard.finishBtn')).toBe('CONCLUIR E CRIAR FICHA');
+    expect(translate('en', 'wizard.finishBtn')).toBe('FINISH & CREATE SHEET');
+    expect(translate('es', 'wizard.finishBtn')).toBe('FINALIZAR Y CREAR HOJA');
+
+    expect(translate('pt-BR', 'xp.dismissErrorAria')).toBe('Fechar alerta');
+    expect(translate('en', 'xp.dismissErrorAria')).toBe('Dismiss alert');
+    expect(translate('es', 'xp.dismissErrorAria')).toBe('Cerrar alerta');
+    expect(translate('en', 'wizard.powerLevelShort', { level: 2 })).toBe('L2');
+    expect(translate('pt-BR', 'print.pureHtmlDossierTitle')).toBe('CONVICÇÕES, QUALIDADES & REFÚGIOS');
+
+    expect(translate('pt-BR', 'cards.addButton')).toBe('ADICIONAR');
+    expect(translate('pt-BR', 'sidebar.roll.messyCritical')).toBe('CRÍTICO SANGRENTO!');
+    expect(translate('pt-BR', 'sidebar.roll.bestialFailure')).toBe('FALHA BESTIAL!');
+    expect(translate('pt-BR', 'poolComposer.wpToggle')).toBe('+1 VONTADE');
+    expect(translate('pt-BR', 'xp.upgradeBtn', { cost: 4 })).toBe('EVOLUIR · 4 XP ↗');
+    expect(translate('es', 'sidebar.roll.hungerShort', { count: 2 })).toBe('A:2');
+    expect(translate('pt-BR', 'modal.saveLocalAction')).toBe('SALVAR ↗');
+    expect(translate('es', 'rules.suggestions.wod')).toContain('Ansia');
+    expect(translate('pt-BR', 'dnd5e.skill.sleight_of_hand')).toBe('Prestidigitação');
+    expect(translate('en', 'dnd5e.skill.sleight_of_hand')).toBe('Sleight of Hand');
+    expect(translate('es', 'dnd5e.skill.sleight_of_hand')).toBe('Juego de Manos');
+    expect(translate('pt-BR', 'dnd5e.rollModeAdv')).toBe('VANTAGEM');
+    expect(translate('en', 'dnd5e.rollModeDis')).toBe('DISADVANTAGE');
+  });
+
+  it('maintains identical interpolation placeholders and guards against accidental untranslated PT-BR entries', () => {
+    const ALLOWED_IDENTICAL_PT_EN_KEYS = new Set([
+      'sidebar.roll.nat20Badge',
+      'sidebar.roll.nat1Badge',
+      'dnd5e.rollModeNormal',
+      'dnd5e.abilityShort.con',
+      'dnd5e.abilityShort.int',
+      'system.wod.label',
+      'system.wod.short',
+      'system.dnd5e.short',
+      'system.cyberpunk.label',
+      'system.cyberpunk.short',
+      'home.customGridTag',
+      'tabNav.rulePresetV20',
+      'tabNav.rulePresetV5',
+      'tabNav.rulePresetCustom',
+      'cards.defaultItemCol',
+      'cards.supEqTag',
+      'cards.col1Label',
+      'cards.col2Label',
+      'cards.strip.var',
+      'cards.strip.col1',
+      'cards.strip.col2',
+      'cards.pool.mod',
+      'cards.disciplines.caitiffBadge',
+      'cards.disciplines.customCostRouse',
+      'cards.powers.rouseBtn',
+      'cards.powers.rouseMultiBtn',
+      'cards.powers.rouseLogPrefix',
+      'cards.vital.v20TrackRule',
+      'cards.vital.rouseCheckBtn',
+      'cards.vital.wpImpairedBadge',
+      'cards.vital.wpSuperficialDmg',
+      'cards.vital.bpSurge',
+      'cards.vital.bpMendValue',
+      'cards.vital.bpRouseRerollNone',
+      'cards.vital.frenzyKindRotschreck',
+      'cards.structured.touchstonesCounter',
+      'sidebar.roll.surgeChip',
+      'sidebar.roll.rousePass',
+      'sidebar.roll.rotschreckBadge',
+      'sidebar.roll.mendRouseHealedChip',
+      'sidebar.roll.sucSingular',
+      'sidebar.roll.sucPlural',
+      'poolComposer.specToggle',
+      'poolComposer.bloodSurgeToggle',
+      'poolComposer.bloodSurgeRouseTag',
+      'statusBar.logs',
+      'statusBar.mobileLogsBtn',
+      'statusBar.roomSyncingLabel',
+      'statusBar.roomRetryLabel',
+      'statusBar.roomSyncLabel',
+      'modal.snapshotReasonManual',
+      'modal.defaultTemplateName',
+      'xp.presetCustom',
+      'xp.caitiffTag',
+      'xp.multiplierLabel',
+      'xp.acquireCaitiffTag',
+      'app.fieldDefault.calculated',
+      'app.xpBackgroundFlash',
+      'theme.eink',
+    ]);
+
+    const extractPlaceholders = (s: string) =>
+      [...s.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)].map((m) => m[1]).sort();
+
+    for (const key of Object.keys(PT_BR) as Array<keyof typeof PT_BR>) {
+      const ptPh = extractPlaceholders(PT_BR[key]);
+      const enPh = extractPlaceholders(EN[key]);
+      const esPh = extractPlaceholders(ES[key]);
+      expect(enPh, `Placeholder mismatch in EN for ${key}`).toEqual(ptPh);
+      expect(esPh, `Placeholder mismatch in ES for ${key}`).toEqual(ptPh);
+
+      if (PT_BR[key] === EN[key]) {
+        expect(
+          ALLOWED_IDENTICAL_PT_EN_KEYS.has(key),
+          `Untranslated PT_BR key matches EN unexpectedly: ${key} = ${PT_BR[key]}`,
+        ).toBe(true);
+      }
+    }
   });
 });

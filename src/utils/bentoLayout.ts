@@ -36,6 +36,14 @@ export function shouldUseTwoColumnMasonry(
 }
 
 /**
+ * Returns true when a card must span the full Bento grid width rather than
+ * flowing inside the 2-column masonry lanes.
+ */
+export function isFullWidthBentoCard(card: { id?: string; colSpan?: number }): boolean {
+  return card.id === 'card_wod_dossier' || (card.colSpan ?? 1) >= 2;
+}
+
+/**
  * Partitions an ordered card list into full-width bands and independent 2-column
  * masonry segments, preserving each card's original array index.
  */

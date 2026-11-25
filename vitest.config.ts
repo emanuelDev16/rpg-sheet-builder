@@ -2,8 +2,11 @@ import { defineConfig } from 'vitest/config';
 
 export const NODE_TEST_FILES = [
   'src/core/diceAudio.test.ts',
+  'src/core/dnd5eRules.test.ts',
   'src/core/formula.test.ts',
   'src/core/i18n.test.ts',
+  'src/core/paperSheetModel.test.ts',
+  'src/core/presetI18n.test.ts',
   'src/core/printSheet.test.ts',
   'src/core/roomSync.test.ts',
   'src/core/sheetModel.test.ts',
@@ -15,7 +18,9 @@ export const NODE_TEST_FILES = [
   'src/core/xpSystem.test.ts',
   'src/utils/bentoLayout.test.ts',
   'src/utils/dotRating.test.ts',
+  'src/utils/popoverPosition.test.ts',
   'src/utils/theme.test.ts',
+  'src/utils/wodCreationWizard.test.ts',
   'src/utils/wodPoolComposer.test.ts',
 ] as const;
 

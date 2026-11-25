@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { CharacterSheetState, RollLogEntry, RulePreset, SystemId } from '../core/sheetModel';
 import { AppLanguage, AppTranslations } from '../core/i18n';
+import { localizeFieldRollLabel } from '../core/presetI18n';
 import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
 import { type WodComposedRollRequest } from '../utils/wodPoolComposer';
 import { RulesSearchPanel } from './RulesSearchPanel';
@@ -506,7 +507,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                   >
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)] truncate">
-                        {entry.label}
+                        {localizeFieldRollLabel({ label: entry.label }, language)}
                       </span>
                       <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] shrink-0">
                         {entry.timestamp}
@@ -651,18 +652,42 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                           </span>
                         )
                       ) : (
-                        <>
+                        <div className="flex flex-wrap items-center justify-end gap-1">
+                          {entry.d20Mode === 'advantage' && (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-d20-adv' : undefined}
+                              className="dnd-d20-badge dnd-d20-badge--adv font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-black)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase"
+                            >
+                              {t.t('sidebar.roll.advBadge')}
+                            </span>
+                          )}
+                          {entry.d20Mode === 'disadvantage' && (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-d20-dis' : undefined}
+                              className="dnd-d20-badge dnd-d20-badge--dis font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--ink-secondary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase"
+                            >
+                              {t.t('sidebar.roll.disBadge')}
+                            </span>
+                          )}
+                          {entry.isDeathSave && (
+                            <span
+                              data-testid={idx === 0 ? 'latest-roll-death-save-badge' : undefined}
+                              className="dnd-d20-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--bg-strip)] text-[var(--ink-primary)] border border-[var(--border-color)] rounded-[var(--radius-pill)] uppercase"
+                            >
+                              {t.t('sidebar.roll.deathSaveBadge')}
+                            </span>
+                          )}
                           {entry.isCritical && (
                             <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-primary)] text-[var(--accent-contrast)] border border-[var(--border-color)] rounded-[var(--radius-pill)]">
-                              {t.t('sidebar.roll.crit20')}
+                              {entry.d20Dice ? t.t('sidebar.roll.nat20Badge') : t.t('sidebar.roll.crit20')}
                             </span>
                           )}
                           {entry.isFumble && (
                             <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border border-[var(--accent-danger)] rounded-[var(--radius-pill)]">
-                              {t.t('sidebar.roll.fumble1')}
+                              {entry.d20Dice ? t.t('sidebar.roll.nat1Badge') : t.t('sidebar.roll.fumble1')}
                             </span>
                           )}
-                        </>
+                        </div>
                       )}
                     </div>
 
@@ -676,6 +701,36 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                         </span>
                       </div>
                     )}
+
+                    {!entry.isPoolRoll && entry.d20Dice && entry.d20Dice.length > 0 && (() => {
+                      const keptIdx = entry.d20Kept !== undefined ? entry.d20Dice.indexOf(entry.d20Kept) : 0;
+                      return (
+                        <div className="flex flex-wrap items-center gap-1 my-1.5" aria-label={t.t('sidebar.diceResultsAria')}>
+                          {entry.d20Dice.map((dieVal, dIdx) => {
+                            const isKept = dIdx === (keptIdx >= 0 ? keptIdx : 0);
+                            const isDiscarded = entry.d20Dice!.length > 1 && !isKept;
+                            return (
+                              <span
+                                key={dIdx}
+                                data-testid={idx === 0 ? `latest-d20-die-${dIdx}` : undefined}
+                                aria-label={t.t(isDiscarded ? 'sidebar.roll.discardedDieAria' : 'sidebar.roll.keptDieAria', { value: dieVal })}
+                                className={`die-chip text-[10px] px-1.5 py-0.5 border font-mono-tech font-bold tabular-nums ${
+                                  isDiscarded
+                                    ? 'dnd-die-chip--discarded line-through opacity-55 bg-[var(--bg-strip)] text-[var(--ink-muted)] border-[var(--border-color)]/45'
+                                    : entry.isCritical
+                                      ? 'dnd-die-chip--kept bg-[var(--accent-primary)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                      : entry.isFumble
+                                        ? 'dnd-die-chip--kept bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] border-[var(--accent-danger)]'
+                                        : 'dnd-die-chip--kept bg-[var(--accent-black)] text-[var(--accent-contrast)] border-[var(--border-color)]'
+                                }`}
+                              >
+                                d20: {dieVal}
+                              </span>
+                            );
+                          })}
+                        </div>
+                      );
+                    })()}
 
                     <RollDiceChips
                       entry={entry}
@@ -870,7 +925,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                                 ? `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })} · ${t.t('sidebar.roll.exceptional')}`
                                 : `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })}`;
                         const v5FormulaLine = `${entry.rolls.length}d10 (${t.t('cards.pool.diffMeta')} ${v5Target}${
-                          (entry.hungerDice ?? 0) > 0 ? ` · H:${entry.hungerDice}` : ''
+                          (entry.hungerDice ?? 0) > 0
+                            ? ` · ${t.t('sidebar.roll.hungerShort', { count: entry.hungerDice ?? 0 })}`
+                            : ''
                         })`;
                         return (
                           <>

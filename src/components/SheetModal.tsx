@@ -41,8 +41,10 @@ import {
   getTranslations,
   type TranslateFn,
 } from '../core/i18n';
+import { localizeSystemName } from '../core/presetI18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 import { useFocusTrap } from '../utils/useFocusTrap';
+import { WodCreationWizard } from './WodCreationWizard';
 
 interface SheetModalProps {
   mode: 'new' | 'open' | 'save' | null;
@@ -54,6 +56,7 @@ interface SheetModalProps {
   t?: AppTranslations['modal'];
   onClose: () => void;
   onCreateNewSheet: (systemId: SystemId, identity?: NewSheetIdentityInput) => void;
+  onCreateWizardSheet?: (sheet: CharacterSheetState) => void;
   onLoadPreset: (presetId: SystemId) => void;
   onImportJson?: (nextSheet: CharacterSheetState) => void;
   onImportSheets?: (sheets: CharacterSheetState[], mode: 'overwrite' | 'keep') => void | Promise<void>;
@@ -347,6 +350,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   t = DEFAULT_MODAL_T,
   onClose,
   onCreateNewSheet,
+  onCreateWizardSheet,
   onLoadPreset,
   onImportJson,
   onImportSheets,
@@ -374,6 +378,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const [restoringSnapshotId, setRestoringSnapshotId] = useState<string | null>(null);
   const [copiedQss, setCopiedQss] = useState(false);
   const [selectedSystem, setSelectedSystem] = useState<SystemId>(activeSystemId);
+  const [wodCreationMode, setWodCreationMode] = useState<'quick' | 'wizard'>('quick');
   const [selectedWodEdition, setSelectedWodEdition] = useState<WodEdition>(() =>
     sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20',
   );
@@ -386,8 +391,6 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   const dialogRef = useRef<HTMLDivElement>(null);
   const closeButtonRef = useRef<HTMLButtonElement>(null);
   const overlayPointerDownRef = useRef(false);
-
-  useFocusTrap(Boolean(mode), dialogRef, onClose, closeButtonRef);
 
   const handleSelectWodEdition = (nextEdition: WodEdition) => {
     setSelectedWodEdition(nextEdition);
@@ -407,6 +410,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
   useEffect(() => {
     if (mode === 'new') {
       setSelectedSystem(activeSystemId);
+      setWodCreationMode('quick');
       setSelectedWodEdition(sheet.rulePreset === 'vampire-v5' ? 'vampire-v5' : 'storyteller-v20');
       setSelectedWodClanPreset('');
       setCustomWodClan('');
@@ -420,6 +424,13 @@ export const SheetModal: React.FC<SheetModalProps> = ({
       void refreshSnapshots();
     }
   }, [mode, activeSystemId, sheet.characterName, sheet.rulePreset]);
+
+  const handleCloseModal = () => {
+    setWodCreationMode('quick');
+    onClose();
+  };
+
+  useFocusTrap(Boolean(mode), dialogRef, handleCloseModal, closeButtonRef);
 
   if (!mode) return null;
 
@@ -531,7 +542,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         overlayPointerDownRef.current = e.target === e.currentTarget;
       }}
       onClick={(e) => {
-        if (overlayPointerDownRef.current && e.target === e.currentTarget) onClose();
+        if (overlayPointerDownRef.current && e.target === e.currentTarget) handleCloseModal();
         overlayPointerDownRef.current = false;
       }}
     >
@@ -540,7 +551,11 @@ export const SheetModal: React.FC<SheetModalProps> = ({
         role="dialog"
         aria-modal="true"
         aria-labelledby="sheet-modal-title"
-        className="bento-card mobile-modal-dialog w-full max-w-lg bg-[var(--bg-card)] shadow-[var(--shadow-modal)]"
+        className={`bento-card mobile-modal-dialog w-full ${
+          mode === 'new' && selectedSystem === 'wod' && wodCreationMode === 'wizard'
+            ? 'max-w-3xl'
+            : 'max-w-lg'
+        } bg-[var(--bg-card)] shadow-[var(--shadow-modal)]`}
       >
         <header className="bento-card-header modal-dialog-header">
           <div className="bento-card-header-title flex flex-wrap items-center gap-2 min-w-0">
@@ -559,7 +574,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
           <button
             ref={closeButtonRef}
             type="button"
-            onClick={onClose}
+            onClick={handleCloseModal}
             aria-label={t.closeAria}
             className="cyber-btn-outline mobile-touch-stepper min-h-[36px] min-w-[36px] w-9 h-9 sm:w-8 sm:h-8 flex items-center justify-center shrink-0 cursor-pointer"
           >
@@ -567,7 +582,51 @@ export const SheetModal: React.FC<SheetModalProps> = ({
           </button>
         </header>
 
+        {mode === 'new' && selectedSystem === 'wod' && (
+          <div
+            role="group"
+            aria-label={t.t('wizard.modeAria')}
+            className="wod-creation-mode-strip"
+          >
+            <div className="wod-creation-mode-switch">
+              <button
+                type="button"
+                data-testid="new-sheet-wod-mode-quick"
+                aria-pressed={wodCreationMode === 'quick'}
+                onClick={() => setWodCreationMode('quick')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'quick' ? 'is-active' : ''
+                }`}
+              >
+                {t.t('wizard.modeQuick')}
+              </button>
+              <button
+                type="button"
+                data-testid="new-sheet-wod-mode-wizard"
+                aria-pressed={wodCreationMode === 'wizard'}
+                onClick={() => setWodCreationMode('wizard')}
+                className={`wod-creation-mode-btn min-h-[36px] px-2.5 py-1.5 font-mono-tech text-[10px] sm:text-[11px] font-extrabold uppercase cursor-pointer ${
+                  wodCreationMode === 'wizard' ? 'is-active' : ''
+                }`}
+              >
+                {t.t('wizard.modeGuided')}
+              </button>
+            </div>
+          </div>
+        )}
+
         {mode === 'new' ? (
+          selectedSystem === 'wod' && wodCreationMode === 'wizard' ? (
+            <WodCreationWizard
+              initialEdition={selectedWodEdition}
+              language={language}
+              onCancel={handleCloseModal}
+              onComplete={(builtSheet) => {
+                onCreateWizardSheet?.(builtSheet);
+                handleCloseModal();
+              }}
+            />
+          ) : (
           <form
             id="create-sheet-form"
             aria-labelledby="sheet-modal-title"
@@ -630,7 +689,12 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                         role="radio"
                         aria-checked={isSelected}
                         data-testid={`new-sheet-system-${opt.id}`}
-                        onClick={() => setSelectedSystem(opt.id)}
+                        onClick={() => {
+                          setSelectedSystem(opt.id);
+                          if (opt.id !== 'wod') {
+                            setWodCreationMode('quick');
+                          }
+                        }}
                         className={`cyber-btn-outline !rounded-[var(--radius-card)] min-h-[40px] px-3 py-2 text-left flex items-center justify-between gap-3 cursor-pointer ${
                           isBlank ? 'border-dashed' : ''
                         } ${isSelected ? 'cyber-active-tint' : ''}`}
@@ -758,7 +822,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       onChange={(e) => setSecondaryTrait(e.target.value)}
                       placeholder={
                         selectedSystem === 'dnd5e'
-                          ? 'Fighter · Half-Elf'
+                          ? t.t('modal.dndTraitPlaceholder')
                           : selectedSystem === 'cyberpunk'
                             ? 'Netrunner'
                             : t.t('modal.defaultTraitPlaceholder')
@@ -789,6 +853,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
               </button>
             </div>
           </form>
+          )
         ) : mode === 'open' ? (
           <>
             <div className="modal-dialog-body p-4 flex flex-col gap-3">
@@ -855,7 +920,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           <div className="min-w-0">
                             <div className="text-xs font-bold uppercase truncate">{tpl.name}</div>
                             <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
-                              {tpl.systemId} ·{' '}
+                              {localizeSystemName(tpl.systemId, '', language) || tpl.systemId} ·{' '}
                               {t.t('modal.templateBlocksCount', {
                                 count: tpl.sheet.cards.length,
                               })}
@@ -1057,14 +1122,19 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     <div className="text-xs font-bold uppercase">{t.saveLocalTitle}</div>
                     <div className="text-[11px] opacity-80">{t.saveLocalDesc}</div>
                   </div>
-                  <span className="text-xs font-bold whitespace-nowrap shrink-0">OK ↗</span>
+                  <span className="text-xs font-bold whitespace-nowrap shrink-0">
+                    {t.t('modal.saveLocalAction')}
+                  </span>
                 </button>
 
                 {onSaveCustomTemplate && (
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      const clean = templateName.trim() || sheet.characterName || 'TEMPLATE';
+                      const clean =
+                        templateName.trim() ||
+                        sheet.characterName ||
+                        t.t('modal.defaultTemplateName');
                       void Promise.resolve(onSaveCustomTemplate(clean)).finally(() => onClose());
                     }}
                     className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 flex flex-col gap-2 bg-[var(--bg-card-alt)]"

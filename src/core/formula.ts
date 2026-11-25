@@ -789,8 +789,13 @@ class Parser {
     const tok = this.peek();
     if (tok?.type === 'op' && (tok.value === '+' || tok.value === '-')) {
       this.consume();
-      const val = this.parseUnary();
-      return tok.value === '-' ? -val : val;
+      this.enterDepth();
+      try {
+        const val = this.parseUnary();
+        return tok.value === '-' ? -val : val;
+      } finally {
+        this.leaveDepth();
+      }
     }
     return this.parsePrimary();
   }
@@ -940,7 +945,7 @@ export function parseWodPoolExpression(
   expression: string,
 ): { countExpr: string; diffExpr: string; hasExplicitDiff: boolean } | null {
   const cleaned = expression.trim();
-  if (!cleaned) return null;
+  if (!cleaned || cleaned.length > MAX_FORMULA_LENGTH) return null;
 
   const poolFnMatch = cleaned.match(/^pool\((.+)\)$/i);
   if (poolFnMatch) {
@@ -1261,6 +1266,17 @@ export function rollDiceExpression(
       breakdown: 'Expressão vazia',
       rolls: [],
       error: 'Expressão de rolagem vazia',
+    };
+  }
+  if (cleaned.length > MAX_FORMULA_LENGTH) {
+    const message = `Expressão excede o tamanho máximo (${MAX_FORMULA_LENGTH} caracteres)`;
+    return {
+      ok: false,
+      total: 0,
+      resolvedExpression: cleaned.slice(0, MAX_FORMULA_LENGTH),
+      breakdown: message,
+      rolls: [],
+      error: message,
     };
   }
 

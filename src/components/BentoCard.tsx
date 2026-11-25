@@ -7,17 +7,28 @@ import {
 } from '../core/formula';
 import {
   AppMode,
+  type Dnd5eAbilityKey,
+  type Dnd5eDeathSavesState,
+  type Dnd5eHitDieType,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  type Dnd5eSpellcastingAbilityKey,
+  type Dnd5eState,
   FieldKind,
+  HavenEntry,
+  MeritFlawEntry,
   reorderFieldInCard,
   RulePreset,
   SheetCard,
   SheetEvaluation,
   SheetField,
   SystemId,
+  TouchstoneEntry,
   V5WillpowerState,
   VirtuesState,
 } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { localizeCardTag, localizeCardTitle } from '../core/presetI18n';
 import {
   buildCatalogSkillFields,
   getGroupedWodSkillsCatalog,
@@ -50,6 +61,36 @@ import {
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
+import { WodStructuredBlocks } from './WodStructuredBlocks';
+import { Dnd5eAbilitiesSkills } from './dnd5e/Dnd5eAbilitiesSkills';
+import { Dnd5eCombatPanel } from './dnd5e/Dnd5eCombatPanel';
+import { Dnd5eSpellSlotsPanel } from './dnd5e/Dnd5eSpellSlotsPanel';
+import { isFullWidthBentoCard } from '../utils/bentoLayout';
+
+export interface Dnd5eCardContext {
+  state: Dnd5eState;
+  abilityScores: Record<Dnd5eAbilityKey, number>;
+  hp: { current: number; max: number };
+  armorClass: string;
+  initiativeMod: number;
+  onChangeAbilityScore: (ability: Dnd5eAbilityKey, score: number) => void;
+  onToggleSaveProf: (ability: Dnd5eAbilityKey) => void;
+  onCycleSkillProf: (skill: Dnd5eSkillKey, next: Dnd5eSkillProficiency) => void;
+  onRollCheck: (label: string, bonus: number) => void;
+  onDamage: (amount: number) => void;
+  onHeal: (amount: number) => void;
+  onSetTempHp: (amount: number) => void;
+  onToggleInspiration: () => void;
+  onChangeHitDieType: (die: Dnd5eHitDieType) => void;
+  onShortRest: () => void;
+  onLongRest: () => void;
+  onSetDeathSaves: (next: Dnd5eDeathSavesState) => void;
+  onRollDeathSave: () => void;
+  onRollInitiative: () => void;
+  onChangeSpellAbility: (ability: Dnd5eSpellcastingAbilityKey) => void;
+  onAdjustSlotMax: (level: number, delta: number) => void;
+  onToggleSlotUsed: (level: number, slotIndex: number) => void;
+}
 
 interface BentoCardProps {
   card: SheetCard;
@@ -120,6 +161,20 @@ interface BentoCardProps {
     patch: Partial<Pick<SheetCard, 'code' | 'title' | 'colSpan' | 'fields'>>,
   ) => void;
   onRemoveCard: (cardId: string) => void;
+  touchstones?: readonly TouchstoneEntry[];
+  meritsFlaws?: readonly MeritFlawEntry[];
+  havens?: readonly HavenEntry[];
+  searchQuery?: string;
+  onAddTouchstone?: (entry: TouchstoneEntry) => void;
+  onUpdateTouchstone?: (id: string, patch: Partial<Omit<TouchstoneEntry, 'id'>>) => void;
+  onRemoveTouchstone?: (id: string) => void;
+  onAddMeritFlaw?: (entry: MeritFlawEntry) => void;
+  onUpdateMeritFlaw?: (id: string, patch: Partial<Omit<MeritFlawEntry, 'id'>>) => void;
+  onRemoveMeritFlaw?: (id: string) => void;
+  onAddHaven?: (entry: HavenEntry) => void;
+  onUpdateHaven?: (id: string, patch: Partial<Omit<HavenEntry, 'id'>>) => void;
+  onRemoveHaven?: (id: string) => void;
+  dnd5eContext?: Dnd5eCardContext;
 }
 
 type GuidedFieldTemplateId =
@@ -205,6 +260,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onAddField,
   onUpdateCard,
   onRemoveCard,
+  touchstones = [],
+  meritsFlaws = [],
+  havens = [],
+  searchQuery = '',
+  onAddTouchstone,
+  onUpdateTouchstone,
+  onRemoveTouchstone,
+  onAddMeritFlaw,
+  onUpdateMeritFlaw,
+  onRemoveMeritFlaw,
+  onAddHaven,
+  onUpdateHaven,
+  onRemoveHaven,
+  dnd5eContext,
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -251,6 +320,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   }, [mode]);
 
   const lang: AppLanguage = t.language ?? 'pt-BR';
+  const displayCardTitle = localizeCardTitle(card, lang);
+  const displayCardCode = localizeCardTag(card, lang);
   const getTemplateMeta = (tplId: GuidedFieldTemplateId) => ({
     label: t.t(`cards.guided.${tplId}.label`),
     hint: t.t(`cards.guided.${tplId}.hint`),
@@ -277,6 +348,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const selectedMeta = guided.templates[selectedTemplate];
 
   const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
+  const isWodDossierCard = card.id === 'card_wod_dossier' && Boolean(officialEdition);
   const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
   const showOfficialDisciplineCatalog =
     Boolean(officialEdition) && selectedTemplate === 'discipline';
@@ -406,9 +478,30 @@ export const BentoCard: React.FC<BentoCardProps> = ({
     [evaluation.variables],
   );
 
-  const spanClass = card.colSpan === 2 ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
+  const spanClass = isFullWidthBentoCard(card) ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
   const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
+  const isDnd5eInteractive = Boolean(
+    systemId === 'dnd5e' &&
+      mode === 'jogo' &&
+      dnd5eContext &&
+      (card.id === 'card_atributos' ||
+        card.id === 'card_skills' ||
+        card.id === 'card_combate' ||
+        card.id === 'card_arcano'),
+  );
+  const DND_SUPPRESSED_IDS_BY_CARD: Record<string, Set<string>> = {
+    card_atributos: new Set([
+      'f_strength', 'f_mod_str', 'f_dexterity', 'f_mod_dex', 'f_constitution', 'f_mod_con',
+      'f_intelligence', 'f_mod_int', 'f_wisdom', 'f_mod_wis', 'f_charisma', 'f_mod_cha',
+    ]),
+    card_skills: new Set([
+      'f_athletics', 'f_perception', 'f_arcana', 'f_stealth',
+      'f_roll_athletics', 'f_roll_perception', 'f_roll_con_save',
+    ]),
+    card_combate: new Set(['f_hp', 'f_hit_dice', 'f_ac', 'f_initiative', 'f_inspiration']),
+    card_arcano: new Set(['f_spell_dc', 'f_spell_atk', 'f_slots_1', 'f_slots_2']),
+  };
   const fieldsToRender =
     isWodCombatCard && mode === 'jogo'
       ? rawFieldsToRender.filter((f) => {
@@ -420,7 +513,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           }
           return true;
         })
-      : rawFieldsToRender;
+      : isDnd5eInteractive
+        ? rawFieldsToRender.filter((f) => !(DND_SUPPRESSED_IDS_BY_CARD[card.id]?.has(f.id)))
+        : rawFieldsToRender;
 
   // Pair numeric skill/stat fields with their matching roll button in Play mode
   const pairedRollByNumberId = new Map<string, SheetField>();
@@ -971,7 +1066,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               }`}
             >
               {t.t('cards.vital.bloodSurgeLabel', { bonus: bloodSurgeBonus })}
-              {bloodSurge ? ' · ON' : ''}
+              {bloodSurge ? ` · ${t.t('poolComposer.powerBonusOnTag')}` : ''}
             </button>
           </div>
         )}
@@ -1002,7 +1097,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   {t.t('cards.vital.bpMend')}
                 </span>
                 <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
-                  {bpStats.mendSuperficialPerRouse} SUP
+                  {t.t('cards.vital.bpMendValue', { amount: bpStats.mendSuperficialPerRouse })}
                 </span>
               </div>
               <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
@@ -1047,21 +1142,21 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   };
 
   return (
-    <section className={`bento-card ${spanClass}`} data-card-id={card.id} aria-label={card.title}>
+    <section className={`bento-card ${spanClass}`} data-card-id={card.id} aria-label={displayCardTitle}>
       <header className="bento-card-header">
         {mode === 'edicao' ? (
           <>
             <div className="no-print print:hidden flex flex-wrap items-center gap-2 flex-1 min-w-0">
               <input
                 type="text"
-                aria-label={t.t('cards.editCodeAria', { title: card.title })}
+                aria-label={t.t('cards.editCodeAria', { title: displayCardTitle })}
                 value={card.code}
                 onChange={(e) => onUpdateCard(card.id, { code: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-wine)] w-28"
               />
               <input
                 type="text"
-                aria-label={t.t('cards.editTitleAria', { title: card.title })}
+                aria-label={t.t('cards.editTitleAria', { title: displayCardTitle })}
                 value={card.title}
                 onChange={(e) => onUpdateCard(card.id, { title: e.target.value })}
                 className="cyber-input mobile-touch-input px-2 py-0.5 text-xs font-extrabold uppercase flex-1 min-w-[140px]"
@@ -1069,20 +1164,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             </div>
             <div className="hidden print:flex items-center gap-2.5 min-w-0">
               <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-                {card.code}
+                {displayCardCode}
               </span>
               <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
-                {card.title}
+                {displayCardTitle}
               </h2>
             </div>
           </>
         ) : (
           <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-              {card.code}
+              {displayCardCode}
             </span>
             <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
-              {card.title}
+              {displayCardTitle}
             </h2>
           </div>
         )}
@@ -1107,7 +1202,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 </button>
                 <button
                   type="button"
-                  aria-label={t.t('cards.removeCardAria', { title: card.title })}
+                  aria-label={t.t('cards.removeCardAria', { title: displayCardTitle })}
                   onClick={() => onRemoveCard(card.id)}
                   className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
                 >
@@ -1137,7 +1232,29 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             : 'flex flex-col'
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
-        {fieldsToRender.length === 0 && (
+        {isWodDossierCard && officialEdition && (
+          <WodStructuredBlocks
+            edition={officialEdition}
+            cardTitle={displayCardTitle}
+            cardCode={displayCardCode}
+            searchQuery={searchQuery}
+            touchstones={touchstones}
+            meritsFlaws={meritsFlaws}
+            havens={havens}
+            t={t}
+            onAddTouchstone={onAddTouchstone}
+            onUpdateTouchstone={onUpdateTouchstone}
+            onRemoveTouchstone={onRemoveTouchstone}
+            onAddMeritFlaw={onAddMeritFlaw}
+            onUpdateMeritFlaw={onUpdateMeritFlaw}
+            onRemoveMeritFlaw={onRemoveMeritFlaw}
+            onAddHaven={onAddHaven}
+            onUpdateHaven={onUpdateHaven}
+            onRemoveHaven={onRemoveHaven}
+          />
+        )}
+
+        {fieldsToRender.length === 0 && !isWodDossierCard && !isDnd5eInteractive && (
           <div
             data-testid={mode === 'jogo' ? `empty-card-play-${card.id}` : `empty-card-edit-${card.id}`}
             className="no-print print:hidden p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/45 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2"
@@ -1157,6 +1274,65 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               </button>
             )}
           </div>
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_atributos' && (
+          <Dnd5eAbilitiesSkills
+            view="abilities"
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
+            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
+            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
+            onRollCheck={dnd5eContext.onRollCheck}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_skills' && (
+          <Dnd5eAbilitiesSkills
+            view="skills"
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
+            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
+            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
+            onRollCheck={dnd5eContext.onRollCheck}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_combate' && (
+          <Dnd5eCombatPanel
+            dnd5eState={dnd5eContext.state}
+            currentHp={dnd5eContext.hp.current}
+            maxHp={dnd5eContext.hp.max}
+            armorClass={dnd5eContext.armorClass}
+            initiativeMod={dnd5eContext.initiativeMod}
+            t={t}
+            onDamage={dnd5eContext.onDamage}
+            onHeal={dnd5eContext.onHeal}
+            onSetTempHp={dnd5eContext.onSetTempHp}
+            onToggleInspiration={dnd5eContext.onToggleInspiration}
+            onChangeHitDieType={dnd5eContext.onChangeHitDieType}
+            onShortRest={dnd5eContext.onShortRest}
+            onLongRest={dnd5eContext.onLongRest}
+            onSetDeathSaves={dnd5eContext.onSetDeathSaves}
+            onRollDeathSave={dnd5eContext.onRollDeathSave}
+            onRollInitiative={dnd5eContext.onRollInitiative}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_arcano' && (
+          <Dnd5eSpellSlotsPanel
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeSpellAbility={dnd5eContext.onChangeSpellAbility}
+            onAdjustSlotMax={dnd5eContext.onAdjustSlotMax}
+            onToggleSlotUsed={dnd5eContext.onToggleSlotUsed}
+            onRollSpellAttack={dnd5eContext.onRollCheck}
+          />
         )}
 
         {wodAttributeGroups ? (
@@ -2029,7 +2205,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                     <input
                       ref={labelInputRef}
                       type="text"
-                      aria-label={t.t('cards.newFieldNameAria', { title: card.title })}
+                      aria-label={t.t('cards.newFieldNameAria', { title: displayCardTitle })}
                       value={newFieldLabel}
                       onChange={(e) => setNewFieldLabel(e.target.value)}
                       placeholder={t.newFieldPlaceholder}

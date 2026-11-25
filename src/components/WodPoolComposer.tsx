@@ -1,6 +1,7 @@
 import React, { useEffect, useId, useMemo, useState } from 'react';
 import { ArrowUpDown, ChevronDown, Dices, Minus, Plus, RotateCcw } from 'lucide-react';
 import { AppLanguage, AppTranslations } from '../core/i18n';
+import { localizeFieldLabel } from '../core/presetI18n';
 import { CharacterSheetState } from '../core/sheetModel';
 import {
   computeWodComposedPool,
@@ -64,7 +65,21 @@ export const WodPoolComposer: React.FC<WodPoolComposerProps> = ({
   const secondarySelectId = useId();
   const diffInputId = useId();
 
-  const traits = useMemo(() => extractWodRollableTraits(sheet, language), [sheet, language]);
+  const traits = useMemo(() => {
+    const raw = extractWodRollableTraits(sheet, language);
+    const localizeGroup = (list: typeof raw.attributes) =>
+      list.map((item) => ({
+        ...item,
+        label: localizeFieldLabel({ key: item.key, label: item.label }, language),
+      }));
+    return {
+      attributes: localizeGroup(raw.attributes),
+      skills: localizeGroup(raw.skills),
+      disciplines: localizeGroup(raw.disciplines),
+      virtues: localizeGroup(raw.virtues),
+      all: localizeGroup(raw.all),
+    };
+  }, [sheet, language]);
 
   const defaultPrimaryId =
     traits.attributes[0]?.id ?? traits.all[0]?.id ?? '';

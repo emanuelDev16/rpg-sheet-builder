@@ -13,7 +13,8 @@
     "test:vitest": "vitest run",
     "test:node": "tsx scripts/run-node-tests.ts",
     "test:all": "npm run test:vitest && npm run test:node",
-    "test": "npm run test:all"
+    "test": "npm run test:all",
+    "audit:local": "node scripts/audit-project.mjs"
   },
   "dependencies": {
     "@tailwindcss/vite": "^4.3.3",

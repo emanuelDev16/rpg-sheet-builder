@@ -1,9 +1,20 @@
 @import "tailwindcss";
+@import "./styles/paperPrint.css";
 
 /* ============================================================================
    GRIDSHEET — MULTI-THEME DESIGN TOKENS (light | dark | eink)
    Controlado por data-theme no elemento <html>
    ============================================================================ */
+:root {
+  /* --- Escala Canônica de Camadas (z-index) --- */
+  --z-sticky: 20;
+  --z-topbar: 40;
+  --z-drawer: 60;
+  --z-popover: 80;
+  --z-modal: 100;
+  --z-toast: 120;
+}
+
 :root,
 [data-theme="light"] {
   color-scheme: light;
@@ -1369,6 +1380,312 @@ select:focus-visible,
   border-color: #1A1A1A;
 }
 
+/* ============================================================================
+   WOD BLOCOS ESTRUTURADOS (Pedras de Toque, Qualidades/Defeitos & Refúgios)
+   ============================================================================ */
+.wod-structured-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-structured-item {
+  background-color: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.wod-structured-summary-pill {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+}
+
+.wod-mf-badge--merit {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border: 1.5px solid var(--accent-wine);
+  border-radius: var(--radius-pill);
+}
+
+.wod-mf-badge--flaw {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: 1.5px solid var(--accent-danger);
+  border-radius: var(--radius-pill);
+}
+
+.wod-structured-filter-chip,
+.wod-haven-trait-chip,
+.wod-structured-catalog-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, transform 100ms ease, box-shadow 120ms ease;
+}
+
+.wod-structured-filter-chip:hover,
+.wod-haven-trait-chip:hover,
+.wod-structured-catalog-btn:hover {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-structured-filter-chip.is-active,
+.wod-haven-trait-chip.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-haven-trait-chip.is-flaw:not(.is-active) {
+  border-style: dashed;
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+.wod-haven-trait-chip.is-flaw.is-active {
+  background-color: var(--accent-danger);
+  color: var(--accent-danger-contrast);
+  border-color: var(--border-color);
+}
+
+.wod-structured-danger-btn {
+  background-color: var(--accent-danger);
+  color: var(--accent-danger-contrast);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+.wod-structured-added-pill {
+  background-color: var(--bg-strip);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+[data-theme="eink"] .wod-structured-panel,
+[data-theme="eink"] .wod-structured-item,
+[data-theme="eink"] .wod-structured-summary-pill,
+[data-theme="eink"] .wod-mf-badge--merit,
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-structured-filter-chip,
+[data-theme="eink"] .wod-haven-trait-chip,
+[data-theme="eink"] .wod-structured-catalog-btn,
+[data-theme="eink"] .wod-structured-danger-btn {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-structured-filter-chip:hover,
+[data-theme="eink"] .wod-haven-trait-chip:hover,
+[data-theme="eink"] .wod-structured-catalog-btn:hover {
+  box-shadow: none;
+}
+
+[data-theme="eink"] .wod-structured-filter-chip.is-active,
+[data-theme="eink"] .wod-haven-trait-chip.is-active,
+[data-theme="eink"] .wod-haven-trait-chip.is-flaw.is-active {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mf-badge--merit {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-haven-trait-chip.is-flaw:not(.is-active) {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-structured-danger-btn {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+/* ============================================================================
+   WOD ASSISTENTE GUIADO DE CRIAÇÃO (4 PASSOS) & MODO DE CRIAÇÃO
+   ============================================================================ */
+.wod-creation-mode-strip {
+  flex-shrink: 0;
+  border-bottom: 1.5px solid var(--border-color);
+  background-color: var(--bg-card-alt);
+  padding: 8px 14px;
+}
+
+.wod-creation-mode-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 6px;
+}
+
+.wod-creation-mode-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-control);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.wod-creation-mode-btn:hover {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-creation-mode-btn.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-topbar {
+  flex-shrink: 0;
+  border-bottom: 1.5px solid var(--border-subtle);
+  background-color: var(--bg-card-alt);
+}
+
+.wod-wizard-step-btn {
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-control);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.wod-wizard-step-btn:hover:not(:disabled) {
+  background-color: var(--bg-hover);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-step-btn.is-active {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-step-btn.is-done:not(.is-active) {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.wod-wizard-step-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+}
+
+.wod-wizard-rules-toggle {
+  border: 1.5px solid var(--border-color);
+  border-radius: var(--radius-pill);
+  transition: background-color 120ms ease, color 120ms ease, box-shadow 120ms ease;
+}
+
+.wod-wizard-rules-toggle.is-strict {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.wod-wizard-rules-toggle.is-free {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--border-color);
+  box-shadow: var(--shadow-btn);
+}
+
+.wod-wizard-panel {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.wod-wizard-subcard {
+  background-color: var(--bg-card);
+  border: 1.5px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.wod-wizard-budget-pill {
+  border-radius: var(--radius-pill);
+  border: 1.5px solid var(--border-color);
+  background-color: var(--bg-card);
+  color: var(--ink-primary);
+}
+
+.wod-wizard-budget-pill.is-ok {
+  background-color: var(--accent-cream-badge);
+  color: var(--accent-wine);
+  border-color: var(--accent-wine);
+}
+
+.wod-wizard-budget-pill.is-warn {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border-color: var(--accent-danger);
+}
+
+.wod-wizard-alert {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: 1.5px solid var(--accent-danger);
+  border-radius: var(--radius-card);
+}
+
+[data-theme="eink"] .wod-creation-mode-btn,
+[data-theme="eink"] .wod-wizard-step-btn,
+[data-theme="eink"] .wod-wizard-rules-toggle,
+[data-theme="eink"] .wod-wizard-panel,
+[data-theme="eink"] .wod-wizard-subcard,
+[data-theme="eink"] .wod-wizard-budget-pill,
+[data-theme="eink"] .wod-wizard-alert {
+  box-shadow: none;
+  transform: none;
+  transition: none;
+}
+
+[data-theme="eink"] .wod-creation-mode-btn:hover,
+[data-theme="eink"] .wod-wizard-step-btn:hover:not(:disabled) {
+  box-shadow: none;
+}
+
+[data-theme="eink"] .wod-creation-mode-btn.is-active,
+[data-theme="eink"] .wod-wizard-step-btn.is-active,
+[data-theme="eink"] .wod-wizard-rules-toggle.is-free {
+  background-color: #1A1A1A;
+  color: #F8F8F8;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-wizard-step-btn.is-done:not(.is-active),
+[data-theme="eink"] .wod-wizard-rules-toggle.is-strict,
+[data-theme="eink"] .wod-wizard-budget-pill.is-ok {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-color: #1A1A1A;
+}
+
+[data-theme="eink"] .wod-wizard-budget-pill.is-warn,
+[data-theme="eink"] .wod-wizard-alert {
+  background-color: #F8F8F8;
+  color: #1A1A1A;
+  border-style: dashed;
+  border-color: #1A1A1A;
+}
+
 @media (forced-colors: active) {
   .v5-humanity-box {
     border: 2px solid ButtonText;
@@ -1428,10 +1745,74 @@ select:focus-visible,
   }
 
   .v5-bane-severity-badge,
-  .wod-power-bonus-badge {
+  .wod-power-bonus-badge,
+  .wod-structured-summary-pill,
+  .wod-mf-badge--merit,
+  .wod-mf-badge--flaw {
     background-color: Canvas;
     color: CanvasText;
     border: 2px solid Highlight;
+  }
+
+  .wod-structured-panel,
+  .wod-structured-item {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-structured-filter-chip,
+  .wod-haven-trait-chip,
+  .wod-structured-catalog-btn {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-structured-filter-chip.is-active,
+  .wod-haven-trait-chip.is-active,
+  .wod-structured-danger-btn {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .wod-creation-mode-strip,
+  .wod-wizard-topbar,
+  .wod-wizard-panel,
+  .wod-wizard-subcard {
+    background-color: Canvas;
+    color: CanvasText;
+    border-color: ButtonText;
+  }
+
+  .wod-creation-mode-btn,
+  .wod-wizard-step-btn,
+  .wod-wizard-rules-toggle,
+  .wod-wizard-budget-pill {
+    background-color: ButtonFace;
+    color: ButtonText;
+    border: 2px solid ButtonText;
+  }
+
+  .wod-creation-mode-btn.is-active,
+  .wod-wizard-step-btn.is-active,
+  .wod-wizard-rules-toggle.is-free {
+    background-color: Highlight;
+    color: HighlightText;
+    border-color: Highlight;
+  }
+
+  .wod-wizard-step-btn:disabled {
+    color: GrayText;
+    border-color: GrayText;
+  }
+
+  .wod-wizard-budget-pill.is-warn,
+  .wod-wizard-alert {
+    background-color: Canvas;
+    color: CanvasText;
+    border: 2px dashed Highlight;
   }
 }
 
@@ -1757,6 +2138,165 @@ select:focus-visible,
     box-shadow: none;
     transform: none;
   }
+
+  /* 4. Blocos Estruturados WoD — Light Cyber Brutalism (#FFFDF9, #EFE3D2, #0B0B0B, #5B0F18, 4px) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-panel {
+    background-color: #F8F1E7;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-item {
+    background-color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-summary-pill,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--merit {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-mf-badge--flaw {
+    background-color: #FEE2E2;
+    color: #8C1313;
+    border: 1.5px solid #8C1313;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-catalog-btn {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-catalog-btn:hover {
+    background-color: #EFE3D2;
+    color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-filter-chip.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw:not(.is-active) {
+    background-color: #FFFDF9;
+    color: #8C1313;
+    border: 1.5px dashed #8C1313;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-haven-trait-chip.is-flaw.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-structured-danger-btn {
+    background-color: #8C1313;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  /* 5. Assistente Guiado WoD — Light Cyber Brutalism (#FFFDF9, #F8F1E7, #EFE3D2, #0B0B0B, #5B0F18, 4px) */
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-strip,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-topbar,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-panel {
+    background-color: #F8F1E7;
+    border-color: #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-panel,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-subcard {
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-subcard {
+    background-color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-btn,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn {
+    background-color: #FFFDF9;
+    color: #0B0B0B;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-btn:hover,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn:hover:not(:disabled) {
+    background-color: #EFE3D2;
+    color: #0B0B0B;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-creation-mode-btn.is-active,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn.is-active {
+    background-color: #5B0F18;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    border-radius: 4px;
+    box-shadow: 2px 2px 0px #0B0B0B;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn.is-done:not(.is-active) {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-step-btn:disabled {
+    opacity: 1;
+    background-color: #EFE3D2;
+    color: #4A433D;
+    border: 1.5px dashed #6E6258;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-rules-toggle {
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-rules-toggle.is-strict {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-rules-toggle.is-free {
+    background-color: #0B0B0B;
+    color: #FFFDF9;
+    border: 1.5px solid #0B0B0B;
+    box-shadow: 2px 2px 0px #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-budget-pill {
+    border-radius: 4px;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-budget-pill.is-ok {
+    background-color: #EFE3D2;
+    color: #5B0F18;
+    border: 1.5px solid #5B0F18;
+  }
+
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-budget-pill.is-warn,
+  :root:not([data-theme="dark"]):not([data-theme="eink"]) .wod-wizard-alert {
+    background-color: #FEE2E2;
+    color: #8C1313;
+    border: 1.5px solid #8C1313;
+    border-radius: 4px;
+  }
 }
 
 /* Compactação Desktop (> 768px) restrita ao tema claro */
@@ -1842,156 +2382,6 @@ select:focus-visible,
 }
 
 /* ============================================================================
-   MODO IMPRESSÃO / EXPORTAÇÃO PDF
-   ============================================================================ */
-@page {
-  size: A4 portrait;
-  margin: 10mm;
-}
-
-@media print {
-  :root,
-  [data-theme="light"],
-  [data-theme="dark"],
-  [data-theme="eink"] {
-    --bg-base: #FFFFFF !important;
-    --bg-canvas: #FFFFFF !important;
-    --bg-card: #FFFFFF !important;
-    --bg-card-alt: #F5F5F5 !important;
-    --bg-strip: #F0F0F0 !important;
-    --bg-header-strip: #F0F0F0 !important;
-    --ink-primary: #0B0B0B !important;
-    --ink-secondary: #1F1F1F !important;
-    --ink-muted: #333333 !important;
-    --text-primary: #0B0B0B !important;
-    --text-secondary: #1F1F1F !important;
-    --text-muted: #333333 !important;
-    --border-color: #0B0B0B !important;
-    --border-ink: #0B0B0B !important;
-    --accent-black: #0B0B0B !important;
-    --shadow-card: none !important;
-    --shadow-btn: none !important;
-    --shadow-btn-hover: none !important;
-    --shadow-drawer: none !important;
-    --shadow-modal: none !important;
-    color-scheme: light !important;
-  }
-
-  * {
-    -webkit-print-color-adjust: exact !important;
-    print-color-adjust: exact !important;
-  }
-
-  html,
-  body,
-  #root {
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    background-color: #FFFFFF !important;
-    color: #0B0B0B !important;
-  }
-
-  .cyber-grid-canvas {
-    background-image: none !important;
-    background-color: #FFFFFF !important;
-  }
-
-  .print-shell {
-    height: auto !important;
-    min-height: 0 !important;
-    overflow: visible !important;
-    display: block !important;
-  }
-
-  .print-main {
-    overflow: visible !important;
-    height: auto !important;
-    padding: 0 !important;
-    background-color: #FFFFFF !important;
-  }
-
-  .bento-print-grid {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 12px !important;
-    align-items: start !important;
-  }
-
-  .bento-span-2 {
-    grid-column: span 2 / span 2 !important;
-  }
-
-  .bento-print-grid.bento-masonry-stack {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-  }
-
-  .bento-columns-row {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    gap: 12px !important;
-    align-items: start !important;
-  }
-
-  .bento-column {
-    display: flex !important;
-    flex-direction: column !important;
-    gap: 12px !important;
-    min-width: 0 !important;
-  }
-
-  .bento-card-two-col {
-    display: grid !important;
-    grid-template-columns: repeat(2, minmax(0, 1fr)) !important;
-    column-gap: 24px !important;
-    row-gap: 8px !important;
-    align-items: center !important;
-  }
-
-  .bento-card {
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-    box-shadow: none !important;
-    background-color: #FFFFFF !important;
-  }
-
-  .cyber-btn,
-  .cyber-btn-outline,
-  .cyber-roll-btn {
-    box-shadow: none !important;
-  }
-
-  .dot-rating-pip {
-    border-color: #0B0B0B !important;
-    background-color: #FFFFFF !important;
-  }
-
-  .dot-rating-btn[aria-pressed="true"] .dot-rating-pip {
-    background-color: #0B0B0B !important;
-    border-color: #0B0B0B !important;
-  }
-
-  .dot-rating-value-btn {
-    box-shadow: none !important;
-    background-color: #F5F5F5 !important;
-    color: #0B0B0B !important;
-    border-color: #0B0B0B !important;
-  }
-
-  .no-print {
-    display: none !important;
-  }
-
-  .print-only-header {
-    display: flex !important;
-    break-inside: avoid !important;
-    page-break-inside: avoid !important;
-  }
-}
-
-/* ============================================================================
    MOBILE & SAFE-AREA RESPONSIVE LAYOUT (PORTRAIT + LANDSCAPE)
    Desktop (min-width: 1024px) remains untouched
    ============================================================================ */
@@ -2073,6 +2463,12 @@ select:focus-visible,
   .wod-pool-composer select,
   .wod-frenzy-panel input,
   .wod-frenzy-panel select,
+  .wod-structured-blocks input,
+  .wod-structured-blocks select,
+  .wod-structured-blocks textarea,
+  .wod-creation-wizard input,
+  .wod-creation-wizard select,
+  .wod-creation-wizard textarea,
   .xp-acquire-panel input,
   .mobile-modal-dialog input,
   .mobile-modal-dialog select,
@@ -2310,7 +2706,97 @@ select:focus-visible,
 [data-theme="eink"] .die-chip,
 [data-theme="eink"] .die-chip--hunger,
 [data-theme="eink"] .v5-status-badge--messy,
-[data-theme="eink"] .v5-status-badge--bestial {
+[data-theme="eink"] .v5-status-badge--bestial,
+[data-theme="eink"] .wod-structured-summary-pill,
+[data-theme="eink"] .wod-mf-badge--merit,
+[data-theme="eink"] .wod-mf-badge--flaw,
+[data-theme="eink"] .wod-wizard-budget-pill,
+[data-theme="eink"] .dnd5e-panel .tabular-nums,
+[data-theme="eink"] .dnd-d20-badge,
+[data-theme="eink"] .dnd-die-chip--kept,
+[data-theme="eink"] .dnd-die-chip--discarded {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .dnd5e-panel *,
+[data-theme="eink"] .dnd5e-roll-mode-bar * {
+  box-shadow: none !important;
+  background-image: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme="eink"] .dnd5e-roll-mode-btn[aria-pressed="true"],
+[data-theme="eink"] .dnd5e-prof-btn.is-active {
+  background-color: var(--ink-primary) !important;
+  color: var(--bg-card) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+[data-theme="eink"] .dnd-die-chip--discarded {
+  text-decoration: line-through;
+  opacity: 0.75;
+}
+
+@media (forced-colors: active) {
+  .dnd5e-roll-mode-btn[aria-pressed="true"],
+  .dnd5e-prof-btn.is-active {
+    background-color: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+    forced-color-adjust: none;
+  }
+
+  .dnd-die-chip--discarded {
+    text-decoration: line-through;
+    color: GrayText !important;
+    border-color: GrayText !important;
+  }
+}
+
+/* ============================================================================
+   CAMADAS DE EMPILHAMENTO (Z-LAYERING) & POPOVER PORTAL
+   ============================================================================ */
+.topbar-root {
+  z-index: var(--z-topbar);
+}
+
+.anchored-popover-portal {
+  position: fixed;
+  z-index: var(--z-popover);
+}
+
+div.mobile-modal-overlay {
+  z-index: var(--z-modal);
+}
+
+.mobile-roll-toast {
+  z-index: var(--z-toast);
+}
+
+div:has(> [data-testid="mobile-sidebar-drawer"]),
+div:has(> [data-testid="home-rules-drawer"]) {
+  z-index: var(--z-drawer);
+}
+
+/* Final cascade guard for Ctrl+P isolation */
+@media print {
+  html body #root > .app-screen-root,
+  body .app-screen-root,
+  .app-screen-root,
+  .print-only-header,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  html body #root > .paper-print-root,
+  body .paper-print-root,
+  .paper-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    visibility: visible !important;
+  }
 }
