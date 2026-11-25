@@ -11,6 +11,7 @@ export const NODE_TEST_FILES = [
   'src/core/roomSync.test.ts',
   'src/core/sheetModel.test.ts',
   'src/core/sheetSearch.test.ts',
+  'src/core/systems/registry.test.ts',
   'src/core/wodAdvantagesCatalog.test.ts',
   'src/core/wodClansDisciplinesCatalog.test.ts',
   'src/core/wodSkillsCatalog.test.ts',
