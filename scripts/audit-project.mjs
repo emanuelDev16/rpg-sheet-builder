@@ -35,7 +35,8 @@ const gem = lines('GEMINI.md');
 report(gem <= 75, 'GEMINI.md <= 75 linhas', `${gem}`);
 for (const f of walk('.agent/rules').filter((p) => p.endsWith('.md'))) {
   const n = lines(f);
-  report(n <= 40, `${f} <= 40 linhas`, `${n}`);
+  const rel = f.replace(/\\/g, '/');
+  report(n <= 40, `${rel} <= 40 linhas`, `${n}`);
 }
 
 // 2. Tamanho dos componentes dnd5e
