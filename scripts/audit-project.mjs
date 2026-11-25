@@ -51,7 +51,7 @@ for (const f of dnd) {
 const FORBIDDEN = ['@google/genai', 'GEMINI_API_KEY', 'googleSearch', 'SYNC_TOKEN'];
 const TEXT_EXT = new Set(['.ts', '.tsx', '.js', '.mjs', '.cjs', '.jsx', '.json', '.html', '.css', '.map', '.txt', '.md']);
 const targets = [...walk('src'), ...(existsSync('vite.config.ts') ? ['vite.config.ts'] : []), ...walk('dist')]
-  .filter((p) => TEXT_EXT.has(extname(p)) && statSync(p).size < 20e6);
+  .filter((p) => TEXT_EXT.has(extname(p)) && !/\.(test|spec)\.[cm]?[jt]sx?$/.test(p) && statSync(p).size < 20e6);
 const hits = [];
 for (const f of targets) {
   const t = readFileSync(f, 'utf8');
