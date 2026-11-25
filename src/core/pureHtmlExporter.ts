@@ -7,6 +7,15 @@ import {
   type TranslateFn,
 } from './i18n.ts';
 import {
+  localizeCardTag,
+  localizeCardTitle,
+  localizeFieldLabel,
+  localizeFieldRollLabel,
+  localizeSystemName,
+  localizeTableColumn,
+  localizeTabTitle,
+} from './presetI18n.ts';
+import {
   type CharacterSheetState,
   detectSystemId,
   evaluateSheet,
@@ -139,7 +148,7 @@ function renderDotRatingHtml(value: number, max: 5 | 10): string {
   return `<span class="dot-rating-inline" aria-label="${escapeHtml(`${clamped} / ${max}`)}"><span class="dot-pips${max === 10 ? ' is-ten' : ''}">${pips}</span><span class="dot-num">${escapeHtml(String(clamped))}</span></span>`;
 }
 
-function renderV20HealthHtml(field: SheetField, t: TranslateFn): string {
+function renderV20HealthHtml(field: SheetField, t: TranslateFn, lang: AppLanguage): string {
   const { max, aggravated, lethal, bashing, healthy } = getV20HealthBreakdown(field);
   const cells = Array.from({ length: max }, (_, idx) => {
     if (idx < aggravated) {
@@ -165,14 +174,14 @@ function renderV20HealthHtml(field: SheetField, t: TranslateFn): string {
   return `
     <div class="resource-box wod-vital-track" data-testid="pure-html-v20-health">
       <div class="resource-head">
-        <span class="field-label">${escapeHtml(field.label)}</span>
+        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
         <span class="resource-count">${escapeHtml(summary)}</span>
       </div>
       <div class="vital-boxes">${cells}</div>
     </div>`;
 }
 
-function renderV5HealthHtml(field: SheetField, t: TranslateFn): string {
+function renderV5HealthHtml(field: SheetField, t: TranslateFn, lang: AppLanguage): string {
   const { max, aggravated, superficial, healthy, totalDamage } = getV5HealthBreakdown(field);
   const impaired = totalDamage >= max;
   const cells = Array.from({ length: max }, (_, idx) => {
@@ -195,7 +204,7 @@ function renderV5HealthHtml(field: SheetField, t: TranslateFn): string {
   return `
     <div class="resource-box wod-vital-track" data-testid="pure-html-v5-health">
       <div class="resource-head">
-        <span class="field-label">${escapeHtml(field.label)}${impaired ? ` <span class="status-pill">${escapeHtml(t('cards.vital.impairedBadge'))}</span>` : ''}</span>
+        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}${impaired ? ` <span class="status-pill">${escapeHtml(t('cards.vital.impairedBadge'))}</span>` : ''}</span>
         <span class="resource-count">${escapeHtml(summary)}</span>
       </div>
       <div class="vital-boxes">${cells}</div>
@@ -206,6 +215,7 @@ function renderV5WillpowerHtml(
   field: SheetField,
   sheet: CharacterSheetState,
   t: TranslateFn,
+  lang: AppLanguage,
 ): string {
   const wp = getV5WillpowerState(sheet);
   const cells = Array.from({ length: wp.max }, (_, idx) => {
@@ -228,7 +238,7 @@ function renderV5WillpowerHtml(
   return `
     <div class="resource-box wod-vital-track" data-testid="pure-html-v5-willpower">
       <div class="resource-head">
-        <span class="field-label">${escapeHtml(field.label)}${wp.isImpaired ? ` <span class="status-pill">${escapeHtml(t('cards.vital.wpImpairedBadge'))}</span>` : ''}</span>
+        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}${wp.isImpaired ? ` <span class="status-pill">${escapeHtml(t('cards.vital.wpImpairedBadge'))}</span>` : ''}</span>
         <span class="resource-count">${escapeHtml(summary)}</span>
       </div>
       <div class="vital-boxes">${cells}</div>
@@ -239,6 +249,7 @@ function renderV5HumanityHtml(
   field: SheetField,
   sheet: CharacterSheetState,
   t: TranslateFn,
+  lang: AppLanguage,
 ): string {
   const { humanity, stains } = getSheetHumanityStains(sheet);
   const boxes = Array.from({ length: 10 }, (_, idx) => {
@@ -261,7 +272,7 @@ function renderV5HumanityHtml(
   return `
     <div class="resource-box wod-vital-track" data-testid="pure-html-v5-humanity">
       <div class="resource-head">
-        <span class="field-label">${escapeHtml(field.label)}</span>
+        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
         <span class="resource-count">${escapeHtml(summary)}</span>
       </div>
       <div class="humanity-track">${boxes}</div>
@@ -466,7 +477,7 @@ export function generateSingleFilePureHtml(
         return `
           <div class="field-row">
             <div class="field-label-stack">
-              <span class="field-label">${escapeHtml(field.label)}</span>
+              <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
               ${hintHtml}
             </div>
             ${renderDotRatingHtml(Number(field.value ?? 0), dotCfg.max)}
@@ -485,7 +496,7 @@ export function generateSingleFilePureHtml(
           : '';
       return `
           <div class="field-row">
-            <label class="field-label">${escapeHtml(field.label)}${baneSeverityHtml ? ` ${baneSeverityHtml}` : ''}</label>
+            <label class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}${baneSeverityHtml ? ` ${baneSeverityHtml}` : ''}</label>
             <div class="field-input-wrap">
               <input class="cyber-input" type="${field.kind === 'number' ? 'number' : 'text'}" value="${escapeHtml(rawStr)}" />
               ${linkHtml}
@@ -497,7 +508,7 @@ export function generateSingleFilePureHtml(
       const info = evaluation.computedByFieldId[field.id];
       return `
           <div class="field-row">
-            <span class="field-label">${escapeHtml(field.label)}</span>
+            <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
             <div class="calc-box" title="${escapeHtml(field.formula ?? '')}">
               <span>${escapeHtml(info?.formatted ?? '0')}</span>
               <span class="calc-formula">${escapeHtml(field.formula ?? '')}</span>
@@ -507,18 +518,18 @@ export function generateSingleFilePureHtml(
 
     if (field.kind === 'resource') {
       if (officialEdition && field.damageTrack) {
-        return isV5 ? renderV5HealthHtml(field, t) : renderV20HealthHtml(field, t);
+        return isV5 ? renderV5HealthHtml(field, t, lang) : renderV20HealthHtml(field, t, lang);
       }
       if (isV5 && (field.id === 'f_willpower' || fk === 'willpower')) {
-        return renderV5WillpowerHtml(field, sheet, t);
+        return renderV5WillpowerHtml(field, sheet, t, lang);
       }
       if (isV5 && (field.id === 'f_humanity' || fk === 'humanity')) {
-        return renderV5HumanityHtml(field, sheet, t);
+        return renderV5HumanityHtml(field, sheet, t, lang);
       }
       if (isV20 && (field.id === 'f_humanity' || fk === 'humanity')) {
         return `
           <div class="field-row">
-            <span class="field-label">${escapeHtml(field.label)}</span>
+            <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
             ${renderDotRatingHtml(Number(field.value ?? 7), 10)}
           </div>`;
       }
@@ -541,7 +552,7 @@ export function generateSingleFilePureHtml(
       return `
           <div class="resource-box">
             <div class="resource-head">
-              <span class="field-label">${escapeHtml(field.label)}</span>
+              <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
               <div class="resource-controls">
                 <button class="mini-btn" type="button">-</button>
                 <span class="resource-count">${escapeHtml(`${val} / ${max}`)}</span>
@@ -557,7 +568,7 @@ export function generateSingleFilePureHtml(
           <label class="bool-row">
             <input class="bool-native" type="checkbox" ${field.value ? 'checked' : ''} />
             <span class="bool-box">✓</span>
-            <span class="bool-text">${escapeHtml(field.label)}</span>
+            <span class="bool-text">${escapeHtml(localizeFieldLabel(field, lang))}</span>
           </label>`;
     }
 
@@ -565,7 +576,7 @@ export function generateSingleFilePureHtml(
       const preview = resolveRollPreview(field.rollExpr ?? '', evaluation.variables);
       return `
           <button class="roll-btn" type="button">
-            <span>${escapeHtml(field.rollLabel ?? field.label)} · ${escapeHtml(preview)}</span>
+            <span>${escapeHtml(localizeFieldRollLabel(field, lang))} · ${escapeHtml(preview)}</span>
             <span>↗</span>
           </button>`;
     }
@@ -581,17 +592,23 @@ export function generateSingleFilePureHtml(
               </tr>`,
         )
         .join('');
+      const col1Title = field.columns?.[0]
+        ? localizeTableColumn(field.columns[0], lang)
+        : t('cards.defaultItemCol');
+      const col2Title = field.columns?.[1]
+        ? localizeTableColumn(field.columns[1], lang)
+        : t('cards.defaultValueCol');
       return `
           <div class="repeat-block">
             <div class="repeat-head">
-              <span class="field-label">${escapeHtml(field.label)}</span>
+              <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
               <span class="mono-meta">${escapeHtml(t('cards.cargoBadge'))} ${escapeHtml(String(evaluation.totalCargoWeight))} KG</span>
             </div>
             <table class="cyber-table">
               <thead>
                 <tr>
-                  <th>${escapeHtml(field.columns?.[0] ?? t('cards.defaultItemCol'))}</th>
-                  <th>${escapeHtml(field.columns?.[1] ?? t('cards.defaultValueCol'))}</th>
+                  <th>${escapeHtml(col1Title)}</th>
+                  <th>${escapeHtml(col2Title)}</th>
                   <th class="act-cell"></th>
                 </tr>
               </thead>
@@ -653,8 +670,8 @@ export function generateSingleFilePureHtml(
       return `
         <section class="${spanClass}" data-tab="${escapeHtml(card.tab)}" data-card-id="${escapeHtml(card.id)}">
           <header class="card-header">
-            <span class="card-code">${escapeHtml(card.code)}</span>
-            <h2 class="card-title">${escapeHtml(card.title)}</h2>
+            <span class="card-code">${escapeHtml(localizeCardTag(card, lang))}</span>
+            <h2 class="card-title">${escapeHtml(localizeCardTitle(card, lang))}</h2>
           </header>
           <div class="card-body">
             ${bodyHtml}
@@ -673,7 +690,7 @@ export function generateSingleFilePureHtml(
       ? `
         <section class="bento-card span-2" data-tab="magias" data-card-id="card_wod_dossier">
           <header class="card-header">
-            <span class="card-code">//CHRONICLE_TRAITS</span>
+            <span class="card-code">${escapeHtml(localizeCardTag({ code: isV5 ? '//CHRONICLE_TRAITS' : '//TRAITS_&_HAVENS' }, lang))}</span>
             <h2 class="card-title">${escapeHtml(isV5 ? t('print.pureHtmlDossierTitle') : t('print.pureHtmlDossierTitleV20'))}</h2>
           </header>
           <div class="card-body">
@@ -687,7 +704,7 @@ export function generateSingleFilePureHtml(
       (log) => `
       <div class="log-entry">
         <div class="log-top">
-          <span class="log-label">${escapeHtml(log.label)}</span>
+          <span class="log-label">${escapeHtml(localizeFieldRollLabel({ label: log.label }, lang))}</span>
           <span class="log-time">${escapeHtml(log.timestamp)}</span>
         </div>
         <div class="log-total">${escapeHtml(String(log.total))}</div>
@@ -696,13 +713,18 @@ export function generateSingleFilePureHtml(
     )
     .join('\n');
 
+  const localizedSystemName = localizeSystemName(systemId, sheet.systemName, lang);
+  const localizedSystemCode = localizeSystemName(systemId, sheet.systemCode, lang);
+  const localizedTab1 = localizeTabTitle({ id: 'geral', title: tabLabels.tab1, systemId }, lang);
+  const localizedTab2 = localizeTabTitle({ id: 'magias', title: tabLabels.tab2, systemId }, lang);
+
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(htmlLang)}">
 <head>
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${EXPORT_CSP_CONTENT}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escapeHtml(sheet.systemName)} — ${escapeHtml(t('print.pureHtmlTitleSuffix'))}</title>
+  <title>${escapeHtml(localizedSystemName)} — ${escapeHtml(t('print.pureHtmlTitleSuffix'))}</title>
   <style>
 ${QSS_VARIABLES_GUIDE}
 
@@ -1017,7 +1039,7 @@ ${QSS_VARIABLES_GUIDE}
 </head>
 <body>
   <header class="topbar">
-    <div class="sys-id">${escapeHtml(sheet.systemCode)}</div>
+    <div class="sys-id">${escapeHtml(localizedSystemCode)}</div>
     <div class="toolbar-actions">
       <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.newSheet)}</button>
       <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.open)}</button>
@@ -1032,11 +1054,11 @@ ${QSS_VARIABLES_GUIDE}
     <main class="main-area">
       <div class="sheet-banner">
         <span class="sheet-banner-name">${escapeHtml(sheet.characterName)}</span>
-        <span class="sheet-banner-sys">${escapeHtml(sheet.systemName)}</span>
+        <span class="sheet-banner-sys">${escapeHtml(localizedSystemName)}</span>
       </div>
       <div class="tab-bar">
-        <button class="tab-btn active" type="button">${escapeHtml(tabLabels.tab1)}</button>
-        <button class="tab-btn" type="button">${escapeHtml(tabLabels.tab2)}</button>
+        <button class="tab-btn active" type="button">${escapeHtml(localizedTab1)}</button>
+        <button class="tab-btn" type="button">${escapeHtml(localizedTab2)}</button>
       </div>
       <div class="bento-grid">
         ${cardsHtml}

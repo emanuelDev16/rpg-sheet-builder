@@ -2,6 +2,7 @@ import React, { useRef } from 'react';
 import { AppMode, RulePreset, SystemId, TabId } from '../core/sheetModel';
 import { getTabLabelsForSystem } from '../core/printSheet';
 import { AppLanguage, AppTranslations } from '../core/i18n';
+import { localizeTabTitle } from '../core/presetI18n';
 
 interface TabNavProps {
   activeTab: TabId;
@@ -30,7 +31,10 @@ export const TabNav: React.FC<TabNavProps> = ({
   rulePreset = 'storyteller-v20',
   onSelectRulePreset,
 }) => {
-  const { tab1, tab2, tab3 } = getTabLabelsForSystem(systemId, language);
+  const rawTabs = getTabLabelsForSystem(systemId, language);
+  const tab1 = localizeTabTitle({ id: 'geral', title: rawTabs.tab1, systemId }, language);
+  const tab2 = localizeTabTitle({ id: 'magias', title: rawTabs.tab2, systemId }, language);
+  const tab3 = localizeTabTitle({ id: 'xp', title: rawTabs.tab3, systemId }, language);
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
     geral: null,
     magias: null,

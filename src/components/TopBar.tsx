@@ -7,6 +7,7 @@ import {
   getLocalizedSystemOptions,
   LANGUAGE_OPTIONS,
 } from '../core/i18n';
+import { localizeSystemName } from '../core/presetI18n';
 import { ThemeMode } from '../utils/theme';
 import { ThemeSelector } from './ThemeSelector';
 
@@ -92,7 +93,7 @@ export const TopBar: React.FC<TopBarProps> = ({
           />
         ) : (
           <h1 className="font-mono-tech text-xs sm:text-sm font-bold tracking-wider text-[var(--ink-primary)] uppercase truncate">
-            {systemCode}
+            {localizeSystemName(activeSystemId, systemCode, language)}
           </h1>
         )}
       </div>

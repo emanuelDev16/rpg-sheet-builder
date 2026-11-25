@@ -148,5 +148,91 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('es', 'xp.dismissErrorAria')).toBe('Cerrar alerta');
     expect(translate('en', 'wizard.powerLevelShort', { level: 2 })).toBe('L2');
     expect(translate('pt-BR', 'print.pureHtmlDossierTitle')).toBe('CONVICÇÕES, QUALIDADES & REFÚGIOS');
+
+    expect(translate('pt-BR', 'cards.addButton')).toBe('ADICIONAR');
+    expect(translate('pt-BR', 'sidebar.roll.messyCritical')).toBe('CRÍTICO SANGRENTO!');
+    expect(translate('pt-BR', 'sidebar.roll.bestialFailure')).toBe('FALHA BESTIAL!');
+    expect(translate('pt-BR', 'poolComposer.wpToggle')).toBe('+1 VONTADE');
+    expect(translate('pt-BR', 'xp.upgradeBtn', { cost: 4 })).toBe('EVOLUIR · 4 XP ↗');
+    expect(translate('es', 'sidebar.roll.hungerShort', { count: 2 })).toBe('A:2');
+    expect(translate('pt-BR', 'modal.saveLocalAction')).toBe('SALVAR ↗');
+    expect(translate('es', 'rules.suggestions.wod')).toContain('Ansia');
+  });
+
+  it('maintains identical interpolation placeholders and guards against accidental untranslated PT-BR entries', () => {
+    const ALLOWED_IDENTICAL_PT_EN_KEYS = new Set([
+      'system.wod.label',
+      'system.wod.short',
+      'system.dnd5e.short',
+      'system.cyberpunk.label',
+      'system.cyberpunk.short',
+      'home.customGridTag',
+      'tabNav.rulePresetV20',
+      'tabNav.rulePresetV5',
+      'tabNav.rulePresetCustom',
+      'cards.defaultItemCol',
+      'cards.supEqTag',
+      'cards.col1Label',
+      'cards.col2Label',
+      'cards.strip.var',
+      'cards.strip.col1',
+      'cards.strip.col2',
+      'cards.pool.mod',
+      'cards.disciplines.caitiffBadge',
+      'cards.disciplines.customCostRouse',
+      'cards.powers.rouseBtn',
+      'cards.powers.rouseMultiBtn',
+      'cards.powers.rouseLogPrefix',
+      'cards.vital.v20TrackRule',
+      'cards.vital.rouseCheckBtn',
+      'cards.vital.wpImpairedBadge',
+      'cards.vital.wpSuperficialDmg',
+      'cards.vital.bpSurge',
+      'cards.vital.bpMendValue',
+      'cards.vital.bpRouseRerollNone',
+      'cards.vital.frenzyKindRotschreck',
+      'cards.structured.touchstonesCounter',
+      'sidebar.roll.surgeChip',
+      'sidebar.roll.rousePass',
+      'sidebar.roll.rotschreckBadge',
+      'sidebar.roll.mendRouseHealedChip',
+      'sidebar.roll.sucSingular',
+      'sidebar.roll.sucPlural',
+      'poolComposer.specToggle',
+      'poolComposer.bloodSurgeToggle',
+      'poolComposer.bloodSurgeRouseTag',
+      'statusBar.logs',
+      'statusBar.mobileLogsBtn',
+      'statusBar.roomSyncingLabel',
+      'statusBar.roomRetryLabel',
+      'statusBar.roomSyncLabel',
+      'modal.snapshotReasonManual',
+      'modal.defaultTemplateName',
+      'xp.presetCustom',
+      'xp.caitiffTag',
+      'xp.multiplierLabel',
+      'xp.acquireCaitiffTag',
+      'app.fieldDefault.calculated',
+      'app.xpBackgroundFlash',
+      'theme.eink',
+    ]);
+
+    const extractPlaceholders = (s: string) =>
+      [...s.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)].map((m) => m[1]).sort();
+
+    for (const key of Object.keys(PT_BR) as Array<keyof typeof PT_BR>) {
+      const ptPh = extractPlaceholders(PT_BR[key]);
+      const enPh = extractPlaceholders(EN[key]);
+      const esPh = extractPlaceholders(ES[key]);
+      expect(enPh, `Placeholder mismatch in EN for ${key}`).toEqual(ptPh);
+      expect(esPh, `Placeholder mismatch in ES for ${key}`).toEqual(ptPh);
+
+      if (PT_BR[key] === EN[key]) {
+        expect(
+          ALLOWED_IDENTICAL_PT_EN_KEYS.has(key),
+          `Untranslated PT_BR key matches EN unexpectedly: ${key} = ${PT_BR[key]}`,
+        ).toBe(true);
+      }
+    }
   });
 });
