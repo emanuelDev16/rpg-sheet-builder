@@ -3,6 +3,40 @@ import { type AppLanguage, createTranslator, getLocalizedTabLabels } from './i18
 import { resolvePrintTitleCharacterName } from './paperSheetModel.ts';
 import { generateSingleFilePureHtml } from './pureHtmlExporter.ts';
 
+export type PaperPrintStyle = 'gothic-crimson' | 'classic-bw' | 'minimal';
+export const DEFAULT_PAPER_PRINT_STYLE: PaperPrintStyle = 'gothic-crimson';
+export const PAPER_PRINT_STYLE_STORAGE_KEY = 'gridsheet_pdf_style';
+
+export function isValidPaperPrintStyle(value: unknown): value is PaperPrintStyle {
+  return value === 'gothic-crimson' || value === 'classic-bw' || value === 'minimal';
+}
+
+export function readStoredPaperPrintStyle(): PaperPrintStyle {
+  if (typeof window === 'undefined' || !window.localStorage) {
+    return DEFAULT_PAPER_PRINT_STYLE;
+  }
+  try {
+    const raw = window.localStorage.getItem(PAPER_PRINT_STYLE_STORAGE_KEY);
+    if (isValidPaperPrintStyle(raw)) {
+      return raw;
+    }
+  } catch {
+    // Fallback safe for sandbox or restricted environments
+  }
+  return DEFAULT_PAPER_PRINT_STYLE;
+}
+
+export function persistPaperPrintStyle(style: PaperPrintStyle): void {
+  if (typeof window === 'undefined' || !window.localStorage) return;
+  try {
+    if (isValidPaperPrintStyle(style)) {
+      window.localStorage.setItem(PAPER_PRINT_STYLE_STORAGE_KEY, style);
+    }
+  } catch {
+    // Ignore
+  }
+}
+
 export function getTabLabelsForSystem(
   systemId: SystemId,
   lang: AppLanguage = 'pt-BR',
@@ -87,9 +121,14 @@ export function printActiveSheetView(
     onBeforePrint?: () => void;
     onAfterPrint?: () => void;
     lang?: AppLanguage;
+    printStyle?: PaperPrintStyle;
   } = {},
 ): PrintExecutionResult {
   const lang = options.lang ?? 'pt-BR';
+  const printStyle =
+    options.printStyle && isValidPaperPrintStyle(options.printStyle)
+      ? options.printStyle
+      : readStoredPaperPrintStyle();
   const t = createTranslator(lang);
   const doc = options.doc ?? (typeof document !== 'undefined' ? (document as unknown as PrintDocumentLike) : undefined);
   const win = options.win ?? (typeof window !== 'undefined' ? (window as unknown as PrintWindowLike) : undefined);
@@ -174,7 +213,10 @@ export function printActiveSheetView(
     iframe.onerror = cleanup;
     options.onBeforePrint?.();
     try {
-      iframe.srcdoc = generateSingleFilePureHtml(sheet, lang, { documentTitle: nextTitle });
+      iframe.srcdoc = generateSingleFilePureHtml(sheet, lang, {
+        documentTitle: nextTitle,
+        printStyle,
+      });
       doc.body.appendChild(iframe);
       return { ok: true, documentTitle: nextTitle };
     } catch (err) {

@@ -2,9 +2,14 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   buildPrintDocumentTitle,
+  DEFAULT_PAPER_PRINT_STYLE,
   getActiveTabSectionLabel,
   getTabLabelsForSystem,
+  isValidPaperPrintStyle,
+  type PaperPrintStyle,
+  persistPaperPrintStyle,
   printActiveSheetView,
+  readStoredPaperPrintStyle,
 } from './printSheet';
 import {
   adjustSheetHumanityStains,
@@ -355,4 +360,116 @@ test('buildPrintDocumentTitle prioritizes real character name over NOVO PERSONAG
   for (const cb of listeners['afterprint'] || []) cb();
   assert.equal(removed, true);
   assert.equal(fakeDoc.title, 'GRID//SHEET');
+});
+
+test('PaperPrintStyle contract, validation, and storage fallback behavior', () => {
+  assert.equal(DEFAULT_PAPER_PRINT_STYLE, 'gothic-crimson');
+  assert.equal(isValidPaperPrintStyle('gothic-crimson'), true);
+  assert.equal(isValidPaperPrintStyle('classic-bw'), true);
+  assert.equal(isValidPaperPrintStyle('minimal'), true);
+  assert.equal(isValidPaperPrintStyle('invalid'), false);
+  assert.equal(isValidPaperPrintStyle(null), false);
+  assert.equal(isValidPaperPrintStyle(123), false);
+
+  // In Node environment without window/localStorage, returns fallback
+  assert.equal(readStoredPaperPrintStyle(), 'gothic-crimson');
+  // Should not throw in Node
+  persistPaperPrintStyle('classic-bw');
+});
+
+test('generateSingleFilePureHtml supports gothic-crimson, classic-bw, and minimal while preserving CSP and escapeHtml', () => {
+  const v5 = createWorldOfDarknessV5Sheet();
+
+  // 1. Default (gothic-crimson)
+  const defaultHtml = generateSingleFilePureHtml(v5, 'pt-BR');
+  assert.match(defaultHtml, /data-print-style="gothic-crimson"/);
+  assert.match(defaultHtml, /data-paper-layout="wod-v5"/);
+  assert.match(
+    defaultHtml,
+    /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; font-src https: data:;" \/>/,
+  );
+  assert.match(defaultHtml, /data-print-style="classic-bw"/);
+  assert.match(defaultHtml, /data-print-style="minimal"/);
+
+  // 2. Explicit classic-bw
+  const bwHtml = generateSingleFilePureHtml(v5, 'pt-BR', { printStyle: 'classic-bw' });
+  assert.match(bwHtml, /data-print-style="classic-bw"/);
+  assert.match(bwHtml, /data-paper-layout="wod-v5"/);
+  assert.match(
+    bwHtml,
+    /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; font-src https: data:;" \/>/,
+  );
+
+  // 3. Explicit minimal
+  const minimalHtml = generateSingleFilePureHtml(v5, 'pt-BR', { printStyle: 'minimal' });
+  assert.match(minimalHtml, /data-print-style="minimal"/);
+  assert.match(minimalHtml, /data-paper-layout="wod-v5"/);
+  assert.match(
+    minimalHtml,
+    /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; font-src https: data:;" \/>/,
+  );
+
+  // 4. Invalid style fallback
+  const fallbackHtml = generateSingleFilePureHtml(v5, 'pt-BR', {
+    printStyle: 'invalid' as unknown as PaperPrintStyle,
+  });
+  assert.match(fallbackHtml, /data-print-style="gothic-crimson"/);
+
+  // 5. Verify escapeHtml is preserved with XSS payloads
+  const taintedSheet = {
+    ...v5,
+    touchstones: [
+      {
+        id: 'ts_xss_style',
+        conviction: '"><script>alert(1)</script><div',
+        touchstone: 'Safe Touchstone',
+      },
+    ],
+  };
+  const safeHtml = generateSingleFilePureHtml(taintedSheet, 'en', { printStyle: 'minimal' });
+  assert.doesNotMatch(safeHtml, /<script>alert\(1\)<\/script>/);
+  assert.match(safeHtml, /&quot;&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;&lt;div/);
+});
+
+test('printActiveSheetView forwards printStyle to iframe srcdoc', () => {
+  const v5 = createWorldOfDarknessV5Sheet();
+  const fakeIframe: Record<string, unknown> = {
+    style: { cssText: '' },
+    tabIndex: 0,
+    srcdoc: '',
+    onload: null,
+    onerror: null,
+    setAttribute: () => {},
+    remove: () => {},
+    contentWindow: {
+      focus: () => {},
+      print: () => {},
+      addEventListener: () => {},
+      removeEventListener: () => {},
+      setTimeout: (() => 0) as unknown as typeof window.setTimeout,
+    },
+  };
+  const fakeDoc = {
+    title: 'GRID//SHEET',
+    createElement: () => fakeIframe,
+    body: {
+      appendChild: (node: unknown) => node,
+    },
+  };
+
+  const res = printActiveSheetView(v5, 'geral', {
+    doc: fakeDoc,
+    lang: 'pt-BR',
+    printStyle: 'classic-bw',
+  });
+  assert.equal(res.ok, true);
+  assert.match(String(fakeIframe.srcdoc), /data-print-style="classic-bw"/);
+
+  const resMinimal = printActiveSheetView(v5, 'geral', {
+    doc: fakeDoc,
+    lang: 'pt-BR',
+    printStyle: 'minimal',
+  });
+  assert.equal(resMinimal.ok, true);
+  assert.match(String(fakeIframe.srcdoc), /data-print-style="minimal"/);
 });

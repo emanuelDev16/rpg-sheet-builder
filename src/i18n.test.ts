@@ -47,6 +47,16 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'statusBar.mobileRulesBtn')).toBe('// RULES');
     expect(translate('es', 'statusBar.mobileRulesBtn')).toBe('// REGLAS');
 
+    expect(translate('pt-BR', 'topBar.pdfStyleGothic')).toBe('Gótico Bordô');
+    expect(translate('en', 'topBar.pdfStyleGothic')).toBe('Gothic Crimson');
+    expect(translate('es', 'topBar.pdfStyleGothic')).toBe('Gótico Burdeos');
+    expect(translate('pt-BR', 'topBar.pdfStyleClassic')).toBe('Clássico P&B');
+    expect(translate('en', 'topBar.pdfStyleClassic')).toBe('Classic B&W');
+    expect(translate('es', 'topBar.pdfStyleClassic')).toBe('Clásico B&N');
+    expect(translate('pt-BR', 'topBar.pdfStyleMinimal')).toBe('Minimalista');
+    expect(translate('en', 'topBar.pdfStyleMinimal')).toBe('Minimalist');
+    expect(translate('es', 'topBar.pdfStyleMinimal')).toBe('Minimalista');
+
     expect(translate('en', 'xp.insufficientBadge', { missing: 5 })).toBe('NEED 5 XP');
     expect(translate('es', 'xp.catalogCount', { possible: 3, total: 10 })).toBe(
       '3 COMPRABLES · 10 TOTAL',

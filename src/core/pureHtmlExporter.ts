@@ -1,5 +1,20 @@
 import { type AppLanguage, getTranslations, LANGUAGE_OPTIONS } from './i18n.ts';
 import {
+  DEFAULT_PAPER_PRINT_STYLE,
+  isValidPaperPrintStyle,
+  type PaperPrintStyle,
+  persistPaperPrintStyle,
+  readStoredPaperPrintStyle,
+} from './printSheet.ts';
+
+export type { PaperPrintStyle };
+export {
+  DEFAULT_PAPER_PRINT_STYLE,
+  isValidPaperPrintStyle,
+  persistPaperPrintStyle,
+  readStoredPaperPrintStyle,
+};
+import {
   buildPaperSheetModel,
   type PaperDotRow,
   type PaperDnd5eModel,
@@ -793,6 +808,272 @@ const STANDALONE_PAPER_CSS = `
   .paper-xp-row { display: flex; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 7.1pt; font-weight: 700; padding: 2.5px 5px; border: 1px solid #0B0B0B; background: #F6F6F6; margin-bottom: 3.5px; }
   .paper-link { font-family: 'JetBrains Mono', monospace; font-size: 7.2pt; font-weight: 700; color: #5B0F18; text-decoration: none; }
 
+  /* ==========================================================================
+     PRINT STYLE: CLASSIC B&W (Toner/Ink Saver, 100% #0B0B0B on #FFFFFF, 1px)
+     ========================================================================== */
+  .paper-print-root[data-print-style="classic-bw"] .paper-layout--wod-v5,
+  .paper-print-root[data-print-style="classic-bw"] .paper-layout--wod-v20 {
+    border: 1px solid #0B0B0B !important;
+    outline: none !important;
+    clip-path: none !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-layout--dnd5e {
+    border: 1px solid #0B0B0B !important;
+    background-image: none !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-layout--generic {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-header {
+    border-bottom: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-editorial-title {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-wod-ornament,
+  .paper-print-root[data-print-style="classic-bw"] .paper-dnd-ornament {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-sec-rule {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-sec-rule::before,
+  .paper-print-root[data-print-style="classic-bw"] .paper-sec-rule::after {
+    background: #0B0B0B !important;
+    height: 1px !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-col-head {
+    color: #0B0B0B !important;
+    border-bottom: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-dot.filled {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-dot.empty {
+    color: #888888 !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-specialty,
+  .paper-print-root[data-print-style="classic-bw"] .paper-specialty-line {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-card-tag {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-disc-cost {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-link {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-col-box,
+  .paper-print-root[data-print-style="classic-bw"] .paper-card,
+  .paper-print-root[data-print-style="classic-bw"] .paper-track-block,
+  .paper-print-root[data-print-style="classic-bw"] .paper-dnd-banner,
+  .paper-print-root[data-print-style="classic-bw"] .paper-xp-row {
+    background: #FFFFFF !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-badge {
+    background: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-box--lethal {
+    background: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-box--superficial,
+  .paper-print-root[data-print-style="classic-bw"] .paper-box--bashing,
+  .paper-print-root[data-print-style="classic-bw"] .paper-box--stain {
+    background: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 1px dashed #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-cont-track {
+    background: #FFFFFF !important;
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-cont-fill {
+    background: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-card {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-card-head {
+    border-bottom: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-track-block {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-disc-box {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-col-box {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-col-divided {
+    border-right: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-structured-item {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-dnd-banner {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-ability-medallion {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-ability-score {
+    border: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-table th,
+  .paper-print-root[data-print-style="classic-bw"] .paper-table td,
+  .paper-print-root[data-print-style="classic-bw"] .paper-health-table td {
+    border-bottom: 1px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="classic-bw"] .paper-xp-row {
+    border: 1px solid #0B0B0B !important;
+  }
+
+  /* ==========================================================================
+     PRINT STYLE: MINIMAL (Frameless, no SVGs, 0.75px fine horizontal rules)
+     ========================================================================== */
+  .paper-print-root[data-print-style="minimal"] .paper-layout--wod-v5,
+  .paper-print-root[data-print-style="minimal"] .paper-layout--wod-v20,
+  .paper-print-root[data-print-style="minimal"] .paper-layout--dnd5e,
+  .paper-print-root[data-print-style="minimal"] .paper-layout--generic {
+    border: none !important;
+    outline: none !important;
+    clip-path: none !important;
+    background-image: none !important;
+    padding: 4mm 2mm;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-wod-ornament,
+  .paper-print-root[data-print-style="minimal"] .paper-dnd-ornament {
+    display: none !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-editorial-title {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-sec-rule {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-sec-rule::before,
+  .paper-print-root[data-print-style="minimal"] .paper-sec-rule::after {
+    background: #0B0B0B !important;
+    height: 0.75px !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-col-head {
+    color: #0B0B0B !important;
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-dot.filled {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-dot.empty {
+    color: #888888 !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-specialty,
+  .paper-print-root[data-print-style="minimal"] .paper-specialty-line {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-card-tag {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-disc-cost {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-link {
+    color: #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-badge {
+    background: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-header {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-id-cell {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-field-line {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-ruled-line,
+  .paper-print-root[data-print-style="minimal"] .paper-ruled-pair,
+  .paper-print-root[data-print-style="minimal"] .paper-ruled-text {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-col-box {
+    border: 0.75px solid #0B0B0B !important;
+    background: #FFFFFF !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-col-divided {
+    border-right: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-card {
+    border: 0.75px solid #0B0B0B !important;
+    background: #FFFFFF !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-card-head {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-track-block {
+    border: 0.75px solid #0B0B0B !important;
+    background: #FFFFFF !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-disc-box {
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-disc-slot {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-structured-item {
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-dnd-banner {
+    border: 0.75px solid #0B0B0B !important;
+    background: #FFFFFF !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-ability-medallion {
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-ability-score {
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-currency-cell {
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-table th,
+  .paper-print-root[data-print-style="minimal"] .paper-table td,
+  .paper-print-root[data-print-style="minimal"] .paper-health-table td {
+    border-bottom: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-xp-row {
+    border: 0.75px solid #0B0B0B !important;
+    background: #FFFFFF !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-box--lethal {
+    background: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-box--superficial,
+  .paper-print-root[data-print-style="minimal"] .paper-box--bashing,
+  .paper-print-root[data-print-style="minimal"] .paper-box--stain {
+    background: #FFFFFF !important;
+    color: #0B0B0B !important;
+    border: 0.75px dashed #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-cont-track {
+    background: #FFFFFF !important;
+    border: 0.75px solid #0B0B0B !important;
+  }
+  .paper-print-root[data-print-style="minimal"] .paper-cont-fill {
+    background: #0B0B0B !important;
+  }
+
   @page { size: A4 portrait; margin: 7mm; }
   @media print {
     * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
@@ -806,12 +1087,16 @@ const STANDALONE_PAPER_CSS = `
 export function generateSingleFilePureHtml(
   sheet: CharacterSheetState,
   lang: AppLanguage = 'pt-BR',
-  options?: { documentTitle?: string },
+  options?: { documentTitle?: string; printStyle?: PaperPrintStyle },
 ): string {
   const i18n = getTranslations(lang);
   const t = i18n.t;
   const htmlLang = LANGUAGE_OPTIONS.find((opt) => opt.id === lang)?.htmlLang ?? 'pt-BR';
   const model = buildPaperSheetModel(sheet, lang);
+  const printStyle: PaperPrintStyle =
+    options?.printStyle && isValidPaperPrintStyle(options.printStyle)
+      ? options.printStyle
+      : DEFAULT_PAPER_PRINT_STYLE;
 
   let pagesHtml = '';
   if (model.layout === 'wod-v5' && model.wodV5) {
@@ -841,7 +1126,7 @@ ${STANDALONE_PAPER_CSS}
   </style>
 </head>
 <body>
-  <main class="paper-print-root" data-testid="paper-print-root" data-paper-layout="${escapeHtml(model.layout)}">
+  <main class="paper-print-root" data-testid="paper-print-root" data-paper-layout="${escapeHtml(model.layout)}" data-print-style="${escapeHtml(printStyle)}">
     ${pagesHtml}
   </main>
   <script type="application/json" id="gridsheet-data">${serializeSafeEmbeddedJson(sheet)}</script>

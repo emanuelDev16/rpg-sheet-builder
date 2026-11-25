@@ -145,7 +145,12 @@ import {
   partitionBentoCardSegments,
   shouldUseTwoColumnMasonry,
 } from './utils/bentoLayout';
-import { printActiveSheetView } from './core/printSheet';
+import {
+  type PaperPrintStyle,
+  persistPaperPrintStyle,
+  printActiveSheetView,
+  readStoredPaperPrintStyle,
+} from './core/printSheet';
 import { PaperSheetPrintView } from './components/PaperSheetPrintView';
 import {
   awardXp,
@@ -314,6 +319,7 @@ function HydratedAppWorkspace({
   const [mobileSidebarTabSeq, setMobileSidebarTabSeq] = useState(0);
   const [isAudioMuted, setIsAudioMuted] = useState<boolean>(isDiceAudioMuted);
   const [mobileRollToast, setMobileRollToast] = useState<RollLogEntry | null>(null);
+  const [printStyle, setPrintStyle] = useState<PaperPrintStyle>(readStoredPaperPrintStyle);
   const mobileRollToastTimerRef = useRef<number | null>(null);
   const [rerollArmedLogId, setRerollArmedLogId] = useState<string | null>(null);
   const rerollPreDamageRef = useRef<{
@@ -2063,9 +2069,22 @@ function HydratedAppWorkspace({
 
   const availableXp = useMemo(() => getAvailableXp(sheet.xp), [sheet.xp]);
 
-  const handlePrintPdf = () => {
+  const handleChangePrintStyle = (newStyle: PaperPrintStyle) => {
+    setPrintStyle(newStyle);
+    persistPaperPrintStyle(newStyle);
+  };
+
+  const handlePrintPdf = (styleOverride?: PaperPrintStyle) => {
     void flushLocalPersistence();
-    const res = printActiveSheetView(sheet, activeTab, { lang: language });
+    const targetStyle = styleOverride ?? printStyle;
+    if (styleOverride && styleOverride !== printStyle) {
+      setPrintStyle(styleOverride);
+      persistPaperPrintStyle(styleOverride);
+    }
+    const res = printActiveSheetView(sheet, activeTab, {
+      lang: language,
+      printStyle: targetStyle,
+    });
     if (!res.ok && res.error) {
       triggerFlash(t.t('app.pdfError', { error: res.error }));
     } else {
@@ -2224,6 +2243,8 @@ function HydratedAppWorkspace({
         onNewSheet={handleNewSheet}
         onOpenModal={() => setModalMode('open')}
         onSaveModal={() => setModalMode('save')}
+        printStyle={printStyle}
+        onChangePrintStyle={handleChangePrintStyle}
         onPrintPdf={handlePrintPdf}
       />
 
@@ -3032,7 +3053,7 @@ function HydratedAppWorkspace({
         }}
       />
       </div>
-      <PaperSheetPrintView sheet={sheet} language={language} />
+      <PaperSheetPrintView sheet={sheet} language={language} printStyle={printStyle} />
     </>
   );
 }
