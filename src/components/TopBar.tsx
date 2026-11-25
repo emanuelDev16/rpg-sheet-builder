@@ -1,5 +1,5 @@
-import React from 'react';
-import { Globe, Printer, Volume2, VolumeX } from 'lucide-react';
+import React, { useEffect, useRef, useState } from 'react';
+import { ChevronDown, Globe, Printer, Volume2, VolumeX } from 'lucide-react';
 import { AppMode, SystemId } from '../core/sheetModel';
 import {
   AppLanguage,
@@ -10,6 +10,7 @@ import {
 import { localizeSystemName } from '../core/presetI18n';
 import { ThemeMode } from '../utils/theme';
 import { ThemeSelector } from './ThemeSelector';
+import { type PaperPrintStyle } from '../core/printSheet';
 
 interface TopBarProps {
   systemCode: string;
@@ -20,6 +21,8 @@ interface TopBarProps {
   isAudioMuted: boolean;
   activeView?: 'home' | 'sheet';
   t: AppTranslations['topBar'];
+  printStyle?: PaperPrintStyle;
+  onChangePrintStyle?: (style: PaperPrintStyle) => void;
   onGoHome?: () => void;
   onChangeSystemCode: (nextCode: string) => void;
   onSwitchSystem: (systemId: SystemId) => void;
@@ -30,7 +33,7 @@ interface TopBarProps {
   onNewSheet: () => void;
   onOpenModal: () => void;
   onSaveModal: () => void;
-  onPrintPdf: () => void;
+  onPrintPdf: (style?: PaperPrintStyle) => void;
 }
 
 export const TopBar: React.FC<TopBarProps> = ({
@@ -42,6 +45,8 @@ export const TopBar: React.FC<TopBarProps> = ({
   isAudioMuted,
   activeView = 'sheet',
   t,
+  printStyle = 'gothic-crimson',
+  onChangePrintStyle,
   onGoHome,
   onChangeSystemCode,
   onSwitchSystem,
@@ -55,6 +60,58 @@ export const TopBar: React.FC<TopBarProps> = ({
   onPrintPdf,
 }) => {
   const localizedSystems = getLocalizedSystemOptions(language);
+  const [isPdfMenuOpen, setIsPdfMenuOpen] = useState(false);
+  const pdfMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!isPdfMenuOpen) return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setIsPdfMenuOpen(false);
+      }
+    };
+    const handleClickOutside = (e: MouseEvent) => {
+      if (pdfMenuRef.current && !pdfMenuRef.current.contains(e.target as Node)) {
+        setIsPdfMenuOpen(false);
+      }
+    };
+    document.addEventListener('keydown', handleKeyDown);
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('keydown', handleKeyDown);
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, [isPdfMenuOpen]);
+
+  const activePrintStyle = printStyle;
+
+  const styleOptions: Array<{
+    id: PaperPrintStyle;
+    label: string;
+    desc: string;
+  }> = [
+    {
+      id: 'gothic-crimson',
+      label: t.pdfStyleGothic,
+      desc: t.pdfStyleGothicDesc,
+    },
+    {
+      id: 'classic-bw',
+      label: t.pdfStyleClassic,
+      desc: t.pdfStyleClassicDesc,
+    },
+    {
+      id: 'minimal',
+      label: t.pdfStyleMinimal,
+      desc: t.pdfStyleMinimalDesc,
+    },
+  ];
+
+  const handleSelectAndPrint = (selectedStyle: PaperPrintStyle) => {
+    onChangePrintStyle?.(selectedStyle);
+    onPrintPdf(selectedStyle);
+    setIsPdfMenuOpen(false);
+  };
 
   return (
     <header
@@ -183,15 +240,79 @@ export const TopBar: React.FC<TopBarProps> = ({
           >
             {t.save}
           </button>
-          <button
-            type="button"
-            onClick={onPrintPdf}
-            aria-label={t.pdfAria}
-            className="cyber-btn-outline min-h-[36px] px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
-          >
-            <Printer className="w-3.5 h-3.5 text-[var(--accent-wine)]" aria-hidden="true" />
-            <span>PDF</span>
-          </button>
+          <div className="relative shrink-0" ref={pdfMenuRef}>
+            <button
+              type="button"
+              data-testid="topbar-pdf-btn"
+              onClick={() => setIsPdfMenuOpen((prev) => !prev)}
+              aria-expanded={isPdfMenuOpen}
+              aria-haspopup="menu"
+              aria-label={t.pdfAria}
+              title={t.pdfAria}
+              className="cyber-btn-outline min-h-[36px] px-3 py-1.5 text-[11px] font-bold tracking-wider uppercase whitespace-nowrap shrink-0 inline-flex items-center gap-1.5 cursor-pointer"
+            >
+              <Printer className="w-3.5 h-3.5 text-[var(--accent-wine)]" aria-hidden="true" />
+              <span>PDF</span>
+              <ChevronDown
+                className={`w-3 h-3 text-[var(--ink-muted)] transition-transform duration-100 ${
+                  isPdfMenuOpen ? 'rotate-180' : ''
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+            {isPdfMenuOpen && (
+              <div
+                role="menu"
+                aria-label={t.pdfMenuAria}
+                data-testid="topbar-pdf-menu"
+                className="absolute right-0 top-full mt-1.5 z-50 w-72 p-2 bg-[var(--bg-card)] border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] shadow-lg flex flex-col gap-1 text-[var(--text-primary)] font-mono-tech"
+              >
+                <div className="px-2 py-1 text-[10px] font-bold tracking-wider uppercase text-[var(--ink-muted)] border-b-[length:var(--border-width)] border-[var(--border-color)] flex items-center justify-between">
+                  <span>{t.pdfStyleLabel}</span>
+                </div>
+                <div className="flex flex-col gap-1 py-1">
+                  {styleOptions.map((opt) => {
+                    const isSelected = activePrintStyle === opt.id;
+                    return (
+                      <button
+                        key={opt.id}
+                        type="button"
+                        role="menuitem"
+                        data-testid={`pdf-style-option-${opt.id}`}
+                        onClick={() => handleSelectAndPrint(opt.id)}
+                        className={`w-full text-left px-2.5 py-1.5 min-h-[36px] rounded-[var(--radius-control)] border transition-colors cursor-pointer flex flex-col justify-center ${
+                          isSelected
+                            ? 'border-[var(--accent-primary)] bg-[var(--accent-primary)]/10 text-[var(--text-primary)] font-bold'
+                            : 'border-transparent hover:bg-[var(--bg-hover)] text-[var(--text-primary)]'
+                        }`}
+                      >
+                        <div className="flex items-center justify-between text-[11px]">
+                          <span className="tracking-wide uppercase">{opt.label}</span>
+                          {isSelected && (
+                            <span className="text-[10px] text-[var(--accent-wine)] font-bold">✓</span>
+                          )}
+                        </div>
+                        <span className="text-[9px] text-[var(--ink-muted)] font-ui leading-tight mt-0.5">
+                          {opt.desc}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+                <button
+                  type="button"
+                  data-testid="pdf-direct-print-btn"
+                  onClick={() => {
+                    onPrintPdf(activePrintStyle);
+                    setIsPdfMenuOpen(false);
+                  }}
+                  className="cyber-btn-outline w-full min-h-[36px] px-2.5 py-1.5 text-[11px] font-bold tracking-wider uppercase text-center cursor-pointer bg-[var(--accent-black)] text-[var(--accent-contrast)] hover:opacity-90 transition-opacity mt-1"
+                >
+                  {t.pdfPrintAction}
+                </button>
+              </div>
+            )}
+          </div>
         </div>
 
         {onChangeTheme && (

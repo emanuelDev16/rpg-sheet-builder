@@ -92,6 +92,15 @@ const PT_BR_DICT = {
   'topBar.open': 'ABRIR',
   'topBar.save': 'SALVAR',
   'topBar.pdfAria': 'Imprimir ficha ativa em PDF',
+  'topBar.pdfMenuAria': 'Opções de exportação PDF e impressão',
+  'topBar.pdfStyleLabel': 'ESTILO VISUAL',
+  'topBar.pdfStyleGothic': 'Gótico Bordô',
+  'topBar.pdfStyleGothicDesc': 'Moldura chanfrada e ornamentos bordô',
+  'topBar.pdfStyleClassic': 'Clássico P&B',
+  'topBar.pdfStyleClassicDesc': 'Econômico em tinta, 100% preto e branco',
+  'topBar.pdfStyleMinimal': 'Minimalista',
+  'topBar.pdfStyleMinimalDesc': 'Sem moldura, traços finos e espaço limpo',
+  'topBar.pdfPrintAction': 'IMPRIMIR / EXPORTAR',
   'topBar.playMode': 'MODO JOGO',
   'topBar.editMode': 'MODO EDIÇÃO',
   'topBar.modeSelectorAria': 'Seletor de modo da ficha',
@@ -1248,6 +1257,15 @@ export const EN: TranslationDictionary = {
   'topBar.open': 'OPEN',
   'topBar.save': 'SAVE',
   'topBar.pdfAria': 'Print active sheet to PDF',
+  'topBar.pdfMenuAria': 'PDF export and print options',
+  'topBar.pdfStyleLabel': 'VISUAL STYLE',
+  'topBar.pdfStyleGothic': 'Gothic Crimson',
+  'topBar.pdfStyleGothicDesc': 'Beveled frame and crimson ornaments',
+  'topBar.pdfStyleClassic': 'Classic B&W',
+  'topBar.pdfStyleClassicDesc': 'Ink saver, 100% black and white',
+  'topBar.pdfStyleMinimal': 'Minimalist',
+  'topBar.pdfStyleMinimalDesc': 'Frameless, thin lines and clean space',
+  'topBar.pdfPrintAction': 'PRINT / EXPORT',
   'topBar.playMode': 'PLAY MODE',
   'topBar.editMode': 'EDIT MODE',
   'topBar.modeSelectorAria': 'Sheet mode selector',
@@ -2399,6 +2417,15 @@ export const ES: TranslationDictionary = {
   'topBar.open': 'ABRIR',
   'topBar.save': 'GUARDAR',
   'topBar.pdfAria': 'Imprimir hoja activa en PDF',
+  'topBar.pdfMenuAria': 'Opciones de exportación PDF e impresión',
+  'topBar.pdfStyleLabel': 'ESTILO VISUAL',
+  'topBar.pdfStyleGothic': 'Gótico Burdeos',
+  'topBar.pdfStyleGothicDesc': 'Marco biselado y adornos burdeos',
+  'topBar.pdfStyleClassic': 'Clásico B&N',
+  'topBar.pdfStyleClassicDesc': 'Económico en tinta, 100% blanco y negro',
+  'topBar.pdfStyleMinimal': 'Minimalista',
+  'topBar.pdfStyleMinimalDesc': 'Sin marco, líneas finas y espacio limpio',
+  'topBar.pdfPrintAction': 'IMPRIMIR / EXPORTAR',
   'topBar.playMode': 'MODO JUEGO',
   'topBar.editMode': 'MODO EDICIÓN',
   'topBar.modeSelectorAria': 'Selector de modo de la hoja',
@@ -3620,6 +3647,15 @@ export interface AppTranslations {
     open: string;
     save: string;
     pdfAria: string;
+    pdfMenuAria: string;
+    pdfStyleLabel: string;
+    pdfStyleGothic: string;
+    pdfStyleGothicDesc: string;
+    pdfStyleClassic: string;
+    pdfStyleClassicDesc: string;
+    pdfStyleMinimal: string;
+    pdfStyleMinimalDesc: string;
+    pdfPrintAction: string;
     playMode: string;
     editMode: string;
     modeSelectorAria: string;
@@ -3782,6 +3818,15 @@ export function getTranslations(lang: AppLanguage): AppTranslations {
       open: t('topBar.open'),
       save: t('topBar.save'),
       pdfAria: t('topBar.pdfAria'),
+      pdfMenuAria: t('topBar.pdfMenuAria'),
+      pdfStyleLabel: t('topBar.pdfStyleLabel'),
+      pdfStyleGothic: t('topBar.pdfStyleGothic'),
+      pdfStyleGothicDesc: t('topBar.pdfStyleGothicDesc'),
+      pdfStyleClassic: t('topBar.pdfStyleClassic'),
+      pdfStyleClassicDesc: t('topBar.pdfStyleClassicDesc'),
+      pdfStyleMinimal: t('topBar.pdfStyleMinimal'),
+      pdfStyleMinimalDesc: t('topBar.pdfStyleMinimalDesc'),
+      pdfPrintAction: t('topBar.pdfPrintAction'),
       playMode: t('topBar.playMode'),
       editMode: t('topBar.editMode'),
       modeSelectorAria: t('topBar.modeSelectorAria'),

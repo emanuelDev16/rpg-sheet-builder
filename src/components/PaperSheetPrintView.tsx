@@ -14,10 +14,16 @@ import {
   type PaperXpSummary,
 } from '../core/paperSheetModel';
 import { type CharacterSheetState } from '../core/sheetModel';
+import {
+  DEFAULT_PAPER_PRINT_STYLE,
+  isValidPaperPrintStyle,
+  type PaperPrintStyle,
+} from '../core/printSheet';
 
-interface PaperSheetPrintViewProps {
+export interface PaperSheetPrintViewProps {
   sheet: CharacterSheetState;
   language: AppLanguage;
+  printStyle?: PaperPrintStyle;
 }
 
 function isSafeHttpUrl(raw?: string): string {
@@ -1002,13 +1008,16 @@ function GenericPages({ model }: { model: PaperSheetModel }) {
   );
 }
 
-export function PaperSheetPrintView({ sheet, language }: PaperSheetPrintViewProps) {
+export function PaperSheetPrintView({ sheet, language, printStyle }: PaperSheetPrintViewProps) {
   const model = useMemo(() => buildPaperSheetModel(sheet, language), [sheet, language]);
+  const activeStyle: PaperPrintStyle =
+    printStyle && isValidPaperPrintStyle(printStyle) ? printStyle : DEFAULT_PAPER_PRINT_STYLE;
   return (
     <div
       className="paper-print-root"
       data-testid="paper-print-root"
       data-paper-layout={model.layout}
+      data-print-style={activeStyle}
     >
       {model.layout === 'wod-v5' && model.wodV5 ? (
         <WodV5Pages model={model} data={model.wodV5} />
