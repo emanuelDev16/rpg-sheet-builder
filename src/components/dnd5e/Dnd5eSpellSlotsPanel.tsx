@@ -111,7 +111,7 @@ export const Dnd5eSpellSlotsPanel: React.FC<Dnd5eSpellSlotsPanelProps> = ({
                           max: slot.max,
                         })}
                         onClick={() => onToggleSlotUsed(slot.level, idx)}
-                        className={`min-h-[32px] min-w-[28px] px-1 font-mono-tech text-[11px] font-extrabold border border-[var(--border-color)] rounded-[var(--radius-pill)] cursor-pointer ${
+                        className={`min-h-[36px] min-w-[32px] px-1 font-mono-tech text-[11px] font-extrabold border border-[var(--border-color)] rounded-[var(--radius-pill)] cursor-pointer ${
                           isUsed
                             ? 'bg-[var(--bg-strip)] text-[var(--ink-muted)] line-through opacity-65'
                             : 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]'
@@ -133,9 +133,9 @@ export const Dnd5eSpellSlotsPanel: React.FC<Dnd5eSpellSlotsPanelProps> = ({
                     type="button"
                     data-testid={`dnd5e-slot-dec-${slot.level}`}
                     aria-label={t.t('dnd5e.spellSlotMaxDecAria', { level: slot.level })}
-                    disabled={slot.max <= 0}
-                    onClick={() => onAdjustSlotMax(slot.level, -1)}
-                    className="cyber-btn-outline min-h-[32px] min-w-[30px] flex items-center justify-center cursor-pointer disabled:opacity-40"
+                    aria-disabled={slot.max <= 0 || undefined}
+                    onClick={() => { if (slot.max <= 0) return; onAdjustSlotMax(slot.level, -1); }}
+                    className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer aria-[disabled=true]:opacity-40"
                   >
                     <Minus className="w-3 h-3" aria-hidden="true" />
                   </button>
@@ -143,9 +143,9 @@ export const Dnd5eSpellSlotsPanel: React.FC<Dnd5eSpellSlotsPanelProps> = ({
                     type="button"
                     data-testid={`dnd5e-slot-inc-${slot.level}`}
                     aria-label={t.t('dnd5e.spellSlotMaxIncAria', { level: slot.level })}
-                    disabled={slot.max >= 9}
-                    onClick={() => onAdjustSlotMax(slot.level, 1)}
-                    className="cyber-btn-outline min-h-[32px] min-w-[30px] flex items-center justify-center cursor-pointer disabled:opacity-40"
+                    aria-disabled={slot.max >= 9 || undefined}
+                    onClick={() => { if (slot.max >= 9) return; onAdjustSlotMax(slot.level, 1); }}
+                    className="cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center cursor-pointer aria-[disabled=true]:opacity-40"
                   >
                     <Plus className="w-3 h-3" aria-hidden="true" />
                   </button>
