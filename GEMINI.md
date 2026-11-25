@@ -45,6 +45,7 @@
 - **Sanitização de URLs**: Bloquear esquemas inseguros (`javascript:`, `data:` exceto imagens raster) em links e assets.
 - **Proteção Contra Poluição**: Rejeitar recursivamente chaves `__proto__` e `constructor` em payloads de importação e sync.
 - **Isolamento de Sistemas**: Isolar novas regras de RPG em `src/core/<sys>*` sem acoplamentos nos módulos genéricos.
+- **Popovers & Camadas Z**: Popovers/dropdowns devem usar <AnchoredPopover> (createPortal em document.body) e tokens --z-* de src/index.css; nunca position: absolute dentro de containers com overflow.
 
 ## Governança & Skills
 - **Diretrizes e Regras**: Ver `@.agent/rules/` (`token-efficiency.md`) para governança de git, validação e eficiência.

@@ -5,6 +5,16 @@
    GRIDSHEET — MULTI-THEME DESIGN TOKENS (light | dark | eink)
    Controlado por data-theme no elemento <html>
    ============================================================================ */
+:root {
+  /* --- Escala Canônica de Camadas (z-index) --- */
+  --z-sticky: 20;
+  --z-topbar: 40;
+  --z-drawer: 60;
+  --z-popover: 80;
+  --z-modal: 100;
+  --z-toast: 120;
+}
+
 :root,
 [data-theme="light"] {
   color-scheme: light;
@@ -2703,6 +2713,31 @@ select:focus-visible,
 [data-theme="eink"] .wod-wizard-budget-pill {
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
+}
+
+/* ============================================================================
+   CAMADAS DE EMPILHAMENTO (Z-LAYERING) & POPOVER PORTAL
+   ============================================================================ */
+.topbar-root {
+  z-index: var(--z-topbar);
+}
+
+.anchored-popover-portal {
+  position: fixed;
+  z-index: var(--z-popover);
+}
+
+div.mobile-modal-overlay {
+  z-index: var(--z-modal);
+}
+
+.mobile-roll-toast {
+  z-index: var(--z-toast);
+}
+
+div:has(> [data-testid="mobile-sidebar-drawer"]),
+div:has(> [data-testid="home-rules-drawer"]) {
+  z-index: var(--z-drawer);
 }
 
 /* Final cascade guard for Ctrl+P isolation */
