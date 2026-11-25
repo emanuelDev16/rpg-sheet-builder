@@ -150,8 +150,44 @@ test('buildPaperSheetModel builds 3-page D&D 5e with spellcasting and 2-page wit
   assert.ok(fullModel.dnd5e?.page3);
   assert.equal(fullModel.dnd5e?.page1.col1.abilities.length, 6);
   assert.equal(fullModel.dnd5e?.page1.col1.skills18.length, 18);
-  assert.equal(fullModel.dnd5e?.page1.col2.deathSaves.successes, 3);
+  assert.equal(fullModel.dnd5e?.page1.col2.deathSaves.successes, 0);
   assert.equal(fullModel.dnd5e?.page3?.slots.length, 2);
+
+  const customDnd = {
+    ...dnd,
+    dnd5eState: {
+      ...dnd.dnd5eState!,
+      level: 9,
+      inspiration: false,
+      tempHp: 12,
+      hitDice: { die: 'd12' as const, current: 7, max: 9 },
+      deathSaves: { successes: 2, failures: 1 },
+      saveProficiencies: { str: false, dex: true, con: true, int: false, wis: true, cha: false },
+      skillProficiencies: {
+        ...dnd.dnd5eState!.skillProficiencies,
+        perception: 'expertise' as const,
+        stealth: 'proficient' as const,
+      },
+      spellcasting: {
+        ability: 'wis' as const,
+        slots: dnd.dnd5eState!.spellcasting.slots.map((s) =>
+          s.level === 1 ? { level: 1, max: 4, used: 2 } : s.level === 3 ? { level: 3, max: 2, used: 1 } : s,
+        ),
+      },
+    },
+  };
+  const customModel = buildPaperSheetModel(customDnd, 'pt-BR');
+  assert.equal(customModel.dnd5e?.page1.identityBanner.proficiencyBonus, '+4');
+  assert.equal(customModel.dnd5e?.page1.col1.passivePerception, 19); // 10 + 1(wis) + 2*4(PB)
+  assert.equal(customModel.dnd5e?.page1.col1.skills18.find((s) => s.key === 'perception')?.proficiency, 'expertise');
+  assert.equal(customModel.dnd5e?.page1.col1.savingThrows.find((s) => s.key === 'wisdom')?.proficient, true);
+  assert.equal(customModel.dnd5e?.page1.col2.hitPoints.temp, '12');
+  assert.equal(customModel.dnd5e?.page1.col2.hitDice.current, 7);
+  assert.deepEqual(customModel.dnd5e?.page1.col2.deathSaves, { successes: 2, failures: 1 });
+  assert.equal(customModel.dnd5e?.page1.col3.inspiration, false);
+  assert.equal(customModel.dnd5e?.page3?.spellDc, '13'); // 8 + 4 + 1
+  assert.equal(customModel.dnd5e?.page3?.spellAtk, '+5'); // 4 + 1
+  assert.equal(customModel.dnd5e?.page3?.slots.length, 3);
 
   // Strip spellcasting cards -> conditional Page 3 disappears
   const martialOnly = {

@@ -73,6 +73,7 @@ import {
 } from './core/roomSync';
 import {
   type DiceRollResult,
+  evaluateFormula,
   executeDisciplineRouseCheck,
   executeRemorseCheck,
   executeRouseCheck,
@@ -86,6 +87,27 @@ import {
   type V20FrenzyVirtue,
   WodPoolOptions,
 } from './core/formula';
+import {
+  applyDndDamage,
+  applyDndHeal,
+  applyLongRest,
+  DND5E_ABILITIES,
+  type Dnd5eAbilityKey,
+  type Dnd5eDeathSavesState,
+  type Dnd5eHitDieType,
+  type Dnd5eRollMode,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  type Dnd5eSpellcastingAbilityKey,
+  type Dnd5eState,
+  formatSignedMod,
+  getAbilityModifier,
+  normalizeDnd5eState,
+  rollD20Check,
+  rollDeathSave,
+  setTempHp,
+  spendHitDieShortRest,
+} from './core/dnd5eRules';
 import { isDiceAudioMuted, playDiceClatter, setDiceAudioMuted } from './core/diceAudio';
 import {
   AppLanguage,
@@ -123,7 +145,7 @@ import { type WodComposedRollRequest } from './utils/wodPoolComposer';
 import { TopBar } from './components/TopBar';
 import { TabNav } from './components/TabNav';
 import { SheetSearchBar } from './components/SheetSearchBar';
-import { BentoCard } from './components/BentoCard';
+import { BentoCard, type Dnd5eCardContext } from './components/BentoCard';
 import { BentoGridSkeleton } from './components/BentoGridSkeleton';
 import { CustomCardBuilder } from './components/CustomCardBuilder';
 import { RollDiceChips, RollLogSidebar } from './components/RollLogSidebar';
@@ -312,6 +334,7 @@ function HydratedAppWorkspace({
   );
   const [activeTab, setActiveTab] = useState<TabId>('geral');
   const [mode, setMode] = useState<AppMode>('jogo');
+  const [dnd5eRollMode, setDnd5eRollMode] = useState<Dnd5eRollMode>('normal');
   const [searchQuery, setSearchQuery] = useState('');
   const [modalMode, setModalMode] = useState<'new' | 'open' | 'save' | null>(null);
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
@@ -1439,6 +1462,17 @@ function HydratedAppWorkspace({
   const handleFieldRoll = (field: SheetField) => {
     const expr = field.rollExpr ?? '2d6';
     const isPool = isWodPoolExpression(expr);
+    if (activeSystemId === 'dnd5e' && !isPool) {
+      const d20Match = expr.match(/^\s*1d20(?:\s*([+-].*))?$/i);
+      if (d20Match) {
+        const modExpr = (d20Match[1] ?? '').trim().replace(/^\+/, '');
+        const modEval = modExpr ? evaluateFormula(modExpr, evaluation.variables) : { ok: true, value: 0 };
+        if (modEval.ok) {
+          handleDnd5eD20Roll(localizeFieldRollLabel(field, language), Math.trunc(modEval.value));
+          return;
+        }
+      }
+    }
     const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
     const effectiveFieldDiff =
       rulePreset === 'vampire-v5' && !isSoak
@@ -1460,6 +1494,231 @@ function HydratedAppWorkspace({
         : undefined,
     );
   };
+
+  const handleDnd5eD20Roll = (
+    label: string,
+    bonus: number,
+    options?: { isDeathSave?: boolean; overrideMode?: Dnd5eRollMode },
+  ) => {
+    const res = rollD20Check({ mode: options?.overrideMode ?? dnd5eRollMode, bonus });
+    const modeTag = res.mode === 'advantage' ? ' (ADV)' : res.mode === 'disadvantage' ? ' (DIS)' : '';
+    const bonusStr = bonus === 0 ? '' : bonus > 0 ? ` + ${bonus}` : ` - ${Math.abs(bonus)}`;
+    const entry: RollLogEntry = {
+      id: `log_d20_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+      timestamp: nowTimeString(),
+      label,
+      total: res.total,
+      formula: `1d20${bonusStr}${modeTag}`,
+      breakdown: `d20[${res.dice.join(', ')}] → ${res.kept}${bonusStr} = ${res.total}`,
+      isCritical: res.isNat20,
+      isFumble: res.isNat1,
+      d20Mode: res.mode,
+      d20Dice: res.dice,
+      d20Kept: res.kept,
+      d20Discarded: res.discarded,
+      isDeathSave: options?.isDeathSave,
+    };
+    playDiceClatter({ diceCount: res.dice.length, isCritical: res.isNat20, isFumble: res.isNat1 });
+    showMobileToastWithTimeout(entry);
+    setSheet((prev) => ({
+      ...prev,
+      rollLogs: [entry, ...prev.rollLogs].slice(0, 30),
+    }));
+  };
+
+  const syncDnd5eFields = (
+    prev: CharacterSheetState,
+    nextState: Dnd5eState,
+    nextHpValue?: number,
+  ): CharacterSheetState => ({
+    ...prev,
+    dnd5eState: nextState,
+    cards: prev.cards.map((card) => ({
+      ...card,
+      fields: card.fields.map((f) => {
+        const k = f.key.trim().toLowerCase();
+        if (nextHpValue !== undefined && (f.id === 'f_hp' || k === 'hp') && f.kind === 'resource') {
+          return { ...f, value: nextHpValue };
+        }
+        if ((f.id === 'f_hit_dice' || k === 'hit_dice') && f.kind === 'resource') {
+          return {
+            ...f,
+            value: nextState.hitDice.current,
+            max: nextState.hitDice.max,
+            label: `HIT DICE (${nextState.hitDice.die})`,
+          };
+        }
+        if ((f.id === 'f_inspiration' || k === 'inspiration') && f.kind === 'boolean') {
+          return { ...f, value: nextState.inspiration };
+        }
+        if ((f.id === 'f_nivel' || k === 'level') && f.kind === 'number') {
+          return { ...f, value: nextState.level };
+        }
+        const slotMatch = k.match(/^slots_(\d+)/);
+        if (slotMatch && f.kind === 'resource') {
+          const lvl = Number.parseInt(slotMatch[1], 10);
+          const slot = nextState.spellcasting.slots.find((s) => s.level === lvl);
+          if (slot) {
+            return { ...f, max: Math.max(1, slot.max), value: Math.max(0, slot.max - slot.used) };
+          }
+        }
+        return f;
+      }),
+    })),
+  });
+
+  const dnd5eContext = useMemo<Dnd5eCardContext | undefined>(() => {
+    if (activeSystemId !== 'dnd5e') return undefined;
+    const allFields = sheet.cards.flatMap((c) => c.fields);
+    const hpField = allFields.find((f) => (f.id === 'f_hp' || f.key.trim().toLowerCase() === 'hp') && f.kind === 'resource');
+    const acField = allFields.find((f) => f.id === 'f_ac' || f.key.trim().toLowerCase() === 'armor_class');
+    const fallbackLevel = Math.max(1, Math.min(20, Math.round(evaluation.variables.level ?? 1)));
+    const state = normalizeDnd5eState(sheet.dnd5eState, { level: fallbackLevel });
+    const abilityScores = Object.fromEntries(
+      DND5E_ABILITIES.map((ab) => [ab.key, Math.max(1, Math.min(30, Math.round(evaluation.variables[ab.fieldKey] ?? 10)))]),
+    ) as Record<Dnd5eAbilityKey, number>;
+    const maxHp = Math.max(1, hpField?.max ?? 10);
+    const currentHp = Math.max(0, Math.min(maxHp, Math.round(typeof hpField?.value === 'number' ? hpField.value : maxHp)));
+    const armorClass = acField?.kind === 'calculated'
+      ? (evaluation.computedByFieldId[acField.id]?.formatted ?? '10')
+      : String(Math.round(evaluation.variables.armor_class ?? 10));
+    const initiativeMod = Math.round(evaluation.variables.initiative ?? getAbilityModifier(abilityScores.dex));
+
+    const mutateState = (fn: (cur: Dnd5eState) => { nextState: Dnd5eState; nextHp?: number; prependLog?: RollLogEntry; flash?: string }) => {
+      const curState = normalizeDnd5eState(sheet.dnd5eState, { level: fallbackLevel });
+      const { nextState, nextHp, prependLog, flash } = fn(curState);
+      setSheet((prev) => {
+        const synced = touchSheetMetadata(syncDnd5eFields(prev, nextState, nextHp));
+        return prependLog ? { ...synced, rollLogs: [prependLog, ...synced.rollLogs].slice(0, 30) } : synced;
+      });
+      if (prependLog) {
+        playDiceClatter({ diceCount: 1, isCritical: prependLog.isCritical, isFumble: prependLog.isFumble });
+        showMobileToastWithTimeout(prependLog);
+      }
+      if (flash) triggerFlash(flash);
+    };
+
+    return {
+      state,
+      abilityScores,
+      hp: { current: currentHp, max: maxHp },
+      armorClass,
+      initiativeMod,
+      onChangeAbilityScore: (abKey, score) => {
+        const spec = DND5E_ABILITIES.find((a) => a.key === abKey);
+        const target = spec ? allFields.find((f) => f.id === spec.fieldId || f.key.trim().toLowerCase() === spec.fieldKey) : undefined;
+        if (target) setSheet((prev) => updateFieldValue(prev, target.id, score));
+      },
+      onToggleSaveProf: (abKey) =>
+        mutateState((cur) => ({
+          nextState: { ...cur, saveProficiencies: { ...cur.saveProficiencies, [abKey]: !cur.saveProficiencies[abKey] } },
+        })),
+      onCycleSkillProf: (skillKey: Dnd5eSkillKey, nextProf: Dnd5eSkillProficiency) =>
+        mutateState((cur) => ({
+          nextState: { ...cur, skillProficiencies: { ...cur.skillProficiencies, [skillKey]: nextProf } },
+        })),
+      onRollCheck: (label, bonus) => handleDnd5eD20Roll(label, bonus),
+      onDamage: (amount) =>
+        mutateState((cur) => {
+          const res = applyDndDamage({ currentHp, maxHp, tempHp: cur.tempHp }, amount);
+          return { nextState: { ...cur, tempHp: res.tempHp }, nextHp: res.currentHp };
+        }),
+      onHeal: (amount) =>
+        mutateState((cur) => {
+          const res = applyDndHeal({ currentHp, maxHp, tempHp: cur.tempHp, deathSaves: cur.deathSaves }, amount);
+          return { nextState: { ...cur, deathSaves: res.deathSaves }, nextHp: res.currentHp };
+        }),
+      onSetTempHp: (amount) =>
+        mutateState((cur) => ({ nextState: { ...cur, tempHp: setTempHp(cur.tempHp, amount, { forceOverride: true }) } })),
+      onToggleInspiration: () =>
+        mutateState((cur) => ({ nextState: { ...cur, inspiration: !cur.inspiration } })),
+      onChangeHitDieType: (die: Dnd5eHitDieType) =>
+        mutateState((cur) => ({ nextState: { ...cur, hitDice: { ...cur.hitDice, die } } })),
+      onShortRest: () =>
+        mutateState((cur) => {
+          const sr = spendHitDieShortRest({
+            currentHp, maxHp, tempHp: cur.tempHp, deathSaves: cur.deathSaves, hitDice: cur.hitDice, conScore: abilityScores.con,
+          });
+          if (!sr.spent || sr.roll === null) return { nextState: cur };
+          const modStr = formatSignedMod(sr.conMod);
+          const prependLog: RollLogEntry = {
+            id: `log_sr_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            timestamp: nowTimeString(),
+            label: t.t('dnd5e.shortRestLogLabel', { die: cur.hitDice.die.toUpperCase() }),
+            total: sr.healed,
+            formula: `1${cur.hitDice.die}${modStr}`,
+            breakdown: `1${cur.hitDice.die}[${sr.roll}] ${modStr} → +${sr.healed} HP (${sr.currentHp}/${maxHp})`,
+          };
+          return { nextState: { ...cur, hitDice: sr.hitDice, deathSaves: sr.deathSaves }, nextHp: sr.currentHp, prependLog };
+        }),
+      onLongRest: () =>
+        mutateState((cur) => {
+          const lr = applyLongRest({ maxHp, dnd5eState: cur });
+          return { nextState: lr.dnd5eState, nextHp: lr.currentHp, flash: t.t('dnd5e.longRestFlash') };
+        }),
+      onSetDeathSaves: (next: Dnd5eDeathSavesState) =>
+        mutateState((cur) => ({ nextState: { ...cur, deathSaves: next } })),
+      onRollDeathSave: () =>
+        mutateState((cur) => {
+          const ds = rollDeathSave({ currentHp, maxHp, deathSaves: cur.deathSaves });
+          const outcomeNote =
+            ds.outcome === 'revived'
+              ? ` · ${t.t('dnd5e.deathSaveOutcomeRevived')}`
+              : ds.outcome === 'stabilized'
+                ? ` · ${t.t('dnd5e.deathSaveOutcomeStabilized')}`
+                : ds.outcome === 'dead'
+                  ? ` · ${t.t('dnd5e.deathSaveOutcomeDead')}`
+                  : '';
+          const prependLog: RollLogEntry = {
+            id: `log_ds_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+            timestamp: nowTimeString(),
+            label: t.t('dnd5e.deathSavesHeading'),
+            total: ds.roll,
+            formula: '1d20',
+            breakdown: `d20[${ds.roll}] (${ds.deathSaves.successes}/3 ✓ · ${ds.deathSaves.failures}/3 ✕)${outcomeNote}`,
+            isCritical: ds.roll === 20,
+            isFumble: ds.roll === 1,
+            d20Mode: 'normal',
+            d20Dice: [ds.roll],
+            d20Kept: ds.roll,
+            d20Discarded: null,
+            isDeathSave: true,
+          };
+          return { nextState: { ...cur, deathSaves: ds.deathSaves }, nextHp: ds.currentHp, prependLog };
+        }),
+      onRollInitiative: () => handleDnd5eD20Roll(t.t('dnd5e.initiativeBtn'), initiativeMod),
+      onChangeSpellAbility: (ability: Dnd5eSpellcastingAbilityKey) =>
+        mutateState((cur) => ({ nextState: { ...cur, spellcasting: { ...cur.spellcasting, ability } } })),
+      onAdjustSlotMax: (level, delta) =>
+        mutateState((cur) => ({
+          nextState: {
+            ...cur,
+            spellcasting: {
+              ...cur.spellcasting,
+              slots: cur.spellcasting.slots.map((s) => {
+                if (s.level !== level) return s;
+                const nextMax = Math.max(0, Math.min(9, s.max + delta));
+                return { ...s, max: nextMax, used: Math.min(s.used, nextMax) };
+              }),
+            },
+          },
+        })),
+      onToggleSlotUsed: (level, slotIndex) =>
+        mutateState((cur) => ({
+          nextState: {
+            ...cur,
+            spellcasting: {
+              ...cur.spellcasting,
+              slots: cur.spellcasting.slots.map((s) => {
+                if (s.level !== level) return s;
+                const nextUsed = slotIndex < s.used ? slotIndex : Math.min(s.max, slotIndex + 1);
+                return { ...s, used: nextUsed };
+              }),
+            },
+          },
+        })),
+    };
+  }, [activeSystemId, sheet, evaluation, dnd5eRollMode, language, t]);
 
   const handleComposedPoolRoll = (request: WodComposedRollRequest) => {
     if (!isOfficialVampireSheet(activeSystemId, rulePreset)) return;
@@ -2131,8 +2390,17 @@ function HydratedAppWorkspace({
       evaluation={evaluation}
       t={t.cards}
       onChangeValue={(fid, val) =>
-        setSheet((prev) => updateFieldValue(prev, fid, val))
+        setSheet((prev) => {
+          const next = updateFieldValue(prev, fid, val);
+          if (activeSystemId === 'dnd5e' && (fid === 'f_nivel' || prev.cards.some((c) => c.fields.some((f) => f.id === fid && f.key.trim().toLowerCase() === 'level')))) {
+            const lvl = Math.max(1, Math.min(20, Math.round(Number(val) || 1)));
+            const base = normalizeDnd5eState(next.dnd5eState, { level: lvl });
+            return { ...next, dnd5eState: { ...base, level: lvl } };
+          }
+          return next;
+        })
       }
+      dnd5eContext={dnd5eContext}
       onAdjustResource={(fid, delta) =>
         setSheet((prev) => adjustResourceValue(prev, fid, delta))
       }
@@ -2360,13 +2628,49 @@ function HydratedAppWorkspace({
               aria-labelledby={`sheet-tab-${activeTab}`}
             >
               {activeTab !== 'xp' && (
-                <SheetSearchBar
-                  query={searchQuery}
-                  onChangeQuery={setSearchQuery}
-                  matchedFieldCount={matchedFieldCount}
-                  matchedCardCount={filteredCards.length}
-                  t={t.searchBar}
-                />
+                <div className="flex flex-wrap items-center justify-between gap-2">
+                  <div className="flex-1 min-w-[220px]">
+                    <SheetSearchBar
+                      query={searchQuery}
+                      onChangeQuery={setSearchQuery}
+                      matchedFieldCount={matchedFieldCount}
+                      matchedCardCount={filteredCards.length}
+                      t={t.searchBar}
+                    />
+                  </div>
+                  {activeSystemId === 'dnd5e' && mode === 'jogo' && (
+                    <div
+                      role="group"
+                      aria-label={t.t('dnd5e.rollModeGroupAria')}
+                      data-testid="dnd5e-roll-mode-bar"
+                      className="dnd5e-roll-mode-bar no-print print:hidden flex items-center gap-1 p-1 mb-4 border-[length:var(--border-width)] border-[var(--border-color)] rounded-[var(--radius-card)] bg-[var(--bg-card)] shadow-[var(--shadow-btn)] shrink-0"
+                    >
+                      {([
+                        ['disadvantage', t.t('dnd5e.rollModeDis')],
+                        ['normal', t.t('dnd5e.rollModeNormal')],
+                        ['advantage', t.t('dnd5e.rollModeAdv')],
+                      ] as const).map(([modeVal, modeLabel]) => {
+                        const active = dnd5eRollMode === modeVal;
+                        return (
+                          <button
+                            key={modeVal}
+                            type="button"
+                            aria-pressed={active}
+                            data-testid={`dnd5e-roll-mode-${modeVal}`}
+                            onClick={() => setDnd5eRollMode(modeVal)}
+                            className={`dnd5e-roll-mode-btn min-h-[36px] px-2.5 py-1 font-mono-tech text-[10px] font-extrabold uppercase tracking-wider border border-[var(--border-color)] rounded-[var(--radius-pill)] cursor-pointer transition-colors ${
+                              active
+                                ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]'
+                                : 'bg-[var(--bg-card-alt)] text-[var(--ink-secondary)] hover:bg-[var(--bg-hover)]'
+                            }`}
+                          >
+                            {modeLabel}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
               )}
 
               {activeTab === 'xp' ? (

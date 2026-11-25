@@ -7,6 +7,13 @@ import {
 } from '../core/formula';
 import {
   AppMode,
+  type Dnd5eAbilityKey,
+  type Dnd5eDeathSavesState,
+  type Dnd5eHitDieType,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  type Dnd5eSpellcastingAbilityKey,
+  type Dnd5eState,
   FieldKind,
   HavenEntry,
   MeritFlawEntry,
@@ -55,7 +62,35 @@ import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
 import { WodStructuredBlocks } from './WodStructuredBlocks';
+import { Dnd5eAbilitiesSkills } from './dnd5e/Dnd5eAbilitiesSkills';
+import { Dnd5eCombatPanel } from './dnd5e/Dnd5eCombatPanel';
+import { Dnd5eSpellSlotsPanel } from './dnd5e/Dnd5eSpellSlotsPanel';
 import { isFullWidthBentoCard } from '../utils/bentoLayout';
+
+export interface Dnd5eCardContext {
+  state: Dnd5eState;
+  abilityScores: Record<Dnd5eAbilityKey, number>;
+  hp: { current: number; max: number };
+  armorClass: string;
+  initiativeMod: number;
+  onChangeAbilityScore: (ability: Dnd5eAbilityKey, score: number) => void;
+  onToggleSaveProf: (ability: Dnd5eAbilityKey) => void;
+  onCycleSkillProf: (skill: Dnd5eSkillKey, next: Dnd5eSkillProficiency) => void;
+  onRollCheck: (label: string, bonus: number) => void;
+  onDamage: (amount: number) => void;
+  onHeal: (amount: number) => void;
+  onSetTempHp: (amount: number) => void;
+  onToggleInspiration: () => void;
+  onChangeHitDieType: (die: Dnd5eHitDieType) => void;
+  onShortRest: () => void;
+  onLongRest: () => void;
+  onSetDeathSaves: (next: Dnd5eDeathSavesState) => void;
+  onRollDeathSave: () => void;
+  onRollInitiative: () => void;
+  onChangeSpellAbility: (ability: Dnd5eSpellcastingAbilityKey) => void;
+  onAdjustSlotMax: (level: number, delta: number) => void;
+  onToggleSlotUsed: (level: number, slotIndex: number) => void;
+}
 
 interface BentoCardProps {
   card: SheetCard;
@@ -139,6 +174,7 @@ interface BentoCardProps {
   onAddHaven?: (entry: HavenEntry) => void;
   onUpdateHaven?: (id: string, patch: Partial<Omit<HavenEntry, 'id'>>) => void;
   onRemoveHaven?: (id: string) => void;
+  dnd5eContext?: Dnd5eCardContext;
 }
 
 type GuidedFieldTemplateId =
@@ -237,6 +273,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onAddHaven,
   onUpdateHaven,
   onRemoveHaven,
+  dnd5eContext,
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -444,6 +481,27 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   const spanClass = isFullWidthBentoCard(card) ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
   const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
+  const isDnd5eInteractive = Boolean(
+    systemId === 'dnd5e' &&
+      mode === 'jogo' &&
+      dnd5eContext &&
+      (card.id === 'card_atributos' ||
+        card.id === 'card_skills' ||
+        card.id === 'card_combate' ||
+        card.id === 'card_arcano'),
+  );
+  const DND_SUPPRESSED_IDS_BY_CARD: Record<string, Set<string>> = {
+    card_atributos: new Set([
+      'f_strength', 'f_mod_str', 'f_dexterity', 'f_mod_dex', 'f_constitution', 'f_mod_con',
+      'f_intelligence', 'f_mod_int', 'f_wisdom', 'f_mod_wis', 'f_charisma', 'f_mod_cha',
+    ]),
+    card_skills: new Set([
+      'f_athletics', 'f_perception', 'f_arcana', 'f_stealth',
+      'f_roll_athletics', 'f_roll_perception', 'f_roll_con_save',
+    ]),
+    card_combate: new Set(['f_hp', 'f_hit_dice', 'f_ac', 'f_initiative', 'f_inspiration']),
+    card_arcano: new Set(['f_spell_dc', 'f_spell_atk', 'f_slots_1', 'f_slots_2']),
+  };
   const fieldsToRender =
     isWodCombatCard && mode === 'jogo'
       ? rawFieldsToRender.filter((f) => {
@@ -455,7 +513,9 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           }
           return true;
         })
-      : rawFieldsToRender;
+      : isDnd5eInteractive
+        ? rawFieldsToRender.filter((f) => !(DND_SUPPRESSED_IDS_BY_CARD[card.id]?.has(f.id)))
+        : rawFieldsToRender;
 
   // Pair numeric skill/stat fields with their matching roll button in Play mode
   const pairedRollByNumberId = new Map<string, SheetField>();
@@ -1194,7 +1254,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           />
         )}
 
-        {fieldsToRender.length === 0 && !isWodDossierCard && (
+        {fieldsToRender.length === 0 && !isWodDossierCard && !isDnd5eInteractive && (
           <div
             data-testid={mode === 'jogo' ? `empty-card-play-${card.id}` : `empty-card-edit-${card.id}`}
             className="no-print print:hidden p-3 border-[length:var(--border-width)] border-dashed border-[var(--border-color)]/45 rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-col gap-2"
@@ -1214,6 +1274,65 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               </button>
             )}
           </div>
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_atributos' && (
+          <Dnd5eAbilitiesSkills
+            view="abilities"
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
+            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
+            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
+            onRollCheck={dnd5eContext.onRollCheck}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_skills' && (
+          <Dnd5eAbilitiesSkills
+            view="skills"
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
+            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
+            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
+            onRollCheck={dnd5eContext.onRollCheck}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_combate' && (
+          <Dnd5eCombatPanel
+            dnd5eState={dnd5eContext.state}
+            currentHp={dnd5eContext.hp.current}
+            maxHp={dnd5eContext.hp.max}
+            armorClass={dnd5eContext.armorClass}
+            initiativeMod={dnd5eContext.initiativeMod}
+            t={t}
+            onDamage={dnd5eContext.onDamage}
+            onHeal={dnd5eContext.onHeal}
+            onSetTempHp={dnd5eContext.onSetTempHp}
+            onToggleInspiration={dnd5eContext.onToggleInspiration}
+            onChangeHitDieType={dnd5eContext.onChangeHitDieType}
+            onShortRest={dnd5eContext.onShortRest}
+            onLongRest={dnd5eContext.onLongRest}
+            onSetDeathSaves={dnd5eContext.onSetDeathSaves}
+            onRollDeathSave={dnd5eContext.onRollDeathSave}
+            onRollInitiative={dnd5eContext.onRollInitiative}
+          />
+        )}
+
+        {isDnd5eInteractive && dnd5eContext && card.id === 'card_arcano' && (
+          <Dnd5eSpellSlotsPanel
+            dnd5eState={dnd5eContext.state}
+            abilityScores={dnd5eContext.abilityScores}
+            t={t}
+            onChangeSpellAbility={dnd5eContext.onChangeSpellAbility}
+            onAdjustSlotMax={dnd5eContext.onAdjustSlotMax}
+            onToggleSlotUsed={dnd5eContext.onToggleSlotUsed}
+            onRollSpellAttack={dnd5eContext.onRollCheck}
+          />
         )}
 
         {wodAttributeGroups ? (

@@ -17,8 +17,36 @@ import {
   findClanByIdOrName,
   getClansForEdition,
 } from './wodClansDisciplinesCatalog.ts';
+import {
+  createDefaultDnd5eSlots,
+  createDefaultDnd5eState,
+  DND5E_SKILLS,
+  type Dnd5eAbilityKey,
+  type Dnd5eHitDieType,
+  type Dnd5eRollMode,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  type Dnd5eSpellcastingAbilityKey,
+  type Dnd5eState,
+  normalizeDnd5eState,
+} from './dnd5eRules.ts';
 
 export type { RulePreset, SoakDamageType };
+export type {
+  Dnd5eAbilityKey,
+  Dnd5eDeathSavesState,
+  Dnd5eHitDiceState,
+  Dnd5eHitDieType,
+  Dnd5eRollMode,
+  Dnd5eSaveProficiencies,
+  Dnd5eSkillKey,
+  Dnd5eSkillProficiencies,
+  Dnd5eSkillProficiency,
+  Dnd5eSpellcastingAbilityKey,
+  Dnd5eSpellcastingState,
+  Dnd5eSpellSlotEntry,
+  Dnd5eState,
+} from './dnd5eRules.ts';
 
 export const DEVICE_ID_STORAGE_KEY = 'grid_sheet_device_id_v1';
 
@@ -223,6 +251,11 @@ export interface RollLogEntry {
   frenzyKind?: FrenzyKind;
   humanityLost?: boolean;
   rerolledIndices?: number[];
+  d20Mode?: Dnd5eRollMode;
+  d20Dice?: number[];
+  d20Kept?: number;
+  d20Discarded?: number | null;
+  isDeathSave?: boolean;
 }
 
 export type XpUpgradeCategory = 'attribute' | 'skill' | 'discipline' | 'virtue';
@@ -305,6 +338,7 @@ export interface CharacterSheetState {
   touchstones?: TouchstoneEntry[];
   meritsFlaws?: MeritFlawEntry[];
   havens?: HavenEntry[];
+  dnd5eState?: Dnd5eState;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
   xp?: XpState;
@@ -1411,6 +1445,44 @@ export function createDnd5ePreset(): CharacterSheetState {
         },
       ],
     },
+    dnd5eState: createDefaultDnd5eState({
+      level: 5,
+      inspiration: true,
+      tempHp: 0,
+      hitDice: { die: 'd10', current: 5, max: 5 },
+      deathSaves: { successes: 0, failures: 0 },
+      saveProficiencies: { str: true, dex: false, con: true, int: false, wis: false, cha: false },
+      skillProficiencies: {
+        acrobatics: 'none',
+        animal_handling: 'none',
+        arcana: 'proficient',
+        athletics: 'proficient',
+        deception: 'none',
+        history: 'none',
+        insight: 'none',
+        intimidation: 'none',
+        investigation: 'none',
+        medicine: 'none',
+        nature: 'none',
+        perception: 'proficient',
+        performance: 'none',
+        persuasion: 'none',
+        religion: 'none',
+        sleight_of_hand: 'none',
+        stealth: 'proficient',
+        survival: 'none',
+      },
+      spellcasting: {
+        ability: 'int',
+        slots: createDefaultDnd5eSlots().map((s) =>
+          s.level === 1
+            ? { level: 1, max: 4, used: 1 }
+            : s.level === 2
+              ? { level: 2, max: 2, used: 0 }
+              : s,
+        ),
+      },
+    }),
   };
 }
 
@@ -3194,6 +3266,67 @@ export function removeHaven(sheet: CharacterSheetState, id: string): CharacterSh
   });
 }
 
+export function migrateLegacyDnd5eSheet(sheet: CharacterSheetState): CharacterSheetState {
+  if (detectSystemId(sheet) !== 'dnd5e') return sheet;
+  const allFields = sheet.cards.flatMap((c) => c.fields);
+  const byKey = (k: string) => allFields.find((f) => f.key.trim().toLowerCase() === k);
+  const levelVal = Number(byKey('level')?.value ?? byKey('nivel')?.value ?? 1);
+  const level = Number.isFinite(levelVal) ? Math.max(1, Math.min(20, Math.trunc(levelVal))) : 1;
+  const inspField = byKey('inspiration');
+  const hdField = byKey('hit_dice');
+  const hdMatch = String(hdField?.label ?? '').match(/\b(d6|d8|d10|d12)\b/i);
+  const hdDie = (hdMatch ? hdMatch[1].toLowerCase() : 'd8') as Dnd5eHitDieType;
+  const hdMax = typeof hdField?.max === 'number' && hdField.max >= 1 ? hdField.max : level;
+  const hdCur = typeof hdField?.value === 'number' ? Math.max(0, Math.min(hdMax, Math.trunc(hdField.value))) : hdMax;
+
+  const saveProficiencies = { str: false, dex: false, con: false, int: false, wis: false, cha: false };
+  for (const ab of ['str', 'dex', 'con', 'int', 'wis', 'cha'] as const) {
+    if (allFields.some((f) => new RegExp(`(?:roll_${ab}_save|save_${ab})`, 'i').test(f.key) && /prof/i.test(f.rollExpr ?? ''))) {
+      saveProficiencies[ab] = true;
+    }
+  }
+
+  const skillProficiencies = Object.fromEntries(
+    DND5E_SKILLS.map((s) => {
+      const f = byKey(s.key);
+      const val = typeof f?.value === 'number' ? f.value : 0;
+      const prof: Dnd5eSkillProficiency = val > 0 ? 'proficient' : 'none';
+      return [s.key, prof];
+    }),
+  ) as Record<Dnd5eSkillKey, Dnd5eSkillProficiency>;
+
+  const spellField = byKey('spell_dc') ?? byKey('spell_atk');
+  const spellFormula = String(spellField?.formula ?? '').toLowerCase();
+  const spellAbility: Dnd5eSpellcastingAbilityKey = spellFormula.includes('mod_wis')
+    ? 'wis'
+    : spellFormula.includes('mod_cha')
+      ? 'cha'
+      : 'int';
+  const slots = createDefaultDnd5eSlots().map((def) => {
+    const sf = allFields.find((f) => f.kind === 'resource' && new RegExp(`^slots_${def.level}(?:st|nd|rd|th)?$`, 'i').test(f.key));
+    if (!sf) return def;
+    const max = Math.max(0, Math.min(20, Math.trunc(sf.max ?? 0)));
+    const avail = Math.max(0, Math.min(max, Math.trunc(typeof sf.value === 'number' ? sf.value : max)));
+    return { level: def.level, max, used: Math.max(0, max - avail) };
+  });
+
+  const normalized = normalizeDnd5eState(sheet.dnd5eState, {
+    level,
+    inspiration: Boolean(inspField?.value),
+    tempHp: 0,
+    hitDice: { die: hdDie, current: hdCur, max: hdMax },
+    deathSaves: { successes: 0, failures: 0 },
+    saveProficiencies,
+    skillProficiencies,
+    spellcasting: { ability: spellAbility, slots },
+  });
+
+  if (sheet.dnd5eState && JSON.stringify(sheet.dnd5eState) === JSON.stringify(normalized)) {
+    return sheet;
+  }
+  return { ...sheet, dnd5eState: normalized };
+}
+
 export function migrateLegacyWodSheet(
   sheet: CharacterSheetState,
   options?: {
@@ -3203,7 +3336,9 @@ export function migrateLegacyWodSheet(
   },
 ): CharacterSheetState {
   const withMeta = migrateLegacySheetMetadata(sheet, options);
-  if (detectSystemId(withMeta) !== 'wod') return withMeta;
+  const sysId = detectSystemId(withMeta);
+  if (sysId === 'dnd5e') return migrateLegacyDnd5eSheet(withMeta);
+  if (sysId !== 'wod') return withMeta;
   const isV5 = resolveRulePreset(withMeta) === 'vampire-v5';
   const expectedAttrs = isV5 ? WOD_V5_ATTRIBUTE_SPECS : WOD_V20_ATTRIBUTE_SPECS;
   const attrGroupByKey = new Map(expectedAttrs.map((spec) => [spec.key, spec.attributeGroup]));
@@ -3489,6 +3624,7 @@ export function migrateLocalStorageSheet(
       touchstones: candidate.touchstones,
       meritsFlaws: candidate.meritsFlaws,
       havens: candidate.havens,
+      ...(candidate.dnd5eState !== undefined ? { dnd5eState: candidate.dnd5eState } : {}),
       cards: candidate.cards,
       rollLogs: Array.isArray(candidate.rollLogs) ? candidate.rollLogs : [],
       xp: candidate.xp,
@@ -4137,6 +4273,16 @@ export function createNewSheetForSystem(
           havens: [],
         }
       : {}),
+    ...(resolvedId === 'dnd5e'
+      ? {
+          dnd5eState: createDefaultDnd5eState({
+            level: 1,
+            inspiration: false,
+            tempHp: 0,
+            hitDice: { die: 'd8', current: 1, max: 1 },
+          }),
+        }
+      : {}),
     systemId: resolvedId,
     characterName: customCharName ? customCharName.toUpperCase() : defaultNewName,
     revision: 1,
@@ -4381,6 +4527,7 @@ const ROOT_SHEET_KEYS = new Set([
   'touchstones',
   'meritsFlaws',
   'havens',
+  'dnd5eState',
   'tabs',
   'cards',
   'rollLogs',
@@ -4468,7 +4615,29 @@ const ROLL_LOG_KEYS = new Set([
   'frenzyKind',
   'humanityLost',
   'rerolledIndices',
+  'd20Mode',
+  'd20Dice',
+  'd20Kept',
+  'd20Discarded',
+  'isDeathSave',
 ]);
+const DND5E_STATE_KEYS = new Set([
+  'level',
+  'inspiration',
+  'tempHp',
+  'hitDice',
+  'deathSaves',
+  'saveProficiencies',
+  'skillProficiencies',
+  'spellcasting',
+]);
+const DND5E_HIT_DICE_KEYS = new Set(['die', 'current', 'max']);
+const DND5E_DEATH_SAVE_KEYS = new Set(['successes', 'failures']);
+const DND5E_ABILITY_KEYS = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha']);
+const DND5E_SKILL_KEYS = new Set(DND5E_SKILLS.map((s) => s.key));
+const DND5E_SKILL_PROF_VALUES = new Set(['none', 'proficient', 'expertise']);
+const DND5E_SPELLCASTING_KEYS = new Set(['ability', 'slots']);
+const DND5E_SPELL_SLOT_KEYS = new Set(['level', 'max', 'used']);
 const XP_STATE_KEYS = new Set([
   'totalEarned',
   'spent',
@@ -4861,6 +5030,42 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         if (log.humanityLost !== undefined && typeof log.humanityLost !== 'boolean') {
           errors.push(`${lPath}.humanityLost: deve ser booleano.`);
         }
+        if (
+          log.d20Mode !== undefined &&
+          log.d20Mode !== 'normal' &&
+          log.d20Mode !== 'advantage' &&
+          log.d20Mode !== 'disadvantage'
+        ) {
+          errors.push(`${lPath}.d20Mode: modo inválido.`);
+        }
+        if (log.d20Dice !== undefined) {
+          if (
+            !Array.isArray(log.d20Dice) ||
+            log.d20Dice.length > 2 ||
+            log.d20Dice.some((d) => typeof d !== 'number' || !Number.isInteger(d) || d < 1 || d > 20)
+          ) {
+            errors.push(`${lPath}.d20Dice: esperado array de 1..2 inteiros entre 1 e 20.`);
+          }
+        }
+        if (
+          log.d20Kept !== undefined &&
+          (typeof log.d20Kept !== 'number' || !Number.isInteger(log.d20Kept) || log.d20Kept < 1 || log.d20Kept > 20)
+        ) {
+          errors.push(`${lPath}.d20Kept: deve ser inteiro entre 1 e 20.`);
+        }
+        if (
+          log.d20Discarded !== undefined &&
+          log.d20Discarded !== null &&
+          (typeof log.d20Discarded !== 'number' ||
+            !Number.isInteger(log.d20Discarded) ||
+            log.d20Discarded < 1 ||
+            log.d20Discarded > 20)
+        ) {
+          errors.push(`${lPath}.d20Discarded: deve ser null ou inteiro entre 1 e 20.`);
+        }
+        if (log.isDeathSave !== undefined && typeof log.isDeathSave !== 'boolean') {
+          errors.push(`${lPath}.isDeathSave: deve ser booleano.`);
+        }
       });
     }
   }
@@ -5056,6 +5261,76 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           errors.push(`${hPath}.notes: string inválida (máx 500 caracteres).`);
         }
       });
+    }
+  }
+
+  if (data.dnd5eState !== undefined) {
+    const ds = data.dnd5eState;
+    if (checkPlainObject(ds, '$.dnd5eState', DND5E_STATE_KEYS, errors)) {
+      if (typeof ds.level !== 'number' || !Number.isInteger(ds.level) || ds.level < 1 || ds.level > 20) {
+        errors.push('$.dnd5eState.level: deve ser inteiro entre 1 e 20.');
+      }
+      if (typeof ds.inspiration !== 'boolean') {
+        errors.push('$.dnd5eState.inspiration: deve ser booleano.');
+      }
+      if (typeof ds.tempHp !== 'number' || !Number.isInteger(ds.tempHp) || ds.tempHp < 0 || ds.tempHp > 100000) {
+        errors.push('$.dnd5eState.tempHp: deve ser inteiro >= 0.');
+      }
+      if (checkPlainObject(ds.hitDice, '$.dnd5eState.hitDice', DND5E_HIT_DICE_KEYS, errors)) {
+        if (!['d6', 'd8', 'd10', 'd12'].includes(String(ds.hitDice.die))) {
+          errors.push('$.dnd5eState.hitDice.die: dado inválido.');
+        }
+        if (typeof ds.hitDice.current !== 'number' || !Number.isInteger(ds.hitDice.current) || ds.hitDice.current < 0 || ds.hitDice.current > 20) {
+          errors.push('$.dnd5eState.hitDice.current: deve ser inteiro entre 0 e 20.');
+        }
+        if (typeof ds.hitDice.max !== 'number' || !Number.isInteger(ds.hitDice.max) || ds.hitDice.max < 1 || ds.hitDice.max > 20) {
+          errors.push('$.dnd5eState.hitDice.max: deve ser inteiro entre 1 e 20.');
+        }
+      }
+      if (checkPlainObject(ds.deathSaves, '$.dnd5eState.deathSaves', DND5E_DEATH_SAVE_KEYS, errors)) {
+        if (typeof ds.deathSaves.successes !== 'number' || !Number.isInteger(ds.deathSaves.successes) || ds.deathSaves.successes < 0 || ds.deathSaves.successes > 3) {
+          errors.push('$.dnd5eState.deathSaves.successes: deve ser inteiro entre 0 e 3.');
+        }
+        if (typeof ds.deathSaves.failures !== 'number' || !Number.isInteger(ds.deathSaves.failures) || ds.deathSaves.failures < 0 || ds.deathSaves.failures > 3) {
+          errors.push('$.dnd5eState.deathSaves.failures: deve ser inteiro entre 0 e 3.');
+        }
+      }
+      if (checkPlainObject(ds.saveProficiencies, '$.dnd5eState.saveProficiencies', DND5E_ABILITY_KEYS, errors)) {
+        for (const ab of DND5E_ABILITY_KEYS) {
+          if (typeof ds.saveProficiencies[ab] !== 'boolean') {
+            errors.push(`$.dnd5eState.saveProficiencies.${ab}: deve ser booleano.`);
+          }
+        }
+      }
+      if (checkPlainObject(ds.skillProficiencies, '$.dnd5eState.skillProficiencies', DND5E_SKILL_KEYS, errors)) {
+        for (const sk of DND5E_SKILL_KEYS) {
+          if (!DND5E_SKILL_PROF_VALUES.has(String(ds.skillProficiencies[sk]))) {
+            errors.push(`$.dnd5eState.skillProficiencies.${sk}: valor inválido.`);
+          }
+        }
+      }
+      if (checkPlainObject(ds.spellcasting, '$.dnd5eState.spellcasting', DND5E_SPELLCASTING_KEYS, errors)) {
+        if (!['int', 'wis', 'cha'].includes(String(ds.spellcasting.ability))) {
+          errors.push('$.dnd5eState.spellcasting.ability: atributo inválido.');
+        }
+        if (!Array.isArray(ds.spellcasting.slots) || ds.spellcasting.slots.length > 9) {
+          errors.push('$.dnd5eState.spellcasting.slots: esperado array com até 9 itens.');
+        } else {
+          ds.spellcasting.slots.forEach((slot, sIdx) => {
+            const sp = `$.dnd5eState.spellcasting.slots[${sIdx}]`;
+            if (!checkPlainObject(slot, sp, DND5E_SPELL_SLOT_KEYS, errors)) return;
+            if (typeof slot.level !== 'number' || !Number.isInteger(slot.level) || slot.level < 1 || slot.level > 9) {
+              errors.push(`${sp}.level: deve ser inteiro entre 1 e 9.`);
+            }
+            if (typeof slot.max !== 'number' || !Number.isInteger(slot.max) || slot.max < 0 || slot.max > 20) {
+              errors.push(`${sp}.max: deve ser inteiro entre 0 e 20.`);
+            }
+            if (typeof slot.used !== 'number' || !Number.isInteger(slot.used) || slot.used < 0 || slot.used > 20) {
+              errors.push(`${sp}.used: deve ser inteiro entre 0 e 20.`);
+            }
+          });
+        }
+      }
     }
   }
 

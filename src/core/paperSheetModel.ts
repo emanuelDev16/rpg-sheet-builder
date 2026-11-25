@@ -1,4 +1,18 @@
 import { getV5BloodPotencyStats } from './formula.ts';
+import {
+  type Dnd5eAbilityKey,
+  type Dnd5eSkillKey,
+  type Dnd5eSkillProficiency,
+  formatSignedMod,
+  getAbilityModifier,
+  getPassivePerception,
+  getProficiencyBonus,
+  getSaveBonus,
+  getSkillBonus,
+  getSpellAttackBonus,
+  getSpellSaveDC,
+  normalizeDnd5eState,
+} from './dnd5eRules.ts';
 import { type AppLanguage, getLocalizedTabLabels, getTranslations } from './i18n.ts';
 import {
   localizeCardTag,
@@ -287,6 +301,7 @@ export interface PaperDndSkillItem {
   abilityShort: string;
   modifier: string;
   proficient: boolean;
+  proficiency?: Dnd5eSkillProficiency;
 }
 
 export interface PaperDnd5eModel {
@@ -1775,27 +1790,36 @@ function buildDnd5eModel(
     return val !== undefined && val !== null && String(val).trim() !== '' ? String(val) : fallback;
   };
 
+  const dndState = sheet.dnd5eState ? normalizeDnd5eState(sheet.dnd5eState) : null;
   const rawClassRace = getIdStr(['class_race', 'classe']);
-  const levelStr = getIdStr(['level', 'nivel'], '1');
+  const levelStr = dndState ? String(dndState.level) : getIdStr(['level', 'nivel'], '1');
   const explicitRace = getIdStr(['race', 'species', 'ancestry', 'raca']);
   const classParts = rawClassRace.split('·').map((s) => s.trim()).filter(Boolean);
   const classText = classParts[0] ?? rawClassRace;
   const raceText = explicitRace || classParts[1] || labels.emptyNone;
+  const profNumeric = dndState
+    ? getProficiencyBonus(dndState.level)
+    : Math.max(0, Math.round(evaluation.variables.prof ?? 2));
+  const profBonus = dndState ? formatSignedMod(profNumeric) : getIdStr(['prof', 'proficiency_bonus'], '+2');
   const alignmentText = getIdStr(['alignment', 'tendencia'], labels.emptyNone);
-  const profBonus = getIdStr(['prof', 'proficiency_bonus'], '+2');
   const charName = resolvePaperCharacterName(sheet);
   getIdStr(['character_name', 'nome'], charName);
 
   const abilityModMap = new Map<string, number>();
+  const abilityScoreMap = new Map<Dnd5eAbilityKey, number>();
   const abilities: PaperDndAbilityItem[] = DND_ABILITIES.map((ab) => {
     const scoreMatch = findField(sheet.cards, [ab.key], 'card_atributos');
     const modMatch = findField(sheet.cards, [ab.modKey], 'card_atributos');
     if (scoreMatch) consumedFieldIds.add(scoreMatch.field.id);
     if (modMatch) consumedFieldIds.add(modMatch.field.id);
     const score = clampInt(scoreMatch?.field.value, 1, 30, 10);
-    const modVal = modMatch
-      ? Math.round(evaluation.computedByFieldId[modMatch.field.id]?.value ?? Math.floor((score - 10) / 2))
-      : Math.floor((score - 10) / 2);
+    const abShortKey = ab.modKey.slice(4) as Dnd5eAbilityKey;
+    abilityScoreMap.set(abShortKey, score);
+    const modVal = dndState
+      ? getAbilityModifier(score)
+      : modMatch
+        ? Math.round(evaluation.computedByFieldId[modMatch.field.id]?.value ?? getAbilityModifier(score))
+        : getAbilityModifier(score);
     abilityModMap.set(ab.key, modVal);
     return {
       key: ab.key,
@@ -1808,14 +1832,18 @@ function buildDnd5eModel(
   });
 
   const skillsCard = sheet.cards.find((c) => c.id === 'card_skills');
-  const profNumeric = Math.max(0, Math.round(evaluation.variables.prof ?? 2));
   const savingThrows = DND_ABILITIES.map((ab) => {
     const saveKeys = [`save_${ab.key}`, `roll_${ab.short.en.toLowerCase()}_save`, `${ab.key}_save`];
     const saveMatch = skillsCard ? findField([skillsCard], saveKeys) : undefined;
     if (saveMatch) consumedFieldIds.add(saveMatch.field.id);
+    const abShortKey = ab.modKey.slice(4) as Dnd5eAbilityKey;
     const baseMod = abilityModMap.get(ab.key) ?? 0;
-    const proficient = Boolean(saveMatch);
-    const total = proficient ? baseMod + profNumeric : baseMod;
+    const proficient = dndState ? Boolean(dndState.saveProficiencies[abShortKey]) : Boolean(saveMatch);
+    const total = dndState
+      ? getSaveBonus(abilityScoreMap.get(abShortKey) ?? 10, dndState.level, proficient)
+      : proficient
+        ? baseMod + profNumeric
+        : baseMod;
     return {
       key: ab.key,
       label: ab.labels[lang],
@@ -1824,6 +1852,9 @@ function buildDnd5eModel(
     };
   });
 
+  const fullToShortAb: Record<string, Dnd5eAbilityKey> = {
+    strength: 'str', dexterity: 'dex', constitution: 'con', intelligence: 'int', wisdom: 'wis', charisma: 'cha',
+  };
   const skills18: PaperDndSkillItem[] = DND_SKILLS_18.map((sk) => {
     const m = skillsCard ? findField([skillsCard], [sk.key]) : undefined;
     const rollM = skillsCard ? findField([skillsCard], [`roll_${sk.key}`]) : undefined;
@@ -1831,6 +1862,19 @@ function buildDnd5eModel(
     if (rollM) consumedFieldIds.add(rollM.field.id);
     const abShort = DND_ABILITIES.find((a) => a.key === sk.ability)?.short[lang] ?? '';
     const baseMod = abilityModMap.get(sk.ability) ?? 0;
+    const abKeyShort = fullToShortAb[sk.ability] ?? 'str';
+    if (dndState) {
+      const prof = dndState.skillProficiencies[sk.key as Dnd5eSkillKey] ?? 'none';
+      const val = getSkillBonus(abilityScoreMap.get(abKeyShort) ?? 10, dndState.level, prof);
+      return {
+        key: sk.key,
+        label: m ? localizeFieldLabel(m.field, lang) : sk.labels[lang],
+        abilityShort: abShort,
+        modifier: formatMod(val),
+        proficient: prof !== 'none',
+        proficiency: prof,
+      };
+    }
     const val = m && typeof m.field.value === 'number' ? Math.round(m.field.value) : baseMod;
     return {
       key: sk.key,
@@ -1838,6 +1882,7 @@ function buildDnd5eModel(
       abilityShort: abShort,
       modifier: formatMod(val),
       proficient: Boolean(m),
+      proficiency: m ? 'proficient' : 'none',
     };
   });
 
@@ -1851,7 +1896,9 @@ function buildDnd5eModel(
 
   const percSkill = skills18.find((s) => s.key === 'perception');
   const percVal = percSkill ? Number(percSkill.modifier) : (abilityModMap.get('wisdom') ?? 0);
-  const passivePerception = 10 + (Number.isFinite(percVal) ? percVal : 0);
+  const passivePerception = dndState
+    ? getPassivePerception(abilityScoreMap.get('wis') ?? 10, dndState.level, dndState.skillProficiencies.perception)
+    : 10 + (Number.isFinite(percVal) ? percVal : 0);
 
   const acMatch = findField(sheet.cards, ['armor_class', 'ac'], 'card_combate');
   const hpMatch = findField(sheet.cards, ['hp', 'pv'], 'card_combate');
@@ -1950,11 +1997,36 @@ function buildDnd5eModel(
       }
     }
 
+    const stateSlots = dndState ? dndState.spellcasting.slots.filter((s) => s.max > 0) : [];
+    const activeSlots: PaperTrack[] =
+      stateSlots.length > 0
+        ? stateSlots.map((s) => {
+            const avail = Math.max(0, s.max - s.used);
+            return {
+              label: getTranslations(lang).t('dnd5e.spellCircleLabel', { level: s.level }),
+              summary: `${avail} / ${s.max}`,
+              boxes: Array.from({ length: s.max }, (_, idx) => ({
+                kind: idx < avail ? 'filled' : 'empty',
+                symbol: '',
+              })),
+            };
+          })
+        : slots;
+    const spellScore = dndState ? (abilityScoreMap.get(dndState.spellcasting.ability) ?? 10) : 10;
+
     page3 = {
-      spellDc: dcMatch ? (evaluation.computedByFieldId[dcMatch.field.id]?.formatted ?? '10') : '—',
-      spellAtk: atkMatch ? (evaluation.computedByFieldId[atkMatch.field.id]?.formatted ?? '+0') : '—',
+      spellDc: dndState
+        ? String(getSpellSaveDC(spellScore, dndState.level))
+        : dcMatch
+          ? (evaluation.computedByFieldId[dcMatch.field.id]?.formatted ?? '10')
+          : '—',
+      spellAtk: dndState
+        ? formatSignedMod(getSpellAttackBonus(spellScore, dndState.level))
+        : atkMatch
+          ? (evaluation.computedByFieldId[atkMatch.field.id]?.formatted ?? '+0')
+          : '—',
       concentration: Boolean(concMatch?.field.value),
-      slots,
+      slots: activeSlots,
       spellRolls,
       grimoire,
     };
@@ -1996,18 +2068,24 @@ function buildDnd5eModel(
           label: hpMatch ? localizeFieldLabel(hpMatch.field, lang) : labels.hitPoints,
           current: Number(hpMatch?.field.value ?? 0),
           max: Math.max(1, hpMatch?.field.max ?? 10),
-          temp: '',
+          temp: dndState && dndState.tempHp > 0 ? String(dndState.tempHp) : '',
         },
         hitDice: {
-          label: hdMatch ? localizeFieldLabel(hdMatch.field, lang) : labels.hitDice,
-          current: Number(hdMatch?.field.value ?? 0),
-          max: Math.max(1, hdMatch?.field.max ?? 1),
+          label: dndState
+            ? `${labels.hitDice} (${dndState.hitDice.die.toUpperCase()})`
+            : hdMatch
+              ? localizeFieldLabel(hdMatch.field, lang)
+              : labels.hitDice,
+          current: dndState ? dndState.hitDice.current : Number(hdMatch?.field.value ?? 0),
+          max: dndState ? dndState.hitDice.max : Math.max(1, hdMatch?.field.max ?? 1),
         },
-        deathSaves: { successes: 3, failures: 3 },
+        deathSaves: dndState
+          ? { successes: dndState.deathSaves.successes, failures: dndState.deathSaves.failures }
+          : { successes: 0, failures: 0 },
         attacks,
       },
       col3: {
-        inspiration: Boolean(inspMatch?.field.value),
+        inspiration: dndState ? dndState.inspiration : Boolean(inspMatch?.field.value),
         initiative: initMatch
           ? (evaluation.computedByFieldId[initMatch.field.id]?.formatted ?? formatMod(abilityModMap.get('dexterity') ?? 0))
           : formatMod(abilityModMap.get('dexterity') ?? 0),

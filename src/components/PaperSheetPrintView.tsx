@@ -816,7 +816,7 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
               {page1.col1.skills18.map((sk) => (
                 <div key={sk.key} className="paper-dot-row">
                   <span>
-                    {sk.proficient ? '●' : '○'} {sk.label}{' '}
+                    {sk.proficiency === 'expertise' ? '◎' : sk.proficient ? '●' : '○'} {sk.label}{' '}
                     <span className="paper-specialty">({sk.abilityShort})</span>
                   </span>
                   <strong>{sk.modifier}</strong>
@@ -843,7 +843,7 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
               </div>
               <div className="paper-dot-row">
                 <span>{labels.tempHp}</span>
-                <span>__________</span>
+                <span>{page1.col2.hitPoints.temp ? <strong>{page1.col2.hitPoints.temp}</strong> : '__________'}</span>
               </div>
               <div className="paper-dot-row">
                 <span>{page1.col2.hitDice.label}</span>
@@ -854,16 +854,22 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
               <div className="paper-dot-row">
                 <span>{labels.deathSuccesses}</span>
                 <span>
-                  {Array.from({ length: page1.col2.deathSaves.successes }, (_, idx) => (
-                    <span key={idx} className="paper-death-circle" />
+                  {Array.from({ length: 3 }, (_, idx) => (
+                    <span
+                      key={idx}
+                      className={`paper-death-circle${idx < page1.col2.deathSaves.successes ? ' is-filled' : ''}`}
+                    />
                   ))}
                 </span>
               </div>
               <div className="paper-dot-row">
                 <span>{labels.deathFailures}</span>
                 <span>
-                  {Array.from({ length: page1.col2.deathSaves.failures }, (_, idx) => (
-                    <span key={idx} className="paper-death-circle" />
+                  {Array.from({ length: 3 }, (_, idx) => (
+                    <span
+                      key={idx}
+                      className={`paper-death-circle${idx < page1.col2.deathSaves.failures ? ' is-filled' : ''}`}
+                    />
                   ))}
                 </span>
               </div>
