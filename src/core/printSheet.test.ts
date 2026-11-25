@@ -473,3 +473,31 @@ test('printActiveSheetView forwards printStyle to iframe srcdoc', () => {
   assert.equal(resMinimal.ok, true);
   assert.match(String(fakeIframe.srcdoc), /data-print-style="minimal"/);
 });
+
+test('generateSingleFilePureHtml applies calibrated A4 281mm full-page scale and bottom alignment', () => {
+  const v5 = createWorldOfDarknessV5Sheet();
+  const html = generateSingleFilePureHtml(v5, 'pt-BR');
+
+  // Exact A4 page contract
+  assert.match(html, /@page\s*\{\s*size:\s*A4 portrait;\s*margin:\s*7mm;\s*\}/);
+  assert.match(html, /min-height:\s*281mm;/);
+  assert.match(html, /height:\s*281mm;/);
+  assert.match(html, /max-height:\s*281mm;/);
+  assert.match(html, /justify-content:\s*space-between;/);
+
+  // Scaled typography (~10%-12% increase)
+  assert.match(html, /font-size:\s*8\.8pt;/);
+  assert.match(html, /font-size:\s*9\.2pt;/);
+  assert.match(html, /width:\s*12\.8px;\s*height:\s*12\.8px;/);
+
+  // Bottom alignment
+  assert.match(html, /\.paper-v5-bottom\s*\{[^}]*align-items:\s*stretch;/);
+  assert.match(html, /\.paper-v20-bottom[^}]*align-items:\s*stretch;/);
+
+  // V20 bottom markup
+  const v20Html = generateSingleFilePureHtml(createWorldOfDarknessSheet(), 'pt-BR');
+  assert.match(v20Html, /class="paper-cols-3 paper-v20-bottom"/);
+
+  // Print media preservation
+  assert.match(html, /@media print\s*\{[\s\S]*\.paper-page\[data-paper-page="1"\][\s\S]*min-height:\s*281mm !important;/);
+});

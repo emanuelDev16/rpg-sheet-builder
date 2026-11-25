@@ -604,7 +604,7 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
           </div>
         </div>
 
-        <div className="paper-cols-3" style={{ marginTop: '4px' }}>
+        <div className="paper-cols-3 paper-v20-bottom" style={{ marginTop: '4px' }}>
           <div className="paper-block">
             <div className="paper-track-block">
               <div className="paper-track-head">
