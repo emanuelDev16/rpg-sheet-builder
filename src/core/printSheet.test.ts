@@ -275,6 +275,46 @@ test('generateSingleFilePureHtml renders multi-page A4 paper sheets across all t
   assert.match(dndHtml, /SPELL SAVE DC/);
   assert.doesNotMatch(dndHtml, /<input\b/i);
 
+  // D&D 5e dnd5eState parity + XSS escaping + CSP preservation
+  const dndXss = {
+    ...dnd,
+    cards: dnd.cards.map((c) =>
+      c.id === 'card_identidade'
+        ? {
+            ...c,
+            fields: c.fields.map((f) =>
+              f.key === 'class_race' ? { ...f, value: '<img src=x onerror=alert(1)>' } : f,
+            ),
+          }
+        : c.id === 'card_notas'
+          ? {
+              ...c,
+              fields: c.fields.map((f) =>
+                f.key === 'notas_campanha' ? { ...f, value: '</script><script>alert(1)</script>' } : f,
+              ),
+            }
+          : c,
+    ),
+    dnd5eState: {
+      ...dnd.dnd5eState!,
+      tempHp: 9,
+      deathSaves: { successes: 2, failures: 1 },
+      skillProficiencies: { ...dnd.dnd5eState!.skillProficiencies, perception: 'expertise' as const },
+    },
+  };
+  const dndXssHtml = generateSingleFilePureHtml(dndXss, 'pt-BR');
+  assert.match(
+    dndXssHtml,
+    /<meta http-equiv="Content-Security-Policy" content="default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; font-src https: data:;" \/>/,
+  );
+  assert.doesNotMatch(dndXssHtml, /<img src=x onerror=alert\(1\)>/);
+  assert.doesNotMatch(dndXssHtml, /<script>alert\(1\)<\/script>/);
+  assert.match(dndXssHtml, /&lt;img src=x onerror=alert\(1\)&gt;/);
+  assert.match(dndXssHtml, /&lt;\/script&gt;&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
+  assert.match(dndXssHtml, /◎/);
+  assert.match(dndXssHtml, /<strong>9<\/strong>/);
+  assert.match(dndXssHtml, /paper-death-circle is-filled/);
+
   const dndMartialHtml = generateSingleFilePureHtml(
     { ...dnd, cards: dnd.cards.filter((c) => c.id !== 'card_arcano' && c.id !== 'card_grimorio') },
     'en',

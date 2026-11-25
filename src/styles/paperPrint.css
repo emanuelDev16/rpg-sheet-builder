@@ -824,6 +824,10 @@
     margin-left: 2px;
   }
 
+  .paper-death-circle.is-filled {
+    background: #0b0b0b;
+  }
+
   .paper-currency-grid {
     display: grid;
     grid-template-columns: repeat(5, minmax(0, 1fr));

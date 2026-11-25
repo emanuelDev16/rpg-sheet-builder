@@ -556,11 +556,11 @@ function renderDnd5ePagesHtml(model: PaperSheetModel, data: PaperDnd5eModel): st
   const skills = page1.col1.skills18
     .map(
       (sk) =>
-        `<div class="paper-dot-row"><span>${sk.proficient ? '●' : '○'} ${escapeHtml(sk.label)} <span class="paper-specialty">(${escapeHtml(sk.abilityShort)})</span></span><strong>${escapeHtml(sk.modifier)}</strong></div>`,
+        `<div class="paper-dot-row"><span>${sk.proficiency === 'expertise' ? '◎' : sk.proficient ? '●' : '○'} ${escapeHtml(sk.label)} <span class="paper-specialty">(${escapeHtml(sk.abilityShort)})</span></span><strong>${escapeHtml(sk.modifier)}</strong></div>`,
     )
     .join('');
-  const deathS = Array.from({ length: page1.col2.deathSaves.successes }, () => '<span class="paper-death-circle"></span>').join('');
-  const deathF = Array.from({ length: page1.col2.deathSaves.failures }, () => '<span class="paper-death-circle"></span>').join('');
+  const deathS = Array.from({ length: 3 }, (_, idx) => `<span class="paper-death-circle${idx < page1.col2.deathSaves.successes ? ' is-filled' : ''}"></span>`).join('');
+  const deathF = Array.from({ length: 3 }, (_, idx) => `<span class="paper-death-circle${idx < page1.col2.deathSaves.failures ? ' is-filled' : ''}"></span>`).join('');
   const attacks = page1.col2.attacks
     .map((a) => `<div class="paper-dot-row"><span>${escapeHtml(a.name)}</span><strong>${escapeHtml(a.expr)}</strong></div>`)
     .join('');
@@ -619,7 +619,7 @@ function renderDnd5ePagesHtml(model: PaperSheetModel, data: PaperDnd5eModel): st
         <div class="paper-ac-wrap">${DND_SHIELD_SVG}<span class="paper-ac-val">${escapeHtml(page1.col2.armorClass)}</span><span class="paper-ac-lbl">${escapeHtml(labels.armorClass)}</span></div>
         <div class="paper-card">
           <div class="paper-dot-row"><span>${escapeHtml(page1.col2.hitPoints.label)}</span><strong>${escapeHtml(String(page1.col2.hitPoints.current))} / ${escapeHtml(String(page1.col2.hitPoints.max))}</strong></div>
-          <div class="paper-dot-row"><span>${escapeHtml(labels.tempHp)}</span><span>__________</span></div>
+          <div class="paper-dot-row"><span>${escapeHtml(labels.tempHp)}</span><span>${page1.col2.hitPoints.temp ? `<strong>${escapeHtml(page1.col2.hitPoints.temp)}</strong>` : '__________'}</span></div>
           <div class="paper-dot-row"><span>${escapeHtml(page1.col2.hitDice.label)}</span><strong>${escapeHtml(String(page1.col2.hitDice.current))} / ${escapeHtml(String(page1.col2.hitDice.max))}</strong></div>
           <div class="paper-dot-row"><span>${escapeHtml(labels.deathSuccesses)}</span><span>${deathS}</span></div>
           <div class="paper-dot-row"><span>${escapeHtml(labels.deathFailures)}</span><span>${deathF}</span></div>
@@ -834,6 +834,7 @@ const STANDALONE_PAPER_CSS = `
   .paper-ac-val { position: relative; font-family: 'Barlow Condensed', sans-serif; font-size: 15.5pt; font-weight: 800; }
   .paper-ac-lbl { position: relative; font-family: 'JetBrains Mono', monospace; font-size: 6.5pt; font-weight: 800; }
   .paper-death-circle { display: inline-block; width: 9.5px; height: 9.5px; border: 1.2px solid #0B0B0B; border-radius: 50%; margin-left: 2px; }
+  .paper-death-circle.is-filled { background: #0B0B0B; }
   .paper-currency-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3.5px; }
   .paper-currency-cell { border: 1px solid #0B0B0B; padding: 2.5px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 7.4pt; }
   .paper-card { border: 1.2px solid #0B0B0B; padding: 4.5px 6px; margin-bottom: 4.5px; background: #FFFFFF; min-width: 0; }

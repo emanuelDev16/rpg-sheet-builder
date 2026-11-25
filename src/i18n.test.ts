@@ -167,10 +167,20 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('es', 'sidebar.roll.hungerShort', { count: 2 })).toBe('A:2');
     expect(translate('pt-BR', 'modal.saveLocalAction')).toBe('SALVAR ↗');
     expect(translate('es', 'rules.suggestions.wod')).toContain('Ansia');
+    expect(translate('pt-BR', 'dnd5e.skill.sleight_of_hand')).toBe('Prestidigitação');
+    expect(translate('en', 'dnd5e.skill.sleight_of_hand')).toBe('Sleight of Hand');
+    expect(translate('es', 'dnd5e.skill.sleight_of_hand')).toBe('Juego de Manos');
+    expect(translate('pt-BR', 'dnd5e.rollModeAdv')).toBe('VANTAGEM');
+    expect(translate('en', 'dnd5e.rollModeDis')).toBe('DISADVANTAGE');
   });
 
   it('maintains identical interpolation placeholders and guards against accidental untranslated PT-BR entries', () => {
     const ALLOWED_IDENTICAL_PT_EN_KEYS = new Set([
+      'sidebar.roll.nat20Badge',
+      'sidebar.roll.nat1Badge',
+      'dnd5e.rollModeNormal',
+      'dnd5e.abilityShort.con',
+      'dnd5e.abilityShort.int',
       'system.wod.label',
       'system.wod.short',
       'system.dnd5e.short',
