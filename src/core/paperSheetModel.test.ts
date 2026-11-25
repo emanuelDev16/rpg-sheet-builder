@@ -1,6 +1,11 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { buildPaperSheetModel, detectPaperSheetLayout } from './paperSheetModel.ts';
+import {
+  buildPaperSheetModel,
+  detectPaperSheetLayout,
+  resolvePaperCharacterName,
+  resolvePrintTitleCharacterName,
+} from './paperSheetModel.ts';
 import {
   adjustSheetHumanityStains,
   adjustV20HealthDamage,
@@ -92,7 +97,8 @@ test('buildPaperSheetModel builds complete 2-page WoD V5 layout across all tabs 
   assert.equal(subterfuge?.specialty, 'Seduction');
 
   assert.match(page1.middleStrip3Col.bane.severityBadge, /SEVERIDADE 3/);
-  assert.equal(page1.disciplines.length, 2);
+  assert.equal(page1.disciplines.length, 6);
+  assert.equal(page1.disciplines.filter((d) => d.label.length > 0).length, 2);
   assert.equal(page1.disciplines[0].slots.length, 5);
   assert.equal(page1.vitalColumn.willpower.badge, 'IMPAIRED (-2)');
   assert.equal(page1.vitalColumn.bloodPotency.level, 3);
@@ -178,10 +184,66 @@ test('buildPaperSheetModel builds generic multi-page layout for Cyberpunk, Defau
   const enDefault = buildPaperSheetModel(createGenericD20Preset(), 'en');
   assert.equal(enDefault.layout, 'generic');
   assert.equal(enDefault.pageCount, 2);
-  assert.equal(enDefault.labels.xpSection, 'EXPERIENCE (XP)');
+  assert.equal(enDefault.labels.xpSection, 'EXPERIENCE');
 
   const blank = buildPaperSheetModel(createBlankSheet(), 'es');
   assert.equal(blank.layout, 'generic');
   assert.equal(blank.pageCount, 1);
-  assert.equal(blank.labels.notes, 'CRÓNICA Y NOTAS');
+  assert.equal(blank.labels.notes, 'BIOGRAFÍA Y NOTAS');
+});
+
+test('buildPaperSheetModel enforces V5 27 skills, 6 discipline slots, real character name priority, and strict system separation', () => {
+  const baseV5 = createWorldOfDarknessV5Sheet();
+  const renamedV5 = {
+    ...baseV5,
+    characterName: 'NOVO PERSONAGEM',
+    cards: baseV5.cards.map((c) => {
+      if (c.id === 'card_identidade') {
+        return {
+          ...c,
+          fields: c.fields.map((f) => (f.key === 'character_name' ? { ...f, value: 'Elena Moretti' } : f)),
+        };
+      }
+      if (c.id === 'card_skills') {
+        return {
+          ...c,
+          fields: c.fields.filter((f) => f.key === 'brawl'),
+        };
+      }
+      return c;
+    }),
+  };
+
+  assert.equal(resolvePaperCharacterName(renamedV5), 'Elena Moretti');
+  assert.equal(resolvePrintTitleCharacterName(renamedV5), 'Elena Moretti');
+
+  const v5Model = buildPaperSheetModel(renamedV5, 'pt-BR');
+  assert.equal(v5Model.characterName, 'Elena Moretti');
+  assert.equal(v5Model.sheetTitle, 'VAMPIRO · A MÁSCARA');
+  assert.deepEqual(
+    v5Model.wodV5?.page1.header3x3.map((c) => c.key),
+    ['character_name', 'ambition', 'clan', 'concept', 'desire', 'generation', 'chronicle', 'predator_type', 'sire'],
+  );
+  assert.deepEqual(
+    v5Model.wodV5?.page1.skills3Col.map((g) => g.items.length),
+    [9, 9, 9],
+  );
+  assert.equal(v5Model.wodV5?.page1.disciplines.length, 6);
+  for (const disc of v5Model.wodV5?.page1.disciplines ?? []) {
+    assert.equal(disc.slots.length, 5);
+  }
+  assert.equal(v5Model.wodV5?.page1.middleStrip3Col.chronicleTenets.length, 3);
+  assert.equal(v5Model.wodV5?.page1.middleStrip3Col.convictionsSummary.length, 3);
+  assert.ok(v5Model.wodV5?.page1.vitalColumn.resonance.label);
+  assert.ok(v5Model.wodV5?.page1.vitalColumn.hunting.label);
+  assert.equal(v5Model.wodV20, undefined);
+  assert.equal(v5Model.dnd5e, undefined);
+
+  const dndPt = buildPaperSheetModel(createDnd5ePreset(), 'pt-BR');
+  assert.deepEqual(
+    dndPt.dnd5e?.page1.col3.currency.map((c) => c.code),
+    ['PC', 'PP', 'PE', 'PO', 'PL'],
+  );
+  assert.equal(dndPt.wodV5, undefined);
+  assert.equal(dndPt.wodV20, undefined);
 });

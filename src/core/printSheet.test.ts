@@ -239,11 +239,16 @@ test('generateSingleFilePureHtml renders multi-page A4 paper sheets across all t
   assert.match(v5Html, /data-paper-layout="wod-v5"/);
   assert.match(v5Html, /data-paper-page="1"/);
   assert.match(v5Html, /data-paper-page="2"/);
-  assert.match(v5Html, /@page\s*\{\s*size:\s*A4 portrait;\s*margin:\s*8mm;/);
+  assert.match(v5Html, /@page\s*\{\s*size:\s*A4 portrait;\s*margin:\s*7mm;/);
   assert.match(v5Html, /break-after:\s*page/);
+  assert.match(v5Html, /VAMPIRO · A MÁSCARA/);
   assert.match(v5Html, /Elysium meeting confirmed/);
   assert.match(v5Html, /Aliados Extras/);
   assert.match(v5Html, /Cap\. Helena/);
+  assert.doesNotMatch(v5Html, /<input\b/i);
+  assert.doesNotMatch(v5Html, /\/\/ID_CRÔNICA/);
+  assert.doesNotMatch(v5Html, /print-only-header/);
+  assert.doesNotMatch(v5Html, /CARGA:\s*0\s*KG/);
 
   const v20Html = generateSingleFilePureHtml(createWorldOfDarknessSheet(), 'en');
   assert.match(v20Html, /data-paper-layout="wod-v20"/);
@@ -252,6 +257,9 @@ test('generateSingleFilePureHtml renders multi-page A4 paper sheets across all t
   assert.match(v20Html, /Talents/);
   assert.match(v20Html, /Knowledges/);
   assert.match(v20Html, /-5/);
+  assert.doesNotMatch(v20Html, /<input\b/i);
+  const v20Main = v20Html.match(/<main[\s\S]*?<\/main>/)?.[0] ?? '';
+  assert.doesNotMatch(v20Main, /\/\/CHRONICLE_ID/);
 
   const dnd = createDnd5ePreset();
   const dndHtml = generateSingleFilePureHtml(dnd, 'en');
@@ -260,6 +268,7 @@ test('generateSingleFilePureHtml renders multi-page A4 paper sheets across all t
   assert.match(dndHtml, /data-paper-page="2"/);
   assert.match(dndHtml, /data-paper-page="3"/);
   assert.match(dndHtml, /SPELL SAVE DC/);
+  assert.doesNotMatch(dndHtml, /<input\b/i);
 
   const dndMartialHtml = generateSingleFilePureHtml(
     { ...dnd, cards: dnd.cards.filter((c) => c.id !== 'card_arcano' && c.id !== 'card_grimorio') },
@@ -272,4 +281,78 @@ test('generateSingleFilePureHtml renders multi-page A4 paper sheets across all t
   assert.match(cyberHtml, /data-paper-layout="generic"/);
   assert.match(cyberHtml, /data-paper-page="1"/);
   assert.match(cyberHtml, /data-paper-page="2"/);
+  assert.doesNotMatch(cyberHtml, /<input\b/i);
+});
+
+test('buildPrintDocumentTitle prioritizes real character name over NOVO PERSONAGEM and printActiveSheetView uses isolated iframe when DOM is available', () => {
+  const v5Base = createWorldOfDarknessV5Sheet();
+  const withPlaceholderRoot = {
+    ...v5Base,
+    characterName: 'NOVO PERSONAGEM',
+    cards: v5Base.cards.map((c) =>
+      c.id === 'card_identidade'
+        ? {
+            ...c,
+            fields: c.fields.map((f) => (f.key === 'character_name' ? { ...f, value: 'Elena Moretti' } : f)),
+          }
+        : c,
+    ),
+  };
+
+  assert.equal(
+    buildPrintDocumentTitle(withPlaceholderRoot, 'geral', 'pt-BR'),
+    'GRID_SHEET-Elena_Moretti-01_ATRIBUTOS_COMBATE',
+  );
+
+  let iframePrinted = false;
+  let removed = false;
+  const listeners: Record<string, Array<() => void>> = {};
+  const fakeIframe: Record<string, unknown> = {
+    style: { cssText: '' },
+    tabIndex: 0,
+    srcdoc: '',
+    onload: null,
+    onerror: null,
+    setAttribute: () => {},
+    remove: () => {
+      removed = true;
+    },
+    contentWindow: {
+      focus: () => {},
+      print: () => {
+        iframePrinted = true;
+      },
+      addEventListener: (ev: string, cb: () => void) => {
+        listeners[ev] = listeners[ev] || [];
+        listeners[ev].push(cb);
+      },
+      removeEventListener: (ev: string, cb: () => void) => {
+        listeners[ev] = (listeners[ev] || []).filter((fn) => fn !== cb);
+      },
+      setTimeout: (() => 0) as unknown as typeof window.setTimeout,
+    },
+  };
+  const fakeDoc = {
+    title: 'GRID//SHEET',
+    createElement: (tag: string) => {
+      assert.equal(tag, 'iframe');
+      return fakeIframe;
+    },
+    body: {
+      appendChild: (node: unknown) => node,
+    },
+  };
+
+  const res = printActiveSheetView(withPlaceholderRoot, 'geral', { doc: fakeDoc, lang: 'pt-BR' });
+  assert.equal(res.ok, true);
+  assert.equal(res.documentTitle, 'GRID_SHEET-Elena_Moretti-01_ATRIBUTOS_COMBATE');
+  assert.equal(fakeDoc.title, res.documentTitle);
+  assert.match(String(fakeIframe.srcdoc), /data-paper-layout="wod-v5"/);
+  assert.doesNotMatch(String(fakeIframe.srcdoc), /<input\b/i);
+
+  (fakeIframe.onload as () => void)();
+  assert.equal(iframePrinted, true);
+  for (const cb of listeners['afterprint'] || []) cb();
+  assert.equal(removed, true);
+  assert.equal(fakeDoc.title, 'GRID//SHEET');
 });

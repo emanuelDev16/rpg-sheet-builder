@@ -2704,3 +2704,24 @@ select:focus-visible,
   font-family: var(--font-mono);
   font-variant-numeric: tabular-nums;
 }
+
+/* Final cascade guard for Ctrl+P isolation */
+@media print {
+  html body #root > .app-screen-root,
+  body .app-screen-root,
+  .app-screen-root,
+  .print-only-header,
+  .no-print {
+    display: none !important;
+    visibility: hidden !important;
+  }
+
+  html body #root > .paper-print-root,
+  body .paper-print-root,
+  .paper-print-root {
+    display: block !important;
+    position: static !important;
+    width: 100% !important;
+    visibility: visible !important;
+  }
+}

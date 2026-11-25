@@ -165,6 +165,7 @@ export interface PaperWodV5Model {
     attributes3x3: Array<{ id: 'physical' | 'social' | 'mental'; title: string; items: PaperDotRow[] }>;
     skills3Col: Array<{ id: 'physical' | 'social' | 'mental'; title: string; items: PaperDotRow[] }>;
     middleStrip3Col: {
+      chronicleTenets: string[];
       convictionsSummary: PaperWodTouchstoneItem[];
       bane: { label: string; value: string; severityBadge: string };
       compulsion: { label: string; value: string };
@@ -181,10 +182,14 @@ export interface PaperWodV5Model {
         title: string;
         stats: Array<{ label: string; value: string }>;
       };
+      resonance: { label: string; value: string };
+      hunting: { label: string; value: string };
     };
   };
   page2: {
     backgrounds: PaperDotRow[];
+    merits: PaperWodMeritFlawItem[];
+    flaws: PaperWodMeritFlawItem[];
     meritsFlaws: {
       testId: string;
       heading: string;
@@ -204,6 +209,7 @@ export interface PaperWodV5Model {
       items: PaperWodTouchstoneItem[];
     };
     xpSummary: PaperXpSummary;
+    equipment: PaperFieldItem[];
     notes: Array<{ id: string; label: string; value: string }>;
     extraCards: PaperExtraCard[];
   };
@@ -346,6 +352,9 @@ export interface PaperEditorialLabels {
   advantages: string;
   disciplines: string;
   backgrounds: string;
+  backgroundsMerits: string;
+  merits: string;
+  flaws: string;
   virtues: string;
   health: string;
   willpower: string;
@@ -356,7 +365,11 @@ export interface PaperEditorialLabels {
   maxPerTurn: string;
   soak: string;
   clanWeakness: string;
+  chronicleTenets: string;
   convictionsSummary: string;
+  resonance: string;
+  hunting: string;
+  haven: string;
   powersRituals: string;
   combatEquipment: string;
   notes: string;
@@ -404,6 +417,8 @@ export interface PaperSheetModel {
   systemId: SystemId;
   systemName: string;
   systemCode: string;
+  sheetTitle: string;
+  sheetSubtitle: string;
   characterName: string;
   lang: AppLanguage;
   pageCount: number;
@@ -423,22 +438,29 @@ const PAPER_LABELS: Record<AppLanguage, PaperEditorialLabels> = {
     advantages: 'VANTAGENS',
     disciplines: 'DISCIPLINAS',
     backgrounds: 'ANTECEDENTES',
+    backgroundsMerits: 'ANTECEDENTES & QUALIDADES',
+    merits: 'QUALIDADES',
+    flaws: 'DEFEITOS',
     virtues: 'VIRTUDES',
     health: 'VITALIDADE',
     willpower: 'FORÇA DE VONTADE',
-    humanity: 'HUMANIDADE / TRILHA',
+    humanity: 'HUMANIDADE',
     hunger: 'FOME',
     bloodPool: 'RESERVA DE SANGUE',
     bloodPotency: 'POTÊNCIA DE SANGUE',
     maxPerTurn: 'SANGUE / TURNO',
     soak: 'ABSORÇÃO (SOAK)',
     clanWeakness: 'FRAQUEZA DE CLÃ',
-    convictionsSummary: 'CONVICÇÕES & PEDRAS DE TOQUE',
+    chronicleTenets: 'PRINCÍPIOS DA CRÔNICA',
+    convictionsSummary: 'PEDRAS DE TOQUE & CONVICÇÕES',
+    resonance: 'RESSONÂNCIA',
+    hunting: 'CAÇA',
+    haven: 'REFÚGIO',
     powersRituals: 'PODERES & RITUAIS',
     combatEquipment: 'COMBATE & EQUIPAMENTOS',
-    notes: 'CRÔNICA & NOTAS',
+    notes: 'BIOGRAFIA & ANOTAÇÕES',
     extraSections: 'CARTÕES & CAMPOS ADICIONAIS',
-    xpSection: 'EXPERIÊNCIA (XP)',
+    xpSection: 'EXPERIÊNCIA',
     xpTotal: 'TOTAL',
     xpSpent: 'GASTO',
     xpAvailable: 'DISPONÍVEL',
@@ -473,7 +495,7 @@ const PAPER_LABELS: Record<AppLanguage, PaperEditorialLabels> = {
     proficiencyBonus: 'PROFICIÊNCIA',
     rollLogs: 'HISTÓRICO DE ROLAGENS',
     pageLabel: 'PÁG.',
-    emptyNone: '—',
+    emptyNone: '',
   },
   en: {
     attributes: 'ATTRIBUTES',
@@ -482,22 +504,29 @@ const PAPER_LABELS: Record<AppLanguage, PaperEditorialLabels> = {
     advantages: 'ADVANTAGES',
     disciplines: 'DISCIPLINES',
     backgrounds: 'BACKGROUNDS',
+    backgroundsMerits: 'BACKGROUNDS & MERITS',
+    merits: 'MERITS',
+    flaws: 'FLAWS',
     virtues: 'VIRTUES',
     health: 'HEALTH',
     willpower: 'WILLPOWER',
-    humanity: 'HUMANITY / PATH',
+    humanity: 'HUMANITY',
     hunger: 'HUNGER',
     bloodPool: 'BLOOD POOL',
     bloodPotency: 'BLOOD POTENCY',
     maxPerTurn: 'BLOOD / TURN',
     soak: 'SOAK',
     clanWeakness: 'CLAN WEAKNESS',
-    convictionsSummary: 'CONVICTIONS & TOUCHSTONES',
+    chronicleTenets: 'CHRONICLE TENETS',
+    convictionsSummary: 'TOUCHSTONES & CONVICTIONS',
+    resonance: 'RESONANCE',
+    hunting: 'HUNTING',
+    haven: 'HAVEN',
     powersRituals: 'POWERS & RITUALS',
     combatEquipment: 'COMBAT & EQUIPMENT',
-    notes: 'CHRONICLE & NOTES',
+    notes: 'BIOGRAPHY & NOTES',
     extraSections: 'EXTRA CARDS & CUSTOM FIELDS',
-    xpSection: 'EXPERIENCE (XP)',
+    xpSection: 'EXPERIENCE',
     xpTotal: 'TOTAL',
     xpSpent: 'SPENT',
     xpAvailable: 'AVAILABLE',
@@ -532,7 +561,7 @@ const PAPER_LABELS: Record<AppLanguage, PaperEditorialLabels> = {
     proficiencyBonus: 'PROFICIENCY',
     rollLogs: 'ROLL LOGS',
     pageLabel: 'PAGE',
-    emptyNone: '—',
+    emptyNone: '',
   },
   es: {
     attributes: 'ATRIBUTOS',
@@ -541,22 +570,29 @@ const PAPER_LABELS: Record<AppLanguage, PaperEditorialLabels> = {
     advantages: 'VENTAJAS',
     disciplines: 'DISCIPLINAS',
     backgrounds: 'TRASFONDOS',
+    backgroundsMerits: 'TRASFONDOS Y MÉRITOS',
+    merits: 'MÉRITOS',
+    flaws: 'DEFECTOS',
     virtues: 'VIRTUDES',
     health: 'SALUD',
     willpower: 'FUERZA DE VOLUNTAD',
-    humanity: 'HUMANIDAD / SENDA',
+    humanity: 'HUMANIDAD',
     hunger: 'ANSIA',
     bloodPool: 'RESERVA DE SANGRE',
     bloodPotency: 'POTENCIA DE SANGRE',
     maxPerTurn: 'SANGRE / TURNO',
     soak: 'ABSORCIÓN (SOAK)',
     clanWeakness: 'DEBILIDAD DE CLAN',
-    convictionsSummary: 'CONVICCIONES Y PIEDRAS',
+    chronicleTenets: 'PRINCIPIOS DE LA CRÓNICA',
+    convictionsSummary: 'PIEDRAS DE TOQUE Y CONVICCIONES',
+    resonance: 'RESONANCIA',
+    hunting: 'CAZA',
+    haven: 'REFUGIO',
     powersRituals: 'PODERES Y RITUALES',
     combatEquipment: 'COMBATE Y EQUIPO',
-    notes: 'CRÓNICA Y NOTAS',
+    notes: 'BIOGRAFÍA Y NOTAS',
     extraSections: 'TARJETAS Y CAMPOS ADICIONALES',
-    xpSection: 'EXPERIENCIA (XP)',
+    xpSection: 'EXPERIENCIA',
     xpTotal: 'TOTAL',
     xpSpent: 'GASTADO',
     xpAvailable: 'DISPONIBLE',
@@ -591,7 +627,28 @@ const PAPER_LABELS: Record<AppLanguage, PaperEditorialLabels> = {
     proficiencyBonus: 'COMPETENCIA',
     rollLogs: 'REGISTRO DE TIRADAS',
     pageLabel: 'PÁG.',
-    emptyNone: '—',
+    emptyNone: '',
+  },
+};
+
+const EDITORIAL_HEADERS: Record<
+  Exclude<PaperSheetLayout, 'generic'>,
+  Record<AppLanguage, { title: string; subtitle: string }>
+> = {
+  'wod-v5': {
+    'pt-BR': { title: 'VAMPIRO · A MÁSCARA', subtitle: '5ª EDIÇÃO' },
+    en: { title: 'VAMPIRE · THE MASQUERADE', subtitle: '5TH EDITION' },
+    es: { title: 'VAMPIRO · LA MASCARADA', subtitle: '5ª EDICIÓN' },
+  },
+  'wod-v20': {
+    'pt-BR': { title: 'VAMPIRO · A MÁSCARA', subtitle: 'EDIÇÃO 20 ANOS' },
+    en: { title: 'VAMPIRE · THE MASQUERADE', subtitle: '20TH ANNIVERSARY' },
+    es: { title: 'VAMPIRO · LA MASCARADA', subtitle: '20º ANIVERSARIO' },
+  },
+  dnd5e: {
+    'pt-BR': { title: 'DUNGEONS & DRAGONS · 5E', subtitle: 'FICHA DE PERSONAGEM' },
+    en: { title: 'DUNGEONS & DRAGONS · 5E', subtitle: 'CHARACTER SHEET' },
+    es: { title: 'DUNGEONS & DRAGONS · 5E', subtitle: 'HOJA DE PERSONAJE' },
   },
 };
 
@@ -643,6 +700,58 @@ const DND_SKILLS_18: ReadonlyArray<{
   { key: 'stealth', ability: 'dexterity', labels: { 'pt-BR': 'Furtividade', en: 'Stealth', es: 'Sigilo' } },
   { key: 'survival', ability: 'wisdom', labels: { 'pt-BR': 'Sobrevivência', en: 'Survival', es: 'Supervivencia' } },
 ];
+
+const PLACEHOLDER_NAMES = new Set([
+  '',
+  'NOVO PERSONAGEM',
+  'NEW CHARACTER',
+  'NUEVO PERSONAJE',
+  'CHARACTER',
+  'SEM NOME',
+  'UNNAMED',
+]);
+
+function normalizeNameCmp(raw?: string): string {
+  return (raw ?? '')
+    .trim()
+    .normalize('NFD')
+    .replace(/[\u0300-\u036f]/g, '')
+    .toUpperCase();
+}
+
+function isPlaceholderName(raw?: string): boolean {
+  return PLACEHOLDER_NAMES.has(normalizeNameCmp(raw));
+}
+
+function extractFieldCharacterName(sheet: CharacterSheetState): string {
+  const match = findField(sheet.cards, ['character_name', 'nome_personagem', 'f_nome'], 'card_identidade');
+  return typeof match?.field.value === 'string' ? match.field.value.trim() : '';
+}
+
+export function resolvePaperCharacterName(sheet: CharacterSheetState): string {
+  const fieldName = extractFieldCharacterName(sheet);
+  if (!isPlaceholderName(fieldName)) return fieldName;
+  const sheetName = (sheet.characterName ?? '').trim();
+  if (!isPlaceholderName(sheetName)) return sheetName;
+  return '';
+}
+
+export function resolvePrintTitleCharacterName(sheet: CharacterSheetState): string {
+  const fieldName = extractFieldCharacterName(sheet);
+  const sheetName = (sheet.characterName ?? '').trim();
+  if (isPlaceholderName(sheetName)) {
+    return !isPlaceholderName(fieldName) ? fieldName : sheetName || 'CHARACTER';
+  }
+  if (!isPlaceholderName(fieldName)) {
+    const normSheet = normalizeNameCmp(sheetName);
+    const normField = normalizeNameCmp(fieldName);
+    if (normSheet.includes(normField)) {
+      return sheetName;
+    }
+    return fieldName;
+  }
+  return sheetName;
+}
 
 export function detectPaperSheetLayout(sheet: CharacterSheetState): PaperSheetLayout {
   const systemId = detectSystemId(sheet);
@@ -842,6 +951,7 @@ function collectExtraCards(
   consumedCardIds: ReadonlySet<string>,
   consumedFieldIds: ReadonlySet<string>,
   lang: AppLanguage,
+  includeTag: boolean,
 ): PaperExtraCard[] {
   const extras: PaperExtraCard[] = [];
   for (const card of sheet.cards) {
@@ -851,7 +961,7 @@ function collectExtraCards(
     extras.push({
       id: card.id,
       tab: card.tab,
-      code: localizeCardTag(card, lang),
+      code: includeTag ? localizeCardTag(card, lang) : '',
       title: localizeCardTitle(card, lang),
       colSpan: (card.colSpan ?? 1) >= 2 ? 2 : 1,
       fields: remaining.map((f) => buildPaperFieldItem(f, evaluation, lang)),
@@ -933,6 +1043,16 @@ function buildWodAttributes3x3(
   lang: AppLanguage,
 ): Array<{ id: 'physical' | 'social' | 'mental'; title: string; items: PaperDotRow[] }> {
   const t = getTranslations(lang).t;
+  const attrCard = sheet.cards.find((c) => c.id === 'card_atributos');
+  if (attrCard) {
+    for (const f of attrCard.fields) {
+      const k = normKey(f.key);
+      if (k === 'initiative' || k === 'defense') {
+        consumedFieldIds.add(f.id);
+      }
+    }
+  }
+
   const specs: Array<{ group: 'physical' | 'social' | 'mental'; title: string; keys: string[] }> = [
     { group: 'physical', title: t('cards.attributes.physical'), keys: ['strength', 'dexterity', 'stamina'] },
     { group: 'social', title: t('cards.attributes.social'), keys: ['charisma', 'manipulation', 'appearance'] },
@@ -983,9 +1103,7 @@ function buildWodSkills3Col<T extends WodSkillCategory>(
     const matchedField = matchInSkills?.field ?? (entry.varName === 'occult' ? matchAnywhere?.field : undefined);
 
     if (matchedField) consumedFieldIds.add(matchedField.id);
-    const label = matchedField
-      ? localizeFieldLabel(matchedField, lang)
-      : entry.labels[lang];
+    const label = matchedField ? localizeFieldLabel(matchedField, lang) : entry.labels[lang];
     groups.get(cat)!.push({
       id: matchedField?.id ?? entry.id,
       key: entry.varName,
@@ -996,7 +1114,6 @@ function buildWodSkills3Col<T extends WodSkillCategory>(
     });
   }
 
-  // Append any custom skill number fields inside card_skills not covered by catalog
   const lastCat = categories[categories.length - 1];
   for (const field of allSkillCandidates) {
     if (consumedFieldIds.has(field.id)) continue;
@@ -1030,6 +1147,7 @@ function buildWodV5Model(
   lang: AppLanguage,
 ): PaperWodV5Model {
   const t = getTranslations(lang).t;
+  const labels = PAPER_LABELS[lang];
   const idCard = sheet.cards.find((c) => c.id === 'card_identidade');
   const getIdCell = (key: string, fallbackVal = ''): PaperIdentityCell => {
     const match = idCard ? findField([idCard], [key]) : findField(sheet.cards, [key]);
@@ -1045,16 +1163,23 @@ function buildWodV5Model(
     };
   };
 
+  // Exact V5 3 cols x 3 rows:
+  // Row 1: Nome | Ambição | Clã
+  // Row 2: Conceito | Desejo | Geração
+  // Row 3: Crônica | Predador | Senhor
+  const charNameVal = resolvePaperCharacterName(sheet);
+  const nameCell = getIdCell('character_name', charNameVal);
+  nameCell.value = charNameVal;
   const header3x3: PaperIdentityCell[] = [
-    getIdCell('character_name', sheet.characterName),
-    getIdCell('concept'),
-    getIdCell('predator_type'),
-    getIdCell('chronicle'),
+    nameCell,
     getIdCell('ambition'),
     getIdCell('clan'),
-    getIdCell('sire'),
+    getIdCell('concept'),
     getIdCell('desire'),
     getIdCell('generation'),
+    getIdCell('chronicle'),
+    getIdCell('predator_type'),
+    getIdCell('sire'),
   ];
 
   const bpLevel =
@@ -1069,10 +1194,17 @@ function buildWodV5Model(
   const compulsionCell = getIdCell('clan_compulsion');
   const baneSeverityBadge = t('cards.vital.baneSeverityBadge', { severity: bpStats.baneSeverity });
 
+  const tenetsMatch = findField(sheet.cards, ['chronicle_tenets', 'tenets', 'principios']);
+  if (tenetsMatch) consumedFieldIds.add(tenetsMatch.field.id);
+  const rawTenets = typeof tenetsMatch?.field.value === 'string'
+    ? tenetsMatch.field.value.split(/\r?\n|;/).map((s) => s.trim()).filter(Boolean)
+    : [];
+  const chronicleTenets = Array.from({ length: 3 }, (_, idx) => rawTenets[idx] ?? '');
+
   const attributes3x3 = buildWodAttributes3x3(sheet, true, consumedFieldIds, lang);
   const skills3Col = buildWodSkills3Col(sheet, 'vampire-v5', ['physical', 'social', 'mental'], consumedFieldIds, lang);
 
-  // Disciplines & Powers
+  // Disciplines: always 6 slots (2 cols x 3 blocks) with 5 numbered slots each
   const arcanoCard = sheet.cards.find((c) => c.id === 'card_arcano');
   const grimorioCard = sheet.cards.find((c) => c.id === 'card_grimorio');
   const discFields: SheetField[] = [];
@@ -1091,6 +1223,11 @@ function buildWodV5Model(
   const powerRowsField = grimorioCard?.fields.find((f) => f.kind === 'repeatable');
   const powerRows = powerRowsField?.rows ?? [];
   if (powerRowsField) consumedFieldIds.add(powerRowsField.id);
+  if (grimorioCard) {
+    for (const f of grimorioCard.fields) {
+      if (f.id === 'f_frenzy_check') consumedFieldIds.add(f.id);
+    }
+  }
 
   const disciplineBuckets = new Map<string, Array<{ name: string; cost: string }>>();
   for (const df of discFields) disciplineBuckets.set(df.id, []);
@@ -1112,11 +1249,8 @@ function buildWodV5Model(
       }
     }
     const item = { name: row.col1, cost: String(row.col2 ?? '') };
-    if (assignedId) {
-      disciplineBuckets.get(assignedId)!.push(item);
-    } else {
-      unmatchedPowers.push(item);
-    }
+    if (assignedId) disciplineBuckets.get(assignedId)!.push(item);
+    else unmatchedPowers.push(item);
   }
 
   if (unmatchedPowers.length > 0 && discFields.length > 0) {
@@ -1128,7 +1262,7 @@ function buildWodV5Model(
     }
   }
 
-  const disciplines: PaperDisciplineBlock[] = discFields.map((df) => {
+  const filledDisciplines: PaperDisciplineBlock[] = discFields.map((df) => {
     const rawPowers = disciplineBuckets.get(df.id) ?? [];
     const slots: PaperDisciplineSlot[] = Array.from({ length: 5 }, (_, idx) => {
       const lvl = (idx + 1) as 1 | 2 | 3 | 4 | 5;
@@ -1143,13 +1277,30 @@ function buildWodV5Model(
     };
   });
 
+  const disciplines: PaperDisciplineBlock[] = [...filledDisciplines];
+  while (disciplines.length < 6) {
+    const blankIdx = disciplines.length + 1;
+    disciplines.push({
+      id: `disc_slot_${blankIdx}`,
+      label: '',
+      value: 0,
+      slots: [1, 2, 3, 4, 5].map((lvl) => ({
+        level: lvl as 1 | 2 | 3 | 4 | 5,
+        name: '',
+        cost: '',
+      })),
+    });
+  }
+
   // Vital column
   const combatCard = sheet.cards.find((c) => c.id === 'card_combate');
   const healthFieldMatch = findField(sheet.cards, ['health', 'f_health'], 'card_combate');
   const wpFieldMatch = findField(sheet.cards, ['willpower', 'f_willpower'], 'card_combate');
   const humFieldMatch = findField(sheet.cards, ['humanity', 'f_humanity'], 'card_combate');
   const hungerFieldMatch = findField(sheet.cards, ['hunger', 'f_hunger'], 'card_combate');
-  for (const m of [healthFieldMatch, wpFieldMatch, humFieldMatch, hungerFieldMatch]) {
+  const resMatch = findField(sheet.cards, ['resonance', 'ressonancia']);
+  const huntMatch = findField(sheet.cards, ['hunting', 'caca', 'predator_hunting']);
+  for (const m of [healthFieldMatch, wpFieldMatch, humFieldMatch, hungerFieldMatch, resMatch, huntMatch]) {
     if (m) consumedFieldIds.add(m.field.id);
   }
   if (combatCard) {
@@ -1197,7 +1348,6 @@ function buildWodV5Model(
       ? t('cards.vital.bpRouseRerollValue', { level: bpStats.rouseRerollMaxLevel })
       : t('cards.vital.bpRouseRerollNone');
 
-  // Backgrounds across sheet
   const backgrounds: PaperDotRow[] = [];
   for (const card of sheet.cards) {
     for (const f of card.fields) {
@@ -1218,6 +1368,15 @@ function buildWodV5Model(
 
   consumedCardIds.add('card_wod_dossier');
 
+  const equipment: PaperFieldItem[] = [];
+  const invCard = sheet.cards.find((c) => c.id === 'card_inventario');
+  if (invCard) {
+    for (const f of invCard.fields) {
+      consumedFieldIds.add(f.id);
+      equipment.push(buildPaperFieldItem(f, evaluation, lang));
+    }
+  }
+
   const notesCard = sheet.cards.find((c) => c.id === 'card_notas');
   const notes: Array<{ id: string; label: string; value: string }> = [];
   if (notesCard) {
@@ -1234,7 +1393,16 @@ function buildWodV5Model(
   }
 
   const dossier = buildWodStructuredDossier(sheet, 'vampire-v5', lang);
-  const extraCards = collectExtraCards(sheet, evaluation, consumedCardIds, consumedFieldIds, lang);
+  const convictionsSummary: PaperWodTouchstoneItem[] = [...dossier.touchstones.items];
+  while (convictionsSummary.length < 3) {
+    convictionsSummary.push({
+      id: `ts_blank_${convictionsSummary.length + 1}`,
+      conviction: '',
+      touchstone: '',
+    });
+  }
+
+  const extraCards = collectExtraCards(sheet, evaluation, consumedCardIds, consumedFieldIds, lang, false);
 
   return {
     page1: {
@@ -1242,7 +1410,8 @@ function buildWodV5Model(
       attributes3x3,
       skills3Col,
       middleStrip3Col: {
-        convictionsSummary: dossier.touchstones.items,
+        chronicleTenets,
+        convictionsSummary,
         bane: { label: baneCell.label, value: baneCell.value, severityBadge: baneSeverityBadge },
         compulsion: { label: compulsionCell.label, value: compulsionCell.value },
       },
@@ -1250,7 +1419,7 @@ function buildWodV5Model(
       vitalColumn: {
         health: {
           testId: 'pure-html-v5-health',
-          label: healthFieldMatch ? localizeFieldLabel(healthFieldMatch.field, lang) : PAPER_LABELS[lang].health,
+          label: healthFieldMatch ? localizeFieldLabel(healthFieldMatch.field, lang) : labels.health,
           summary: t('print.pureHtmlHealthV5Summary', {
             healthy: healthBreakdown.healthy,
             max: healthBreakdown.max,
@@ -1262,7 +1431,7 @@ function buildWodV5Model(
         },
         willpower: {
           testId: 'pure-html-v5-willpower',
-          label: wpFieldMatch ? localizeFieldLabel(wpFieldMatch.field, lang) : 'WILLPOWER',
+          label: wpFieldMatch ? localizeFieldLabel(wpFieldMatch.field, lang) : labels.willpower,
           summary: t('print.pureHtmlWpValue', {
             available: wp.available,
             max: wp.max,
@@ -1274,46 +1443,53 @@ function buildWodV5Model(
         },
         humanity: {
           testId: 'pure-html-v5-humanity',
-          label: humFieldMatch ? localizeFieldLabel(humFieldMatch.field, lang) : 'HUMANITY',
+          label: humFieldMatch ? localizeFieldLabel(humFieldMatch.field, lang) : labels.humanity,
           summary: t('print.pureHtmlHumanityValue', { humanity: humState.humanity, stains: humState.stains }),
           legend: t('print.pureHtmlStainsLegend'),
           boxes: humBoxes,
         },
         hunger: {
-          label: hungerFieldMatch ? localizeFieldLabel(hungerFieldMatch.field, lang) : 'HUNGER',
+          label: hungerFieldMatch ? localizeFieldLabel(hungerFieldMatch.field, lang) : labels.hunger,
           value: hungerVal,
           max: 5,
           boxes: hungerBoxes,
         },
         bloodPotency: {
           testId: 'pure-html-v5-bp',
-          level: statsLevel(bpLevel),
+          level: clampInt(bpLevel, 0, 10, 1),
           title: t('cards.vital.bpPanelTitle', { level: bpStats.level }),
           stats: [
             { label: t('cards.vital.bpSurge'), value: `+${bpStats.bloodSurgeDice}d10` },
             { label: t('cards.vital.bpMend'), value: `${bpStats.mendSuperficialPerRouse} SUP` },
             { label: t('cards.vital.bpPowerBonus'), value: `+${bpStats.powerBonusDice}d10` },
             { label: t('cards.vital.bpRouseReroll'), value: rerollStr },
-            { label: t('cards.vital.bpBaneSeverity'), value: String(bpStats.baneSeverity) },
             { label: t('cards.vital.bpFeedingLabel'), value: t(`cards.vital.bpFeeding.${bpStats.feedingPenaltyKey}`) },
+            { label: t('cards.vital.bpBaneSeverity'), value: String(bpStats.baneSeverity) },
           ],
+        },
+        resonance: {
+          label: labels.resonance,
+          value: resMatch?.field.value ? String(resMatch.field.value) : '',
+        },
+        hunting: {
+          label: labels.hunting,
+          value: huntMatch?.field.value ? String(huntMatch.field.value) : '',
         },
       },
     },
     page2: {
       backgrounds,
+      merits: dossier.meritsFlaws.items.filter((m) => m.kind === 'merit'),
+      flaws: dossier.meritsFlaws.items.filter((m) => m.kind === 'flaw'),
       meritsFlaws: dossier.meritsFlaws,
       havens: dossier.havens,
       touchstones: dossier.touchstones,
       xpSummary: buildXpSummary(sheet),
+      equipment,
       notes,
       extraCards,
     },
   };
-}
-
-function statsLevel(level: number): number {
-  return Math.max(0, Math.min(10, Math.round(level)));
 }
 
 function buildWodV20Model(
@@ -1346,23 +1522,36 @@ function buildWodV20Model(
   const bpCalc = findField(sheet.cards, ['blood_potency'], 'card_identidade');
   if (bpCalc) consumedFieldIds.add(bpCalc.field.id);
 
+  const charNameVal = resolvePaperCharacterName(sheet);
+  const nameCell = getIdCell('character_name', charNameVal);
+  nameCell.value = charNameVal;
+  const havenMatch = findField(sheet.cards, ['haven', 'refugio']);
+  if (havenMatch) consumedFieldIds.add(havenMatch.field.id);
+  const havenLabelValue =
+    (typeof havenMatch?.field.value === 'string' && havenMatch.field.value.trim()) ||
+    sheet.havens?.[0]?.name ||
+    '';
+
+  // Exact V20 3x3:
+  // Nome / Natureza / Geração
+  // Conceito / Comportamento / Senhor
+  // Crônica / Clã / Refúgio
   const header3x3: PaperIdentityCell[] = [
-    getIdCell('character_name', sheet.characterName),
-    getIdCell('concept'),
-    getIdCell('chronicle'),
+    nameCell,
     getIdCell('nature'),
-    getIdCell('demeanor'),
-    getIdCell('clan'),
     getIdCell('generation', String(generation)),
+    getIdCell('concept'),
+    getIdCell('demeanor'),
     getIdCell('sire'),
-    { key: 'max_blood_per_turn', label: labels.maxPerTurn, value: String(maxBloodPerTurn) },
+    getIdCell('chronicle'),
+    getIdCell('clan'),
+    { key: 'haven', label: labels.haven, value: havenLabelValue },
   ];
 
   const weaknessCell = getIdCell('clan_weakness');
   const attributes3x3 = buildWodAttributes3x3(sheet, false, consumedFieldIds, lang);
   const abilities3Col = buildWodSkills3Col(sheet, 'storyteller-v20', ['talents', 'skills', 'knowledges'], consumedFieldIds, lang);
 
-  // Advantages: Disciplines, Backgrounds, Virtues
   const arcanoCard = sheet.cards.find((c) => c.id === 'card_arcano');
   const disciplines: PaperDotRow[] = [];
   if (arcanoCard) {
@@ -1383,6 +1572,9 @@ function buildWodV20Model(
       }
     }
   }
+  while (disciplines.length < 5) {
+    disciplines.push({ id: `v20_disc_blank_${disciplines.length + 1}`, key: '', label: '', value: 0, max: 5 });
+  }
 
   const backgrounds: PaperDotRow[] = [];
   for (const card of sheet.cards) {
@@ -1401,6 +1593,9 @@ function buildWodV20Model(
       }
     }
   }
+  while (backgrounds.length < 5) {
+    backgrounds.push({ id: `v20_bg_blank_${backgrounds.length + 1}`, key: '', label: '', value: 0, max: 5 });
+  }
 
   const virtues = getSheetVirtues(sheet);
   const virtuesBlock = {
@@ -1413,7 +1608,6 @@ function buildWodV20Model(
     ],
   };
 
-  // Bottom 3 cols
   const humFieldMatch = findField(sheet.cards, ['humanity', 'f_humanity'], 'card_combate');
   const wpFieldMatch = findField(sheet.cards, ['willpower', 'f_willpower'], 'card_combate');
   const healthFieldMatch = findField(sheet.cards, ['health', 'f_health'], 'card_combate');
@@ -1448,13 +1642,9 @@ function buildWodV20Model(
 
   const v20Levels: PaperV20HealthRow[] = V20_HEALTH_LEVELS.map((lvl, idx) => {
     let box: PaperTrackBox = { kind: 'empty', symbol: '' };
-    if (idx < healthBreakdown.aggravated) {
-      box = { kind: 'aggravated', symbol: '*', title: t('cards.vital.aggravatedV20Dmg') };
-    } else if (idx < healthBreakdown.aggravated + healthBreakdown.lethal) {
-      box = { kind: 'lethal', symbol: 'X', title: t('cards.vital.lethalDmg') };
-    } else if (idx < healthBreakdown.aggravated + healthBreakdown.lethal + healthBreakdown.bashing) {
-      box = { kind: 'bashing', symbol: '/', title: t('cards.vital.bashingDmg') };
-    }
+    if (idx < healthBreakdown.aggravated) box = { kind: 'aggravated', symbol: '*', title: t('cards.vital.aggravatedV20Dmg') };
+    else if (idx < healthBreakdown.aggravated + healthBreakdown.lethal) box = { kind: 'lethal', symbol: 'X', title: t('cards.vital.lethalDmg') };
+    else if (idx < healthBreakdown.aggravated + healthBreakdown.lethal + healthBreakdown.bashing) box = { kind: 'bashing', symbol: '/', title: t('cards.vital.bashingDmg') };
     return { label: lvl.labels[lang], penalty: lvl.penalty, box };
   });
 
@@ -1464,7 +1654,6 @@ function buildWodV20Model(
 
   const xpSummary = buildXpSummary(sheet);
 
-  // Page 2 sections
   consumedCardIds.add('card_wod_dossier');
   const dossier = buildWodStructuredDossier(sheet, 'storyteller-v20', lang);
 
@@ -1499,7 +1688,7 @@ function buildWodV20Model(
     }
   }
 
-  const extraCards = collectExtraCards(sheet, evaluation, consumedCardIds, consumedFieldIds, lang);
+  const extraCards = collectExtraCards(sheet, evaluation, consumedCardIds, consumedFieldIds, lang, false);
 
   return {
     page1: {
@@ -1594,9 +1783,9 @@ function buildDnd5eModel(
   const raceText = explicitRace || classParts[1] || labels.emptyNone;
   const alignmentText = getIdStr(['alignment', 'tendencia'], labels.emptyNone);
   const profBonus = getIdStr(['prof', 'proficiency_bonus'], '+2');
-  const charName = getIdStr(['character_name', 'nome'], sheet.characterName);
+  const charName = resolvePaperCharacterName(sheet);
+  getIdStr(['character_name', 'nome'], charName);
 
-  // Abilities
   const abilityModMap = new Map<string, number>();
   const abilities: PaperDndAbilityItem[] = DND_ABILITIES.map((ab) => {
     const scoreMatch = findField(sheet.cards, [ab.key], 'card_atributos');
@@ -1664,7 +1853,6 @@ function buildDnd5eModel(
   const percVal = percSkill ? Number(percSkill.modifier) : (abilityModMap.get('wisdom') ?? 0);
   const passivePerception = 10 + (Number.isFinite(percVal) ? percVal : 0);
 
-  // Combat col 2
   const acMatch = findField(sheet.cards, ['armor_class', 'ac'], 'card_combate');
   const hpMatch = findField(sheet.cards, ['hp', 'pv'], 'card_combate');
   const hdMatch = findField(sheet.cards, ['hit_dice'], 'card_combate');
@@ -1703,14 +1891,18 @@ function buildDnd5eModel(
     }
   }
 
-  const currencyCodes = ['CP', 'SP', 'EP', 'GP', 'PP'];
-  const currency = currencyCodes.map((code) => {
-    const m = findField(sheet.cards, [code.toLowerCase()]);
+  const currencyCodesByLang: Record<AppLanguage, readonly string[]> = {
+    'pt-BR': ['PC', 'PP', 'PE', 'PO', 'PL'],
+    en: ['CP', 'SP', 'EP', 'GP', 'PP'],
+    es: ['PC', 'PP', 'PE', 'PO', 'PPT'],
+  };
+  const fallbackKeys = ['cp', 'sp', 'ep', 'gp', 'pp'];
+  const currency = currencyCodesByLang[lang].map((code, idx) => {
+    const m = findField(sheet.cards, [code.toLowerCase(), fallbackKeys[idx]]);
     if (m) consumedFieldIds.add(m.field.id);
     return { code, value: m?.field.value !== undefined ? String(m.field.value) : '' };
   });
 
-  // Conditional Page 3: Spellcasting
   const arcanoCard = sheet.cards.find((c) => c.id === 'card_arcano');
   const grimorioCard = sheet.cards.find((c) => c.id === 'card_grimorio');
   const spellFields = sheet.cards
@@ -1718,7 +1910,7 @@ function buildDnd5eModel(
     .filter((f) => /^(spell_dc|spell_atk|slots_|spells|concentration)/i.test(normKey(f.key)));
   const hasSpellcasting = Boolean(
     (arcanoCard && arcanoCard.fields.length > 0) ||
-      (grimorioCard && grimorioCard.fields.some((f) => f.kind === 'repeatable' ? (f.rows?.length ?? 0) > 0 : true)) ||
+      (grimorioCard && grimorioCard.fields.some((f) => (f.kind === 'repeatable' ? (f.rows?.length ?? 0) > 0 : true))) ||
       spellFields.length > 0,
   );
 
@@ -1779,7 +1971,7 @@ function buildDnd5eModel(
     }
   }
 
-  const extraCards = collectExtraCards(sheet, evaluation, consumedCardIds, consumedFieldIds, lang);
+  const extraCards = collectExtraCards(sheet, evaluation, consumedCardIds, consumedFieldIds, lang, false);
 
   return {
     page1: {
@@ -1886,8 +2078,14 @@ export function buildPaperSheetModel(
   const labels = PAPER_LABELS[lang];
   const systemName = localizeSystemName(systemId, sheet.systemName, lang);
   const systemCode = localizeSystemName(systemId, sheet.systemCode, lang);
+  const characterName = resolvePaperCharacterName(sheet);
   const consumedCardIds = new Set<string>();
   const consumedFieldIds = new Set<string>();
+
+  const editorialHeader =
+    layout === 'generic'
+      ? { title: systemName, subtitle: systemCode }
+      : EDITORIAL_HEADERS[layout][lang];
 
   const rollLogs = sheet.rollLogs.slice(-8).map((log) => ({
     id: log.id,
@@ -1904,7 +2102,9 @@ export function buildPaperSheetModel(
       systemId,
       systemName,
       systemCode,
-      characterName: sheet.characterName,
+      sheetTitle: editorialHeader.title,
+      sheetSubtitle: editorialHeader.subtitle,
+      characterName,
       lang,
       pageCount: 2,
       labels,
@@ -1920,7 +2120,9 @@ export function buildPaperSheetModel(
       systemId,
       systemName,
       systemCode,
-      characterName: sheet.characterName,
+      sheetTitle: editorialHeader.title,
+      sheetSubtitle: editorialHeader.subtitle,
+      characterName,
       lang,
       pageCount: 2,
       labels,
@@ -1936,7 +2138,9 @@ export function buildPaperSheetModel(
       systemId,
       systemName,
       systemCode,
-      characterName: sheet.characterName,
+      sheetTitle: editorialHeader.title,
+      sheetSubtitle: editorialHeader.subtitle,
+      characterName,
       lang,
       pageCount: dnd5e.page3 ? 3 : 2,
       labels,
@@ -1951,7 +2155,9 @@ export function buildPaperSheetModel(
     systemId,
     systemName,
     systemCode,
-    characterName: sheet.characterName,
+    sheetTitle: editorialHeader.title,
+    sheetSubtitle: editorialHeader.subtitle,
+    characterName,
     lang,
     pageCount: generic.pages.length,
     labels,
