@@ -1,4 +1,4 @@
-import { Fragment, Suspense, use, useEffect, useMemo, useRef, useState } from 'react';
+import { Fragment, lazy, Suspense, use, useEffect, useMemo, useRef, useState } from 'react';
 import { Dices, X } from 'lucide-react';
 import {
   addCardToSheet,
@@ -130,12 +130,35 @@ import { SheetSearchBar } from './components/SheetSearchBar';
 import { BentoCard } from './components/BentoCard';
 import { BentoGridSkeleton } from './components/BentoGridSkeleton';
 import { CustomCardBuilder } from './components/CustomCardBuilder';
-import { RollDiceChips, RollLogSidebar } from './components/RollLogSidebar';
 import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
-import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
 import { HomeSheetItem, HomeSystemItem, HomeView } from './components/HomeView';
-import { RulesSearchPanel } from './components/RulesSearchPanel';
+
+const XpUpgradeWorkspace = lazy(() =>
+  import('./components/XpUpgradeWorkspace').then((m) => ({ default: m.XpUpgradeWorkspace })),
+);
+const RulesSearchPanel = lazy(() =>
+  import('./components/RulesSearchPanel').then((m) => ({ default: m.RulesSearchPanel })),
+);
+const RollLogSidebar = lazy(() =>
+  import('./components/RollLogSidebar').then((m) => ({ default: m.RollLogSidebar })),
+);
+const RollDiceChips = lazy(() =>
+  import('./components/RollLogSidebar').then((m) => ({ default: m.RollDiceChips })),
+);
+
+function LazySectionFallback({ label }: { label: string }) {
+  return (
+    <div
+      role="status"
+      aria-busy="true"
+      aria-live="polite"
+      className="p-4 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-subtle)] rounded-[var(--radius-card)] font-mono-tech text-[11px] uppercase tracking-wider"
+    >
+      {label}
+    </div>
+  );
+}
 import {
   applyThemeToDocument,
   persistTheme,
@@ -2362,12 +2385,14 @@ function HydratedAppWorkspace({
                     <X className="w-4 h-4" aria-hidden="true" />
                   </button>
                 </div>
-                <RulesSearchPanel
-                  systemId={activeSystemId}
-                  systemName={sheet.systemName}
-                  language={language}
-                  t={t.sidebar}
-                />
+                <Suspense fallback={<LazySectionFallback label={t.t('app.loadingWorkspace')} />}>
+                  <RulesSearchPanel
+                    systemId={activeSystemId}
+                    systemName={sheet.systemName}
+                    language={language}
+                    t={t.sidebar}
+                  />
+                </Suspense>
               </aside>
             </div>
           )}
@@ -2444,20 +2469,22 @@ function HydratedAppWorkspace({
               )}
 
               {activeTab === 'xp' ? (
-              <XpUpgradeWorkspace
-                sheet={sheet}
-                language={language}
-                t={t.xp}
-                onAwardXp={handleAwardXp}
-                onUpgradeTrait={handleUpgradeTrait}
-                onBuySpecialty={handleBuySpecialty}
-                onBuyBackground={handleBuyBackground}
-                onBuyCatalogSkill={handleBuyCatalogSkill}
-                onBuyCatalogDiscipline={handleBuyCatalogDiscipline}
-                onBuyCatalogAdvantage={handleBuyCatalogAdvantage}
-                onUndoLastUpgrade={handleUndoLastUpgrade}
-                onSelectRulePreset={handleSelectRulePreset}
-              />
+              <Suspense fallback={<LazySectionFallback label={t.t('app.loadingWorkspace')} />}>
+                <XpUpgradeWorkspace
+                  sheet={sheet}
+                  language={language}
+                  t={t.xp}
+                  onAwardXp={handleAwardXp}
+                  onUpgradeTrait={handleUpgradeTrait}
+                  onBuySpecialty={handleBuySpecialty}
+                  onBuyBackground={handleBuyBackground}
+                  onBuyCatalogSkill={handleBuyCatalogSkill}
+                  onBuyCatalogDiscipline={handleBuyCatalogDiscipline}
+                  onBuyCatalogAdvantage={handleBuyCatalogAdvantage}
+                  onUndoLastUpgrade={handleUndoLastUpgrade}
+                  onSelectRulePreset={handleSelectRulePreset}
+                />
+              </Suspense>
             ) : (
               <div
                 data-bento-layout={useTwoColMasonry ? 'masonry-2col' : 'flat-1col'}
@@ -2530,68 +2557,81 @@ function HydratedAppWorkspace({
           </div>
         </main>
 
-        <RollLogSidebar
-          logs={sheet.rollLogs}
-          sheet={sheet}
-          systemId={activeSystemId}
-          rulePreset={rulePreset}
-          systemName={sheet.systemName}
-          language={language}
-          woundPenalty={woundPenalty}
-          isWillpowerImpaired={isWillpowerImpaired}
-          bloodPotency={bloodPotency}
-          bloodSurge={bloodSurge}
-          bloodSurgeBonus={bloodSurgeBonus}
-          currentWillpower={currentWillpower}
-          currentHunger={Math.max(0, Math.min(5, Math.round(evaluation.variables.hunger ?? 0)))}
-          t={t.sidebar}
-          rerollArmedLogId={rerollArmedLogId}
-          canWillpowerReroll={canV5WillpowerReroll || Boolean(rerollArmedLogId)}
-          onArmWillpowerReroll={handleArmWillpowerReroll}
-          onWillpowerReroll={handleConfirmWillpowerReroll}
-          onCancelReroll={() => {
-            if (rerollArmedLogId) {
-              const snapshot = rerollPreDamageRef.current;
-              setSheet((prev) => {
-                if (!snapshot) {
-                  return adjustV5WillpowerDamage(prev, 'superficial', -1);
-                }
-                return {
-                  ...prev,
-                  cards: prev.cards.map((card) => ({
-                    ...card,
-                    fields: card.fields.map((f) =>
-                      (f.id === 'f_willpower' || f.key === 'willpower') && f.kind === 'resource'
-                        ? {
-                            ...f,
-                            value: snapshot.value,
-                            superficialDamage: snapshot.superficial,
-                            aggravatedDamage: snapshot.aggravated,
-                          }
-                        : f,
-                    ),
-                  })),
-                };
-              });
-            }
-            rerollPreDamageRef.current = null;
-            setRerollArmedLogId(null);
-            setFlashMessage(null);
-          }}
-          onRollComposedPool={handleComposedPoolRoll}
-          requestedTab={mobileSidebarTab}
-          requestedTabSeq={mobileSidebarTabSeq}
-          isMobileOpen={mobileSidebarOpen}
-          onCloseMobile={() => setMobileSidebarOpen(false)}
-          onQuickRoll={(expr) =>
-            appendRollLog(t.t('app.quickRollLabel', { expr: expr.toUpperCase() }), expr)
+        <Suspense
+          fallback={
+            <aside
+              role="status"
+              aria-busy="true"
+              aria-live="polite"
+              className="hidden lg:flex lg:w-[320px] xl:w-[360px] shrink-0 p-4 bg-[var(--bg-card)] text-[var(--ink-muted)] border-l-[length:var(--border-width)] border-[var(--border-color)] font-mono-tech text-[11px] uppercase tracking-wider"
+            >
+              {t.t('app.loadingWorkspace')}
+            </aside>
           }
-          onClearLogs={() => {
-            setRerollArmedLogId(null);
-            rerollPreDamageRef.current = null;
-            setSheet((prev) => ({ ...prev, rollLogs: [] }));
-          }}
-        />
+        >
+          <RollLogSidebar
+            logs={sheet.rollLogs}
+            sheet={sheet}
+            systemId={activeSystemId}
+            rulePreset={rulePreset}
+            systemName={sheet.systemName}
+            language={language}
+            woundPenalty={woundPenalty}
+            isWillpowerImpaired={isWillpowerImpaired}
+            bloodPotency={bloodPotency}
+            bloodSurge={bloodSurge}
+            bloodSurgeBonus={bloodSurgeBonus}
+            currentWillpower={currentWillpower}
+            currentHunger={Math.max(0, Math.min(5, Math.round(evaluation.variables.hunger ?? 0)))}
+            t={t.sidebar}
+            rerollArmedLogId={rerollArmedLogId}
+            canWillpowerReroll={canV5WillpowerReroll || Boolean(rerollArmedLogId)}
+            onArmWillpowerReroll={handleArmWillpowerReroll}
+            onWillpowerReroll={handleConfirmWillpowerReroll}
+            onCancelReroll={() => {
+              if (rerollArmedLogId) {
+                const snapshot = rerollPreDamageRef.current;
+                setSheet((prev) => {
+                  if (!snapshot) {
+                    return adjustV5WillpowerDamage(prev, 'superficial', -1);
+                  }
+                  return {
+                    ...prev,
+                    cards: prev.cards.map((card) => ({
+                      ...card,
+                      fields: card.fields.map((f) =>
+                        (f.id === 'f_willpower' || f.key === 'willpower') && f.kind === 'resource'
+                          ? {
+                              ...f,
+                              value: snapshot.value,
+                              superficialDamage: snapshot.superficial,
+                              aggravatedDamage: snapshot.aggravated,
+                            }
+                          : f,
+                      ),
+                    })),
+                  };
+                });
+              }
+              rerollPreDamageRef.current = null;
+              setRerollArmedLogId(null);
+              setFlashMessage(null);
+            }}
+            onRollComposedPool={handleComposedPoolRoll}
+            requestedTab={mobileSidebarTab}
+            requestedTabSeq={mobileSidebarTabSeq}
+            isMobileOpen={mobileSidebarOpen}
+            onCloseMobile={() => setMobileSidebarOpen(false)}
+            onQuickRoll={(expr) =>
+              appendRollLog(t.t('app.quickRollLabel', { expr: expr.toUpperCase() }), expr)
+            }
+            onClearLogs={() => {
+              setRerollArmedLogId(null);
+              rerollPreDamageRef.current = null;
+              setSheet((prev) => ({ ...prev, rollLogs: [] }));
+            }}
+          />
+        </Suspense>
       </div>
 
       <div className="no-print print:hidden relative shrink-0 mobile-bottom-dock bg-[var(--bg-card)] border-t-[length:var(--border-width)] border-[var(--border-color)] lg:border-t-0 lg:bg-transparent">
@@ -2863,11 +2903,13 @@ function HydratedAppWorkspace({
               mobileRollToast.rolls &&
               mobileRollToast.rolls.length > 0 && (
                 <div className="border-t border-[var(--border-subtle)] pt-1.5">
-                  <RollDiceChips
-                    entry={mobileRollToast}
-                    t={t.sidebar}
-                    testIdPrefix="mobile-toast"
-                  />
+                  <Suspense fallback={null}>
+                    <RollDiceChips
+                      entry={mobileRollToast}
+                      t={t.sidebar}
+                      testIdPrefix="mobile-toast"
+                    />
+                  </Suspense>
                 </div>
               )}
 

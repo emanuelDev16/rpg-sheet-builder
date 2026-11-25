@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Flame, Minus, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   FrenzyKind,
@@ -60,13 +60,33 @@ import {
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
-import { WodStructuredBlocks } from './WodStructuredBlocks';
-import { Dnd5eAbilitiesSkills } from './dnd5e/Dnd5eAbilitiesSkills';
-import { Dnd5eCombatPanel } from './dnd5e/Dnd5eCombatPanel';
-import { Dnd5eSpellSlotsPanel } from './dnd5e/Dnd5eSpellSlotsPanel';
 import { isFullWidthBentoCard } from '../utils/bentoLayout';
 import { getSystemAdapter } from '../core/systems/registry';
 import type { SystemAdapter } from '../core/systems/types';
+
+const WodStructuredBlocks = React.lazy(() =>
+  import('./WodStructuredBlocks').then((m) => ({ default: m.WodStructuredBlocks })),
+);
+const Dnd5eAbilitiesSkills = React.lazy(() =>
+  import('./dnd5e/Dnd5eAbilitiesSkills').then((m) => ({ default: m.Dnd5eAbilitiesSkills })),
+);
+const Dnd5eCombatPanel = React.lazy(() =>
+  import('./dnd5e/Dnd5eCombatPanel').then((m) => ({ default: m.Dnd5eCombatPanel })),
+);
+const Dnd5eSpellSlotsPanel = React.lazy(() =>
+  import('./dnd5e/Dnd5eSpellSlotsPanel').then((m) => ({ default: m.Dnd5eSpellSlotsPanel })),
+);
+
+const LazyCardPanelFallback: React.FC<{ label: string }> = ({ label }) => (
+  <div
+    role="status"
+    aria-busy="true"
+    aria-live="polite"
+    className="p-3 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-subtle)] rounded-[var(--radius-card)] font-mono-tech text-[11px] uppercase tracking-wider"
+  >
+    {label}
+  </div>
+);
 
 type Dnd5ePanelRenderer = (ctx: Dnd5eCardContext, t: AppTranslations['cards']) => React.ReactNode;
 
@@ -1263,25 +1283,27 @@ export const BentoCard: React.FC<BentoCardProps> = ({
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
         {isWodDossierCard && officialEdition && (
-          <WodStructuredBlocks
-            edition={officialEdition}
-            cardTitle={displayCardTitle}
-            cardCode={displayCardCode}
-            searchQuery={searchQuery}
-            touchstones={touchstones}
-            meritsFlaws={meritsFlaws}
-            havens={havens}
-            t={t}
-            onAddTouchstone={onAddTouchstone}
-            onUpdateTouchstone={onUpdateTouchstone}
-            onRemoveTouchstone={onRemoveTouchstone}
-            onAddMeritFlaw={onAddMeritFlaw}
-            onUpdateMeritFlaw={onUpdateMeritFlaw}
-            onRemoveMeritFlaw={onRemoveMeritFlaw}
-            onAddHaven={onAddHaven}
-            onUpdateHaven={onUpdateHaven}
-            onRemoveHaven={onRemoveHaven}
-          />
+          <Suspense fallback={<LazyCardPanelFallback label={t.t('app.loadingWorkspace')} />}>
+            <WodStructuredBlocks
+              edition={officialEdition}
+              cardTitle={displayCardTitle}
+              cardCode={displayCardCode}
+              searchQuery={searchQuery}
+              touchstones={touchstones}
+              meritsFlaws={meritsFlaws}
+              havens={havens}
+              t={t}
+              onAddTouchstone={onAddTouchstone}
+              onUpdateTouchstone={onUpdateTouchstone}
+              onRemoveTouchstone={onRemoveTouchstone}
+              onAddMeritFlaw={onAddMeritFlaw}
+              onUpdateMeritFlaw={onUpdateMeritFlaw}
+              onRemoveMeritFlaw={onRemoveMeritFlaw}
+              onAddHaven={onAddHaven}
+              onUpdateHaven={onUpdateHaven}
+              onRemoveHaven={onRemoveHaven}
+            />
+          </Suspense>
         )}
 
         {fieldsToRender.length === 0 && !isWodDossierCard && !isDnd5eInteractive && (
@@ -1306,7 +1328,11 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           </div>
         )}
 
-        {dnd5ePanel && dnd5eContext && dnd5ePanel(dnd5eContext, t)}
+        {dnd5ePanel && dnd5eContext && (
+          <Suspense fallback={<LazyCardPanelFallback label={t.t('app.loadingWorkspace')} />}>
+            {dnd5ePanel(dnd5eContext, t)}
+          </Suspense>
+        )}
 
         {wodAttributeGroups ? (
           <>
