@@ -1,4 +1,6 @@
 import { describe, expect, it } from 'vitest';
+import { readFileSync } from 'node:fs';
+import { resolve } from 'node:path';
 import {
   evaluateFormula,
   MAX_DICE_COUNT,
@@ -222,6 +224,38 @@ describe('Workstream 2 — Web Security Hardening Suite', () => {
       );
       expect(embeddedScriptMatch).not.toBeNull();
       expect(() => JSON.parse(embeddedScriptMatch![1])).not.toThrow();
+
+      // Page 2 extra custom card XSS payloads must also be escaped across multi-page A4 output
+      const withExtraXssCard: CharacterSheetState = {
+        ...tainted,
+        cards: [
+          ...tainted.cards,
+          {
+            id: 'card_p2_xss',
+            tab: 'xp',
+            code: `//${payloads[1]}`,
+            title: payloads[0],
+            colSpan: 1,
+            fields: [
+              { id: 'f_p2_xss', key: 'p2_xss', label: payloads[2], kind: 'text', value: payloads[3] },
+            ],
+          },
+        ],
+      };
+      const multiPageHtml = generateSingleFilePureHtml(withExtraXssCard, 'pt-BR');
+      expect(multiPageHtml).toContain('data-paper-page="1"');
+      expect(multiPageHtml).toContain('data-paper-page="2"');
+      expect(multiPageHtml).not.toContain('<script>alert(');
+      expect(multiPageHtml).not.toContain('<img src=x onerror=alert(2)>');
+      expect(multiPageHtml).not.toContain('<svg/onload=alert(3)>');
+    });
+
+    it('keeps PaperSheetPrintView.tsx free of dangerouslySetInnerHTML', () => {
+      const src = readFileSync(
+        resolve(process.cwd(), 'src/components/PaperSheetPrintView.tsx'),
+        'utf8',
+      );
+      expect(src).not.toContain('dangerouslySetInnerHTML');
     });
   });
 

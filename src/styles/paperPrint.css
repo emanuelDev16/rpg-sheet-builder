@@ -1,0 +1,696 @@
+/* ============================================================================
+   GRIDSHEET — PAPER A4 MULTI-PAGE EDITORIAL PRINT ENGINE
+   Isolado da UI de tela; ativo apenas em @media print.
+   ============================================================================ */
+
+.paper-print-root {
+  display: none;
+}
+
+@page {
+  size: A4 portrait;
+  margin: 8mm;
+}
+
+@media print {
+  * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  html,
+  body,
+  #root {
+    height: auto !important;
+    min-height: 0 !important;
+    overflow: visible !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: #ffffff !important;
+    color: #0b0b0b !important;
+    color-scheme: light !important;
+  }
+
+  .app-screen-root,
+  .no-print {
+    display: none !important;
+  }
+
+  .paper-print-root {
+    display: block !important;
+    background: #ffffff !important;
+    color: #0b0b0b !important;
+    width: 100% !important;
+  }
+
+  .paper-page {
+    position: relative;
+    width: 100%;
+    box-sizing: border-box;
+    background: #ffffff !important;
+    color: #0b0b0b !important;
+    box-shadow: none !important;
+    padding: 4.5mm 5mm;
+    font-family: 'DM Sans', 'Segoe UI', Arial, sans-serif;
+    font-size: 8.4pt;
+    line-height: 1.24;
+    break-after: page;
+    page-break-after: always;
+  }
+
+  .paper-page:last-child {
+    break-after: auto;
+    page-break-after: auto;
+  }
+
+  /* --- System Editorial Frames --- */
+  .paper-layout--wod-v5,
+  .paper-layout--wod-v20 {
+    border: 2px solid #5b0f18;
+    outline: 1px solid #0b0b0b;
+    outline-offset: -4px;
+    clip-path: polygon(
+      7px 0,
+      calc(100% - 7px) 0,
+      100% 7px,
+      100% calc(100% - 7px),
+      calc(100% - 7px) 100%,
+      7px 100%,
+      0 calc(100% - 7px),
+      0 7px
+    );
+  }
+
+  .paper-layout--dnd5e {
+    border: 1.5px solid #0b0b0b;
+    background-image:
+      linear-gradient(#0b0b0b, #0b0b0b),
+      linear-gradient(#0b0b0b, #0b0b0b),
+      linear-gradient(#0b0b0b, #0b0b0b),
+      linear-gradient(#0b0b0b, #0b0b0b);
+    background-size: 10px 2px, 2px 10px, 10px 2px, 2px 10px;
+    background-position: top left, top left, bottom right, bottom right;
+    background-repeat: no-repeat;
+  }
+
+  .paper-layout--generic {
+    border: 1.5px solid #0b0b0b;
+  }
+
+  /* --- Atomic Break Guards --- */
+  .paper-block,
+  .paper-card,
+  .paper-structured-item,
+  .paper-disc-box,
+  .paper-ability-medallion,
+  .paper-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+
+  /* --- Page Header & Footer --- */
+  .paper-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-end;
+    gap: 8px;
+    padding-bottom: 4px;
+    margin-bottom: 6px;
+    border-bottom: 1.5px solid #0b0b0b;
+  }
+
+  .paper-layout--wod-v5 .paper-header,
+  .paper-layout--wod-v20 .paper-header {
+    border-bottom-color: #5b0f18;
+  }
+
+  .paper-title {
+    font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+    font-size: 14pt;
+    font-weight: 800;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    line-height: 1.05;
+  }
+
+  .paper-subtitle {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 7.2pt;
+    font-weight: 700;
+    color: #5b0f18;
+    text-transform: uppercase;
+  }
+
+  .paper-layout--dnd5e .paper-subtitle,
+  .paper-layout--generic .paper-subtitle {
+    color: #0b0b0b;
+  }
+
+  .paper-page-num {
+    font-family: 'JetBrains Mono', 'Consolas', monospace;
+    font-size: 7pt;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .paper-wod-ornament {
+    display: block;
+    width: 140px;
+    height: 10px;
+    margin: 2px auto 4px;
+    color: #5b0f18;
+  }
+
+  /* --- Section Rules (━━ SECTION ━━) --- */
+  .paper-sec-rule {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    margin: 6px 0 4px;
+    font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif;
+    font-size: 9.5pt;
+    font-weight: 800;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #5b0f18;
+  }
+
+  .paper-sec-rule::before,
+  .paper-sec-rule::after {
+    content: '';
+    flex: 1;
+    height: 1px;
+    background: #5b0f18;
+  }
+
+  .paper-layout--dnd5e .paper-sec-rule,
+  .paper-layout--generic .paper-sec-rule {
+    color: #0b0b0b;
+  }
+
+  .paper-layout--dnd5e .paper-sec-rule::before,
+  .paper-layout--dnd5e .paper-sec-rule::after,
+  .paper-layout--generic .paper-sec-rule::before,
+  .paper-layout--generic .paper-sec-rule::after {
+    background: #0b0b0b;
+  }
+
+  /* --- WoD 3x3 Identity & Grids --- */
+  .paper-id-grid-3x3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px 10px;
+    margin-bottom: 5px;
+  }
+
+  .paper-id-cell {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 6px;
+    border-bottom: 1px solid #999999;
+    padding: 1.5px 2px;
+    min-width: 0;
+  }
+
+  .paper-id-k {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.7pt;
+    font-weight: 700;
+    color: #3d332d;
+    text-transform: uppercase;
+    white-space: nowrap;
+  }
+
+  .paper-id-v {
+    font-size: 8pt;
+    font-weight: 600;
+    color: #0b0b0b;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .wod-attr-grid-3x3,
+  .paper-cols-3 {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 6px 10px;
+  }
+
+  .paper-cols-2 {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 6px 10px;
+    align-items: start;
+  }
+
+  .paper-v5-bottom {
+    display: grid;
+    grid-template-columns: 1.15fr 0.95fr;
+    gap: 8px 12px;
+    align-items: start;
+  }
+
+  .paper-col-box {
+    border: 1px solid #d4ccc4;
+    padding: 4px 6px;
+    background: #ffffff;
+  }
+
+  .paper-col-head {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.2pt;
+    font-weight: 800;
+    color: #5b0f18;
+    text-transform: uppercase;
+    border-bottom: 1px solid #5b0f18;
+    margin-bottom: 3px;
+    padding-bottom: 1px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+  }
+
+  .paper-dot-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 4px;
+    padding: 1px 0;
+    font-size: 7.8pt;
+  }
+
+  .paper-dot-label-wrap {
+    display: flex;
+    align-items: baseline;
+    gap: 4px;
+    min-width: 0;
+    flex: 1;
+  }
+
+  .paper-dot-label {
+    font-weight: 600;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .paper-specialty {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.5pt;
+    color: #5b0f18;
+    font-style: italic;
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+  }
+
+  .paper-dots {
+    display: inline-flex;
+    align-items: center;
+    gap: 1.5px;
+    flex-shrink: 0;
+    font-size: 8.5pt;
+    line-height: 1;
+  }
+
+  .paper-dot.filled {
+    color: #5b0f18;
+  }
+
+  .paper-dot.empty {
+    color: #888888;
+  }
+
+  .paper-layout--dnd5e .paper-dot.filled,
+  .paper-layout--generic .paper-dot.filled {
+    color: #0b0b0b;
+  }
+
+  /* --- Tracks & Boxes --- */
+  .paper-track-block {
+    border: 1px solid #0b0b0b;
+    padding: 3.5px 5px;
+    margin-bottom: 4px;
+    background: #ffffff;
+  }
+
+  .paper-track-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    gap: 4px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7pt;
+    font-weight: 700;
+    margin-bottom: 2.5px;
+  }
+
+  .paper-badge {
+    display: inline-block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.4pt;
+    font-weight: 800;
+    padding: 0.5px 4px;
+    border: 1px solid #5b0f18;
+    color: #5b0f18;
+    background: #f6eeee;
+    text-transform: uppercase;
+  }
+
+  .paper-boxes-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2.5px;
+  }
+
+  .paper-box {
+    width: 13px;
+    height: 13px;
+    border: 1.25px solid #0b0b0b;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.5pt;
+    font-weight: 800;
+    background: #ffffff;
+    color: #0b0b0b;
+  }
+
+  .paper-box--filled,
+  .paper-box--aggravated {
+    background: #0b0b0b !important;
+    color: #ffffff !important;
+  }
+
+  .paper-box--lethal {
+    background: #5b0f18 !important;
+    color: #ffffff !important;
+    border-color: #5b0f18 !important;
+  }
+
+  .paper-box--superficial,
+  .paper-box--bashing,
+  .paper-box--stain {
+    background: #f0e8e8 !important;
+    color: #5b0f18 !important;
+    border-style: dashed;
+  }
+
+  .paper-box--filled-stain {
+    background: #3d332d !important;
+    color: #ffffff !important;
+  }
+
+  .paper-cont-track {
+    position: relative;
+    height: 9px;
+    border: 1.25px solid #0b0b0b;
+    background: #f5f5f5;
+    overflow: hidden;
+  }
+
+  .paper-cont-fill {
+    height: 100%;
+    background: #5b0f18 !important;
+  }
+
+  .paper-cont-track .tick {
+    position: absolute;
+    top: 0;
+    bottom: 0;
+    width: 1px;
+    background: rgba(11, 11, 11, 0.45);
+    pointer-events: none;
+  }
+
+  .paper-cont-track .t25 { left: 25%; }
+  .paper-cont-track .t50 { left: 50%; }
+  .paper-cont-track .t75 { left: 75%; }
+
+  .paper-legend {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.2pt;
+    color: #444444;
+    margin-top: 2px;
+  }
+
+  /* --- Disciplines & Blood Potency --- */
+  .paper-disc-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 5px;
+  }
+
+  .paper-disc-box {
+    border: 1px solid #0b0b0b;
+    padding: 3.5px 5px;
+  }
+
+  .paper-disc-slot {
+    display: flex;
+    justify-content: space-between;
+    gap: 4px;
+    font-size: 7pt;
+    border-bottom: 1px dotted #cccccc;
+    padding: 1px 0;
+  }
+
+  .paper-disc-cost {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.4pt;
+    color: #5b0f18;
+    font-weight: 700;
+    white-space: nowrap;
+  }
+
+  .paper-bp-grid {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 3px;
+    margin-top: 3px;
+  }
+
+  .paper-bp-cell {
+    border: 1px solid #cccccc;
+    padding: 2px 3.5px;
+  }
+
+  .paper-bp-k {
+    display: block;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6pt;
+    color: #444444;
+  }
+
+  .paper-bp-v {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.2pt;
+    font-weight: 800;
+  }
+
+  /* --- V20 Health Table --- */
+  .paper-health-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 7.2pt;
+  }
+
+  .paper-health-table td {
+    padding: 1.5px 2px;
+    border-bottom: 1px dotted #cccccc;
+  }
+
+  /* --- D&D 5e Editorial --- */
+  .paper-dnd-banner {
+    display: grid;
+    grid-template-columns: 1.8fr repeat(4, minmax(0, 1fr));
+    gap: 6px;
+    border: 1.5px solid #0b0b0b;
+    padding: 4px 6px;
+    margin-bottom: 6px;
+    background: #f8f8f8 !important;
+  }
+
+  .paper-dnd-grid {
+    display: grid;
+    grid-template-columns: 1.08fr 1fr 1fr;
+    gap: 8px;
+    align-items: start;
+  }
+
+  .paper-ability-medallion {
+    border: 1.25px solid #0b0b0b;
+    padding: 3px 5px;
+    margin-bottom: 3.5px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  .paper-ability-mod {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 13pt;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .paper-ability-score {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7pt;
+    border: 1px solid #0b0b0b;
+    padding: 0 4px;
+  }
+
+  .paper-ac-wrap {
+    position: relative;
+    width: 54px;
+    height: 60px;
+    margin: 0 auto 4px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .paper-ac-shield {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    color: #0b0b0b;
+  }
+
+  .paper-ac-val {
+    position: relative;
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 15pt;
+    font-weight: 800;
+    line-height: 1;
+  }
+
+  .paper-ac-lbl {
+    position: relative;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6pt;
+    font-weight: 800;
+  }
+
+  .paper-death-circle {
+    display: inline-block;
+    width: 9px;
+    height: 9px;
+    border: 1.2px solid #0b0b0b;
+    border-radius: 50%;
+    margin-left: 2px;
+  }
+
+  .paper-currency-grid {
+    display: grid;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    gap: 3px;
+  }
+
+  .paper-currency-cell {
+    border: 1px solid #0b0b0b;
+    padding: 2px;
+    text-align: center;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.8pt;
+  }
+
+  /* --- Structured Cards, Tables & Generic Grid --- */
+  .paper-generic-grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 7px;
+    align-items: start;
+  }
+
+  .paper-card {
+    border: 1.25px solid #0b0b0b;
+    padding: 5px 6px;
+    margin-bottom: 5px;
+    background: #ffffff;
+  }
+
+  .paper-card.span-2 {
+    grid-column: span 2;
+  }
+
+  .paper-card-head {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    gap: 6px;
+    border-bottom: 1px solid #0b0b0b;
+    padding-bottom: 2px;
+    margin-bottom: 4px;
+  }
+
+  .paper-card-tag {
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 6.8pt;
+    font-weight: 700;
+    color: #5b0f18;
+  }
+
+  .paper-layout--generic .paper-card-tag,
+  .paper-layout--dnd5e .paper-card-tag {
+    color: #0b0b0b;
+  }
+
+  .paper-card-title {
+    font-family: 'Barlow Condensed', sans-serif;
+    font-size: 10pt;
+    font-weight: 800;
+    text-transform: uppercase;
+  }
+
+  .paper-structured-item {
+    border: 1px solid #bbbbbb;
+    padding: 3px 5px;
+    margin-bottom: 3px;
+  }
+
+  .paper-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7pt;
+  }
+
+  .paper-table th,
+  .paper-table td {
+    border-bottom: 1px solid #cccccc;
+    padding: 2px 3px;
+    text-align: left;
+  }
+
+  .paper-table th {
+    border-bottom: 1.2px solid #0b0b0b;
+    font-size: 6.6pt;
+  }
+
+  .paper-note-box {
+    border: 1px solid #999999;
+    padding: 4px 6px;
+    font-size: 7.8pt;
+    white-space: pre-wrap;
+    margin-bottom: 4px;
+  }
+
+  .paper-xp-row {
+    display: flex;
+    gap: 10px;
+    font-family: 'JetBrains Mono', monospace;
+    font-size: 7.4pt;
+    font-weight: 700;
+    padding: 3px 5px;
+    border: 1px solid #0b0b0b;
+    background: #f6f6f6 !important;
+    margin-bottom: 4px;
+  }
+}
