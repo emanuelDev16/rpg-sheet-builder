@@ -130,7 +130,6 @@ import { RollDiceChips, RollLogSidebar } from './components/RollLogSidebar';
 import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
 import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
-import { PrintSheetHeader } from './components/PrintSheetHeader';
 import { HomeSheetItem, HomeSystemItem, HomeView } from './components/HomeView';
 import { RulesSearchPanel } from './components/RulesSearchPanel';
 import {
@@ -2317,17 +2316,8 @@ function HydratedAppWorkspace({
       ) : (
         <>
           <div className="flex-1 flex flex-col lg:flex-row min-h-0">
-            <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 print:p-0 overflow-y-auto print:overflow-visible min-h-0">
+            <main className="print-main cyber-grid-canvas flex-1 p-3 sm:p-6 overflow-y-auto min-h-0">
               <div className="max-w-[1140px] mx-auto">
-            <PrintSheetHeader
-              sheet={sheet}
-              systemId={activeSystemId}
-              activeTab={activeTab}
-              language={language}
-              availableXp={availableXp}
-              totalCargoWeight={evaluation.totalCargoWeight}
-            />
-
             <TabNav
               activeTab={activeTab}
               systemId={activeSystemId}

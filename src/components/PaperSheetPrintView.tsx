@@ -8,6 +8,7 @@ import {
   type PaperFieldItem,
   type PaperSheetModel,
   type PaperTrack,
+  type PaperTrackBox,
   type PaperWodV20Model,
   type PaperWodV5Model,
   type PaperXpSummary,
@@ -32,13 +33,36 @@ function isSafeHttpUrl(raw?: string): string {
 function PaperDots({ value, max }: { value: number; max: 5 | 10 }) {
   const clamped = Math.max(0, Math.min(max, Math.round(value)));
   return (
-    <span className="paper-dots" aria-label={`${clamped} / ${max}`}>
+    <span className={`paper-dots${max === 10 ? ' is-ten' : ''}`} aria-label={`${clamped} / ${max}`}>
       {Array.from({ length: max }, (_, idx) => (
-        <span key={idx} className={`paper-dot ${idx < clamped ? 'filled' : 'empty'}`}>
+        <span
+          key={idx}
+          className={`paper-dot ${idx < clamped ? 'filled' : 'empty'}${max === 10 && idx === 5 ? ' is-gap' : ''}`}
+        >
           {idx < clamped ? '●' : '○'}
         </span>
       ))}
     </span>
+  );
+}
+
+function GroupedBoxes({ boxes }: { boxes: PaperTrackBox[] }) {
+  const groups: PaperTrackBox[][] = [];
+  for (let i = 0; i < boxes.length; i += 5) {
+    groups.push(boxes.slice(i, i + 5));
+  }
+  return (
+    <div className="paper-boxes-row">
+      {groups.map((grp, gIdx) => (
+        <span key={gIdx} className="paper-box-group">
+          {grp.map((box, idx) => (
+            <span key={idx} className={`paper-box paper-box--${box.kind}`} title={box.title}>
+              {box.symbol}
+            </span>
+          ))}
+        </span>
+      ))}
+    </div>
   );
 }
 
@@ -60,13 +84,7 @@ function PaperTrackView({ track }: { track: PaperTrack }) {
           <span className="tick t75" />
         </div>
       ) : (
-        <div className="paper-boxes-row">
-          {track.boxes.map((box, idx) => (
-            <span key={idx} className={`paper-box paper-box--${box.kind}`} title={box.title}>
-              {box.symbol}
-            </span>
-          ))}
-        </div>
+        <GroupedBoxes boxes={track.boxes} />
       )}
       {track.legend ? <div className="paper-legend">{track.legend}</div> : null}
     </div>
@@ -113,14 +131,14 @@ function PaperFieldView({ field }: { field: PaperFieldItem }) {
   }
   const safeUrl = isSafeHttpUrl(field.rawUrl);
   return (
-    <div className="paper-dot-row">
+    <div className="paper-field-line">
       <span className="paper-dot-label">{field.label}</span>
-      <span>
+      <span className="paper-field-val">
         {field.value}
         {safeUrl ? (
           <>
             {' '}
-            <a href={safeUrl} rel="noopener noreferrer">
+            <a className="paper-link" href={safeUrl} rel="noopener noreferrer">
               ↗
             </a>
           </>
@@ -134,7 +152,7 @@ function PaperExtraCardView({ card }: { card: PaperExtraCard }) {
   return (
     <section className={`paper-card ${card.colSpan === 2 ? 'span-2' : ''}`}>
       <header className="paper-card-head">
-        <span className="paper-card-tag">{card.code}</span>
+        {card.code ? <span className="paper-card-tag">{card.code}</span> : null}
         <h3 className="paper-card-title">{card.title}</h3>
       </header>
       <div>
@@ -185,12 +203,23 @@ function PaperXpSection({
 
 function WodOrnamentDivider() {
   return (
-    <svg className="paper-wod-ornament" viewBox="0 0 180 12" aria-hidden="true">
-      <line x1="0" y1="6" x2="72" y2="6" stroke="currentColor" strokeWidth="1" />
-      <polygon points="90,1 96,6 90,11 84,6" fill="currentColor" />
-      <circle cx="77" cy="6" r="1.6" fill="currentColor" />
-      <circle cx="103" cy="6" r="1.6" fill="currentColor" />
-      <line x1="108" y1="6" x2="180" y2="6" stroke="currentColor" strokeWidth="1" />
+    <svg className="paper-wod-ornament" viewBox="0 0 220 12" aria-hidden="true">
+      <line x1="0" y1="6" x2="88" y2="6" stroke="currentColor" strokeWidth="0.9" />
+      <path d="M96 6 L110 1.5 L124 6 L110 10.5 Z" fill="none" stroke="currentColor" strokeWidth="1" />
+      <circle cx="110" cy="6" r="2" fill="currentColor" />
+      <circle cx="91" cy="6" r="1.4" fill="currentColor" />
+      <circle cx="129" cy="6" r="1.4" fill="currentColor" />
+      <line x1="132" y1="6" x2="220" y2="6" stroke="currentColor" strokeWidth="0.9" />
+    </svg>
+  );
+}
+
+function DndOrnamentDivider() {
+  return (
+    <svg className="paper-dnd-ornament" viewBox="0 0 220 10" aria-hidden="true">
+      <line x1="0" y1="5" x2="96" y2="5" stroke="currentColor" strokeWidth="1" />
+      <polygon points="110,1 116,5 110,9 104,5" fill="none" stroke="currentColor" strokeWidth="1" />
+      <line x1="124" y1="5" x2="220" y2="5" stroke="currentColor" strokeWidth="1" />
     </svg>
   );
 }
@@ -201,9 +230,15 @@ function DndAcShield({ value, label }: { value: string; label: string }) {
       <svg className="paper-ac-shield" viewBox="0 0 48 54" aria-hidden="true">
         <path
           d="M24 2 L44 9 V25 C44 38 35 47 24 52 C13 47 4 38 4 25 V9 Z"
-          fill="none"
+          fill="#FFF"
           stroke="currentColor"
           strokeWidth="2"
+        />
+        <path
+          d="M24 5.5 L40 11.2 V24.5 C40 35.5 32.5 43.2 24 47.6 C15.5 43.2 8 35.5 8 24.5 V11.2 Z"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="0.8"
         />
       </svg>
       <span className="paper-ac-val">{value}</span>
@@ -212,14 +247,24 @@ function DndAcShield({ value, label }: { value: string; label: string }) {
   );
 }
 
-function PaperDotList({ items }: { items: PaperDotRow[] }) {
+function PaperDotList({
+  items,
+  showRuledSpecialty = false,
+}: {
+  items: PaperDotRow[];
+  showRuledSpecialty?: boolean;
+}) {
   return (
     <div>
       {items.map((item) => (
         <div key={item.id} className="paper-dot-row">
           <span className="paper-dot-label-wrap">
-            <span className="paper-dot-label">{item.label}</span>
-            {item.specialty ? <span className="paper-specialty">({item.specialty})</span> : null}
+            <span className="paper-dot-label">{item.label || '________________'}</span>
+            {showRuledSpecialty ? (
+              <span className="paper-specialty-line">{item.specialty ?? ''}</span>
+            ) : item.specialty ? (
+              <span className="paper-specialty">({item.specialty})</span>
+            ) : null}
           </span>
           <PaperDots value={item.value} max={item.max} />
         </div>
@@ -237,9 +282,9 @@ function PaperPageHeader({
 }) {
   return (
     <header className="paper-header">
-      <div>
-        <div className="paper-subtitle">{model.systemName}</div>
-        <div className="paper-title">{model.characterName}</div>
+      <div className="paper-header-main">
+        <div className="paper-editorial-title">{model.sheetTitle}</div>
+        <div className="paper-editorial-sub">{model.sheetSubtitle}</div>
       </div>
       <div className="paper-page-num">
         {model.labels.pageLabel} {pageNumber} / {model.pageCount}
@@ -253,22 +298,22 @@ function WodV5Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV5M
   const { labels } = model;
   return (
     <>
-      <article className="paper-page paper-layout--wod-v5" data-paper-page="1">
+      <article className="paper-page paper-layout--wod-v5 paper-page-v5-front" data-paper-page="1">
         <PaperPageHeader model={model} pageNumber={1} />
         <WodOrnamentDivider />
         <div className="paper-id-grid-3x3">
           {page1.header3x3.map((cell) => (
             <div key={cell.key} className="paper-id-cell">
-              <span className="paper-id-k">{cell.label}</span>
-              <span className="paper-id-v">{cell.value || labels.emptyNone}</span>
+              <span className="paper-id-k">{cell.label}:</span>
+              <span className="paper-id-v">{cell.value}</span>
             </div>
           ))}
         </div>
 
         <div className="paper-sec-rule">{labels.attributes}</div>
-        <div className="wod-attr-grid-3x3">
+        <div className="wod-attr-grid-3x3 paper-divided-3">
           {page1.attributes3x3.map((grp) => (
-            <div key={grp.id} className="paper-col-box paper-block">
+            <div key={grp.id} className="paper-col-box paper-col-divided paper-block">
               <div className="paper-col-head">{grp.title}</div>
               <PaperDotList items={grp.items} />
             </div>
@@ -276,56 +321,60 @@ function WodV5Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV5M
         </div>
 
         <div className="paper-sec-rule">{labels.skills}</div>
-        <div className="paper-cols-3">
+        <div className="paper-cols-3 paper-divided-3">
           {page1.skills3Col.map((grp) => (
-            <div key={grp.id} className="paper-col-box paper-block">
+            <div key={grp.id} className="paper-col-box paper-col-divided paper-block">
               <div className="paper-col-head">{grp.title}</div>
-              <PaperDotList items={grp.items} />
+              <PaperDotList items={grp.items} showRuledSpecialty />
             </div>
           ))}
         </div>
 
-        <div className="paper-cols-3" style={{ marginTop: '5px' }}>
+        <div className="paper-cols-3 paper-v5-strip" style={{ marginTop: '4px' }}>
+          <div className="paper-col-box paper-block">
+            <div className="paper-col-head">{labels.chronicleTenets}</div>
+            {page1.middleStrip3Col.chronicleTenets.map((line, idx) => (
+              <div key={idx} className="paper-ruled-line">
+                {line}
+              </div>
+            ))}
+          </div>
           <div className="paper-col-box paper-block">
             <div className="paper-col-head">{labels.convictionsSummary}</div>
-            {page1.middleStrip3Col.convictionsSummary.length > 0 ? (
-              page1.middleStrip3Col.convictionsSummary.map((ts) => (
-                <div key={ts.id} className="paper-dot-row">
-                  <span>{ts.conviction}</span>
-                  <span className="paper-specialty">{ts.touchstone}</span>
-                </div>
-              ))
-            ) : (
-              <span>{labels.emptyNone}</span>
-            )}
+            {page1.middleStrip3Col.convictionsSummary.map((ts) => (
+              <div key={ts.id} className="paper-ruled-pair">
+                <span>{ts.conviction}</span>
+                <span className="paper-specialty">{ts.touchstone}</span>
+              </div>
+            ))}
           </div>
           <div className="paper-col-box paper-block">
             <div className="paper-col-head">
               <span>{page1.middleStrip3Col.bane.label}</span>
               <span className="paper-badge">{page1.middleStrip3Col.bane.severityBadge}</span>
             </div>
-            <div>{page1.middleStrip3Col.bane.value || labels.emptyNone}</div>
-          </div>
-          <div className="paper-col-box paper-block">
-            <div className="paper-col-head">{page1.middleStrip3Col.compulsion.label}</div>
-            <div>{page1.middleStrip3Col.compulsion.value || labels.emptyNone}</div>
+            <div className="paper-ruled-text">{page1.middleStrip3Col.bane.value}</div>
+            <div className="paper-col-head" style={{ marginTop: '3px' }}>
+              {page1.middleStrip3Col.compulsion.label}
+            </div>
+            <div className="paper-ruled-text">{page1.middleStrip3Col.compulsion.value}</div>
           </div>
         </div>
 
-        <div className="paper-v5-bottom" style={{ marginTop: '5px' }}>
+        <div className="paper-v5-bottom" style={{ marginTop: '4px' }}>
           <div>
             <div className="paper-sec-rule">{labels.disciplines}</div>
             <div className="paper-disc-grid">
               {page1.disciplines.map((disc) => (
                 <div key={disc.id} className="paper-disc-box">
                   <div className="paper-col-head">
-                    <span>{disc.label}</span>
+                    <span className="paper-disc-name">{disc.label || '________________'}</span>
                     <PaperDots value={disc.value} max={5} />
                   </div>
                   {disc.slots.map((slot) => (
                     <div key={slot.level} className="paper-disc-slot">
-                      <span>
-                        {slot.level}. {slot.name || '—'}
+                      <span className="paper-disc-slot-name">
+                        {slot.level}. {slot.name}
                       </span>
                       {slot.cost ? <span className="paper-disc-cost">{slot.cost}</span> : null}
                     </div>
@@ -336,7 +385,6 @@ function WodV5Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV5M
           </div>
 
           <div>
-            <div className="paper-sec-rule">{labels.health}</div>
             <PaperTrackView track={page1.vitalColumn.health} />
             <PaperTrackView track={page1.vitalColumn.willpower} />
             <PaperTrackView track={page1.vitalColumn.humanity} />
@@ -345,13 +393,7 @@ function WodV5Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV5M
                 <span>{page1.vitalColumn.hunger.label}</span>
                 <span>{page1.vitalColumn.hunger.value} / 5</span>
               </div>
-              <div className="paper-boxes-row">
-                {page1.vitalColumn.hunger.boxes.map((box, idx) => (
-                  <span key={idx} className={`paper-box paper-box--${box.kind}`}>
-                    {box.symbol}
-                  </span>
-                ))}
-              </div>
+              <GroupedBoxes boxes={page1.vitalColumn.hunger.boxes} />
             </div>
             <div className="paper-track-block paper-block" data-testid={page1.vitalColumn.bloodPotency.testId}>
               <div className="paper-track-head">
@@ -367,41 +409,60 @@ function WodV5Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV5M
                 ))}
               </div>
             </div>
+            <div className="paper-cols-2 paper-v5-res-hunt">
+              <div className="paper-id-cell">
+                <span className="paper-id-k">{page1.vitalColumn.resonance.label}:</span>
+                <span className="paper-id-v">{page1.vitalColumn.resonance.value}</span>
+              </div>
+              <div className="paper-id-cell">
+                <span className="paper-id-k">{page1.vitalColumn.hunting.label}:</span>
+                <span className="paper-id-v">{page1.vitalColumn.hunting.value}</span>
+              </div>
+            </div>
           </div>
         </div>
+        <WodOrnamentDivider />
       </article>
 
       <article className="paper-page paper-layout--wod-v5" data-paper-page="2">
         <PaperPageHeader model={model} pageNumber={2} />
-        <div className="paper-cols-2">
-          <div>
-            {page2.backgrounds.length > 0 ? (
-              <div className="paper-card">
-                <div className="paper-card-head">
-                  <span className="paper-card-title">{labels.backgrounds}</span>
-                </div>
-                <PaperDotList items={page2.backgrounds} />
-              </div>
-            ) : null}
-
-            <div className="paper-card" data-testid={page2.meritsFlaws.testId}>
-              <div className="paper-card-head">
-                <span className="paper-card-title">{page2.meritsFlaws.heading}</span>
-                <span className="paper-badge">{page2.meritsFlaws.summary}</span>
-              </div>
-              {page2.meritsFlaws.items.map((mf) => (
+        <WodOrnamentDivider />
+        <div className="paper-card" data-testid={page2.meritsFlaws.testId}>
+          <div className="paper-card-head">
+            <span className="paper-card-title">{page2.meritsFlaws.heading}</span>
+            <span className="paper-badge">{page2.meritsFlaws.summary}</span>
+          </div>
+          <div className="paper-cols-2">
+            <div>
+              <div className="paper-col-head">{labels.backgroundsMerits}</div>
+              {page2.backgrounds.length > 0 ? <PaperDotList items={page2.backgrounds} /> : null}
+              {page2.merits.map((mf) => (
                 <div key={mf.id} className="paper-structured-item">
                   <div className="paper-dot-row">
-                    <span>
-                      <span className="paper-badge">{mf.badge}</span> {mf.name}
-                    </span>
+                    <span>{mf.name}</span>
                     <PaperDots value={mf.rating} max={5} />
                   </div>
                   {mf.notes ? <div className="paper-legend">{mf.notes}</div> : null}
                 </div>
               ))}
             </div>
+            <div>
+              <div className="paper-col-head">{labels.flaws}</div>
+              {page2.flaws.map((mf) => (
+                <div key={mf.id} className="paper-structured-item">
+                  <div className="paper-dot-row">
+                    <span>{mf.name}</span>
+                    <PaperDots value={mf.rating} max={5} />
+                  </div>
+                  {mf.notes ? <div className="paper-legend">{mf.notes}</div> : null}
+                </div>
+              ))}
+            </div>
+          </div>
+        </div>
 
+        <div className="paper-cols-2">
+          <div>
             <div className="paper-card" data-testid={page2.havens.testId}>
               <div className="paper-card-head">
                 <span className="paper-card-title">{page2.havens.heading}</span>
@@ -423,6 +484,17 @@ function WodV5Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV5M
                 </div>
               ))}
             </div>
+
+            {page2.equipment.length > 0 ? (
+              <div className="paper-card">
+                <div className="paper-card-head">
+                  <span className="paper-card-title">{labels.equipment}</span>
+                </div>
+                {page2.equipment.map((eq) => (
+                  <PaperFieldView key={eq.id} field={eq} />
+                ))}
+              </div>
+            ) : null}
           </div>
 
           <div>
@@ -484,16 +556,16 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
         <div className="paper-id-grid-3x3">
           {page1.header3x3.map((cell) => (
             <div key={cell.key} className="paper-id-cell">
-              <span className="paper-id-k">{cell.label}</span>
-              <span className="paper-id-v">{cell.value || labels.emptyNone}</span>
+              <span className="paper-id-k">{cell.label}:</span>
+              <span className="paper-id-v">{cell.value}</span>
             </div>
           ))}
         </div>
 
         <div className="paper-sec-rule">{labels.attributes}</div>
-        <div className="wod-attr-grid-3x3">
+        <div className="wod-attr-grid-3x3 paper-divided-3">
           {page1.attributes3x3.map((grp) => (
-            <div key={grp.id} className="paper-col-box paper-block">
+            <div key={grp.id} className="paper-col-box paper-col-divided paper-block">
               <div className="paper-col-head">{grp.title}</div>
               <PaperDotList items={grp.items} />
             </div>
@@ -501,9 +573,9 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
         </div>
 
         <div className="paper-sec-rule">{labels.abilities}</div>
-        <div className="paper-cols-3">
+        <div className="paper-cols-3 paper-divided-3">
           {page1.abilities3Col.map((grp) => (
-            <div key={grp.id} className="paper-col-box paper-block">
+            <div key={grp.id} className="paper-col-box paper-col-divided paper-block">
               <div className="paper-col-head">{grp.title}</div>
               <PaperDotList items={grp.items} />
             </div>
@@ -511,12 +583,12 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
         </div>
 
         <div className="paper-sec-rule">{labels.advantages}</div>
-        <div className="paper-cols-3">
-          <div className="paper-col-box paper-block">
+        <div className="paper-cols-3 paper-divided-3">
+          <div className="paper-col-box paper-col-divided paper-block">
             <div className="paper-col-head">{labels.disciplines}</div>
             <PaperDotList items={page1.advantages3Col.disciplines} />
           </div>
-          <div className="paper-col-box paper-block">
+          <div className="paper-col-box paper-col-divided paper-block">
             <div className="paper-col-head">{labels.backgrounds}</div>
             <PaperDotList items={page1.advantages3Col.backgrounds} />
           </div>
@@ -526,7 +598,7 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
           </div>
         </div>
 
-        <div className="paper-cols-3" style={{ marginTop: '5px' }}>
+        <div className="paper-cols-3" style={{ marginTop: '4px' }}>
           <div className="paper-block">
             <div className="paper-track-block">
               <div className="paper-track-head">
@@ -541,15 +613,12 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
                   {page1.bottom3Col.willpower.value} / {page1.bottom3Col.willpower.max}
                 </span>
               </div>
-              <div className="paper-boxes-row">
-                {page1.bottom3Col.willpower.boxes.map((box, idx) => (
-                  <span key={idx} className={`paper-box paper-box--${box.kind}`}>
-                    {box.symbol}
-                  </span>
-                ))}
-              </div>
+              <GroupedBoxes boxes={page1.bottom3Col.willpower.boxes} />
             </div>
             <PaperTrackView track={page1.bottom3Col.bloodPool} />
+            <div className="paper-legend">
+              {page1.bottom3Col.bloodPool.maxPerTurnLabel}: {page1.bottom3Col.bloodPool.maxPerTurn}
+            </div>
           </div>
 
           <div className="paper-track-block paper-block" data-testid={page1.bottom3Col.health.testId}>
@@ -579,7 +648,7 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
           <div className="paper-block">
             <div className="paper-col-box" style={{ marginBottom: '4px' }}>
               <div className="paper-col-head">{page1.bottom3Col.clanWeakness.label}</div>
-              <div>{page1.bottom3Col.clanWeakness.value || labels.emptyNone}</div>
+              <div className="paper-ruled-text">{page1.bottom3Col.clanWeakness.value}</div>
             </div>
             <div className="paper-xp-row">
               <span>
@@ -591,10 +660,12 @@ function WodV20Pages({ model, data }: { model: PaperSheetModel; data: PaperWodV2
             </div>
           </div>
         </div>
+        <WodOrnamentDivider />
       </article>
 
       <article className="paper-page paper-layout--wod-v20" data-paper-page="2">
         <PaperPageHeader model={model} pageNumber={2} />
+        <WodOrnamentDivider />
         <div className="paper-cols-2">
           <div>
             <div className="paper-card" data-testid={page2.meritsFlaws.testId}>
@@ -685,6 +756,7 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
     <>
       <article className="paper-page paper-layout--dnd5e" data-paper-page="1">
         <PaperPageHeader model={model} pageNumber={1} />
+        <DndOrnamentDivider />
         <div className="paper-dnd-banner">
           <div>
             <div className="paper-id-k">{labels.classLevel}</div>
@@ -764,6 +836,10 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
                 </strong>
               </div>
               <div className="paper-dot-row">
+                <span>{labels.tempHp}</span>
+                <span>__________</span>
+              </div>
+              <div className="paper-dot-row">
                 <span>{page1.col2.hitDice.label}</span>
                 <strong>
                   {page1.col2.hitDice.current} / {page1.col2.hitDice.max}
@@ -839,6 +915,7 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
 
       <article className="paper-page paper-layout--dnd5e" data-paper-page="2">
         <PaperPageHeader model={model} pageNumber={2} />
+        <DndOrnamentDivider />
         <div className="paper-sec-rule">{labels.biographyNotes}</div>
         {page2.notes.map((n) => (
           <div key={n.id} className="paper-note-box">
@@ -862,6 +939,7 @@ function Dnd5ePages({ model, data }: { model: PaperSheetModel; data: PaperDnd5eM
       {page3 ? (
         <article className="paper-page paper-layout--dnd5e" data-paper-page="3">
           <PaperPageHeader model={model} pageNumber={3} />
+          <DndOrnamentDivider />
           <div className="paper-sec-rule">{labels.spellcasting}</div>
           <div className="paper-xp-row">
             <span>
@@ -931,7 +1009,6 @@ export function PaperSheetPrintView({ sheet, language }: PaperSheetPrintViewProp
       className="paper-print-root"
       data-testid="paper-print-root"
       data-paper-layout={model.layout}
-      aria-hidden="true"
     >
       {model.layout === 'wod-v5' && model.wodV5 ? (
         <WodV5Pages model={model} data={model.wodV5} />

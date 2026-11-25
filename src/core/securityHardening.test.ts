@@ -245,17 +245,20 @@ describe('Workstream 2 — Web Security Hardening Suite', () => {
       const multiPageHtml = generateSingleFilePureHtml(withExtraXssCard, 'pt-BR');
       expect(multiPageHtml).toContain('data-paper-page="1"');
       expect(multiPageHtml).toContain('data-paper-page="2"');
+      expect(multiPageHtml).not.toMatch(/<input\b/i);
+      expect(multiPageHtml).not.toContain('//ID_CRÔNICA');
       expect(multiPageHtml).not.toContain('<script>alert(');
       expect(multiPageHtml).not.toContain('<img src=x onerror=alert(2)>');
       expect(multiPageHtml).not.toContain('<svg/onload=alert(3)>');
     });
 
-    it('keeps PaperSheetPrintView.tsx free of dangerouslySetInnerHTML', () => {
+    it('keeps PaperSheetPrintView.tsx free of dangerouslySetInnerHTML and <input> tags', () => {
       const src = readFileSync(
         resolve(process.cwd(), 'src/components/PaperSheetPrintView.tsx'),
         'utf8',
       );
       expect(src).not.toContain('dangerouslySetInnerHTML');
+      expect(src).not.toMatch(/<input\b/i);
     });
   });
 
