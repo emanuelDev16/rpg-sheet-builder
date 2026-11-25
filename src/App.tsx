@@ -147,6 +147,7 @@ import {
   shouldUseTwoColumnMasonry,
 } from './utils/bentoLayout';
 import { printActiveSheetView } from './core/printSheet';
+import { PaperSheetPrintView } from './components/PaperSheetPrintView';
 import {
   awardXp,
   buyBackgroundWithXp,
@@ -2199,7 +2200,8 @@ function HydratedAppWorkspace({
   );
 
   return (
-    <div className="print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden print:overflow-visible">
+    <>
+      <div className="app-screen-root print-shell h-[100dvh] lg:h-screen print:h-auto flex flex-col bg-[var(--bg-base)] text-[var(--text-primary)] overflow-hidden print:overflow-visible">
       <TopBar
         systemCode={sheet.systemCode}
         activeSystemId={activeSystemId}
@@ -3039,6 +3041,8 @@ function HydratedAppWorkspace({
           setCustomTemplates((prev) => prev.filter((item) => item.id !== templateId));
         }}
       />
-    </div>
+      </div>
+      <PaperSheetPrintView sheet={sheet} language={language} />
+    </>
   );
 }

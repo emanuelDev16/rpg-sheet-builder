@@ -9,6 +9,7 @@ import {
 import {
   adjustSheetHumanityStains,
   adjustV5WillpowerDamage,
+  createCyberpunkPreset,
   createDnd5ePreset,
   createWorldOfDarknessSheet,
   createWorldOfDarknessV5Sheet,
@@ -216,4 +217,59 @@ test('generateSingleFilePureHtml escapes XSS payloads across touchstones, merits
   assert.equal(html.includes('&lt;img src=x onerror=alert(1)&gt;'), true);
   assert.equal(html.includes('&lt;/script&gt;&lt;script&gt;alert(1)&lt;/script&gt;'), true);
   assert.equal(html.includes('\\u003c/script\\u003e\\u003cscript\\u003ealert(1)\\u003c/script\\u003e'), true);
+});
+
+test('generateSingleFilePureHtml renders multi-page A4 paper sheets across all tabs for V5, V20, D&D 5e, and Cyberpunk', () => {
+  const v5Base = createWorldOfDarknessV5Sheet();
+  const v5Custom = {
+    ...v5Base,
+    cards: [
+      ...v5Base.cards,
+      {
+        id: 'card_custom_all_tabs',
+        tab: 'xp' as const,
+        code: '//CUSTOM_XP',
+        title: 'Aliados Extras',
+        colSpan: 1 as const,
+        fields: [{ id: 'f_aliado_ext', key: 'aliado_ext', label: 'Contato Porto', kind: 'text' as const, value: 'Cap. Helena' }],
+      },
+    ],
+  };
+  const v5Html = generateSingleFilePureHtml(v5Custom, 'pt-BR');
+  assert.match(v5Html, /data-paper-layout="wod-v5"/);
+  assert.match(v5Html, /data-paper-page="1"/);
+  assert.match(v5Html, /data-paper-page="2"/);
+  assert.match(v5Html, /@page\s*\{\s*size:\s*A4 portrait;\s*margin:\s*8mm;/);
+  assert.match(v5Html, /break-after:\s*page/);
+  assert.match(v5Html, /Elysium meeting confirmed/);
+  assert.match(v5Html, /Aliados Extras/);
+  assert.match(v5Html, /Cap\. Helena/);
+
+  const v20Html = generateSingleFilePureHtml(createWorldOfDarknessSheet(), 'en');
+  assert.match(v20Html, /data-paper-layout="wod-v20"/);
+  assert.match(v20Html, /data-paper-page="1"/);
+  assert.match(v20Html, /data-paper-page="2"/);
+  assert.match(v20Html, /Talents/);
+  assert.match(v20Html, /Knowledges/);
+  assert.match(v20Html, /-5/);
+
+  const dnd = createDnd5ePreset();
+  const dndHtml = generateSingleFilePureHtml(dnd, 'en');
+  assert.match(dndHtml, /data-paper-layout="dnd5e"/);
+  assert.match(dndHtml, /data-paper-page="1"/);
+  assert.match(dndHtml, /data-paper-page="2"/);
+  assert.match(dndHtml, /data-paper-page="3"/);
+  assert.match(dndHtml, /SPELL SAVE DC/);
+
+  const dndMartialHtml = generateSingleFilePureHtml(
+    { ...dnd, cards: dnd.cards.filter((c) => c.id !== 'card_arcano' && c.id !== 'card_grimorio') },
+    'en',
+  );
+  assert.match(dndMartialHtml, /data-paper-page="2"/);
+  assert.doesNotMatch(dndMartialHtml, /data-paper-page="3"/);
+
+  const cyberHtml = generateSingleFilePureHtml(createCyberpunkPreset(), 'pt-BR');
+  assert.match(cyberHtml, /data-paper-layout="generic"/);
+  assert.match(cyberHtml, /data-paper-page="1"/);
+  assert.match(cyberHtml, /data-paper-page="2"/);
 });

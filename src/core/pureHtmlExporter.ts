@@ -1,41 +1,17 @@
-import { getV5BloodPotencyStats } from './formula.ts';
+import { type AppLanguage, getTranslations, LANGUAGE_OPTIONS } from './i18n.ts';
 import {
-  type AppLanguage,
-  getLocalizedTabLabels,
-  getTranslations,
-  LANGUAGE_OPTIONS,
-  type TranslateFn,
-} from './i18n.ts';
-import {
-  localizeCardTag,
-  localizeCardTitle,
-  localizeFieldLabel,
-  localizeFieldRollLabel,
-  localizeSystemName,
-  localizeTableColumn,
-  localizeTabTitle,
-} from './presetI18n.ts';
-import {
-  type CharacterSheetState,
-  detectSystemId,
-  evaluateSheet,
-  getSheetBloodPool,
-  getSheetHumanityStains,
-  getSheetVirtues,
-  getV20HealthBreakdown,
-  getV5HealthBreakdown,
-  getV5WillpowerState,
-  resolveRollPreview,
-  resolveRulePreset,
-  type SheetCard,
-  type SheetField,
-} from './sheetModel.ts';
-import {
-  findHavenTraitByIdOrName,
-  type WodCatalogEdition,
-} from './wodAdvantagesCatalog.ts';
-import { isOfficialVampireSheet } from './wodSkillsCatalog.ts';
-import { resolveWodDotRatingConfig } from '../utils/dotRating.ts';
+  buildPaperSheetModel,
+  type PaperDotRow,
+  type PaperDnd5eModel,
+  type PaperExtraCard,
+  type PaperFieldItem,
+  type PaperSheetModel,
+  type PaperTrack,
+  type PaperWodV20Model,
+  type PaperWodV5Model,
+  type PaperXpSummary,
+} from './paperSheetModel.ts';
+import { type CharacterSheetState } from './sheetModel.ts';
 
 export const QSS_VARIABLES_GUIDE = `/* ==========================================================================
    TOKENS DE ESTILO — BURGUNDY WINE + SOFT CREAM + DEEP BLACK (PYSIDE6 / QSS)
@@ -71,30 +47,7 @@ export const QSS_VARIABLES_GUIDE = `/* =========================================
   --accent-wine-soft: #E9D7D6;
   --accent-cream-badge: #EFE3D2;
   --accent-danger: #B91C1C;
-}
-
-/* Exemplo equivalente em QSS (PySide6):
-QMainWindow, QWidget#CanvasRoot { background-color: #F8F1E7; color: #0B0B0B; }
-QFrame.BentoCard {
-  background-color: #FFFDF9;
-  border: 2px solid #0B0B0B;
-  border-radius: 10px;
-}
-QPushButton.RollButton {
-  background-color: #0B0B0B;
-  color: #F8F1E7;
-  border: 2px solid #0B0B0B;
-  border-radius: 6px;
-  font-family: "JetBrains Mono";
-  font-weight: 700;
-  padding: 8px 12px;
-}
-QPushButton.ModeEditActive {
-  background-color: #5B0F18;
-  color: #F8F1E7;
-  border: 2px solid #0B0B0B;
-}
-*/`;
+}`;
 
 export function escapeHtml(text: string): string {
   return String(text ?? '')
@@ -139,305 +92,661 @@ export function serializeSafeEmbeddedJson(data: unknown): string {
 const EXPORT_CSP_CONTENT =
   "default-src 'none'; style-src 'unsafe-inline'; img-src https: data:; font-src https: data:;";
 
-function renderDotRatingHtml(value: number, max: 5 | 10): string {
-  const clamped = Math.max(0, Math.min(max, Math.round(Number.isFinite(value) ? value : 0)));
+const WOD_ORNAMENT_SVG = `<svg class="paper-wod-ornament" viewBox="0 0 180 12" aria-hidden="true"><line x1="0" y1="6" x2="72" y2="6" stroke="currentColor" stroke-width="1"/><polygon points="90,1 96,6 90,11 84,6" fill="currentColor"/><circle cx="77" cy="6" r="1.6" fill="currentColor"/><circle cx="103" cy="6" r="1.6" fill="currentColor"/><line x1="108" y1="6" x2="180" y2="6" stroke="currentColor" stroke-width="1"/></svg>`;
+
+const DND_SHIELD_SVG = `<svg class="paper-ac-shield" viewBox="0 0 48 54" aria-hidden="true"><path d="M24 2 L44 9 V25 C44 38 35 47 24 52 C13 47 4 38 4 25 V9 Z" fill="none" stroke="currentColor" stroke-width="2"/></svg>`;
+
+function renderDotsHtml(value: number, max: 5 | 10): string {
+  const clamped = Math.max(0, Math.min(max, Math.round(value)));
   const pips = Array.from({ length: max }, (_, idx) => {
     const filled = idx < clamped;
-    return `<span class="dot-pip${filled ? ' filled' : ''}" aria-hidden="true">${filled ? '●' : '○'}</span>`;
+    return `<span class="paper-dot ${filled ? 'filled' : 'empty'}">${filled ? '●' : '○'}</span>`;
   }).join('');
-  return `<span class="dot-rating-inline" aria-label="${escapeHtml(`${clamped} / ${max}`)}"><span class="dot-pips${max === 10 ? ' is-ten' : ''}">${pips}</span><span class="dot-num">${escapeHtml(String(clamped))}</span></span>`;
+  return `<span class="paper-dots" aria-label="${escapeHtml(`${clamped} / ${max}`)}">${pips}</span>`;
 }
 
-function renderV20HealthHtml(field: SheetField, t: TranslateFn, lang: AppLanguage): string {
-  const { max, aggravated, lethal, bashing, healthy } = getV20HealthBreakdown(field);
-  const cells = Array.from({ length: max }, (_, idx) => {
-    if (idx < aggravated) {
-      return `<span class="vital-box vital-box--agg" title="${escapeHtml(t('cards.vital.aggravatedV20Dmg'))}">*</span>`;
-    }
-    if (idx < aggravated + lethal) {
-      return `<span class="vital-box vital-box--lethal" title="${escapeHtml(t('cards.vital.lethalDmg'))}">X</span>`;
-    }
-    if (idx < aggravated + lethal + bashing) {
-      return `<span class="vital-box vital-box--bashing" title="${escapeHtml(t('cards.vital.bashingDmg'))}">/</span>`;
-    }
-    return `<span class="vital-box vital-box--empty"></span>`;
-  }).join('');
-
-  const summary = t('print.pureHtmlHealthV20Summary', {
-    healthy,
-    max,
-    agg: aggravated,
-    lethal,
-    bashing,
-  });
-
-  return `
-    <div class="resource-box wod-vital-track" data-testid="pure-html-v20-health">
-      <div class="resource-head">
-        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-        <span class="resource-count">${escapeHtml(summary)}</span>
-      </div>
-      <div class="vital-boxes">${cells}</div>
-    </div>`;
-}
-
-function renderV5HealthHtml(field: SheetField, t: TranslateFn, lang: AppLanguage): string {
-  const { max, aggravated, superficial, healthy, totalDamage } = getV5HealthBreakdown(field);
-  const impaired = totalDamage >= max;
-  const cells = Array.from({ length: max }, (_, idx) => {
-    if (idx < aggravated) {
-      return `<span class="vital-box vital-box--agg" title="${escapeHtml(t('cards.aggravatedDmg'))}">X</span>`;
-    }
-    if (idx < aggravated + superficial) {
-      return `<span class="vital-box vital-box--sup" title="${escapeHtml(t('cards.superficialDmg'))}">/</span>`;
-    }
-    return `<span class="vital-box vital-box--empty"></span>`;
-  }).join('');
-
-  const summary = t('print.pureHtmlHealthV5Summary', {
-    healthy,
-    max,
-    agg: aggravated,
-    sup: superficial,
-  });
-
-  return `
-    <div class="resource-box wod-vital-track" data-testid="pure-html-v5-health">
-      <div class="resource-head">
-        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}${impaired ? ` <span class="status-pill">${escapeHtml(t('cards.vital.impairedBadge'))}</span>` : ''}</span>
-        <span class="resource-count">${escapeHtml(summary)}</span>
-      </div>
-      <div class="vital-boxes">${cells}</div>
-    </div>`;
-}
-
-function renderV5WillpowerHtml(
-  field: SheetField,
-  sheet: CharacterSheetState,
-  t: TranslateFn,
-  lang: AppLanguage,
-): string {
-  const wp = getV5WillpowerState(sheet);
-  const cells = Array.from({ length: wp.max }, (_, idx) => {
-    if (idx < wp.aggravated) {
-      return `<span class="vital-box vital-box--agg" title="${escapeHtml(t('cards.vital.wpAggravatedDmg'))}">X</span>`;
-    }
-    if (idx < wp.aggravated + wp.superficial) {
-      return `<span class="vital-box vital-box--sup" title="${escapeHtml(t('cards.vital.wpSuperficialDmg'))}">/</span>`;
-    }
-    return `<span class="vital-box vital-box--empty" title="${escapeHtml(t('cards.vital.wpAvailableLabel'))}"></span>`;
-  }).join('');
-
-  const summary = t('print.pureHtmlWpValue', {
-    available: wp.available,
-    max: wp.max,
-    sup: wp.superficial,
-    agg: wp.aggravated,
-  });
-
-  return `
-    <div class="resource-box wod-vital-track" data-testid="pure-html-v5-willpower">
-      <div class="resource-head">
-        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}${wp.isImpaired ? ` <span class="status-pill">${escapeHtml(t('cards.vital.wpImpairedBadge'))}</span>` : ''}</span>
-        <span class="resource-count">${escapeHtml(summary)}</span>
-      </div>
-      <div class="vital-boxes">${cells}</div>
-    </div>`;
-}
-
-function renderV5HumanityHtml(
-  field: SheetField,
-  sheet: CharacterSheetState,
-  t: TranslateFn,
-  lang: AppLanguage,
-): string {
-  const { humanity, stains } = getSheetHumanityStains(sheet);
-  const boxes = Array.from({ length: 10 }, (_, idx) => {
-    const isHumanity = idx < humanity;
-    const isStain = idx >= 10 - stains;
-    if (isStain && isHumanity) {
-      return '<span class="humanity-box humanity-box--filled humanity-box--stain">●/</span>';
-    }
-    if (isStain) {
-      return '<span class="humanity-box humanity-box--stain">/</span>';
-    }
-    if (isHumanity) {
-      return '<span class="humanity-box humanity-box--filled">●</span>';
-    }
-    return '<span class="humanity-box"></span>';
-  }).join('');
-
-  const summary = t('print.pureHtmlHumanityValue', { humanity, stains });
-
-  return `
-    <div class="resource-box wod-vital-track" data-testid="pure-html-v5-humanity">
-      <div class="resource-head">
-        <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-        <span class="resource-count">${escapeHtml(summary)}</span>
-      </div>
-      <div class="humanity-track">${boxes}</div>
-      <div class="mono-meta">${escapeHtml(t('print.pureHtmlStainsLegend'))}</div>
-    </div>`;
-}
-
-function renderV5BloodPotencySummaryHtml(level: number, t: TranslateFn): string {
-  const stats = getV5BloodPotencyStats(level);
-  const rerollStr =
-    stats.rouseRerollMaxLevel > 0
-      ? t('cards.vital.bpRouseRerollValue', { level: stats.rouseRerollMaxLevel })
-      : t('cards.vital.bpRouseRerollNone');
-
-  return `
-    <div class="v5-bp-summary" data-testid="pure-html-v5-bp">
-      <div class="bp-summary-title">${escapeHtml(t('cards.vital.bpPanelTitle', { level: stats.level }))}</div>
-      <div class="bp-summary-grid">
-        <div class="bp-stat-cell"><span class="bp-k">${escapeHtml(t('cards.vital.bpSurge'))}</span><span class="bp-v">+${escapeHtml(String(stats.bloodSurgeDice))}d10</span></div>
-        <div class="bp-stat-cell"><span class="bp-k">${escapeHtml(t('cards.vital.bpMend'))}</span><span class="bp-v">${escapeHtml(String(stats.mendSuperficialPerRouse))} SUP</span></div>
-        <div class="bp-stat-cell"><span class="bp-k">${escapeHtml(t('cards.vital.bpPowerBonus'))}</span><span class="bp-v">+${escapeHtml(String(stats.powerBonusDice))}d10</span></div>
-        <div class="bp-stat-cell"><span class="bp-k">${escapeHtml(t('cards.vital.bpRouseReroll'))}</span><span class="bp-v">${escapeHtml(rerollStr)}</span></div>
-        <div class="bp-stat-cell"><span class="bp-k">${escapeHtml(t('cards.vital.bpBaneSeverity'))}</span><span class="bp-v">${escapeHtml(String(stats.baneSeverity))}</span></div>
-        <div class="bp-stat-cell"><span class="bp-k">${escapeHtml(t('cards.vital.bpFeedingLabel'))}</span><span class="bp-v">${escapeHtml(t(`cards.vital.bpFeeding.${stats.feedingPenaltyKey}`))}</span></div>
-      </div>
-    </div>`;
-}
-
-function renderV20BloodPoolAndVirtuesHtml(sheet: CharacterSheetState, t: TranslateFn): string {
-  const bp = getSheetBloodPool(sheet);
-  const virtues = getSheetVirtues(sheet);
-  const maxVisual = Math.min(20, bp.max);
-  const blocks =
-    bp.max > 20
-      ? (() => {
-          const pct = bp.max > 0 ? Math.max(0, Math.min(100, (bp.current / bp.max) * 100)) : 0;
-          return `<div class="cont-track"><div class="cont-fill" style="width:${pct.toFixed(1)}%"></div><span class="tick t25"></span><span class="tick t50"></span><span class="tick t75"></span></div>`;
-        })()
-      : `<div class="seg-track">${Array.from({ length: maxVisual }, (_, idx) => `<span class="${idx < bp.current ? 'seg-block filled' : 'seg-block'}"></span>`).join('')}</div>`;
-
-  return `
-    <div class="resource-box" data-testid="pure-html-v20-blood-pool">
-      <div class="resource-head">
-        <span class="field-label">${escapeHtml(t('cards.vital.bloodPoolLabel'))}</span>
-        <span class="resource-count">${escapeHtml(`${bp.current} / ${bp.max}`)}</span>
-      </div>
-      ${blocks}
-    </div>
-    <div class="v20-virtues-box" data-testid="pure-html-v20-virtues">
-      <div class="bp-summary-title">${escapeHtml(t('cards.vital.virtuesHeading'))}</div>
-      <div class="virtues-list">
-        <div class="field-row"><span class="field-label">${escapeHtml(t('cards.vital.virtueConscience'))}</span>${renderDotRatingHtml(virtues.conscience, 5)}</div>
-        <div class="field-row"><span class="field-label">${escapeHtml(t('cards.vital.virtueSelfControl'))}</span>${renderDotRatingHtml(virtues.selfControl, 5)}</div>
-        <div class="field-row"><span class="field-label">${escapeHtml(t('cards.vital.virtueCourage'))}</span>${renderDotRatingHtml(virtues.courage, 5)}</div>
-      </div>
-    </div>`;
-}
-
-function renderStructuredDossierHtml(
-  sheet: CharacterSheetState,
-  edition: WodCatalogEdition,
-  lang: AppLanguage,
-  t: TranslateFn,
-): string {
-  const isV5 = edition === 'vampire-v5';
-  const touchstones = Array.isArray(sheet.touchstones) ? sheet.touchstones : [];
-  const meritsFlaws = Array.isArray(sheet.meritsFlaws) ? sheet.meritsFlaws : [];
-  const havens = Array.isArray(sheet.havens) ? sheet.havens : [];
-
-  const sections: string[] = [];
-
-  if (isV5 && touchstones.length > 0) {
-    const itemsHtml = touchstones
-      .map(
-        (ts) => `
-      <div class="structured-item">
-        <div class="structured-item-head">
-          <span class="structured-title">${escapeHtml(ts.conviction)}</span>
-          <span class="structured-pill">${escapeHtml(ts.touchstone)}</span>
-        </div>
-        ${ts.notes?.trim() ? `<div class="structured-notes">${escapeHtml(ts.notes.trim())}</div>` : ''}
+function renderDotListHtml(items: PaperDotRow[]): string {
+  return items
+    .map(
+      (item) => `<div class="paper-dot-row">
+        <span class="paper-dot-label-wrap">
+          <span class="paper-dot-label">${escapeHtml(item.label)}</span>
+          ${item.specialty ? `<span class="paper-specialty">(${escapeHtml(item.specialty)})</span>` : ''}
+        </span>
+        ${renderDotsHtml(item.value, item.max)}
       </div>`,
-      )
-      .join('');
-    sections.push(`
-      <div class="structured-section" data-testid="pure-html-touchstones">
-        <div class="structured-head">
-          <span class="structured-heading">${escapeHtml(t('cards.structured.touchstonesHeading'))}</span>
-          <span class="structured-pill">${escapeHtml(t('cards.structured.touchstonesCounter', { count: touchstones.length }))}</span>
-        </div>
-        ${itemsHtml}
-      </div>`);
-  }
-
-  if (meritsFlaws.length > 0) {
-    let meritsTotal = 0;
-    let flawsTotal = 0;
-    for (const mf of meritsFlaws) {
-      const rating = Math.max(1, Math.min(5, Math.round(mf.rating)));
-      if (mf.kind === 'flaw') flawsTotal += rating;
-      else meritsTotal += rating;
-    }
-    const itemsHtml = meritsFlaws
-      .map((mf) => {
-        const isFlaw = mf.kind === 'flaw';
-        return `
-      <div class="structured-item">
-        <div class="structured-item-head">
-          <span class="structured-title">
-            <span class="mf-badge ${isFlaw ? 'is-flaw' : 'is-merit'}">${escapeHtml(isFlaw ? t('cards.structured.badgeFlaw') : t('cards.structured.badgeMerit'))}</span>
-            ${escapeHtml(mf.name)}
-          </span>
-          ${renderDotRatingHtml(mf.rating, 5)}
-        </div>
-        ${mf.notes?.trim() ? `<div class="structured-notes">${escapeHtml(mf.notes.trim())}</div>` : ''}
-      </div>`;
-      })
-      .join('');
-    sections.push(`
-      <div class="structured-section" data-testid="pure-html-merits-flaws">
-        <div class="structured-head">
-          <span class="structured-heading">${escapeHtml(t('cards.structured.meritsFlawsHeading'))}</span>
-          <span class="structured-pill">${escapeHtml(t('cards.structured.meritsFlawsSummary', { merits: meritsTotal, flaws: flawsTotal }))}</span>
-        </div>
-        ${itemsHtml}
-      </div>`);
-  }
-
-  if (havens.length > 0) {
-    const itemsHtml = havens
-      .map((haven) => {
-        const traitsHtml = (haven.traits ?? [])
-          .map((traitId) => {
-            const match = findHavenTraitByIdOrName(traitId, edition);
-            const label = match ? match.name[lang] : traitId;
-            const isFlaw = match?.kind === 'flaw';
-            return `<span class="trait-chip${isFlaw ? ' is-flaw' : ''}">${escapeHtml(label)}</span>`;
-          })
-          .join('');
-        return `
-      <div class="structured-item">
-        <div class="structured-item-head">
-          <span class="structured-title">${escapeHtml(haven.name)}${haven.location?.trim() ? ` · <span class="mono-meta">${escapeHtml(haven.location.trim())}</span>` : ''}</span>
-          ${renderDotRatingHtml(haven.rating, 5)}
-        </div>
-        ${traitsHtml ? `<div class="trait-chips">${traitsHtml}</div>` : ''}
-        ${haven.notes?.trim() ? `<div class="structured-notes">${escapeHtml(haven.notes.trim())}</div>` : ''}
-      </div>`;
-      })
-      .join('');
-    sections.push(`
-      <div class="structured-section" data-testid="pure-html-havens">
-        <div class="structured-head">
-          <span class="structured-heading">${escapeHtml(t('cards.structured.havensHeading'))}</span>
-          <span class="structured-pill">${escapeHtml(t('cards.structured.havensCount', { count: havens.length }))}</span>
-        </div>
-        ${itemsHtml}
-      </div>`);
-  }
-
-  if (sections.length === 0) {
-    return `<p class="mono-meta">${escapeHtml(t('cards.structured.meritsFlawsEmpty'))}</p>`;
-  }
-  return `<div class="structured-dossier">${sections.join('\n')}</div>`;
+    )
+    .join('');
 }
+
+function renderTrackHtml(track: PaperTrack): string {
+  const testIdAttr = track.testId ? ` data-testid="${escapeHtml(track.testId)}"` : '';
+  const badgeHtml = track.badge ? ` <span class="paper-badge">${escapeHtml(track.badge)}</span>` : '';
+  const bodyHtml = track.isContinuous
+    ? `<div class="paper-cont-track"><div class="paper-cont-fill" style="width:${(track.pct ?? 0).toFixed(1)}%"></div><span class="tick t25"></span><span class="tick t50"></span><span class="tick t75"></span></div>`
+    : `<div class="paper-boxes-row">${track.boxes
+        .map(
+          (b) =>
+            `<span class="paper-box paper-box--${escapeHtml(b.kind)}"${
+              b.title ? ` title="${escapeHtml(b.title)}"` : ''
+            }>${escapeHtml(b.symbol)}</span>`,
+        )
+        .join('')}</div>`;
+  const legendHtml = track.legend ? `<div class="paper-legend">${escapeHtml(track.legend)}</div>` : '';
+  return `<div class="paper-track-block paper-block"${testIdAttr}>
+    <div class="paper-track-head"><span>${escapeHtml(track.label)}${badgeHtml}</span><span>${escapeHtml(track.summary)}</span></div>
+    ${bodyHtml}
+    ${legendHtml}
+  </div>`;
+}
+
+function renderFieldItemHtml(field: PaperFieldItem): string {
+  if (field.kind === 'dots' && field.dots) {
+    return `<div class="paper-dot-row"><span class="paper-dot-label">${escapeHtml(field.label)}</span>${renderDotsHtml(field.dots.value, field.dots.max)}</div>`;
+  }
+  if (field.kind === 'resource' && field.track) {
+    return renderTrackHtml(field.track);
+  }
+  if (field.kind === 'repeatable' && field.table) {
+    const rows = field.table.rows
+      .map((r) => `<tr><td>${escapeHtml(r.col1)}</td><td>${escapeHtml(r.col2)}</td></tr>`)
+      .join('');
+    return `<div class="paper-block">
+      <div class="paper-track-head"><span>${escapeHtml(field.label)}</span>${
+        field.table.cargoBadge ? `<span>${escapeHtml(field.table.cargoBadge)}</span>` : ''
+      }</div>
+      <table class="paper-table">
+        <thead><tr><th>${escapeHtml(field.table.col1Header)}</th><th>${escapeHtml(field.table.col2Header)}</th></tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+  }
+  const safeUrl = field.rawUrl ? sanitizeUrl(field.rawUrl) : '';
+  const linkHtml = safeUrl
+    ? ` <a class="paper-link" href="${escapeHtml(safeUrl)}" rel="noopener noreferrer">↗</a>`
+    : '';
+  return `<div class="paper-dot-row"><span class="paper-dot-label">${escapeHtml(field.label)}</span><span>${escapeHtml(field.value)}${linkHtml}</span></div>`;
+}
+
+function renderExtraCardHtml(card: PaperExtraCard): string {
+  return `<section class="paper-card${card.colSpan === 2 ? ' span-2' : ''}" data-tab="${escapeHtml(card.tab)}" data-card-id="${escapeHtml(card.id)}">
+    <header class="paper-card-head">
+      <span class="paper-card-tag">${escapeHtml(card.code)}</span>
+      <h3 class="paper-card-title">${escapeHtml(card.title)}</h3>
+    </header>
+    <div>${card.fields.map(renderFieldItemHtml).join('')}</div>
+  </section>`;
+}
+
+function renderXpSectionHtml(xp: PaperXpSummary, labels: PaperSheetModel['labels']): string {
+  const rows = xp.recentEntries
+    .map(
+      (e) =>
+        `<tr><td>${escapeHtml(e.label)}</td><td>${escapeHtml(e.delta >= 0 ? `+${e.delta}` : String(e.delta))}</td></tr>`,
+    )
+    .join('');
+  return `<div class="paper-block">
+    <div class="paper-sec-rule">${escapeHtml(labels.xpSection)}</div>
+    <div class="paper-xp-row">
+      <span>${escapeHtml(labels.xpTotal)}: ${escapeHtml(String(xp.totalEarned))}</span>
+      <span>${escapeHtml(labels.xpSpent)}: ${escapeHtml(String(xp.spent))}</span>
+      <span>${escapeHtml(labels.xpAvailable)}: ${escapeHtml(String(xp.available))}</span>
+    </div>
+    ${rows ? `<table class="paper-table"><tbody>${rows}</tbody></table>` : ''}
+  </div>`;
+}
+
+function renderRollLogsHtml(model: PaperSheetModel): string {
+  if (model.rollLogs.length === 0) return '';
+  const rows = model.rollLogs
+    .map(
+      (log) =>
+        `<tr><td>${escapeHtml(log.label)}</td><td>${escapeHtml(log.timestamp)}</td><td><strong>${escapeHtml(String(log.total))}</strong></td><td>${escapeHtml(log.breakdown)}</td></tr>`,
+    )
+    .join('');
+  return `<div class="paper-block">
+    <div class="paper-sec-rule">${escapeHtml(model.labels.rollLogs)}</div>
+    <table class="paper-table"><tbody>${rows}</tbody></table>
+  </div>`;
+}
+
+function renderPageHeaderHtml(model: PaperSheetModel, pageNumber: number): string {
+  return `<header class="paper-header">
+    <div>
+      <div class="paper-subtitle">${escapeHtml(model.systemName)}</div>
+      <div class="paper-title">${escapeHtml(model.characterName)}</div>
+    </div>
+    <div class="paper-page-num">${escapeHtml(model.labels.pageLabel)} ${escapeHtml(String(pageNumber))} / ${escapeHtml(String(model.pageCount))}</div>
+  </header>`;
+}
+
+function renderWodV5PagesHtml(model: PaperSheetModel, data: PaperWodV5Model): string {
+  const { page1, page2 } = data;
+  const { labels } = model;
+  const idCells = page1.header3x3
+    .map(
+      (c) =>
+        `<div class="paper-id-cell"><span class="paper-id-k">${escapeHtml(c.label)}</span><span class="paper-id-v">${escapeHtml(c.value || labels.emptyNone)}</span></div>`,
+    )
+    .join('');
+  const attrs = page1.attributes3x3
+    .map(
+      (g) =>
+        `<div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(g.title)}</div>${renderDotListHtml(g.items)}</div>`,
+    )
+    .join('');
+  const skills = page1.skills3Col
+    .map(
+      (g) =>
+        `<div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(g.title)}</div>${renderDotListHtml(g.items)}</div>`,
+    )
+    .join('');
+  const convSummary = page1.middleStrip3Col.convictionsSummary.length
+    ? page1.middleStrip3Col.convictionsSummary
+        .map(
+          (ts) =>
+            `<div class="paper-dot-row"><span>${escapeHtml(ts.conviction)}</span><span class="paper-specialty">${escapeHtml(ts.touchstone)}</span></div>`,
+        )
+        .join('')
+    : `<span>${escapeHtml(labels.emptyNone)}</span>`;
+  const discs = page1.disciplines
+    .map(
+      (d) => `<div class="paper-disc-box">
+        <div class="paper-col-head"><span>${escapeHtml(d.label)}</span>${renderDotsHtml(d.value, 5)}</div>
+        ${d.slots
+          .map(
+            (s) =>
+              `<div class="paper-disc-slot"><span>${escapeHtml(String(s.level))}. ${escapeHtml(s.name || '—')}</span>${
+                s.cost ? `<span class="paper-disc-cost">${escapeHtml(s.cost)}</span>` : ''
+              }</div>`,
+          )
+          .join('')}
+      </div>`,
+    )
+    .join('');
+  const hungerBoxes = page1.vitalColumn.hunger.boxes
+    .map((b) => `<span class="paper-box paper-box--${escapeHtml(b.kind)}">${escapeHtml(b.symbol)}</span>`)
+    .join('');
+  const bpStats = page1.vitalColumn.bloodPotency.stats
+    .map(
+      (s) =>
+        `<div class="paper-bp-cell"><span class="paper-bp-k">${escapeHtml(s.label)}</span><span class="paper-bp-v">${escapeHtml(s.value)}</span></div>`,
+    )
+    .join('');
+
+  const p2Merits = page2.meritsFlaws.items
+    .map(
+      (mf) => `<div class="paper-structured-item">
+        <div class="paper-dot-row"><span><span class="paper-badge">${escapeHtml(mf.badge)}</span> ${escapeHtml(mf.name)}</span>${renderDotsHtml(mf.rating, 5)}</div>
+        ${mf.notes ? `<div class="paper-legend">${escapeHtml(mf.notes)}</div>` : ''}
+      </div>`,
+    )
+    .join('');
+  const p2Havens = page2.havens.items
+    .map(
+      (hv) => `<div class="paper-structured-item">
+        <div class="paper-dot-row"><span>${escapeHtml(hv.name)}${hv.location ? ` · ${escapeHtml(hv.location)}` : ''}</span>${renderDotsHtml(hv.rating, 5)}</div>
+        ${hv.traits.length ? `<div class="paper-legend">${hv.traits.map((tr) => escapeHtml(tr.label)).join(' · ')}</div>` : ''}
+        ${hv.notes ? `<div class="paper-legend">${escapeHtml(hv.notes)}</div>` : ''}
+      </div>`,
+    )
+    .join('');
+  const p2Touch = page2.touchstones.items
+    .map(
+      (ts) => `<div class="paper-structured-item">
+        <div class="paper-dot-row"><strong>${escapeHtml(ts.conviction)}</strong><span class="paper-badge">${escapeHtml(ts.touchstone)}</span></div>
+        ${ts.notes ? `<div class="paper-legend">${escapeHtml(ts.notes)}</div>` : ''}
+      </div>`,
+    )
+    .join('');
+
+  return `
+  <article class="paper-page paper-layout--wod-v5" data-paper-page="1">
+    ${renderPageHeaderHtml(model, 1)}
+    ${WOD_ORNAMENT_SVG}
+    <div class="paper-id-grid-3x3">${idCells}</div>
+    <div class="paper-sec-rule">${escapeHtml(labels.attributes)}</div>
+    <div class="wod-attr-grid-3x3">${attrs}</div>
+    <div class="paper-sec-rule">${escapeHtml(labels.skills)}</div>
+    <div class="paper-cols-3">${skills}</div>
+    <div class="paper-cols-3" style="margin-top:5px">
+      <div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(labels.convictionsSummary)}</div>${convSummary}</div>
+      <div class="paper-col-box paper-block"><div class="paper-col-head"><span>${escapeHtml(page1.middleStrip3Col.bane.label)}</span><span class="paper-badge">${escapeHtml(page1.middleStrip3Col.bane.severityBadge)}</span></div><div>${escapeHtml(page1.middleStrip3Col.bane.value || labels.emptyNone)}</div></div>
+      <div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(page1.middleStrip3Col.compulsion.label)}</div><div>${escapeHtml(page1.middleStrip3Col.compulsion.value || labels.emptyNone)}</div></div>
+    </div>
+    <div class="paper-v5-bottom" style="margin-top:5px">
+      <div>
+        <div class="paper-sec-rule">${escapeHtml(labels.disciplines)}</div>
+        <div class="paper-disc-grid">${discs}</div>
+      </div>
+      <div>
+        <div class="paper-sec-rule">${escapeHtml(labels.health)}</div>
+        ${renderTrackHtml(page1.vitalColumn.health)}
+        ${renderTrackHtml(page1.vitalColumn.willpower)}
+        ${renderTrackHtml(page1.vitalColumn.humanity)}
+        <div class="paper-track-block paper-block">
+          <div class="paper-track-head"><span>${escapeHtml(page1.vitalColumn.hunger.label)}</span><span>${escapeHtml(String(page1.vitalColumn.hunger.value))} / 5</span></div>
+          <div class="paper-boxes-row">${hungerBoxes}</div>
+        </div>
+        <div class="paper-track-block paper-block" data-testid="${escapeHtml(page1.vitalColumn.bloodPotency.testId)}">
+          <div class="paper-track-head"><span>${escapeHtml(page1.vitalColumn.bloodPotency.title)}</span>${renderDotsHtml(page1.vitalColumn.bloodPotency.level, 10)}</div>
+          <div class="paper-bp-grid">${bpStats}</div>
+        </div>
+      </div>
+    </div>
+  </article>
+  <article class="paper-page paper-layout--wod-v5" data-paper-page="2">
+    ${renderPageHeaderHtml(model, 2)}
+    <div class="paper-cols-2">
+      <div>
+        ${
+          page2.backgrounds.length
+            ? `<div class="paper-card"><div class="paper-card-head"><span class="paper-card-title">${escapeHtml(labels.backgrounds)}</span></div>${renderDotListHtml(page2.backgrounds)}</div>`
+            : ''
+        }
+        <div class="paper-card" data-testid="${escapeHtml(page2.meritsFlaws.testId)}">
+          <div class="paper-card-head"><span class="paper-card-title">${escapeHtml(page2.meritsFlaws.heading)}</span><span class="paper-badge">${escapeHtml(page2.meritsFlaws.summary)}</span></div>
+          ${p2Merits}
+        </div>
+        <div class="paper-card" data-testid="${escapeHtml(page2.havens.testId)}">
+          <div class="paper-card-head"><span class="paper-card-title">${escapeHtml(page2.havens.heading)}</span><span class="paper-badge">${escapeHtml(page2.havens.countLabel)}</span></div>
+          ${p2Havens}
+        </div>
+      </div>
+      <div>
+        <div class="paper-card" data-testid="${escapeHtml(page2.touchstones.testId)}">
+          <div class="paper-card-head"><span class="paper-card-title">${escapeHtml(page2.touchstones.heading)}</span><span class="paper-badge">${escapeHtml(page2.touchstones.counter)}</span></div>
+          ${p2Touch}
+        </div>
+        ${renderXpSectionHtml(page2.xpSummary, labels)}
+        ${
+          page2.notes.length
+            ? `<div class="paper-block"><div class="paper-sec-rule">${escapeHtml(labels.notes)}</div>${page2.notes
+                .map(
+                  (n) =>
+                    `<div class="paper-note-box"><strong>${escapeHtml(n.label)}: </strong>${escapeHtml(n.value)}</div>`,
+                )
+                .join('')}</div>`
+            : ''
+        }
+      </div>
+    </div>
+    ${
+      page2.extraCards.length
+        ? `<div class="paper-sec-rule">${escapeHtml(labels.extraSections)}</div><div class="paper-generic-grid">${page2.extraCards.map(renderExtraCardHtml).join('')}</div>`
+        : ''
+    }
+    ${renderRollLogsHtml(model)}
+  </article>`;
+}
+
+function renderWodV20PagesHtml(model: PaperSheetModel, data: PaperWodV20Model): string {
+  const { page1, page2 } = data;
+  const { labels } = model;
+  const idCells = page1.header3x3
+    .map(
+      (c) =>
+        `<div class="paper-id-cell"><span class="paper-id-k">${escapeHtml(c.label)}</span><span class="paper-id-v">${escapeHtml(c.value || labels.emptyNone)}</span></div>`,
+    )
+    .join('');
+  const attrs = page1.attributes3x3
+    .map(
+      (g) =>
+        `<div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(g.title)}</div>${renderDotListHtml(g.items)}</div>`,
+    )
+    .join('');
+  const abilities = page1.abilities3Col
+    .map(
+      (g) =>
+        `<div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(g.title)}</div>${renderDotListHtml(g.items)}</div>`,
+    )
+    .join('');
+  const wpBoxes = page1.bottom3Col.willpower.boxes
+    .map((b) => `<span class="paper-box paper-box--${escapeHtml(b.kind)}">${escapeHtml(b.symbol)}</span>`)
+    .join('');
+  const healthRows = page1.bottom3Col.health.levels
+    .map(
+      (l) =>
+        `<tr><td>${escapeHtml(l.label)}</td><td>${escapeHtml(l.penalty)}</td><td><span class="paper-box paper-box--${escapeHtml(l.box.kind)}">${escapeHtml(l.box.symbol)}</span></td></tr>`,
+    )
+    .join('');
+  const p2Merits = page2.meritsFlaws.items
+    .map(
+      (mf) => `<div class="paper-structured-item"><div class="paper-dot-row"><span><span class="paper-badge">${escapeHtml(mf.badge)}</span> ${escapeHtml(mf.name)}</span>${renderDotsHtml(mf.rating, 5)}</div></div>`,
+    )
+    .join('');
+  const p2Havens = page2.havens.items
+    .map(
+      (hv) => `<div class="paper-structured-item"><div class="paper-dot-row"><span>${escapeHtml(hv.name)}</span>${renderDotsHtml(hv.rating, 5)}</div>${
+        hv.traits.length ? `<div class="paper-legend">${hv.traits.map((tr) => escapeHtml(tr.label)).join(' · ')}</div>` : ''
+      }</div>`,
+    )
+    .join('');
+
+  return `
+  <article class="paper-page paper-layout--wod-v20" data-paper-page="1">
+    ${renderPageHeaderHtml(model, 1)}
+    ${WOD_ORNAMENT_SVG}
+    <div class="paper-id-grid-3x3">${idCells}</div>
+    <div class="paper-sec-rule">${escapeHtml(labels.attributes)}</div>
+    <div class="wod-attr-grid-3x3">${attrs}</div>
+    <div class="paper-sec-rule">${escapeHtml(labels.abilities)}</div>
+    <div class="paper-cols-3">${abilities}</div>
+    <div class="paper-sec-rule">${escapeHtml(labels.advantages)}</div>
+    <div class="paper-cols-3">
+      <div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(labels.disciplines)}</div>${renderDotListHtml(page1.advantages3Col.disciplines)}</div>
+      <div class="paper-col-box paper-block"><div class="paper-col-head">${escapeHtml(labels.backgrounds)}</div>${renderDotListHtml(page1.advantages3Col.backgrounds)}</div>
+      <div class="paper-col-box paper-block" data-testid="${escapeHtml(page1.advantages3Col.virtues.testId)}"><div class="paper-col-head">${escapeHtml(page1.advantages3Col.virtues.heading)}</div>${renderDotListHtml(page1.advantages3Col.virtues.items)}</div>
+    </div>
+    <div class="paper-cols-3" style="margin-top:5px">
+      <div class="paper-block">
+        <div class="paper-track-block"><div class="paper-track-head"><span>${escapeHtml(page1.bottom3Col.humanity.label)}</span>${renderDotsHtml(page1.bottom3Col.humanity.value, 10)}</div></div>
+        <div class="paper-track-block"><div class="paper-track-head"><span>${escapeHtml(page1.bottom3Col.willpower.label)}</span><span>${escapeHtml(String(page1.bottom3Col.willpower.value))} / ${escapeHtml(String(page1.bottom3Col.willpower.max))}</span></div><div class="paper-boxes-row">${wpBoxes}</div></div>
+        ${renderTrackHtml(page1.bottom3Col.bloodPool)}
+      </div>
+      <div class="paper-track-block paper-block" data-testid="${escapeHtml(page1.bottom3Col.health.testId)}">
+        <div class="paper-track-head"><span>${escapeHtml(page1.bottom3Col.health.label)}</span><span>${escapeHtml(page1.bottom3Col.health.summary)}</span></div>
+        <table class="paper-health-table"><tbody>${healthRows}</tbody></table>
+        <div class="paper-track-head" style="margin-top:3px"><span>${escapeHtml(page1.bottom3Col.health.soakLabel)}</span><span>${escapeHtml(page1.bottom3Col.health.soakValue)}</span></div>
+      </div>
+      <div class="paper-block">
+        <div class="paper-col-box" style="margin-bottom:4px"><div class="paper-col-head">${escapeHtml(page1.bottom3Col.clanWeakness.label)}</div><div>${escapeHtml(page1.bottom3Col.clanWeakness.value || labels.emptyNone)}</div></div>
+        <div class="paper-xp-row"><span>${escapeHtml(labels.xpTotal)}: ${escapeHtml(String(page1.bottom3Col.xpCompact.totalEarned))}</span><span>${escapeHtml(labels.xpAvailable)}: ${escapeHtml(String(page1.bottom3Col.xpCompact.available))}</span></div>
+      </div>
+    </div>
+  </article>
+  <article class="paper-page paper-layout--wod-v20" data-paper-page="2">
+    ${renderPageHeaderHtml(model, 2)}
+    <div class="paper-cols-2">
+      <div>
+        <div class="paper-card" data-testid="${escapeHtml(page2.meritsFlaws.testId)}">
+          <div class="paper-card-head"><span class="paper-card-title">${escapeHtml(page2.meritsFlaws.heading)}</span><span class="paper-badge">${escapeHtml(page2.meritsFlaws.summary)}</span></div>
+          ${p2Merits}
+        </div>
+        <div class="paper-card" data-testid="${escapeHtml(page2.havens.testId)}">
+          <div class="paper-card-head"><span class="paper-card-title">${escapeHtml(page2.havens.heading)}</span><span class="paper-badge">${escapeHtml(page2.havens.countLabel)}</span></div>
+          ${p2Havens}
+        </div>
+        ${renderXpSectionHtml(page2.xpSummary, labels)}
+      </div>
+      <div>
+        <div class="paper-card"><div class="paper-card-head"><span class="paper-card-title">${escapeHtml(labels.powersRituals)}</span></div>${page2.powersRituals.map(renderFieldItemHtml).join('')}</div>
+        <div class="paper-card"><div class="paper-card-head"><span class="paper-card-title">${escapeHtml(labels.combatEquipment)}</span></div>${page2.combatEquipment.map(renderFieldItemHtml).join('')}</div>
+        ${page2.notes.map((n) => `<div class="paper-note-box"><strong>${escapeHtml(n.label)}: </strong>${escapeHtml(n.value)}</div>`).join('')}
+      </div>
+    </div>
+    ${
+      page2.extraCards.length
+        ? `<div class="paper-sec-rule">${escapeHtml(labels.extraSections)}</div><div class="paper-generic-grid">${page2.extraCards.map(renderExtraCardHtml).join('')}</div>`
+        : ''
+    }
+    ${renderRollLogsHtml(model)}
+  </article>`;
+}
+
+function renderDnd5ePagesHtml(model: PaperSheetModel, data: PaperDnd5eModel): string {
+  const { page1, page2, page3 } = data;
+  const { labels } = model;
+  const abilities = page1.col1.abilities
+    .map(
+      (ab) =>
+        `<div class="paper-ability-medallion"><div><div class="paper-id-k">${escapeHtml(ab.label)}</div><div class="paper-ability-score">${escapeHtml(String(ab.score))}</div></div><div class="paper-ability-mod">${escapeHtml(ab.modifier)}</div></div>`,
+    )
+    .join('');
+  const saves = page1.col1.savingThrows
+    .map(
+      (s) =>
+        `<div class="paper-dot-row"><span>${s.proficient ? '●' : '○'} ${escapeHtml(s.label)}</span><strong>${escapeHtml(s.modifier)}</strong></div>`,
+    )
+    .join('');
+  const skills = page1.col1.skills18
+    .map(
+      (sk) =>
+        `<div class="paper-dot-row"><span>${sk.proficient ? '●' : '○'} ${escapeHtml(sk.label)} <span class="paper-specialty">(${escapeHtml(sk.abilityShort)})</span></span><strong>${escapeHtml(sk.modifier)}</strong></div>`,
+    )
+    .join('');
+  const deathS = Array.from({ length: page1.col2.deathSaves.successes }, () => '<span class="paper-death-circle"></span>').join('');
+  const deathF = Array.from({ length: page1.col2.deathSaves.failures }, () => '<span class="paper-death-circle"></span>').join('');
+  const attacks = page1.col2.attacks
+    .map((a) => `<div class="paper-dot-row"><span>${escapeHtml(a.name)}</span><strong>${escapeHtml(a.expr)}</strong></div>`)
+    .join('');
+  const currency = page1.col3.currency
+    .map((c) => `<div class="paper-currency-cell"><strong>${escapeHtml(c.code)}</strong><div>${escapeHtml(c.value || '—')}</div></div>`)
+    .join('');
+
+  const page3Html = page3
+    ? `<article class="paper-page paper-layout--dnd5e" data-paper-page="3">
+        ${renderPageHeaderHtml(model, 3)}
+        <div class="paper-sec-rule">${escapeHtml(labels.spellcasting)}</div>
+        <div class="paper-xp-row">
+          <span>${escapeHtml(labels.spellSaveDc)}: ${escapeHtml(page3.spellDc)}</span>
+          <span>${escapeHtml(labels.spellAttack)}: ${escapeHtml(page3.spellAtk)}</span>
+          <span>${escapeHtml(labels.concentration)}: ${page3.concentration ? '✓' : '—'}</span>
+        </div>
+        <div class="paper-cols-2">
+          <div>
+            <div class="paper-sec-rule">${escapeHtml(labels.spellSlots)}</div>
+            ${page3.slots.map(renderTrackHtml).join('')}
+            ${page3.spellRolls.map((r) => `<div class="paper-dot-row"><span>${escapeHtml(r.name)}</span><strong>${escapeHtml(r.expr)}</strong></div>`).join('')}
+          </div>
+          <div>
+            <div class="paper-sec-rule">${escapeHtml(labels.grimoire)}</div>
+            ${page3.grimoire.map(renderFieldItemHtml).join('')}
+          </div>
+        </div>
+        ${renderRollLogsHtml(model)}
+      </article>`
+    : '';
+
+  return `
+  <article class="paper-page paper-layout--dnd5e" data-paper-page="1">
+    ${renderPageHeaderHtml(model, 1)}
+    <div class="paper-dnd-banner">
+      <div><div class="paper-id-k">${escapeHtml(labels.classLevel)}</div><div class="paper-id-v">${escapeHtml(page1.identityBanner.classLevel)}</div></div>
+      <div><div class="paper-id-k">${escapeHtml(labels.race)}</div><div class="paper-id-v">${escapeHtml(page1.identityBanner.race)}</div></div>
+      <div><div class="paper-id-k">${escapeHtml(labels.alignment)}</div><div class="paper-id-v">${escapeHtml(page1.identityBanner.alignment)}</div></div>
+      <div><div class="paper-id-k">${escapeHtml(labels.xpSection)}</div><div class="paper-id-v">${escapeHtml(String(page1.identityBanner.xpTotal))}</div></div>
+      <div><div class="paper-id-k">${escapeHtml(labels.proficiencyBonus)}</div><div class="paper-id-v">${escapeHtml(page1.identityBanner.proficiencyBonus)}</div></div>
+    </div>
+    <div class="paper-dnd-grid">
+      <div>
+        <div class="paper-sec-rule">${escapeHtml(labels.attributes)}</div>
+        ${abilities}
+        <div class="paper-sec-rule">${escapeHtml(labels.savingThrows)}</div>
+        <div class="paper-col-box">${saves}</div>
+        <div class="paper-sec-rule">${escapeHtml(labels.skills)}</div>
+        <div class="paper-col-box">${skills}</div>
+        <div class="paper-xp-row" style="margin-top:4px"><span>${escapeHtml(labels.passivePerception)}</span><span>${escapeHtml(String(page1.col1.passivePerception))}</span></div>
+      </div>
+      <div>
+        <div class="paper-sec-rule">${escapeHtml(labels.armorClass)}</div>
+        <div class="paper-ac-wrap">${DND_SHIELD_SVG}<span class="paper-ac-val">${escapeHtml(page1.col2.armorClass)}</span><span class="paper-ac-lbl">${escapeHtml(labels.armorClass)}</span></div>
+        <div class="paper-card">
+          <div class="paper-dot-row"><span>${escapeHtml(page1.col2.hitPoints.label)}</span><strong>${escapeHtml(String(page1.col2.hitPoints.current))} / ${escapeHtml(String(page1.col2.hitPoints.max))}</strong></div>
+          <div class="paper-dot-row"><span>${escapeHtml(page1.col2.hitDice.label)}</span><strong>${escapeHtml(String(page1.col2.hitDice.current))} / ${escapeHtml(String(page1.col2.hitDice.max))}</strong></div>
+          <div class="paper-dot-row"><span>${escapeHtml(labels.deathSuccesses)}</span><span>${deathS}</span></div>
+          <div class="paper-dot-row"><span>${escapeHtml(labels.deathFailures)}</span><span>${deathF}</span></div>
+        </div>
+        <div class="paper-sec-rule">${escapeHtml(labels.attacks)}</div>
+        <div class="paper-card">${attacks}</div>
+      </div>
+      <div>
+        <div class="paper-card">
+          <div class="paper-dot-row"><span>${escapeHtml(labels.inspiration)}</span><strong>${page1.col3.inspiration ? '✓' : '○'}</strong></div>
+          <div class="paper-dot-row"><span>${escapeHtml(labels.initiative)}</span><strong>${escapeHtml(page1.col3.initiative)}</strong></div>
+          <div class="paper-dot-row"><span>${escapeHtml(labels.speed)}</span><strong>${escapeHtml(page1.col3.speed)}</strong></div>
+          ${page1.col3.classResources.map(renderFieldItemHtml).join('')}
+        </div>
+        <div class="paper-sec-rule">${escapeHtml(labels.currency)}</div>
+        <div class="paper-currency-grid" style="margin-bottom:5px">${currency}</div>
+        <div class="paper-sec-rule">${escapeHtml(labels.equipment)}</div>
+        <div class="paper-card">${page1.col3.equipment.map(renderFieldItemHtml).join('')}</div>
+      </div>
+    </div>
+  </article>
+  <article class="paper-page paper-layout--dnd5e" data-paper-page="2">
+    ${renderPageHeaderHtml(model, 2)}
+    <div class="paper-sec-rule">${escapeHtml(labels.biographyNotes)}</div>
+    ${page2.notes.map((n) => `<div class="paper-note-box"><strong>${escapeHtml(n.label)}: </strong>${escapeHtml(n.value)}</div>`).join('')}
+    ${renderXpSectionHtml(page2.xpSummary, labels)}
+    ${
+      page2.extraCards.length
+        ? `<div class="paper-sec-rule">${escapeHtml(labels.extraSections)}</div><div class="paper-generic-grid">${page2.extraCards.map(renderExtraCardHtml).join('')}</div>`
+        : ''
+    }
+    ${!page3 ? renderRollLogsHtml(model) : ''}
+  </article>
+  ${page3Html}`;
+}
+
+function renderGenericPagesHtml(model: PaperSheetModel): string {
+  const pages = model.generic?.pages ?? [];
+  return pages
+    .map((p, idx) => {
+      const isLast = idx === pages.length - 1;
+      return `<article class="paper-page paper-layout--generic" data-paper-page="${escapeHtml(String(p.pageNumber))}">
+        ${renderPageHeaderHtml(model, p.pageNumber)}
+        <div class="paper-sec-rule">${escapeHtml(p.tabLabel)}</div>
+        <div class="paper-generic-grid">${p.cards.map(renderExtraCardHtml).join('')}</div>
+        ${p.xpSummary ? renderXpSectionHtml(p.xpSummary, model.labels) : ''}
+        ${isLast ? renderRollLogsHtml(model) : ''}
+      </article>`;
+    })
+    .join('');
+}
+
+const STANDALONE_PAPER_CSS = `
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'DM Sans', 'Segoe UI', Arial, sans-serif;
+    color: #0B0B0B;
+    background: #EAE4DA;
+    padding: 18px 12px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 16px;
+  }
+  .paper-print-root {
+    width: 100%;
+    max-width: 210mm;
+    display: flex;
+    flex-direction: column;
+    gap: 16px;
+  }
+  .paper-page {
+    position: relative;
+    width: 100%;
+    min-height: 277mm;
+    background: #FFFFFF;
+    color: #0B0B0B;
+    padding: 5mm 6mm;
+    font-size: 8.6pt;
+    line-height: 1.25;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.14);
+  }
+  .paper-layout--wod-v5,
+  .paper-layout--wod-v20 {
+    border: 2px solid #5B0F18;
+    outline: 1px solid #0B0B0B;
+    outline-offset: -4px;
+  }
+  .paper-layout--dnd5e,
+  .paper-layout--generic {
+    border: 1.5px solid #0B0B0B;
+  }
+  .paper-block, .paper-card, .paper-structured-item, .paper-disc-box, .paper-ability-medallion, .paper-table tr {
+    break-inside: avoid;
+    page-break-inside: avoid;
+  }
+  .paper-header { display: flex; justify-content: space-between; align-items: flex-end; gap: 8px; padding-bottom: 4px; margin-bottom: 6px; border-bottom: 1.5px solid #0B0B0B; }
+  .paper-layout--wod-v5 .paper-header, .paper-layout--wod-v20 .paper-header { border-bottom-color: #5B0F18; }
+  .paper-title { font-family: 'Barlow Condensed', 'Arial Narrow', sans-serif; font-size: 15pt; font-weight: 800; text-transform: uppercase; line-height: 1.05; }
+  .paper-subtitle { font-family: 'JetBrains Mono', monospace; font-size: 7.4pt; font-weight: 700; color: #5B0F18; text-transform: uppercase; }
+  .paper-layout--dnd5e .paper-subtitle, .paper-layout--generic .paper-subtitle { color: #0B0B0B; }
+  .paper-page-num { font-family: 'JetBrains Mono', monospace; font-size: 7.2pt; font-weight: 700; white-space: nowrap; }
+  .paper-wod-ornament { display: block; width: 140px; height: 10px; margin: 2px auto 4px; color: #5B0F18; }
+  .paper-sec-rule { display: flex; align-items: center; gap: 6px; margin: 6px 0 4px; font-family: 'Barlow Condensed', sans-serif; font-size: 9.8pt; font-weight: 800; letter-spacing: 0.08em; text-transform: uppercase; color: #5B0F18; }
+  .paper-sec-rule::before, .paper-sec-rule::after { content: ''; flex: 1; height: 1px; background: #5B0F18; }
+  .paper-layout--dnd5e .paper-sec-rule, .paper-layout--generic .paper-sec-rule { color: #0B0B0B; }
+  .paper-layout--dnd5e .paper-sec-rule::before, .paper-layout--dnd5e .paper-sec-rule::after,
+  .paper-layout--generic .paper-sec-rule::before, .paper-layout--generic .paper-sec-rule::after { background: #0B0B0B; }
+  .paper-id-grid-3x3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px 10px; margin-bottom: 5px; }
+  .paper-id-cell { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; border-bottom: 1px solid #999; padding: 1.5px 2px; min-width: 0; }
+  .paper-id-k { font-family: 'JetBrains Mono', monospace; font-size: 6.7pt; font-weight: 700; color: #3D332D; text-transform: uppercase; white-space: nowrap; }
+  .paper-id-v { font-size: 8pt; font-weight: 600; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .wod-attr-grid-3x3, .paper-cols-3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px 10px; }
+  .paper-cols-2, .paper-generic-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px 10px; align-items: start; }
+  .paper-v5-bottom { display: grid; grid-template-columns: 1.15fr 0.95fr; gap: 8px 12px; align-items: start; }
+  .paper-col-box { border: 1px solid #D4CCC4; padding: 4px 6px; background: #FFFFFF; }
+  .paper-col-head { font-family: 'JetBrains Mono', monospace; font-size: 7.2pt; font-weight: 800; color: #5B0F18; text-transform: uppercase; border-bottom: 1px solid #5B0F18; margin-bottom: 3px; padding-bottom: 1px; display: flex; justify-content: space-between; align-items: center; }
+  .paper-dot-row { display: flex; align-items: center; justify-content: space-between; gap: 4px; padding: 1px 0; font-size: 7.8pt; }
+  .paper-dot-label-wrap { display: flex; align-items: baseline; gap: 4px; min-width: 0; flex: 1; }
+  .paper-dot-label { font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .paper-specialty { font-family: 'JetBrains Mono', monospace; font-size: 6.5pt; color: #5B0F18; font-style: italic; }
+  .paper-dots { display: inline-flex; align-items: center; gap: 1.5px; flex-shrink: 0; font-size: 8.5pt; line-height: 1; }
+  .paper-dot.filled { color: #5B0F18; }
+  .paper-dot.empty { color: #888888; }
+  .paper-layout--dnd5e .paper-dot.filled, .paper-layout--generic .paper-dot.filled { color: #0B0B0B; }
+  .paper-track-block { border: 1px solid #0B0B0B; padding: 3.5px 5px; margin-bottom: 4px; background: #FFFFFF; }
+  .paper-track-head { display: flex; justify-content: space-between; align-items: center; gap: 4px; font-family: 'JetBrains Mono', monospace; font-size: 7pt; font-weight: 700; margin-bottom: 2.5px; }
+  .paper-badge { display: inline-block; font-family: 'JetBrains Mono', monospace; font-size: 6.4pt; font-weight: 800; padding: 0.5px 4px; border: 1px solid #5B0F18; color: #5B0F18; background: #F6EEEE; text-transform: uppercase; }
+  .paper-boxes-row { display: flex; flex-wrap: wrap; gap: 2.5px; }
+  .paper-box { width: 13px; height: 13px; border: 1.25px solid #0B0B0B; display: inline-flex; align-items: center; justify-content: center; font-family: 'JetBrains Mono', monospace; font-size: 7.5pt; font-weight: 800; background: #FFFFFF; color: #0B0B0B; }
+  .paper-box--filled, .paper-box--aggravated { background: #0B0B0B; color: #FFFFFF; }
+  .paper-box--lethal { background: #5B0F18; color: #FFFFFF; border-color: #5B0F18; }
+  .paper-box--superficial, .paper-box--bashing, .paper-box--stain { background: #F0E8E8; color: #5B0F18; border-style: dashed; }
+  .paper-box--filled-stain { background: #3D332D; color: #FFFFFF; }
+  .paper-cont-track { position: relative; height: 9px; border: 1.25px solid #0B0B0B; background: #F5F5F5; overflow: hidden; }
+  .paper-cont-fill { height: 100%; background: #5B0F18; }
+  .paper-cont-track .tick { position: absolute; top: 0; bottom: 0; width: 1px; background: rgba(11,11,11,0.45); pointer-events: none; }
+  .paper-cont-track .t25 { left: 25%; }
+  .paper-cont-track .t50 { left: 50%; }
+  .paper-cont-track .t75 { left: 75%; }
+  .paper-legend { font-family: 'JetBrains Mono', monospace; font-size: 6.2pt; color: #444; margin-top: 2px; }
+  .paper-disc-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 5px; }
+  .paper-disc-box { border: 1px solid #0B0B0B; padding: 3.5px 5px; }
+  .paper-disc-slot { display: flex; justify-content: space-between; gap: 4px; font-size: 7pt; border-bottom: 1px dotted #CCC; padding: 1px 0; }
+  .paper-disc-cost { font-family: 'JetBrains Mono', monospace; font-size: 6.4pt; color: #5B0F18; font-weight: 700; }
+  .paper-bp-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 3px; margin-top: 3px; }
+  .paper-bp-cell { border: 1px solid #CCC; padding: 2px 3.5px; }
+  .paper-bp-k { display: block; font-family: 'JetBrains Mono', monospace; font-size: 6pt; color: #444; }
+  .paper-bp-v { font-family: 'JetBrains Mono', monospace; font-size: 7.2pt; font-weight: 800; }
+  .paper-health-table, .paper-table { width: 100%; border-collapse: collapse; font-size: 7pt; }
+  .paper-health-table td, .paper-table th, .paper-table td { border-bottom: 1px solid #CCC; padding: 2px 3px; text-align: left; }
+  .paper-table th { border-bottom: 1.2px solid #0B0B0B; font-size: 6.6pt; }
+  .paper-dnd-banner { display: grid; grid-template-columns: 1.8fr repeat(4, minmax(0, 1fr)); gap: 6px; border: 1.5px solid #0B0B0B; padding: 4px 6px; margin-bottom: 6px; background: #F8F8F8; }
+  .paper-dnd-grid { display: grid; grid-template-columns: 1.08fr 1fr 1fr; gap: 8px; align-items: start; }
+  .paper-ability-medallion { border: 1.25px solid #0B0B0B; padding: 3px 5px; margin-bottom: 3.5px; display: flex; align-items: center; justify-content: space-between; }
+  .paper-ability-mod { font-family: 'Barlow Condensed', sans-serif; font-size: 13pt; font-weight: 800; }
+  .paper-ability-score { font-family: 'JetBrains Mono', monospace; font-size: 7pt; border: 1px solid #0B0B0B; padding: 0 4px; }
+  .paper-ac-wrap { position: relative; width: 54px; height: 60px; margin: 0 auto 4px; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+  .paper-ac-shield { position: absolute; inset: 0; width: 100%; height: 100%; color: #0B0B0B; }
+  .paper-ac-val { position: relative; font-family: 'Barlow Condensed', sans-serif; font-size: 15pt; font-weight: 800; }
+  .paper-ac-lbl { position: relative; font-family: 'JetBrains Mono', monospace; font-size: 6pt; font-weight: 800; }
+  .paper-death-circle { display: inline-block; width: 9px; height: 9px; border: 1.2px solid #0B0B0B; border-radius: 50%; margin-left: 2px; }
+  .paper-currency-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 3px; }
+  .paper-currency-cell { border: 1px solid #0B0B0B; padding: 2px; text-align: center; font-family: 'JetBrains Mono', monospace; font-size: 6.8pt; }
+  .paper-card { border: 1.25px solid #0B0B0B; padding: 5px 6px; margin-bottom: 5px; background: #FFFFFF; }
+  .paper-card.span-2 { grid-column: span 2; }
+  .paper-card-head { display: flex; justify-content: space-between; align-items: baseline; gap: 6px; border-bottom: 1px solid #0B0B0B; padding-bottom: 2px; margin-bottom: 4px; }
+  .paper-card-tag { font-family: 'JetBrains Mono', monospace; font-size: 6.8pt; font-weight: 700; color: #5B0F18; }
+  .paper-layout--generic .paper-card-tag, .paper-layout--dnd5e .paper-card-tag { color: #0B0B0B; }
+  .paper-card-title { font-family: 'Barlow Condensed', sans-serif; font-size: 10pt; font-weight: 800; text-transform: uppercase; }
+  .paper-structured-item { border: 1px solid #BBB; padding: 3px 5px; margin-bottom: 3px; }
+  .paper-note-box { border: 1px solid #999; padding: 4px 6px; font-size: 7.8pt; white-space: pre-wrap; margin-bottom: 4px; }
+  .paper-xp-row { display: flex; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 7.4pt; font-weight: 700; padding: 3px 5px; border: 1px solid #0B0B0B; background: #F6F6F6; margin-bottom: 4px; }
+  .paper-link { font-family: 'JetBrains Mono', monospace; font-size: 7.4pt; font-weight: 700; color: #5B0F18; text-decoration: none; }
+
+  @page { size: A4 portrait; margin: 8mm; }
+  @media print {
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body { background: #FFFFFF !important; padding: 0 !important; display: block !important; }
+    .paper-print-root { max-width: none !important; display: block !important; }
+    .paper-page { min-height: 0 !important; box-shadow: none !important; break-after: page; page-break-after: always; }
+    .paper-page:last-child { break-after: auto; page-break-after: auto; }
+  }
+`;
 
 export function generateSingleFilePureHtml(
   sheet: CharacterSheetState,
@@ -446,277 +755,18 @@ export function generateSingleFilePureHtml(
   const i18n = getTranslations(lang);
   const t = i18n.t;
   const htmlLang = LANGUAGE_OPTIONS.find((opt) => opt.id === lang)?.htmlLang ?? 'pt-BR';
-  const systemId = detectSystemId(sheet);
-  const rulePreset = resolveRulePreset(sheet);
-  const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
-  const isV5 = officialEdition === 'vampire-v5';
-  const isV20 = officialEdition === 'storyteller-v20';
-  const tabLabels = getLocalizedTabLabels(systemId, lang);
-  const evaluation = evaluateSheet(sheet);
+  const model = buildPaperSheetModel(sheet, lang);
 
-  const bloodPotencyLevel =
-    typeof evaluation.variables.blood_potency === 'number' &&
-    Number.isFinite(evaluation.variables.blood_potency)
-      ? Math.max(0, Math.min(10, Math.round(evaluation.variables.blood_potency)))
-      : 1;
-  const v5BpStats = isV5 ? getV5BloodPotencyStats(bloodPotencyLevel) : null;
-
-  const renderFieldHtml = (field: SheetField, card: SheetCard): string => {
-    const fk = (field.key ?? '').trim().toLowerCase();
-
-    if (field.kind === 'number' || field.kind === 'text') {
-      const rawStr = String(field.value ?? '');
-      const dotCfg = officialEdition
-        ? resolveWodDotRatingConfig(field, card, rulePreset, systemId)
-        : null;
-
-      if (field.kind === 'number' && dotCfg?.enabled) {
-        const hintHtml = field.hint?.trim()
-          ? `<span class="field-hint">${escapeHtml(field.hint.trim())}</span>`
-          : '';
-        return `
-          <div class="field-row">
-            <div class="field-label-stack">
-              <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-              ${hintHtml}
-            </div>
-            ${renderDotRatingHtml(Number(field.value ?? 0), dotCfg.max)}
-          </div>`;
-      }
-
-      const looksLikeUrl = /^(?:https?:\/\/|data:|javascript:|vbscript:)/i.test(rawStr.trim());
-      const safeUrl = looksLikeUrl ? sanitizeUrl(rawStr) : '';
-      const linkHtml =
-        field.kind === 'text' && safeUrl
-          ? `<a class="field-link" href="${escapeHtml(safeUrl)}" rel="noopener noreferrer">↗</a>`
-          : '';
-      const baneSeverityHtml =
-        isV5 && v5BpStats && fk === 'clan_bane'
-          ? `<span class="status-pill">${escapeHtml(t('cards.vital.baneSeverityBadge', { severity: v5BpStats.baneSeverity }))}</span>`
-          : '';
-      return `
-          <div class="field-row">
-            <label class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}${baneSeverityHtml ? ` ${baneSeverityHtml}` : ''}</label>
-            <div class="field-input-wrap">
-              <input class="cyber-input" type="${field.kind === 'number' ? 'number' : 'text'}" value="${escapeHtml(rawStr)}" />
-              ${linkHtml}
-            </div>
-          </div>`;
-    }
-
-    if (field.kind === 'calculated') {
-      const info = evaluation.computedByFieldId[field.id];
-      return `
-          <div class="field-row">
-            <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-            <div class="calc-box" title="${escapeHtml(field.formula ?? '')}">
-              <span>${escapeHtml(info?.formatted ?? '0')}</span>
-              <span class="calc-formula">${escapeHtml(field.formula ?? '')}</span>
-            </div>
-          </div>`;
-    }
-
-    if (field.kind === 'resource') {
-      if (officialEdition && field.damageTrack) {
-        return isV5 ? renderV5HealthHtml(field, t, lang) : renderV20HealthHtml(field, t, lang);
-      }
-      if (isV5 && (field.id === 'f_willpower' || fk === 'willpower')) {
-        return renderV5WillpowerHtml(field, sheet, t, lang);
-      }
-      if (isV5 && (field.id === 'f_humanity' || fk === 'humanity')) {
-        return renderV5HumanityHtml(field, sheet, t, lang);
-      }
-      if (isV20 && (field.id === 'f_humanity' || fk === 'humanity')) {
-        return `
-          <div class="field-row">
-            <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-            ${renderDotRatingHtml(Number(field.value ?? 7), 10)}
-          </div>`;
-      }
-
-      const val = Math.max(0, Number(field.value ?? 0));
-      const max = Math.max(1, field.max ?? 12);
-      const trackHtml =
-        max > 20
-          ? (() => {
-              const pct = Math.max(0, Math.min(100, (val / max) * 100));
-              return `<div class="cont-track"><div class="cont-fill" style="width:${pct.toFixed(1)}%"></div><span class="tick t25"></span><span class="tick t50"></span><span class="tick t75"></span></div>`;
-            })()
-          : (() => {
-              const blocks = Array.from({ length: max }, (_, idx) => {
-                const filled = idx < val ? 'seg-block filled' : 'seg-block';
-                return `<span class="${filled}"></span>`;
-              }).join('');
-              return `<div class="seg-track">${blocks}</div>`;
-            })();
-      return `
-          <div class="resource-box">
-            <div class="resource-head">
-              <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-              <div class="resource-controls">
-                <button class="mini-btn" type="button">-</button>
-                <span class="resource-count">${escapeHtml(`${val} / ${max}`)}</span>
-                <button class="mini-btn" type="button">+</button>
-              </div>
-            </div>
-            ${trackHtml}
-          </div>`;
-    }
-
-    if (field.kind === 'boolean') {
-      return `
-          <label class="bool-row">
-            <input class="bool-native" type="checkbox" ${field.value ? 'checked' : ''} />
-            <span class="bool-box">✓</span>
-            <span class="bool-text">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-          </label>`;
-    }
-
-    if (field.kind === 'roll') {
-      const preview = resolveRollPreview(field.rollExpr ?? '', evaluation.variables);
-      return `
-          <button class="roll-btn" type="button">
-            <span>${escapeHtml(localizeFieldRollLabel(field, lang))} · ${escapeHtml(preview)}</span>
-            <span>↗</span>
-          </button>`;
-    }
-
-    if (field.kind === 'repeatable') {
-      const rowsHtml = (field.rows ?? [])
-        .map(
-          (r) => `
-              <tr>
-                <td>${escapeHtml(r.col1)}</td>
-                <td class="num-cell">${escapeHtml(String(r.col2))}</td>
-                <td class="act-cell"><button class="del-btn" type="button">×</button></td>
-              </tr>`,
-        )
-        .join('');
-      const col1Title = field.columns?.[0]
-        ? localizeTableColumn(field.columns[0], lang)
-        : t('cards.defaultItemCol');
-      const col2Title = field.columns?.[1]
-        ? localizeTableColumn(field.columns[1], lang)
-        : t('cards.defaultValueCol');
-      return `
-          <div class="repeat-block">
-            <div class="repeat-head">
-              <span class="field-label">${escapeHtml(localizeFieldLabel(field, lang))}</span>
-              <span class="mono-meta">${escapeHtml(t('cards.cargoBadge'))} ${escapeHtml(String(evaluation.totalCargoWeight))} KG</span>
-            </div>
-            <table class="cyber-table">
-              <thead>
-                <tr>
-                  <th>${escapeHtml(col1Title)}</th>
-                  <th>${escapeHtml(col2Title)}</th>
-                  <th class="act-cell"></th>
-                </tr>
-              </thead>
-              <tbody>${rowsHtml}</tbody>
-            </table>
-            <button class="add-row-btn" type="button">${escapeHtml(t('print.pureHtmlAddRow'))}</button>
-          </div>`;
-    }
-
-    return '';
-  };
-
-  let renderedDossierCard = false;
-
-  const cardsHtml = sheet.cards
-    .map((card) => {
-      const isWodDossierCard = card.id === 'card_wod_dossier' && Boolean(officialEdition);
-      const isFullSpan = isWodDossierCard || (card.colSpan ?? 1) >= 2;
-      const spanClass = isFullSpan ? 'bento-card span-2' : 'bento-card';
-
-      let bodyHtml = '';
-      if (isWodDossierCard && officialEdition) {
-        renderedDossierCard = true;
-        bodyHtml = renderStructuredDossierHtml(sheet, officialEdition, lang, t);
-      } else if (
-        officialEdition &&
-        card.id === 'card_atributos' &&
-        card.fields.some((f) => f.attributeGroup !== undefined)
-      ) {
-        const groups: Array<{ id: 'physical' | 'social' | 'mental'; title: string }> = [
-          { id: 'physical', title: t('cards.attributes.physical') },
-          { id: 'social', title: t('cards.attributes.social') },
-          { id: 'mental', title: t('cards.attributes.mental') },
-        ];
-        const colsHtml = groups
-          .map((grp) => {
-            const grpFields = card.fields
-              .filter((f) => f.attributeGroup === grp.id)
-              .map((f) => renderFieldHtml(f, card))
-              .join('\n');
-            return `<div class="wod-attr-col"><div class="wod-attr-col-head">${escapeHtml(grp.title)}</div>${grpFields}</div>`;
-          })
-          .join('');
-        const trailingHtml = card.fields
-          .filter((f) => !f.attributeGroup)
-          .map((f) => renderFieldHtml(f, card))
-          .join('\n');
-        bodyHtml = `<div class="wod-attr-grid-3x3">${colsHtml}</div>${trailingHtml}`;
-      } else {
-        bodyHtml = card.fields.map((field) => renderFieldHtml(field, card)).join('\n');
-        if (isV5 && card.id === 'card_identidade' && v5BpStats) {
-          bodyHtml += `\n${renderV5BloodPotencySummaryHtml(bloodPotencyLevel, t)}`;
-        }
-        if (isV20 && card.id === 'card_combate') {
-          bodyHtml += `\n${renderV20BloodPoolAndVirtuesHtml(sheet, t)}`;
-        }
-      }
-
-      return `
-        <section class="${spanClass}" data-tab="${escapeHtml(card.tab)}" data-card-id="${escapeHtml(card.id)}">
-          <header class="card-header">
-            <span class="card-code">${escapeHtml(localizeCardTag(card, lang))}</span>
-            <h2 class="card-title">${escapeHtml(localizeCardTitle(card, lang))}</h2>
-          </header>
-          <div class="card-body">
-            ${bodyHtml}
-          </div>
-        </section>`;
-    })
-    .join('\n');
-
-  const hasStructuredItems =
-    (isV5 && (sheet.touchstones?.length ?? 0) > 0) ||
-    (sheet.meritsFlaws?.length ?? 0) > 0 ||
-    (sheet.havens?.length ?? 0) > 0;
-
-  const fallbackDossierHtml =
-    officialEdition && !renderedDossierCard && hasStructuredItems
-      ? `
-        <section class="bento-card span-2" data-tab="magias" data-card-id="card_wod_dossier">
-          <header class="card-header">
-            <span class="card-code">${escapeHtml(localizeCardTag({ code: isV5 ? '//CHRONICLE_TRAITS' : '//TRAITS_&_HAVENS' }, lang))}</span>
-            <h2 class="card-title">${escapeHtml(isV5 ? t('print.pureHtmlDossierTitle') : t('print.pureHtmlDossierTitleV20'))}</h2>
-          </header>
-          <div class="card-body">
-            ${renderStructuredDossierHtml(sheet, officialEdition, lang, t)}
-          </div>
-        </section>`
-      : '';
-
-  const logsHtml = sheet.rollLogs
-    .map(
-      (log) => `
-      <div class="log-entry">
-        <div class="log-top">
-          <span class="log-label">${escapeHtml(localizeFieldRollLabel({ label: log.label }, lang))}</span>
-          <span class="log-time">${escapeHtml(log.timestamp)}</span>
-        </div>
-        <div class="log-total">${escapeHtml(String(log.total))}</div>
-        <div class="log-formula">${escapeHtml(log.breakdown)}</div>
-      </div>`,
-    )
-    .join('\n');
-
-  const localizedSystemName = localizeSystemName(systemId, sheet.systemName, lang);
-  const localizedSystemCode = localizeSystemName(systemId, sheet.systemCode, lang);
-  const localizedTab1 = localizeTabTitle({ id: 'geral', title: tabLabels.tab1, systemId }, lang);
-  const localizedTab2 = localizeTabTitle({ id: 'magias', title: tabLabels.tab2, systemId }, lang);
+  let pagesHtml = '';
+  if (model.layout === 'wod-v5' && model.wodV5) {
+    pagesHtml = renderWodV5PagesHtml(model, model.wodV5);
+  } else if (model.layout === 'wod-v20' && model.wodV20) {
+    pagesHtml = renderWodV20PagesHtml(model, model.wodV20);
+  } else if (model.layout === 'dnd5e' && model.dnd5e) {
+    pagesHtml = renderDnd5ePagesHtml(model, model.dnd5e);
+  } else {
+    pagesHtml = renderGenericPagesHtml(model);
+  }
 
   return `<!DOCTYPE html>
 <html lang="${escapeHtml(htmlLang)}">
@@ -724,357 +774,16 @@ export function generateSingleFilePureHtml(
   <meta charset="UTF-8" />
   <meta http-equiv="Content-Security-Policy" content="${EXPORT_CSP_CONTENT}" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>${escapeHtml(localizedSystemName)} — ${escapeHtml(t('print.pureHtmlTitleSuffix'))}</title>
+  <title>${escapeHtml(model.systemName)} — ${escapeHtml(t('print.pureHtmlTitleSuffix'))}</title>
   <style>
 ${QSS_VARIABLES_GUIDE}
-
-    * { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: var(--font-ui);
-      color: var(--ink-primary);
-      background-color: var(--bg-canvas);
-      background-image:
-        radial-gradient(circle at 0 0, #9CA3AF 1.25px, transparent 1.25px),
-        linear-gradient(to right, rgba(24, 24, 27, 0.05) 1px, transparent 1px),
-        linear-gradient(to bottom, rgba(24, 24, 27, 0.05) 1px, transparent 1px);
-      background-size: 32px 32px;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-    }
-    .topbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      gap: 16px;
-      padding: 12px 20px;
-      background: var(--bg-card);
-      border-bottom: var(--border-width-strong) solid var(--border-ink);
-    }
-    .sys-id {
-      font-family: var(--font-mono);
-      font-size: 13px;
-      font-weight: 700;
-      letter-spacing: 0.04em;
-    }
-    .toolbar-actions { display: flex; align-items: center; gap: 8px; }
-    .btn-outline {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 700;
-      padding: 7px 12px;
-      background: var(--bg-card);
-      color: var(--ink-primary);
-      border: var(--border-width) solid var(--border-ink);
-      border-radius: var(--radius-control);
-      cursor: pointer;
-    }
-    .mode-switch {
-      display: inline-flex;
-      border: var(--border-width-strong) solid var(--border-ink);
-      border-radius: var(--radius-control);
-      overflow: hidden;
-    }
-    .mode-btn {
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 700;
-      padding: 7px 12px;
-      border: none;
-      cursor: pointer;
-    }
-    .mode-btn.play { background: var(--accent-black); color: var(--ink-inverse); }
-    .mode-btn.edit { background: var(--accent-wine); color: var(--ink-inverse); }
-    .workspace {
-      flex: 1;
-      display: grid;
-      grid-template-columns: 1fr 260px;
-      min-height: 0;
-    }
-    .main-area { padding: 20px; overflow: auto; }
-    .sheet-banner {
-      display: flex;
-      justify-content: space-between;
-      align-items: baseline;
-      gap: 12px;
-      padding: 10px 14px;
-      margin-bottom: 14px;
-      background: var(--bg-card);
-      border: var(--border-width-strong) solid var(--border-ink);
-      border-radius: var(--radius-card);
-    }
-    .sheet-banner-name { font-family: var(--font-display); font-size: 24px; font-weight: 800; text-transform: uppercase; }
-    .sheet-banner-sys { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent-wine); }
-    .tab-bar { display: flex; gap: 10px; margin-bottom: 18px; }
-    .tab-btn {
-      font-family: var(--font-mono);
-      font-size: 12px;
-      font-weight: 700;
-      padding: 9px 16px;
-      background: var(--bg-card-alt);
-      border: var(--border-width) solid var(--border-ink);
-      border-radius: var(--radius-control);
-      cursor: pointer;
-    }
-    .tab-btn.active { background: var(--accent-black); color: var(--ink-inverse); }
-    .bento-grid {
-      display: grid;
-      grid-template-columns: repeat(2, minmax(0, 1fr));
-      gap: 16px;
-    }
-    .bento-card {
-      background: var(--bg-card);
-      border: var(--border-width-strong) solid var(--border-ink);
-      border-radius: var(--radius-card);
-      overflow: hidden;
-      break-inside: avoid;
-      page-break-inside: avoid;
-    }
-    .bento-card.span-2 { grid-column: span 2; }
-    .card-header {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      padding: 10px 14px;
-      background: var(--bg-header-strip);
-      border-bottom: var(--border-width) solid var(--border-ink);
-    }
-    .card-code { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent-wine); }
-    .card-title { font-family: var(--font-display); font-size: 20px; font-weight: 800; letter-spacing: 0.03em; text-transform: uppercase; }
-    .card-body { padding: 14px; display: flex; flex-direction: column; gap: 10px; }
-    .field-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .field-label-stack { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-    .field-label { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--ink-secondary); }
-    .field-hint { font-family: var(--font-mono); font-size: 10px; font-weight: 600; color: var(--accent-wine); }
-    .field-input-wrap { display: inline-flex; align-items: center; gap: 6px; min-width: 0; }
-    .field-link { font-family: var(--font-mono); font-size: 11px; font-weight: 700; color: var(--accent-wine); text-decoration: none; }
-    .cyber-input {
-      font-family: var(--font-mono);
-      font-size: 13px;
-      font-weight: 700;
-      padding: 6px 10px;
-      border: var(--border-width) solid var(--border-ink);
-      border-radius: var(--radius-control);
-      background: var(--bg-card-alt);
-      width: 170px;
-      max-width: 100%;
-    }
-    .dot-rating-inline { display: inline-flex; align-items: center; gap: 6px; flex-shrink: 0; }
-    .dot-pips { display: inline-flex; align-items: center; gap: 2px; font-size: 13px; line-height: 1; }
-    .dot-pips.is-ten { letter-spacing: -0.04em; }
-    .dot-pip.filled { color: var(--accent-wine); }
-    .dot-pip:not(.filled) { color: var(--ink-muted); }
-    .dot-num { font-family: var(--font-mono); font-size: 11px; font-weight: 800; border: 1px solid var(--border-ink); border-radius: 4px; padding: 1px 5px; background: var(--bg-card-alt); }
-    .wod-attr-grid-3x3 { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px; }
-    .wod-attr-col { border: 1px solid var(--border-subtle); border-radius: var(--radius-control); padding: 8px; background: var(--bg-card-alt); display: flex; flex-direction: column; gap: 6px; }
-    .wod-attr-col-head { font-family: var(--font-mono); font-size: 10px; font-weight: 800; color: var(--accent-wine); border-bottom: 1px solid var(--border-subtle); padding-bottom: 4px; }
-    .status-pill { display: inline-block; font-family: var(--font-mono); font-size: 9px; font-weight: 800; padding: 1px 6px; border: 1px solid var(--accent-wine); background: var(--accent-cream-badge); color: var(--accent-wine); border-radius: 999px; }
-    .calc-box {
-      display: inline-flex;
-      align-items: center;
-      gap: 8px;
-      font-family: var(--font-mono);
-      font-size: 13px;
-      font-weight: 700;
-      padding: 5px 10px;
-      background: var(--accent-cream-badge);
-      color: var(--accent-wine);
-      border: 1.5px dashed var(--accent-wine);
-      border-radius: var(--radius-control);
-    }
-    .calc-formula { font-size: 10px; opacity: 0.7; }
-    .resource-box { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; border: 1.5px solid var(--border-subtle); border-radius: var(--radius-control); background: var(--bg-card-alt); }
-    .resource-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .resource-controls { display: flex; align-items: center; gap: 6px; }
-    .resource-count { font-family: var(--font-mono); font-size: 11px; font-weight: 700; }
-    .mini-btn { width: 24px; height: 24px; border: 1.5px solid var(--border-ink); background: var(--bg-card); font-family: var(--font-mono); font-weight: 700; border-radius: 4px; cursor: pointer; }
-    .seg-track { display: flex; gap: 3px; height: 14px; }
-    .seg-block { flex: 1; background: var(--accent-wine-soft); border: 1px solid rgba(91,15,24,0.28); border-radius: 2px; }
-    .seg-block.filled { background: var(--accent-wine); border-color: var(--accent-wine); }
-    .vital-boxes, .humanity-track { display: flex; flex-wrap: wrap; gap: 4px; }
-    .vital-box, .humanity-box {
-      width: 22px;
-      height: 22px;
-      border: 1.5px solid var(--border-ink);
-      border-radius: 3px;
-      background: var(--bg-card);
-      font-family: var(--font-mono);
-      font-size: 12px;
-      font-weight: 800;
-      display: inline-flex;
-      align-items: center;
-      justify-content: center;
-    }
-    .vital-box--agg, .humanity-box--filled { background: var(--accent-black); color: var(--ink-inverse); }
-    .vital-box--lethal { background: var(--accent-wine); color: var(--ink-inverse); }
-    .vital-box--bashing, .vital-box--sup, .humanity-box--stain { background: var(--accent-cream-badge); color: var(--accent-wine); border-style: dashed; }
-    .v5-bp-summary, .v20-virtues-box { border: 1.5px solid var(--border-ink); border-radius: var(--radius-control); padding: 8px 10px; background: var(--bg-card-alt); display: flex; flex-direction: column; gap: 6px; }
-    .bp-summary-title { font-family: var(--font-mono); font-size: 10px; font-weight: 800; color: var(--accent-wine); text-transform: uppercase; }
-    .bp-summary-grid { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
-    .bp-stat-cell { background: var(--bg-card); border: 1px solid var(--border-subtle); border-radius: 4px; padding: 4px 6px; display: flex; flex-direction: column; gap: 2px; }
-    .bp-k { font-family: var(--font-mono); font-size: 9px; font-weight: 700; color: var(--ink-muted); }
-    .bp-v { font-family: var(--font-mono); font-size: 11px; font-weight: 800; color: var(--ink-primary); }
-    .virtues-list { display: flex; flex-direction: column; gap: 4px; }
-    .structured-dossier { display: flex; flex-direction: column; gap: 12px; }
-    .structured-section { border: 1.5px solid var(--border-subtle); border-radius: var(--radius-control); padding: 10px; background: var(--bg-card-alt); display: flex; flex-direction: column; gap: 8px; }
-    .structured-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .structured-heading { font-family: var(--font-mono); font-size: 11px; font-weight: 800; color: var(--accent-wine); }
-    .structured-pill { font-family: var(--font-mono); font-size: 10px; font-weight: 700; border: 1px solid var(--accent-wine); background: var(--accent-cream-badge); color: var(--accent-wine); padding: 2px 7px; border-radius: 999px; }
-    .structured-item { background: var(--bg-card); border: 1px solid var(--border-ink); border-radius: var(--radius-control); padding: 8px 10px; display: flex; flex-direction: column; gap: 4px; break-inside: avoid; page-break-inside: avoid; }
-    .structured-item-head { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
-    .structured-title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-    .structured-notes { font-size: 11px; color: var(--ink-secondary); }
-    .mf-badge { font-family: var(--font-mono); font-size: 9px; font-weight: 800; padding: 1px 6px; border-radius: 4px; border: 1px solid var(--border-ink); }
-    .mf-badge.is-merit { background: var(--accent-cream-badge); color: var(--accent-wine); }
-    .mf-badge.is-flaw { background: #FEE2E2; color: #8C1313; border-color: #8C1313; }
-    .trait-chips { display: flex; flex-wrap: wrap; gap: 4px; }
-    .trait-chip { font-family: var(--font-mono); font-size: 10px; font-weight: 700; padding: 2px 6px; border: 1px solid var(--border-ink); border-radius: 999px; background: var(--bg-card-alt); }
-    .trait-chip.is-flaw { border-style: dashed; color: #8C1313; border-color: #8C1313; }
-    .cont-track { position: relative; height: 14px; background: var(--accent-wine-soft); border: 1.5px solid var(--border-ink); border-radius: 3px; overflow: hidden; }
-    .cont-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--accent-wine); }
-    .cont-track .tick { position: absolute; top: 0; bottom: 0; width: 1.5px; background: rgba(11,11,11,0.45); pointer-events: none; }
-    .cont-track .t25 { left: 25%; }
-    .cont-track .t50 { left: 50%; }
-    .cont-track .t75 { left: 75%; }
-    .bool-row { display: flex; align-items: center; gap: 10px; cursor: pointer; }
-    .bool-native { display: none; }
-    .bool-box { width: 22px; height: 22px; border: 2px solid var(--border-ink); border-radius: 4px; display: inline-flex; align-items: center; justify-content: center; font-weight: 700; background: var(--accent-wine); color: var(--ink-inverse); }
-    .bool-text { font-family: var(--font-mono); font-size: 12px; font-weight: 700; }
-    .roll-btn {
-      display: flex;
-      justify-content: space-between;
-      align-items: center;
-      width: 100%;
-      padding: 9px 12px;
-      background: var(--accent-black);
-      color: var(--ink-inverse);
-      border: 2px solid var(--accent-black);
-      border-radius: var(--radius-control);
-      font-family: var(--font-mono);
-      font-size: 12px;
-      font-weight: 700;
-      cursor: pointer;
-    }
-    .cyber-table { width: 100%; border-collapse: collapse; font-family: var(--font-mono); font-size: 12px; margin: 6px 0; }
-    .cyber-table th, .cyber-table td { border-bottom: 1px solid var(--border-subtle); padding: 6px 4px; text-align: left; }
-    .cyber-table th { font-size: 10px; color: var(--ink-muted); border-bottom: 1.5px solid var(--border-ink); }
-    .add-row-btn { font-family: var(--font-mono); font-size: 11px; font-weight: 700; padding: 6px 10px; border: 1.5px dashed var(--border-ink); background: transparent; border-radius: var(--radius-control); cursor: pointer; }
-    .mono-meta { font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); }
-    .sidebar {
-      width: 260px;
-      background: var(--bg-card);
-      border-left: var(--border-width-strong) solid var(--border-ink);
-      padding: 14px;
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .sidebar-title { font-family: var(--font-mono); font-size: 12px; font-weight: 700; border-bottom: 1.5px solid var(--border-ink); padding-bottom: 8px; }
-    .log-entry { border: 1.5px solid var(--border-ink); border-radius: var(--radius-control); padding: 10px; background: var(--bg-card-alt); }
-    .log-top { display: flex; justify-content: space-between; font-family: var(--font-mono); font-size: 10px; color: var(--ink-muted); }
-    .log-total { font-family: var(--font-display); font-size: 32px; font-weight: 800; line-height: 1.1; margin: 4px 0; }
-    .log-formula { font-family: var(--font-mono); font-size: 11px; color: var(--ink-secondary); }
-    .statusbar {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-      background: var(--bg-card);
-      border-top: var(--border-width-strong) solid var(--border-ink);
-      font-family: var(--font-mono);
-      font-size: 11px;
-      font-weight: 600;
-      padding: 0 16px;
-      height: 32px;
-    }
-    .status-access {
-      background: var(--accent-wine);
-      color: var(--ink-inverse);
-      padding: 4px 18px;
-      font-weight: 700;
-      letter-spacing: 0.06em;
-    }
-
-    @media (max-width: 760px) {
-      .workspace { grid-template-columns: 1fr; }
-      .sidebar { width: 100%; border-left: none; border-top: var(--border-width-strong) solid var(--border-ink); }
-      .bento-grid, .wod-attr-grid-3x3, .bp-summary-grid { grid-template-columns: 1fr; }
-      .bento-card.span-2 { grid-column: span 1; }
-    }
-
-    @media print {
-      * {
-        -webkit-print-color-adjust: exact !important;
-        print-color-adjust: exact !important;
-      }
-      :root {
-        --bg-canvas: #FFFFFF;
-        --bg-card: #FFFFFF;
-        --bg-card-alt: #F5F5F5;
-        --bg-header-strip: #EFEFEF;
-        --ink-primary: #0B0B0B;
-        --ink-secondary: #1F1F1F;
-        --ink-muted: #333333;
-        --ink-inverse: #FFFFFF;
-        --border-ink: #0B0B0B;
-        --border-subtle: #0B0B0B;
-        --accent-black: #0B0B0B;
-        --accent-wine: #0B0B0B;
-        --accent-wine-soft: #E5E5E5;
-        --accent-cream-badge: #F0F0F0;
-      }
-      body { background: #FFFFFF !important; background-image: none !important; color: #0B0B0B !important; }
-      .workspace { display: block !important; }
-      .main-area { padding: 0 !important; overflow: visible !important; }
-      .topbar, .tab-bar, .sidebar, .statusbar, .mini-btn, .add-row-btn, .del-btn, .act-cell, .roll-btn, .no-print {
-        display: none !important;
-      }
-      .bento-card { box-shadow: none !important; break-inside: avoid !important; page-break-inside: avoid !important; }
-      .structured-item { break-inside: avoid !important; page-break-inside: avoid !important; }
-      .dot-pip.filled { color: #0B0B0B !important; }
-      .vital-box--agg, .humanity-box--filled { background: #0B0B0B !important; color: #FFFFFF !important; }
-      .vital-box--lethal { background: #333333 !important; color: #FFFFFF !important; }
-      .vital-box--bashing, .vital-box--sup, .humanity-box--stain { background: #EFEFEF !important; color: #0B0B0B !important; border-style: dashed !important; }
-    }
+${STANDALONE_PAPER_CSS}
   </style>
 </head>
 <body>
-  <header class="topbar">
-    <div class="sys-id">${escapeHtml(localizedSystemCode)}</div>
-    <div class="toolbar-actions">
-      <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.newSheet)}</button>
-      <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.open)}</button>
-      <button class="btn-outline" type="button">${escapeHtml(i18n.topBar.save)}</button>
-      <div class="mode-switch">
-        <button class="mode-btn play" type="button">${escapeHtml(i18n.topBar.playMode)}</button>
-        <button class="mode-btn edit" type="button">${escapeHtml(i18n.topBar.editMode)}</button>
-      </div>
-    </div>
-  </header>
-  <div class="workspace">
-    <main class="main-area">
-      <div class="sheet-banner">
-        <span class="sheet-banner-name">${escapeHtml(sheet.characterName)}</span>
-        <span class="sheet-banner-sys">${escapeHtml(localizedSystemName)}</span>
-      </div>
-      <div class="tab-bar">
-        <button class="tab-btn active" type="button">${escapeHtml(localizedTab1)}</button>
-        <button class="tab-btn" type="button">${escapeHtml(localizedTab2)}</button>
-      </div>
-      <div class="bento-grid">
-        ${cardsHtml}
-        ${fallbackDossierHtml}
-      </div>
-    </main>
-    <aside class="sidebar">
-      <div class="sidebar-title">${escapeHtml(i18n.sidebar.rollLogsTab)}</div>
-      ${logsHtml}
-    </aside>
-  </div>
-  <footer class="statusbar">
-    <span>${escapeHtml(i18n.statusBar.ready)}</span>
-    <span class="status-access">${escapeHtml(i18n.statusBar.accessGranted)}</span>
-    <span>${escapeHtml(i18n.statusBar.cargo)} ${escapeHtml(String(evaluation.totalCargoWeight))} KG</span>
-  </footer>
+  <main class="paper-print-root" data-testid="paper-print-root" data-paper-layout="${escapeHtml(model.layout)}">
+    ${pagesHtml}
+  </main>
   <script type="application/json" id="gridsheet-data">${serializeSafeEmbeddedJson(sheet)}</script>
 </body>
 </html>`;
