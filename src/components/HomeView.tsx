@@ -13,6 +13,7 @@ import {
   X,
 } from 'lucide-react';
 import { AppLanguage, createTranslator } from '../core/i18n';
+import { localizeSystemName } from '../core/presetI18n';
 import type { CharacterSheetState, RulePreset, WodEdition } from '../core/sheetModel';
 import { ThemeMode } from '../utils/theme';
 import { useFocusTrap } from '../utils/useFocusTrap';
@@ -85,9 +86,13 @@ function formatUpdatedAt(value: string, language: AppLanguage): string {
   }
 }
 
-function resolveSystemName(systemId: string, systems: HomeSystemItem[]): string {
+function resolveSystemName(
+  systemId: string,
+  systems: HomeSystemItem[],
+  language: AppLanguage,
+): string {
   const found = systems.find((sys) => sys.id === systemId);
-  return found ? found.name : systemId.toUpperCase();
+  return localizeSystemName(systemId, found ? found.name : '', language) || systemId.toUpperCase();
 }
 
 export const HomeView: React.FC<HomeViewProps> = ({
@@ -171,19 +176,25 @@ export const HomeView: React.FC<HomeViewProps> = ({
     for (const sys of systems) {
       if (!seen.has(sys.id)) {
         seen.add(sys.id);
-        list.push({ id: sys.id, label: sys.name });
+        list.push({
+          id: sys.id,
+          label: localizeSystemName(sys.id, sys.name, language) || sys.id.toUpperCase(),
+        });
       }
     }
 
     for (const sheet of sheets) {
       if (!seen.has(sheet.systemId)) {
         seen.add(sheet.systemId);
-        list.push({ id: sheet.systemId, label: sheet.systemId.toUpperCase() });
+        list.push({
+          id: sheet.systemId,
+          label: localizeSystemName(sheet.systemId, '', language) || sheet.systemId.toUpperCase(),
+        });
       }
     }
 
     return list;
-  }, [systems, sheets]);
+  }, [systems, sheets, language]);
 
   const filteredSheets = useMemo(() => {
     const normalizedQuery = searchQuery.trim().toLowerCase();
@@ -251,7 +262,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="min-w-0 space-y-2">
                 <div className="flex flex-wrap items-center gap-2">
                   <span className="font-mono-tech rounded-[var(--radius-sm)] border border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2 py-0.5 text-[11px] font-bold tracking-wider text-[var(--ink-primary)] uppercase">
-                    {resolveSystemName(activeSheet.systemId, systems)}
+                    {resolveSystemName(activeSheet.systemId, systems, language)}
                   </span>
                   <span className="font-mono-tech text-[11px] font-medium text-[var(--ink-muted)]">
                     {t('home.updatedAt', { date: formatUpdatedAt(activeSheet.updatedAt, language) })}
@@ -326,11 +337,11 @@ export const HomeView: React.FC<HomeViewProps> = ({
               <div className="space-y-2">
                 <div className="flex items-center justify-between gap-2">
                   <span className="font-mono-tech rounded-[var(--radius-sm)] border border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2 py-0.5 text-[10px] font-bold tracking-wider text-[var(--accent-wine)] uppercase">
-                    SYS::{sys.id}
+                    {t('home.systemCodeBadge', { id: sys.id.toUpperCase() })}
                   </span>
                 </div>
                 <h3 className="font-display text-lg leading-snug font-extrabold tracking-wide text-[var(--ink-primary)] uppercase">
-                  {sys.name}
+                  {localizeSystemName(sys.id, sys.name, language)}
                 </h3>
                 <p className="text-xs leading-relaxed text-[var(--ink-secondary)]">
                   {sys.description}
@@ -562,7 +573,7 @@ export const HomeView: React.FC<HomeViewProps> = ({
                     <div className="min-w-0 space-y-2">
                       <div className="flex flex-wrap items-center justify-between gap-1.5">
                         <span className="font-mono-tech rounded-[var(--radius-sm)] border border-[var(--border-ink)] bg-[var(--accent-cream-badge)] px-2 py-0.5 text-[10px] font-bold tracking-wider text-[var(--ink-primary)] uppercase">
-                          {resolveSystemName(item.systemId, systems)}
+                          {resolveSystemName(item.systemId, systems, language)}
                         </span>
 
                         {isCurrentActive && (

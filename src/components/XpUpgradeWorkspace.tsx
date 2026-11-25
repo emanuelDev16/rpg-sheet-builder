@@ -3,6 +3,7 @@ import { motion, useReducedMotion } from 'motion/react';
 import { ArrowUpRight, ChevronDown, Lock, Plus, RotateCcw, Search, SlidersHorizontal, X } from 'lucide-react';
 import { CharacterSheetState, XpRulePreset, XpUpgradeCategory } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { localizeFieldLabel } from '../core/presetI18n';
 import { AnimatedCounter } from './AnimatedCounter';
 import {
   AcquirableCatalogKind,
@@ -98,6 +99,9 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   const [acquireKind, setAcquireKind] = useState<AcquirableCatalogKind>('skill');
   const [acquireQuery, setAcquireQuery] = useState('');
   const acquireSearchId = useId();
+
+  const localizeTrait = (rawLabel: string, key?: string) =>
+    localizeFieldLabel({ key, label: rawLabel }, language);
 
   const ext = {
     virtuesTab: t.t('xp.virtuesTab'),
@@ -201,7 +205,13 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
     return acquirableByKind.filter((item) => {
       if (onlyAffordable && !item.isAffordable) return false;
       if (!normQ) return true;
-      const haystack = [item.label, item.varName, item.subGroup ?? '', item.summary ?? '']
+      const haystack = [
+        item.label,
+        localizeTrait(item.label, item.varName),
+        item.varName,
+        item.subGroup ?? '',
+        item.summary ?? '',
+      ]
         .map(normalizeCatalogText)
         .join(' ');
       return haystack.includes(normQ);
@@ -303,13 +313,14 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
   };
 
   const handleAttemptUpgrade = (trait: UpgradableTrait) => {
+    const shownLabel = localizeTrait(trait.label, trait.key);
     if (trait.isBlockedByRule || trait.cost === null) {
-      setXpError(t.t('xp.errBlockedV5', { label: trait.label }));
+      setXpError(t.t('xp.errBlockedV5', { label: shownLabel }));
       return;
     }
     if (trait.isMaxed) return;
     if (!trait.isAffordable) {
-      setXpError(ext.insufficientClickError(trait.label, trait.cost, availableXp));
+      setXpError(ext.insufficientClickError(shownLabel, trait.cost, availableXp));
       return;
     }
     setXpError(null);
@@ -387,7 +398,9 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
 
   const handleAcquireCatalogItem = (item: AcquirableCatalogTrait) => {
     if (!item.isAffordable) {
-      setXpError(ext.insufficientClickError(item.label, item.cost, availableXp));
+      setXpError(
+        ext.insufficientClickError(localizeTrait(item.label, item.varName), item.cost, availableXp),
+      );
       return;
     }
     let res: { ok: boolean; error?: string } | undefined;
@@ -735,7 +748,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                       <div className="flex items-center gap-2 min-w-0">
                         <span className="text-[var(--ink-muted)] shrink-0">{entry.timestamp}</span>
                         <span className="font-semibold text-[var(--ink-primary)] truncate">
-                          {entry.label}
+                          {localizeTrait(entry.label)}
                         </span>
                       </div>
                       <span
@@ -994,7 +1007,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
 
                           <div className="flex flex-wrap items-center gap-2 min-w-0">
                             <span className="font-mono-tech text-xs font-bold text-[var(--text-primary)] truncate print:whitespace-normal print:overflow-visible">
-                              {trait.label}
+                              {localizeTrait(trait.label, trait.key)}
                             </span>
 
                             <span className="font-mono-tech text-xs font-semibold text-[var(--text-secondary)] whitespace-nowrap shrink-0 tabular-nums">
@@ -1035,7 +1048,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                             <button
                               type="button"
                               data-testid={`trait-custom-cost-toggle-${trait.fieldId}`}
-                              aria-label={`${ext.customCostAria}: ${trait.label}`}
+                              aria-label={`${ext.customCostAria}: ${localizeTrait(trait.label, trait.key)}`}
                               aria-expanded={isEditingCost}
                               onClick={() => {
                                 if (isEditingCost) {
@@ -1079,7 +1092,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                               data-testid={`xp-upgrade-btn-${trait.fieldId}`}
                               onClick={() => handleAttemptUpgrade(trait)}
                               aria-label={t.t('xp.upgradeAria', {
-                                label: trait.label,
+                                label: localizeTrait(trait.label, trait.key),
                                 from: trait.currentValue,
                                 to: trait.nextValue,
                                 cost: numericCost,
@@ -1112,7 +1125,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                             min={0}
                             max={9999}
                             data-testid={`trait-custom-cost-input-${trait.fieldId}`}
-                            aria-label={`${ext.customCostAria}: ${trait.label}`}
+                            aria-label={`${ext.customCostAria}: ${localizeTrait(trait.label, trait.key)}`}
                             value={customCostDraft}
                             onChange={(e) => setCustomCostDraft(e.target.value)}
                             className="cyber-input w-20 min-h-[36px] px-2 py-1 text-[11px] font-bold text-center tabular-nums"
@@ -1314,7 +1327,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                                 </div>
 
                                 <span className="font-mono-tech text-xs font-bold text-[var(--text-primary)] truncate">
-                                  {item.label}
+                                  {localizeTrait(item.label, item.varName)}
                                 </span>
 
                                 {item.summary && (
@@ -1330,7 +1343,7 @@ export const XpUpgradeWorkspace: React.FC<XpUpgradeWorkspaceProps> = ({
                                   data-testid={`xp-acquire-btn-${item.kind}-${item.varName}`}
                                   onClick={() => handleAcquireCatalogItem(item)}
                                   aria-label={t.t('xp.acquireAria', {
-                                    label: item.label,
+                                    label: localizeTrait(item.label, item.varName),
                                     cost: item.cost,
                                   })}
                                   className="cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[10px] font-bold uppercase inline-flex items-center gap-1 whitespace-nowrap shrink-0 cursor-pointer tabular-nums"

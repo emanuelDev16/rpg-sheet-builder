@@ -41,6 +41,7 @@ import {
   getTranslations,
   type TranslateFn,
 } from '../core/i18n';
+import { localizeSystemName } from '../core/presetI18n';
 import { generateSingleFilePureHtml, QSS_VARIABLES_GUIDE } from '../core/pureHtmlExporter';
 import { useFocusTrap } from '../utils/useFocusTrap';
 import { WodCreationWizard } from './WodCreationWizard';
@@ -821,7 +822,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                       onChange={(e) => setSecondaryTrait(e.target.value)}
                       placeholder={
                         selectedSystem === 'dnd5e'
-                          ? 'Fighter · Half-Elf'
+                          ? t.t('modal.dndTraitPlaceholder')
                           : selectedSystem === 'cyberpunk'
                             ? 'Netrunner'
                             : t.t('modal.defaultTraitPlaceholder')
@@ -919,7 +920,7 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                           <div className="min-w-0">
                             <div className="text-xs font-bold uppercase truncate">{tpl.name}</div>
                             <div className="font-mono-tech text-[10px] text-[var(--ink-muted)] uppercase">
-                              {tpl.systemId} ·{' '}
+                              {localizeSystemName(tpl.systemId, '', language) || tpl.systemId} ·{' '}
                               {t.t('modal.templateBlocksCount', {
                                 count: tpl.sheet.cards.length,
                               })}
@@ -1121,14 +1122,19 @@ export const SheetModal: React.FC<SheetModalProps> = ({
                     <div className="text-xs font-bold uppercase">{t.saveLocalTitle}</div>
                     <div className="text-[11px] opacity-80">{t.saveLocalDesc}</div>
                   </div>
-                  <span className="text-xs font-bold whitespace-nowrap shrink-0">OK ↗</span>
+                  <span className="text-xs font-bold whitespace-nowrap shrink-0">
+                    {t.t('modal.saveLocalAction')}
+                  </span>
                 </button>
 
                 {onSaveCustomTemplate && (
                   <form
                     onSubmit={(e) => {
                       e.preventDefault();
-                      const clean = templateName.trim() || sheet.characterName || 'TEMPLATE';
+                      const clean =
+                        templateName.trim() ||
+                        sheet.characterName ||
+                        t.t('modal.defaultTemplateName');
                       void Promise.resolve(onSaveCustomTemplate(clean)).finally(() => onClose());
                     }}
                     className="cyber-btn-outline !rounded-[var(--radius-card)] p-3 flex flex-col gap-2 bg-[var(--bg-card-alt)]"

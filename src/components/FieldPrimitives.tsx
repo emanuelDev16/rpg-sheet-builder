@@ -31,6 +31,11 @@ import {
   VariableMap,
 } from '../core/formula';
 import { AppTranslations, getTranslations } from '../core/i18n';
+import {
+  localizeFieldLabel,
+  localizeFieldRollLabel,
+  localizeTableColumn,
+} from '../core/presetI18n';
 import { isOfficialVampireSheet, normalizeCatalogText } from '../core/wodSkillsCatalog';
 import {
   getDisciplinesForEdition,
@@ -219,6 +224,8 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   const [optionsOpen, setOptionsOpen] = useState(false);
   const [rawSoakIncoming, setRawSoakIncoming] = useState(4);
   const ctrlLabels = getEditCtrlLabels(t);
+  const lang = t.language ?? 'pt-BR';
+  const displayRollLabel = localizeFieldRollLabel(field, lang);
 
   const isSoak = Boolean(field.isSoak || field.id === 'f_soak' || field.key === 'soak_roll');
   const isV5 = rulePreset === 'vampire-v5';
@@ -261,7 +268,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
   });
   const wpBlocked = isV5 || (isSoak && soakDamageType === 'aggravated');
   const wpArmed = !wpBlocked && Boolean(variables.wp_boost) && (variables.willpower ?? 0) > 0;
-  const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
+  const displayLabel = `${displayRollLabel} · ${previewExpr}`;
 
   const diffPillLabel = isV5Pool
     ? `${t.t('cards.pool.diffMeta')} ${difficulty}`
@@ -422,7 +429,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               <button
                 type="button"
                 data-testid={`roll-diff-dec-${field.id}`}
-                aria-label={`${ctrlLabels.diffMinus}: ${field.rollLabel ?? field.label}`}
+                aria-label={`${ctrlLabels.diffMinus}: ${displayRollLabel}`}
                 disabled={difficulty <= minDiff}
                 onClick={() => commitDifficulty(difficulty - 1)}
                 className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
@@ -432,7 +439,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
               <button
                 type="button"
                 data-testid={`roll-diff-inc-${field.id}`}
-                aria-label={`${ctrlLabels.diffPlus}: ${field.rollLabel ?? field.label}`}
+                aria-label={`${ctrlLabels.diffPlus}: ${displayRollLabel}`}
                 disabled={difficulty >= 10}
                 onClick={() => commitDifficulty(difficulty + 1)}
                 className="min-h-[36px] sm:min-h-[28px] w-7 inline-flex items-center justify-center border-l border-[var(--border-ink)]/35 text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-35 disabled:cursor-not-allowed cursor-pointer"
@@ -456,7 +463,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
                   min={minDiff}
                   max={10}
                   ariaLabel={t.t(isV5Pool ? 'cards.pool.diffMetaAria' : 'cards.pool.diffAria', {
-                    label: field.rollLabel ?? field.label,
+                    label: displayRollLabel,
                   })}
                   testId={`roll-diff-${field.id}`}
                   value={difficulty}
@@ -469,7 +476,7 @@ const WodPoolRollField: React.FC<WodPoolRollFieldProps> = ({
                 <ClampedNumberInput
                   min={-10}
                   max={20}
-                  ariaLabel={t.t('cards.pool.modAria', { label: field.rollLabel ?? field.label })}
+                  ariaLabel={t.t('cards.pool.modAria', { label: displayRollLabel })}
                   testId={`roll-mod-${field.id}`}
                   value={modifier}
                   onCommit={(next) => onUpdateSchema(field.id, { rollMod: next })}
@@ -612,6 +619,9 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
   const inputId = `field_${field.id}`;
   const isCustomSystem = systemId === 'blank';
   const ctrlLabels = getEditCtrlLabels(t);
+  const lang = t.language ?? 'pt-BR';
+  const displayLabel = localizeFieldLabel(field, lang);
+  const displayRollLabel = localizeFieldRollLabel(field, lang);
   const prefersReducedMotion = useReducedMotion();
   const isEinkTheme =
     typeof document !== 'undefined' && document.documentElement?.dataset?.theme === 'eink';
@@ -644,7 +654,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           </span>
           <input
             type="text"
-            aria-label={t.t('cards.strip.editLabelAria', { label: field.label })}
+            aria-label={t.t('cards.strip.editLabelAria', { label: displayLabel })}
             value={field.label}
             onChange={(e) => onUpdateSchema(field.id, { label: e.target.value })}
             className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -657,7 +667,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </span>
             <input
               type="text"
-              aria-label={t.t('cards.strip.editVarAria', { label: field.label })}
+              aria-label={t.t('cards.strip.editVarAria', { label: displayLabel })}
               value={field.key}
               onChange={(e) => onUpdateSchema(field.id, { key: e.target.value })}
               className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -671,7 +681,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </span>
             <input
               type="text"
-              aria-label={t.t('cards.strip.editFormulaAria', { label: field.label })}
+              aria-label={t.t('cards.strip.editFormulaAria', { label: displayLabel })}
               value={field.formula ?? ''}
               onChange={(e) => onUpdateSchema(field.id, { formula: e.target.value })}
               className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -686,7 +696,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={t.t('cards.strip.editButtonAria', { label: field.label })}
+                aria-label={t.t('cards.strip.editButtonAria', { label: displayLabel })}
                 value={field.rollLabel ?? ''}
                 onChange={(e) => onUpdateSchema(field.id, { rollLabel: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -699,7 +709,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 </span>
                 <input
                   type="text"
-                  aria-label={t.t('cards.strip.editDiceAria', { label: field.label })}
+                  aria-label={t.t('cards.strip.editDiceAria', { label: displayLabel })}
                   value={field.rollExpr ?? ''}
                   onChange={(e) => onUpdateSchema(field.id, { rollExpr: e.target.value })}
                   className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] w-full"
@@ -717,7 +727,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="number"
               min={1}
               max={999}
-              aria-label={t.t('cards.strip.editMaxAria', { label: field.label })}
+              aria-label={t.t('cards.strip.editMaxAria', { label: displayLabel })}
               value={field.max ?? 12}
               onChange={(e) => {
                 const nextMax = Math.max(1, Math.min(999, Number(e.target.value) || 1));
@@ -735,7 +745,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={t.t('cards.strip.editCol1Aria', { label: field.label })}
+                aria-label={t.t('cards.strip.editCol1Aria', { label: displayLabel })}
                 value={field.columns?.[0] ?? defaultCol1}
                 onChange={(e) =>
                   onUpdateSchema(field.id, {
@@ -751,7 +761,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <input
                 type="text"
-                aria-label={t.t('cards.strip.editCol2Aria', { label: field.label })}
+                aria-label={t.t('cards.strip.editCol2Aria', { label: displayLabel })}
                 value={field.columns?.[1] ?? defaultCol2}
                 onChange={(e) =>
                   onUpdateSchema(field.id, {
@@ -833,20 +843,20 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             >
               {useWodDots ? (
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words">
-                  {field.label}
+                  {displayLabel}
                 </span>
               ) : (
                 <label
                   htmlFor={inputId}
                   className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 flex-1 break-words"
                 >
-                  {field.label}
+                  {displayLabel}
                 </label>
               )}
               <div className="flex flex-wrap items-center justify-end gap-1.5 min-w-0 max-w-full shrink-0">
                 {useWodDots ? (
                   <DotRating
-                    label={field.label}
+                    label={displayLabel}
                     value={numericValue}
                     min={dotConfig.min}
                     max={dotConfig.max}
@@ -867,7 +877,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <button
                   type="button"
                   data-testid={`roll-btn-${pairedRollField.id}`}
-                  aria-label={`${pairedRollField.rollLabel ?? pairedRollField.label} (${preview})`}
+                  aria-label={`${localizeFieldRollLabel(pairedRollField, lang)} (${preview})`}
                   onClick={() =>
                     onRoll(pairedIsV5Pool ? { ...pairedRollField, rollDifficulty: pairedDiff } : pairedRollField)
                   }
@@ -910,10 +920,10 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             }`}
           >
             <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words">
-              {field.label}
+              {displayLabel}
             </span>
             <DotRating
-              label={field.label}
+              label={displayLabel}
               value={numericValue}
               min={dotConfig.min}
               max={dotConfig.max}
@@ -932,7 +942,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             htmlFor={inputId}
             className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase min-w-0 break-words"
           >
-            {field.label}
+            {displayLabel}
           </label>
           <input
             id={inputId}
@@ -964,7 +974,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               htmlFor={inputId}
               className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase shrink-0"
             >
-              {field.label}
+              {displayLabel}
             </label>
             {isClanBane && v5BloodPotencyStats && (
               <span
@@ -1011,7 +1021,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div className="flex items-center justify-between gap-3">
             <div className="min-w-0">
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-secondary)] uppercase block truncate">
-                {field.label}
+                {displayLabel}
               </span>
               {showFormulaLine && (
                 <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] block truncate">
@@ -1021,7 +1031,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
             <div
               role="status"
-              aria-label={`${field.label}: ${computed?.formatted ?? '0'}`}
+              aria-label={`${displayLabel}: ${computed?.formatted ?? '0'}`}
               title={
                 isErr
                   ? computed?.error
@@ -1068,7 +1078,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                  {field.label}
+                  {displayLabel}
                 </span>
                 <span className="v5-overflow-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                   {t.t('cards.vital.v5OverflowRule')}
@@ -1095,7 +1105,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div
               className="seg-meter-track flex items-center gap-[3px]"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={max}
               aria-valuenow={healthy}
@@ -1304,7 +1314,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div className="flex flex-wrap items-center justify-between gap-2">
             <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                {field.label}
+                {displayLabel}
               </span>
               <span className="font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                 {t.t('cards.vital.v20TrackRule')}
@@ -1331,17 +1341,26 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
           <div
             className="seg-meter-track flex items-center gap-[3px]"
             role="meter"
-            aria-label={field.label}
+            aria-label={displayLabel}
             aria-valuemin={0}
             aria-valuemax={max}
             aria-valuenow={healthy}
           >
-            {boxes.map((state, idx) => (
+            {boxes.map((state, idx) => {
+              const stateLabel =
+                state === 'aggravated'
+                  ? t.t('cards.aggravatedDmg')
+                  : state === 'lethal'
+                    ? t.t('cards.vital.lethalDmg')
+                    : state === 'bashing'
+                      ? t.t('cards.vital.bashingDmg')
+                      : t.t('cards.vital.emptyBoxLabel');
+              return (
               <button
                 key={idx}
                 type="button"
                 data-testid={`v20-health-box-${idx}`}
-                aria-label={`${field.label} ${idx + 1}: ${state}`}
+                aria-label={`${displayLabel} ${idx + 1}: ${stateLabel}`}
                 onClick={() => onCycleV20HealthCell?.(field.id, idx)}
                 style={v20CellStyle(state)}
                 className={`seg-block min-h-[36px] sm:min-h-[26px] flex items-center justify-center font-mono-tech text-xs font-extrabold select-none cursor-pointer ${
@@ -1362,7 +1381,8 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                       ? '/'
                       : ''}
               </button>
-            ))}
+              );
+            })}
           </div>
 
           <div className="grid grid-cols-1 gap-1.5 pt-1 border-t border-[var(--border-subtle)]">
@@ -1494,7 +1514,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                  {field.label}
+                  {displayLabel}
                 </span>
                 {isTrackFull && (
                   <span
@@ -1509,7 +1529,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <button
                   type="button"
                   data-testid="humanity-dec"
-                  aria-label={t.t('cards.decreaseAria', { label: field.label })}
+                  aria-label={t.t('cards.decreaseAria', { label: displayLabel })}
                   disabled={humanity <= 0}
                   onClick={() => onAdjustResource(field.id, -1)}
                   className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
@@ -1526,7 +1546,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <button
                   type="button"
                   data-testid="humanity-inc"
-                  aria-label={t.t('cards.increaseAria', { label: field.label })}
+                  aria-label={t.t('cards.increaseAria', { label: displayLabel })}
                   disabled={humanity >= 10}
                   onClick={() => onAdjustResource(field.id, 1)}
                   className="no-print print:hidden cyber-btn-outline min-h-[36px] min-w-[36px] flex items-center justify-center text-xs font-bold cursor-pointer"
@@ -1636,7 +1656,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div className="flex flex-wrap items-center justify-between gap-2">
               <div className="flex items-center gap-1.5 min-w-0 flex-wrap">
                 <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase">
-                  {field.label}
+                  {displayLabel}
                 </span>
                 <span className="v5-overflow-badge font-mono-tech text-[10px] font-bold px-1.5 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)] whitespace-nowrap">
                   {t.t('cards.vital.v5OverflowRule')}
@@ -1663,7 +1683,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <div
               className="seg-meter-track flex items-center gap-[3px]"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={wpMax}
               aria-valuenow={wpAvailable}
@@ -1792,12 +1812,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         >
           <div className="flex flex-wrap items-center justify-between gap-2 mb-2">
             <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words min-w-0">
-              {field.label}
+              {displayLabel}
             </span>
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 type="button"
-                aria-label={t.t('cards.decreaseAria', { label: field.label })}
+                aria-label={t.t('cards.decreaseAria', { label: displayLabel })}
                 onClick={() => onAdjustResource(field.id, -1)}
                 className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
@@ -1811,7 +1831,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               </span>
               <button
                 type="button"
-                aria-label={t.t('cards.increaseAria', { label: field.label })}
+                aria-label={t.t('cards.increaseAria', { label: displayLabel })}
                 onClick={() => onAdjustResource(field.id, 1)}
                 className="no-print print:hidden cyber-btn-outline mobile-touch-stepper w-6 h-6 flex items-center justify-center text-xs font-bold cursor-pointer"
               >
@@ -1825,7 +1845,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               data-testid={`resource-continuous-bar-${field.id}`}
               className="seg-meter-track relative h-[14px] rounded-[var(--radius-pill)] bg-[var(--accent-wine-soft)] border border-[var(--seg-border)] cursor-pointer overflow-hidden"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={max}
               aria-valuenow={current}
@@ -1861,7 +1881,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             </div>
           ) : useWodDots && max === dotConfig.max ? (
             <DotRating
-              label={field.label}
+              label={displayLabel}
               value={current}
               min={dotConfig.min}
               max={dotConfig.max}
@@ -1875,7 +1895,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               data-testid={`resource-segmented-bar-${field.id}`}
               className="seg-meter-track flex items-center gap-[3px]"
               role="meter"
-              aria-label={field.label}
+              aria-label={displayLabel}
               aria-valuemin={0}
               aria-valuemax={max}
               aria-valuenow={current}
@@ -1887,7 +1907,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                   <motion.button
                     key={idx}
                     type="button"
-                    aria-label={t.t('cards.setResourceAria', { label: field.label, value: idx + 1 })}
+                    aria-label={t.t('cards.setResourceAria', { label: displayLabel, value: idx + 1 })}
                     onClick={() => onChangeValue(field.id, idx + 1 === current ? idx : idx + 1)}
                     initial={false}
                     animate={{ scale: filled ? 1 : 0.95 }}
@@ -2005,7 +2025,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                     isEmpty ? 'text-[var(--ink-secondary)]' : 'text-[var(--ink-primary)]'
                   }`}
                 >
-                  {field.label}
+                  {displayLabel}
                 </span>
               </div>
               <span
@@ -2045,7 +2065,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
                 <Check className="w-3.5 h-3.5 stroke-[3]" aria-hidden="true" />
               </span>
               <span className="font-mono-tech text-xs font-bold tracking-wide text-[var(--ink-primary)] uppercase break-words leading-snug">
-                {field.label}
+                {displayLabel}
               </span>
             </div>
             {field.hint && (
@@ -2082,7 +2102,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
       }
 
       const previewExpr = resolveRollPreview(field.rollExpr ?? '1d20', variables);
-      const displayLabel = `${field.rollLabel ?? field.label} · ${previewExpr}`;
+      const displayButtonLabel = `${displayRollLabel} · ${previewExpr}`;
       return (
         <div className="py-0.5">
           <button
@@ -2092,7 +2112,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             className="cyber-roll-btn min-h-[36px] w-full flex items-center justify-between gap-2 px-3.5 py-2.5 text-xs font-bold tracking-wider uppercase cursor-pointer"
           >
             <span className="text-left break-words whitespace-normal leading-snug min-w-0">
-              {displayLabel}
+              {displayButtonLabel}
             </span>
             <span className="text-sm leading-none shrink-0" aria-hidden="true">
               ↗
@@ -2105,8 +2125,12 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     // 6. Lista Repetível
     if (field.kind === 'repeatable') {
       const rows = field.rows ?? [];
-      const col1Title = field.columns?.[0] ?? t.t('cards.defaultItemCol');
-      const col2Title = field.columns?.[1] ?? t.t('cards.defaultValueCol');
+      const col1Title = field.columns?.[0]
+        ? localizeTableColumn(field.columns[0], lang)
+        : t.t('cards.defaultItemCol');
+      const col2Title = field.columns?.[1]
+        ? localizeTableColumn(field.columns[1], lang)
+        : t.t('cards.defaultValueCol');
       const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
       const parsedCostByRowId = new Map(
         mode === 'jogo' && officialEdition && field.col2Type !== 'number'
@@ -2126,7 +2150,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
         <div className="flex flex-col gap-2">
           <div className="flex items-center justify-between gap-2">
             <span className="font-mono-tech text-xs font-bold tracking-wider text-[var(--ink-primary)] uppercase">
-              {field.label}
+              {displayLabel}
             </span>
             {field.col2Type === 'number' && (
               <span className="font-mono-tech text-[11px] font-bold px-2 py-0.5 bg-[var(--accent-cream-badge)] text-[var(--accent-wine)] border border-[var(--accent-wine)] rounded-[var(--radius-pill)]">
@@ -2322,14 +2346,14 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
     >
       <div className="no-print print:hidden flex items-center justify-between gap-2 pb-1 mb-0.5 border-b border-[var(--border-subtle)]/70">
         <span className="font-mono-tech text-[9px] font-bold uppercase tracking-wider text-[var(--ink-muted)] truncate">
-          {shouldShowEditStrip ? `${ctrlLabels.editingTag} · ${field.key}` : field.kind.toUpperCase()}
+          {shouldShowEditStrip ? `${ctrlLabels.editingTag} · ${field.key}` : t.t(`cards.fieldKind.${field.kind}`)}
         </span>
         <div className="flex items-center gap-1 shrink-0">
           {onMoveUp && (
             <button
               type="button"
               data-testid={`move-field-up-${field.id}`}
-              aria-label={`${ctrlLabels.moveUp}: ${field.label}`}
+              aria-label={`${ctrlLabels.moveUp}: ${displayLabel}`}
               disabled={!canMoveUp}
               onClick={onMoveUp}
               className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)]/55 bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
@@ -2341,7 +2365,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
             <button
               type="button"
               data-testid={`move-field-down-${field.id}`}
-              aria-label={`${ctrlLabels.moveDown}: ${field.label}`}
+              aria-label={`${ctrlLabels.moveDown}: ${displayLabel}`}
               disabled={!canMoveDown}
               onClick={onMoveDown}
               className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)]/55 bg-[var(--bg-card)] text-[var(--ink-primary)] hover:bg-[var(--bg-hover)] disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer"
@@ -2354,7 +2378,7 @@ export const FieldPrimitive: React.FC<FieldPrimitiveProps> = ({
               type="button"
               data-testid={`edit-field-toggle-${field.id}`}
               aria-expanded={Boolean(isEditOpen)}
-              aria-label={`${isEditOpen ? ctrlLabels.closeEdit : ctrlLabels.editField}: ${field.label}`}
+              aria-label={`${isEditOpen ? ctrlLabels.closeEdit : ctrlLabels.editField}: ${displayLabel}`}
               onClick={onToggleEdit}
               className={`min-h-[28px] px-2 inline-flex items-center gap-1 rounded-[var(--radius-pill)] border font-mono-tech text-[9px] font-bold uppercase cursor-pointer transition-colors ${
                 isEditOpen

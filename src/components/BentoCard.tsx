@@ -21,6 +21,7 @@ import {
   VirtuesState,
 } from '../core/sheetModel';
 import { AppLanguage, AppTranslations, getTranslations } from '../core/i18n';
+import { localizeCardTag, localizeCardTitle } from '../core/presetI18n';
 import {
   buildCatalogSkillFields,
   getGroupedWodSkillsCatalog,
@@ -282,6 +283,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   }, [mode]);
 
   const lang: AppLanguage = t.language ?? 'pt-BR';
+  const displayCardTitle = localizeCardTitle(card, lang);
+  const displayCardCode = localizeCardTag(card, lang);
   const getTemplateMeta = (tplId: GuidedFieldTemplateId) => ({
     label: t.t(`cards.guided.${tplId}.label`),
     hint: t.t(`cards.guided.${tplId}.hint`),
@@ -1003,7 +1006,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
               }`}
             >
               {t.t('cards.vital.bloodSurgeLabel', { bonus: bloodSurgeBonus })}
-              {bloodSurge ? ' · ON' : ''}
+              {bloodSurge ? ` · ${t.t('poolComposer.powerBonusOnTag')}` : ''}
             </button>
           </div>
         )}
@@ -1034,7 +1037,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                   {t.t('cards.vital.bpMend')}
                 </span>
                 <span className="font-mono-tech text-xs font-extrabold tabular-nums text-[var(--ink-primary)]">
-                  {bpStats.mendSuperficialPerRouse} SUP
+                  {t.t('cards.vital.bpMendValue', { amount: bpStats.mendSuperficialPerRouse })}
                 </span>
               </div>
               <div className="v5-bp-stat-cell px-2 py-1 flex flex-col gap-0.5">
@@ -1079,21 +1082,21 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   };
 
   return (
-    <section className={`bento-card ${spanClass}`} data-card-id={card.id} aria-label={card.title}>
+    <section className={`bento-card ${spanClass}`} data-card-id={card.id} aria-label={displayCardTitle}>
       <header className="bento-card-header">
         {mode === 'edicao' ? (
           <>
             <div className="no-print print:hidden flex flex-wrap items-center gap-2 flex-1 min-w-0">
               <input
                 type="text"
-                aria-label={t.t('cards.editCodeAria', { title: card.title })}
+                aria-label={t.t('cards.editCodeAria', { title: displayCardTitle })}
                 value={card.code}
                 onChange={(e) => onUpdateCard(card.id, { code: e.target.value })}
                 className="cyber-input mobile-touch-input px-1.5 py-0.5 text-[11px] font-bold text-[var(--accent-wine)] w-28"
               />
               <input
                 type="text"
-                aria-label={t.t('cards.editTitleAria', { title: card.title })}
+                aria-label={t.t('cards.editTitleAria', { title: displayCardTitle })}
                 value={card.title}
                 onChange={(e) => onUpdateCard(card.id, { title: e.target.value })}
                 className="cyber-input mobile-touch-input px-2 py-0.5 text-xs font-extrabold uppercase flex-1 min-w-[140px]"
@@ -1101,20 +1104,20 @@ export const BentoCard: React.FC<BentoCardProps> = ({
             </div>
             <div className="hidden print:flex items-center gap-2.5 min-w-0">
               <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-                {card.code}
+                {displayCardCode}
               </span>
               <h2 className="font-display text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] truncate print:whitespace-normal print:overflow-visible print:leading-tight">
-                {card.title}
+                {displayCardTitle}
               </h2>
             </div>
           </>
         ) : (
           <div className="bento-card-header-title flex flex-wrap items-baseline gap-x-2.5 gap-y-0.5 min-w-0 flex-1">
             <span className="font-mono-tech text-[11px] font-bold text-[var(--accent-wine)] tracking-wider shrink-0">
-              {card.code}
+              {displayCardCode}
             </span>
             <h2 className="font-display text-lg sm:text-xl print:text-base font-extrabold tracking-wide uppercase text-[var(--ink-primary)] leading-tight break-words">
-              {card.title}
+              {displayCardTitle}
             </h2>
           </div>
         )}
@@ -1139,7 +1142,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                 </button>
                 <button
                   type="button"
-                  aria-label={t.t('cards.removeCardAria', { title: card.title })}
+                  aria-label={t.t('cards.removeCardAria', { title: displayCardTitle })}
                   onClick={() => onRemoveCard(card.id)}
                   className="w-7 h-7 sm:w-6 sm:h-6 inline-flex items-center justify-center rounded-[var(--radius-pill)] border border-[var(--border-ink)] bg-[var(--bg-card)] hover:bg-[var(--accent-danger-soft)] text-[var(--accent-danger)] cursor-pointer"
                 >
@@ -1172,8 +1175,8 @@ export const BentoCard: React.FC<BentoCardProps> = ({
         {isWodDossierCard && officialEdition && (
           <WodStructuredBlocks
             edition={officialEdition}
-            cardTitle={card.title}
-            cardCode={card.code}
+            cardTitle={displayCardTitle}
+            cardCode={displayCardCode}
             searchQuery={searchQuery}
             touchstones={touchstones}
             meritsFlaws={meritsFlaws}
@@ -2083,7 +2086,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
                     <input
                       ref={labelInputRef}
                       type="text"
-                      aria-label={t.t('cards.newFieldNameAria', { title: card.title })}
+                      aria-label={t.t('cards.newFieldNameAria', { title: displayCardTitle })}
                       value={newFieldLabel}
                       onChange={(e) => setNewFieldLabel(e.target.value)}
                       placeholder={t.newFieldPlaceholder}

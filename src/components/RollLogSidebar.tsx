@@ -2,6 +2,7 @@ import React, { useEffect, useMemo, useRef, useState } from 'react';
 import { Trash2, X } from 'lucide-react';
 import { CharacterSheetState, RollLogEntry, RulePreset, SystemId } from '../core/sheetModel';
 import { AppLanguage, AppTranslations } from '../core/i18n';
+import { localizeFieldRollLabel } from '../core/presetI18n';
 import { isOfficialVampireSheet } from '../core/wodSkillsCatalog';
 import { type WodComposedRollRequest } from '../utils/wodPoolComposer';
 import { RulesSearchPanel } from './RulesSearchPanel';
@@ -506,7 +507,7 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                   >
                     <div className="flex items-center justify-between gap-2 mb-1">
                       <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)] truncate">
-                        {entry.label}
+                        {localizeFieldRollLabel({ label: entry.label }, language)}
                       </span>
                       <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] shrink-0">
                         {entry.timestamp}
@@ -870,7 +871,9 @@ export const RollLogSidebar: React.FC<RollLogSidebarProps> = ({
                                 ? `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })} · ${t.t('sidebar.roll.exceptional')}`
                                 : `${scoreLabel} · ${t.t('sidebar.roll.margin', { margin: v5Margin })}`;
                         const v5FormulaLine = `${entry.rolls.length}d10 (${t.t('cards.pool.diffMeta')} ${v5Target}${
-                          (entry.hungerDice ?? 0) > 0 ? ` · H:${entry.hungerDice}` : ''
+                          (entry.hungerDice ?? 0) > 0
+                            ? ` · ${t.t('sidebar.roll.hungerShort', { count: entry.hungerDice ?? 0 })}`
+                            : ''
                         })`;
                         return (
                           <>

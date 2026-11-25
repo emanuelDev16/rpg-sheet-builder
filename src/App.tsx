@@ -95,6 +95,7 @@ import {
   LANGUAGE_STORAGE_KEY,
   readStoredLanguage,
 } from './core/i18n';
+import { localizeFieldRollLabel } from './core/presetI18n';
 import {
   AUTOSAVE_DEBOUNCE_MS,
   createDebouncedSheetSaver,
@@ -977,8 +978,8 @@ function HydratedAppWorkspace({
     const bpTag = anyRerolledByBp ? ` · ${t.t('sidebar.roll.rouseBpRerollBadge')}` : '';
     const formula =
       count === 1
-        ? `${rolls.length}d10 (ROUSE CHECK · DIFF 6${bpTag})`
-        : `${rolls.length}d10 (ROUSE CHECK ×${count} · DIFF 6${bpTag})`;
+        ? t.t('app.rouseFormulaSingle', { rolls: rolls.length, bpTag })
+        : t.t('app.rouseFormulaMulti', { rolls: rolls.length, count, bpTag });
     const breakdown =
       count === 1
         ? `${rolls.length}d10[${rolls.join(', ')}] ≥6${bpTag} → ${
@@ -1438,7 +1439,7 @@ function HydratedAppWorkspace({
         ? (field.rollDifficultyV5 ?? field.rollDifficulty ?? 2)
         : field.rollDifficulty;
     appendRollLog(
-      field.rollLabel ?? field.label,
+      localizeFieldRollLabel(field, language),
       expr,
       isPool
         ? {
@@ -1484,7 +1485,7 @@ function HydratedAppWorkspace({
     const rouseHungerDelta = rouseResult?.hungerDelta ?? 0;
     const rouseEntry = rouseResult
       ? buildRollLogEntry(
-          `${t.t('cards.powers.rouseLogPrefix')} · BLOOD SURGE`,
+          `${t.t('cards.powers.rouseLogPrefix')} · ${t.t('sidebar.roll.surgeChip')}`,
           rouseResult,
           'log_rouse',
         )
@@ -1975,7 +1976,7 @@ function HydratedAppWorkspace({
       return res.sheet;
     });
     if (result.ok) {
-      triggerFlash(`// XP: SPEC (${focus}) (-3 XP)`);
+      triggerFlash(t.t('app.xpSpecFlash', { focus, cost: 3 }));
     }
     return result;
   };
@@ -1995,7 +1996,12 @@ function HydratedAppWorkspace({
       return res.sheet;
     });
     if (result.ok) {
-      triggerFlash(`// XP: +${label.toUpperCase()} (-${customCost ?? 3} XP)`);
+      triggerFlash(
+        t.t('app.xpBackgroundFlash', {
+          label: label.toUpperCase(),
+          cost: customCost ?? 3,
+        }),
+      );
     }
     return result;
   };
@@ -2520,7 +2526,7 @@ function HydratedAppWorkspace({
                 <div className="min-w-0 flex-1">
                   <div className="flex flex-wrap items-center gap-1.5 min-w-0">
                     <span className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-primary)] truncate">
-                      {mobileRollToast.label}
+                      {localizeFieldRollLabel({ label: mobileRollToast.label }, language)}
                     </span>
                     {(() => {
                       if (mobileRollToast.isPoolRoll) {
