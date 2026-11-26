@@ -4686,6 +4686,15 @@ function checkPlainObject(
   return true;
 }
 
+function hasAllowedString(value: unknown, allowed: Set<string> | readonly string[]): boolean {
+  if (typeof value !== 'string') return false;
+  return allowed instanceof Set ? allowed.has(value) : allowed.includes(value);
+}
+
+function formatInvalidValue(value: unknown): string {
+  return typeof value === 'string' ? value : typeof value;
+}
+
 export function validateSheetPayload(data: unknown): SheetPayloadValidationResult {
   const errors: string[] = [];
   const dangerousPath = findDangerousKeyPath(data);
@@ -4719,8 +4728,8 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       errors.push('$.id: identificador inválido.');
     }
   }
-  if (data.systemId !== undefined && !ALLOWED_SYSTEM_IDS.has(String(data.systemId))) {
-    errors.push(`$.systemId: sistema inválido "${String(data.systemId)}".`);
+  if (data.systemId !== undefined && !hasAllowedString(data.systemId, ALLOWED_SYSTEM_IDS)) {
+    errors.push(`$.systemId: sistema inválido "${formatInvalidValue(data.systemId)}".`);
   }
   if (data.revision !== undefined) {
     if (typeof data.revision !== 'number' || !Number.isInteger(data.revision) || data.revision < 1) {
@@ -4737,11 +4746,11 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       errors.push('$.deviceId: string inválida (1..128 caracteres).');
     }
   }
-  if (data.rulePreset !== undefined && !ALLOWED_XP_RULE_PRESETS.has(String(data.rulePreset))) {
-    errors.push(`$.rulePreset: preset de regras inválido "${String(data.rulePreset)}".`);
+  if (data.rulePreset !== undefined && !hasAllowedString(data.rulePreset, ALLOWED_XP_RULE_PRESETS)) {
+    errors.push(`$.rulePreset: preset de regras inválido "${formatInvalidValue(data.rulePreset)}".`);
   }
-  if (data.xpRulePreset !== undefined && !ALLOWED_XP_RULE_PRESETS.has(String(data.xpRulePreset))) {
-    errors.push(`$.xpRulePreset: preset de XP inválido "${String(data.xpRulePreset)}".`);
+  if (data.xpRulePreset !== undefined && !hasAllowedString(data.xpRulePreset, ALLOWED_XP_RULE_PRESETS)) {
+    errors.push(`$.xpRulePreset: preset de XP inválido "${formatInvalidValue(data.xpRulePreset)}".`);
   }
   if (data.customUseNewLevelBase !== undefined && typeof data.customUseNewLevelBase !== 'boolean') {
     errors.push('$.customUseNewLevelBase: deve ser booleano.');
@@ -4778,7 +4787,7 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
     } else {
       data.tabs.forEach((tab, idx) => {
         if (checkPlainObject(tab, `$.tabs[${idx}]`, new Set(['id', 'label']), errors)) {
-          if (!ALLOWED_TAB_IDS.has(String(tab.id))) {
+          if (!hasAllowedString(tab.id, ALLOWED_TAB_IDS)) {
             errors.push(`$.tabs[${idx}].id: valor inválido.`);
           }
           if (typeof tab.label !== 'string' || tab.label.length < 1 || tab.label.length > 80) {
@@ -4801,8 +4810,8 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       if (typeof card.id !== 'string' || card.id.length < 1 || card.id.length > 64) {
         errors.push(`${cPath}.id: string obrigatória.`);
       }
-      if (!ALLOWED_TAB_IDS.has(String(card.tab))) {
-        errors.push(`${cPath}.tab: aba inválida "${String(card.tab)}".`);
+      if (!hasAllowedString(card.tab, ALLOWED_TAB_IDS)) {
+        errors.push(`${cPath}.tab: aba inválida "${formatInvalidValue(card.tab)}".`);
       }
       if (typeof card.code !== 'string' || card.code.length > 64) {
         errors.push(`${cPath}.code: string obrigatória.`);
@@ -4840,8 +4849,8 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         if (typeof field.label !== 'string' || field.label.length < 1 || field.label.length > 100) {
           errors.push(`${fPath}.label: string obrigatória.`);
         }
-        if (!ALLOWED_FIELD_KINDS.has(String(field.kind))) {
-          errors.push(`${fPath}.kind: tipo de campo inválido "${String(field.kind)}".`);
+        if (!hasAllowedString(field.kind, ALLOWED_FIELD_KINDS)) {
+          errors.push(`${fPath}.kind: tipo de campo inválido "${formatInvalidValue(field.kind)}".`);
         }
         if (field.value !== undefined && field.value !== null) {
           const isValidValue =
@@ -4896,9 +4905,9 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         }
         if (
           field.attributeGroup !== undefined &&
-          !ALLOWED_ATTRIBUTE_GROUPS.has(String(field.attributeGroup))
+          !hasAllowedString(field.attributeGroup, ALLOWED_ATTRIBUTE_GROUPS)
         ) {
-          errors.push(`${fPath}.attributeGroup: grupo inválido "${String(field.attributeGroup)}".`);
+          errors.push(`${fPath}.attributeGroup: grupo inválido "${formatInvalidValue(field.attributeGroup)}".`);
         }
         if (
           field.rollDifficulty !== undefined &&
@@ -4926,9 +4935,9 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         }
         if (
           field.xpCategory !== undefined &&
-          !ALLOWED_FIELD_XP_CATEGORIES.has(String(field.xpCategory))
+          !hasAllowedString(field.xpCategory, ALLOWED_FIELD_XP_CATEGORIES)
         ) {
-          errors.push(`${fPath}.xpCategory: categoria XP inválida "${String(field.xpCategory)}".`);
+          errors.push(`${fPath}.xpCategory: categoria XP inválida "${formatInvalidValue(field.xpCategory)}".`);
         }
         if (
           field.bashingDamage !== undefined &&
@@ -5091,7 +5100,7 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
           if (entry.kind !== 'award' && entry.kind !== 'upgrade') {
             errors.push(`${xPath}.kind: deve ser "award" ou "upgrade".`);
           }
-          if (entry.category !== undefined && !ALLOWED_XP_CATEGORIES.has(String(entry.category))) {
+          if (entry.category !== undefined && !hasAllowedString(entry.category, ALLOWED_XP_CATEGORIES)) {
             errors.push(`${xPath}.category: categoria inválida.`);
           }
           if (
@@ -5146,9 +5155,9 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       }
       if (
         data.xp.xpRulePreset !== undefined &&
-        !ALLOWED_XP_RULE_PRESETS.has(String(data.xp.xpRulePreset))
+        !hasAllowedString(data.xp.xpRulePreset, ALLOWED_XP_RULE_PRESETS)
       ) {
-        errors.push(`$.xp.xpRulePreset: preset de XP inválido "${String(data.xp.xpRulePreset)}".`);
+        errors.push(`$.xp.xpRulePreset: preset de XP inválido "${formatInvalidValue(data.xp.xpRulePreset)}".`);
       }
       if (
         data.xp.customUseNewLevelBase !== undefined &&
@@ -5277,7 +5286,7 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         errors.push('$.dnd5eState.tempHp: deve ser inteiro >= 0.');
       }
       if (checkPlainObject(ds.hitDice, '$.dnd5eState.hitDice', DND5E_HIT_DICE_KEYS, errors)) {
-        if (!['d6', 'd8', 'd10', 'd12'].includes(String(ds.hitDice.die))) {
+        if (!hasAllowedString(ds.hitDice.die, ['d6', 'd8', 'd10', 'd12'])) {
           errors.push('$.dnd5eState.hitDice.die: dado inválido.');
         }
         if (typeof ds.hitDice.current !== 'number' || !Number.isInteger(ds.hitDice.current) || ds.hitDice.current < 0 || ds.hitDice.current > 20) {
@@ -5304,13 +5313,13 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
       }
       if (checkPlainObject(ds.skillProficiencies, '$.dnd5eState.skillProficiencies', DND5E_SKILL_KEYS, errors)) {
         for (const sk of DND5E_SKILL_KEYS) {
-          if (!DND5E_SKILL_PROF_VALUES.has(String(ds.skillProficiencies[sk]))) {
+          if (!hasAllowedString(ds.skillProficiencies[sk], DND5E_SKILL_PROF_VALUES)) {
             errors.push(`$.dnd5eState.skillProficiencies.${sk}: valor inválido.`);
           }
         }
       }
       if (checkPlainObject(ds.spellcasting, '$.dnd5eState.spellcasting', DND5E_SPELLCASTING_KEYS, errors)) {
-        if (!['int', 'wis', 'cha'].includes(String(ds.spellcasting.ability))) {
+        if (!hasAllowedString(ds.spellcasting.ability, ['int', 'wis', 'cha'])) {
           errors.push('$.dnd5eState.spellcasting.ability: atributo inválido.');
         }
         if (!Array.isArray(ds.spellcasting.slots) || ds.spellcasting.slots.length > 9) {
