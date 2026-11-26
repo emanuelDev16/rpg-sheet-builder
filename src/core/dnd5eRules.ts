@@ -211,6 +211,9 @@ export function createDefaultDnd5eState(overrides: Partial<Dnd5eState> = {}): Dn
     saveProficiencies,
     skillProficiencies,
     spellcasting: { ability: overrides.spellcasting?.ability ?? 'int', slots },
+    ...(overrides.progression && typeof overrides.progression === 'object' && !Array.isArray(overrides.progression)
+      ? { progression: overrides.progression }
+      : {}),
   };
 }
 export function normalizeDnd5eState(raw: unknown, fallback?: Partial<Dnd5eState>): Dnd5eState {
@@ -228,5 +231,6 @@ export function normalizeDnd5eState(raw: unknown, fallback?: Partial<Dnd5eState>
     saveProficiencies: { ...fallback?.saveProficiencies, ...r.saveProficiencies } as Dnd5eSaveProficiencies,
     skillProficiencies: { ...fallback?.skillProficiencies, ...r.skillProficiencies } as Dnd5eSkillProficiencies,
     spellcasting: { ability: validAb, slots: Array.isArray(r.spellcasting?.slots) ? r.spellcasting.slots : fallback?.spellcasting?.slots ?? [] },
+    progression: r.progression ?? fallback?.progression,
   });
 }

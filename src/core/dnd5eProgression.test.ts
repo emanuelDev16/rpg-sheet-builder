@@ -4,20 +4,25 @@ import fs from 'node:fs';
 import path from 'node:path';
 import Ajv2020 from 'ajv/dist/2020.js';
 import addFormats from 'ajv-formats';
-import { createDefaultDnd5eState } from './dnd5eRules.ts';
+import { createDefaultDnd5eState, normalizeDnd5eState } from './dnd5eRules.ts';
 import {
   addDnd5eXp,
   applyDnd5eLevelUp,
   computeLevelUpHpGain,
   createDefaultDnd5eProgression,
+  DND5E_DEFAULT_MILESTONE_STYLE,
   DND5E_MAX_PROGRESSION_HISTORY,
   DND5E_XP_THRESHOLDS,
   getDnd5eHitDieAverage,
+  getDnd5eSessionProgress,
   getDnd5eXpProgress,
   isStandardAsiLevel,
+  logDnd5eMilestone,
   logDnd5eSession,
   normalizeDnd5eProgression,
+  setDnd5eMilestoneStyle,
   setDnd5eProgressionMode,
+  setDnd5eSessionsPerLevel,
   undoLastDnd5eProgression,
 } from './dnd5eProgression.ts';
 import { createDnd5ePreset, migrateLegacyDnd5eSheet, validateSheetPayload } from './sheetModel.ts';
@@ -220,4 +225,142 @@ test('schema.v2.json AJV and validateSheetPayload validate progression and rejec
   };
   assert.equal(validateAjv(badMode), false);
   assert.equal(validateSheetPayload(badMode).valid, false);
+});
+
+test('milestone sub-styles, sessions goal progress, free milestones, and normalizeDnd5eState preservation', () => {
+  const initial = {
+    ...createDefaultDnd5eState({ level: 2, hitDice: { die: 'd10', current: 2, max: 2 } }),
+    progression: createDefaultDnd5eProgression({ mode: 'xp', xpTotal: 450, sessionsCount: 1, sessionsPerLevel: 3 }),
+  };
+
+  // Toggle xp <-> milestone preserves xpTotal, sessionsCount, sessionsPerLevel, milestoneStyle
+  const toMilestone = setDnd5eProgressionMode(initial, 'milestone');
+  assert.equal(toMilestone.progression?.mode, 'milestone');
+  assert.equal(toMilestone.progression?.milestoneStyle, DND5E_DEFAULT_MILESTONE_STYLE);
+  assert.equal(toMilestone.progression?.xpTotal, 450);
+  assert.equal(toMilestone.progression?.sessionsCount, 1);
+  assert.equal(toMilestone.progression?.sessionsPerLevel, 3);
+
+  const backToXp = setDnd5eProgressionMode(toMilestone, 'xp');
+  assert.equal(backToXp.progression?.mode, 'xp');
+  assert.equal(backToXp.progression?.milestoneStyle, 'sessions');
+  assert.equal(backToXp.progression?.sessionsPerLevel, 3);
+
+  // Toggle sessions <-> free preserves sessionsPerLevel, sessionsCount, xpTotal
+  const toFree = setDnd5eMilestoneStyle(toMilestone, 'free');
+  assert.equal(toFree.progression?.mode, 'milestone');
+  assert.equal(toFree.progression?.milestoneStyle, 'free');
+  assert.equal(toFree.progression?.sessionsPerLevel, 3);
+  assert.equal(toFree.progression?.sessionsCount, 1);
+  assert.equal(toFree.progression?.xpTotal, 450);
+
+  const clampedTarget = setDnd5eSessionsPerLevel(setDnd5eMilestoneStyle(toFree, 'sessions'), 99);
+  assert.equal(clampedTarget.progression?.sessionsPerLevel, 20);
+  assert.equal(setDnd5eSessionsPerLevel(clampedTarget, 0).progression?.sessionsPerLevel, 1);
+  assert.equal(setDnd5eSessionsPerLevel(clampedTarget, Number.NaN).progression?.sessionsPerLevel, 1);
+  const targetTwo = setDnd5eSessionsPerLevel(clampedTarget, 2);
+
+  // Regression: normalizeDnd5eState must not strip or reset progression.mode / milestoneStyle
+  const normalizedState = normalizeDnd5eState(toFree, { level: 2 });
+  assert.equal(normalizedState.progression?.mode, 'milestone');
+  assert.equal(normalizedState.progression?.milestoneStyle, 'free');
+  assert.equal(normalizedState.progression?.xpTotal, 450);
+
+  // Session progress tracks sessions since last level_up and ignores milestone entries
+  const s1 = logDnd5eSession(targetTwo, { id: 'ses_1', timestamp: '2026-11-26T18:00:00Z', note: 'Session 1' });
+  const m1 = logDnd5eMilestone(s1, { id: 'ms_1', timestamp: '2026-11-26T18:30:00Z', note: 'Saved the tavern' });
+  assert.equal(m1.progression?.sessionsCount, 2);
+  assert.equal(m1.progression?.xpTotal, 450);
+  assert.equal(m1.progression?.history.at(-1)?.kind, 'milestone');
+  assert.equal(m1.progression?.history.at(-1)?.note, 'Saved the tavern');
+
+  // Undo milestone leaves level, HP, sessionsCount, and xpTotal intact
+  const undoneMs = undoLastDnd5eProgression({ dnd5eState: m1, maxHp: 20, currentHp: 18 });
+  assert.equal(undoneMs.undone, true);
+  assert.equal(undoneMs.entry?.kind, 'milestone');
+  assert.equal(undoneMs.dnd5eState.level, 2);
+  assert.equal(undoneMs.maxHp, 20);
+  assert.equal(undoneMs.currentHp, 18);
+  assert.equal(undoneMs.dnd5eState.progression?.sessionsCount, 2);
+  assert.equal(undoneMs.dnd5eState.progression?.xpTotal, 450);
+
+  // Reaching session goal -> level_up -> visual reset of sessionsInLevel
+  const s2 = logDnd5eSession(undoneMs.dnd5eState, { id: 'ses_2', timestamp: '2026-11-26T19:00:00Z', note: 'Session 2' });
+  const progBefore = getDnd5eSessionProgress(s2);
+  assert.deepEqual(progBefore, {
+    style: 'sessions',
+    sessionsInLevel: 2,
+    sessionsTotal: 3,
+    sessionsPerLevel: 2,
+    sessionsToNext: 0,
+    progressPercent: 100,
+    isGoalReached: true,
+  });
+
+  const leveled = applyDnd5eLevelUp(
+    { dnd5eState: s2, maxHp: 20, currentHp: 18 },
+    { conMod: 2, method: 'average', id: 'lvl_2', timestamp: '2026-11-26T20:00:00Z' },
+  );
+  assert.equal(leveled.applied, true);
+  const progAfterLvl = getDnd5eSessionProgress(leveled.dnd5eState);
+  assert.deepEqual(progAfterLvl, {
+    style: 'sessions',
+    sessionsInLevel: 0,
+    sessionsTotal: 3,
+    sessionsPerLevel: 2,
+    sessionsToNext: 2,
+    progressPercent: 0,
+    isGoalReached: false,
+  });
+
+  const s3 = logDnd5eSession(leveled.dnd5eState, { id: 'ses_3', timestamp: '2026-11-26T21:00:00Z' });
+  assert.equal(getDnd5eSessionProgress(s3).sessionsInLevel, 1);
+  assert.equal(getDnd5eSessionProgress(s3).sessionsTotal, 4);
+  assert.equal(getDnd5eSessionProgress(s3.progression).sessionsInLevel, 1);
+  assert.equal(getDnd5eSessionProgress({ dnd5eState: s3 }).sessionsInLevel, 1);
+
+  // Undoing level_up restores previous sessionsInLevel
+  const undoLvl = undoLastDnd5eProgression({ dnd5eState: leveled.dnd5eState, maxHp: leveled.maxHp, currentHp: leveled.currentHp });
+  assert.equal(getDnd5eSessionProgress(undoLvl.dnd5eState).sessionsInLevel, 2);
+  assert.equal(getDnd5eSessionProgress(undoLvl.dnd5eState).isGoalReached, true);
+
+  // Migration preserves saved mode='milestone' and defaults missing milestoneStyle to 'sessions'
+  const validateAjv = compileSchemaV2();
+  const preset = createDnd5ePreset();
+  const legacySavedMilestone = {
+    ...preset,
+    dnd5eState: {
+      ...preset.dnd5eState!,
+      progression: {
+        mode: 'milestone' as const,
+        xpTotal: 6500,
+        sessionsCount: 2,
+        sessionsPerLevel: 4,
+        history: [{ id: 'ms_legacy', timestamp: '2026-11-26T20:00:00Z', kind: 'milestone' as const, note: 'Act I' }],
+      },
+    },
+  };
+  assert.equal(validateAjv(legacySavedMilestone), true, JSON.stringify(validateAjv.errors));
+  assert.equal(validateSheetPayload(legacySavedMilestone).valid, true);
+  const migratedMs = migrateLegacyDnd5eSheet(legacySavedMilestone);
+  assert.equal(migratedMs.dnd5eState?.progression?.mode, 'milestone');
+  assert.equal(migratedMs.dnd5eState?.progression?.milestoneStyle, 'sessions');
+
+  // AJV & validateSheetPayload accept milestoneStyle='free' and reject invalid milestoneStyle / kind
+  const freeSheet = {
+    ...preset,
+    dnd5eState: logDnd5eMilestone(setDnd5eMilestoneStyle(setDnd5eProgressionMode(preset.dnd5eState!, 'milestone'), 'free'), 'Boss defeated'),
+  };
+  assert.equal(validateAjv(freeSheet), true, JSON.stringify(validateAjv.errors));
+  assert.equal(validateSheetPayload(freeSheet).valid, true);
+
+  const badStyle = {
+    ...freeSheet,
+    dnd5eState: {
+      ...freeSheet.dnd5eState,
+      progression: { ...freeSheet.dnd5eState.progression!, milestoneStyle: 'narrative' },
+    },
+  };
+  assert.equal(validateAjv(badStyle), false);
+  assert.equal(validateSheetPayload(badStyle).valid, false);
 });

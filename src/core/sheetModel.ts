@@ -53,11 +53,13 @@ export type {
 } from './dnd5eRules.ts';
 export type {
   Dnd5eHpMethod,
+  Dnd5eMilestoneStyle,
   Dnd5eProgressionEntry,
   Dnd5eProgressionEntryKind,
   Dnd5eProgressionMode,
   Dnd5eProgressionSnapshot,
   Dnd5eProgressionState,
+  Dnd5eSessionProgress,
   Dnd5eXpProgress,
 } from './dnd5eProgression.ts';
 
@@ -4657,6 +4659,7 @@ const DND5E_STATE_KEYS = new Set([
 ]);
 const DND5E_PROGRESSION_KEYS = new Set([
   'mode',
+  'milestoneStyle',
   'xpTotal',
   'sessionsCount',
   'sessionsPerLevel',
@@ -4675,7 +4678,8 @@ const DND5E_PROGRESSION_ENTRY_KEYS = new Set([
   'note',
 ]);
 const DND5E_PROGRESSION_MODES = new Set(['xp', 'milestone']);
-const DND5E_PROGRESSION_KINDS = new Set(['xp_gain', 'session', 'level_up']);
+const DND5E_MILESTONE_STYLES = new Set(['sessions', 'free']);
+const DND5E_PROGRESSION_KINDS = new Set(['xp_gain', 'session', 'milestone', 'level_up']);
 const DND5E_HP_METHODS = new Set(['average', 'roll', 'manual']);
 const DND5E_HIT_DICE_KEYS = new Set(['die', 'current', 'max']);
 const DND5E_DEATH_SAVE_KEYS = new Set(['successes', 'failures']);
@@ -5391,6 +5395,9 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         if (checkPlainObject(prog, '$.dnd5eState.progression', DND5E_PROGRESSION_KEYS, errors)) {
           if (!hasAllowedString(prog.mode, DND5E_PROGRESSION_MODES)) {
             errors.push('$.dnd5eState.progression.mode: modo inválido.');
+          }
+          if (prog.milestoneStyle !== undefined && !hasAllowedString(prog.milestoneStyle, DND5E_MILESTONE_STYLES)) {
+            errors.push('$.dnd5eState.progression.milestoneStyle: estilo de marco inválido.');
           }
           if (
             typeof prog.xpTotal !== 'number' ||
