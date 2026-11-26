@@ -2,6 +2,7 @@ import { defineConfig } from 'vitest/config';
 
 export const NODE_TEST_FILES = [
   'src/core/diceAudio.test.ts',
+  'src/core/dnd5eProgression.test.ts',
   'src/core/dnd5eRules.test.ts',
   'src/core/formula.test.ts',
   'src/core/i18n.test.ts',

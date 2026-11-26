@@ -2756,6 +2756,83 @@ select:focus-visible,
 }
 
 /* ============================================================================
+   D&D 5E PROGRESSION & GENERIC XP WORKSPACES
+   ============================================================================ */
+.dnd5e-prog-bar {
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-pill);
+  background-color: var(--bg-card-alt);
+}
+
+.dnd5e-prog-bar-fill {
+  background-color: var(--accent-primary);
+}
+
+.dnd5e-asi-badge {
+  background-color: var(--bg-strip);
+  color: var(--ink-primary);
+}
+
+.dnd5e-prog-panel [aria-disabled="true"],
+.generic-xp-panel [aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+@media (max-width: 767px) {
+  .dnd5e-prog-panel input,
+  .generic-xp-panel input {
+    font-size: 16px;
+  }
+}
+
+[data-theme="eink"] .dnd5e-prog-panel,
+[data-theme="eink"] .dnd5e-prog-panel *,
+[data-theme="eink"] .generic-xp-panel,
+[data-theme="eink"] .generic-xp-panel * {
+  box-shadow: none !important;
+  background-image: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme="eink"] .dnd5e-prog-panel .tabular-nums,
+[data-theme="eink"] .generic-xp-panel .tabular-nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .dnd5e-prog-mode-btn[aria-pressed="true"],
+[data-theme="eink"] .dnd5e-prog-bar-fill,
+[data-theme="eink"] .dnd5e-asi-badge {
+  background-color: var(--ink-primary) !important;
+  color: var(--bg-card) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+@media (forced-colors: active) {
+  .dnd5e-prog-bar,
+  .dnd5e-asi-badge,
+  .dnd5e-prog-mode-btn {
+    border: 1px solid CanvasText !important;
+  }
+
+  .dnd5e-prog-mode-btn[aria-pressed="true"],
+  .dnd5e-prog-bar-fill {
+    background-color: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+    forced-color-adjust: none;
+  }
+
+  .dnd5e-prog-panel [aria-disabled="true"],
+  .generic-xp-panel [aria-disabled="true"] {
+    color: GrayText !important;
+    border-color: GrayText !important;
+  }
+}
+
+/* ============================================================================
    CAMADAS DE EMPILHAMENTO (Z-LAYERING) & POPOVER PORTAL
    ============================================================================ */
 .topbar-root {

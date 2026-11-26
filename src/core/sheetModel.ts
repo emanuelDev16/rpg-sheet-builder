@@ -30,6 +30,10 @@ import {
   type Dnd5eState,
   normalizeDnd5eState,
 } from './dnd5eRules.ts';
+import {
+  createDefaultDnd5eProgression,
+  normalizeDnd5eProgression,
+} from './dnd5eProgression.ts';
 
 export type { RulePreset, SoakDamageType };
 export type {
@@ -47,6 +51,15 @@ export type {
   Dnd5eSpellSlotEntry,
   Dnd5eState,
 } from './dnd5eRules.ts';
+export type {
+  Dnd5eHpMethod,
+  Dnd5eProgressionEntry,
+  Dnd5eProgressionEntryKind,
+  Dnd5eProgressionMode,
+  Dnd5eProgressionSnapshot,
+  Dnd5eProgressionState,
+  Dnd5eXpProgress,
+} from './dnd5eProgression.ts';
 
 export const DEVICE_ID_STORAGE_KEY = 'grid_sheet_device_id_v1';
 
@@ -1445,44 +1458,47 @@ export function createDnd5ePreset(): CharacterSheetState {
         },
       ],
     },
-    dnd5eState: createDefaultDnd5eState({
-      level: 5,
-      inspiration: true,
-      tempHp: 0,
-      hitDice: { die: 'd10', current: 5, max: 5 },
-      deathSaves: { successes: 0, failures: 0 },
-      saveProficiencies: { str: true, dex: false, con: true, int: false, wis: false, cha: false },
-      skillProficiencies: {
-        acrobatics: 'none',
-        animal_handling: 'none',
-        arcana: 'proficient',
-        athletics: 'proficient',
-        deception: 'none',
-        history: 'none',
-        insight: 'none',
-        intimidation: 'none',
-        investigation: 'none',
-        medicine: 'none',
-        nature: 'none',
-        perception: 'proficient',
-        performance: 'none',
-        persuasion: 'none',
-        religion: 'none',
-        sleight_of_hand: 'none',
-        stealth: 'proficient',
-        survival: 'none',
-      },
-      spellcasting: {
-        ability: 'int',
-        slots: createDefaultDnd5eSlots().map((s) =>
-          s.level === 1
-            ? { level: 1, max: 4, used: 1 }
-            : s.level === 2
-              ? { level: 2, max: 2, used: 0 }
-              : s,
-        ),
-      },
-    }),
+    dnd5eState: {
+      ...createDefaultDnd5eState({
+        level: 5,
+        inspiration: true,
+        tempHp: 0,
+        hitDice: { die: 'd10', current: 5, max: 5 },
+        deathSaves: { successes: 0, failures: 0 },
+        saveProficiencies: { str: true, dex: false, con: true, int: false, wis: false, cha: false },
+        skillProficiencies: {
+          acrobatics: 'none',
+          animal_handling: 'none',
+          arcana: 'proficient',
+          athletics: 'proficient',
+          deception: 'none',
+          history: 'none',
+          insight: 'none',
+          intimidation: 'none',
+          investigation: 'none',
+          medicine: 'none',
+          nature: 'none',
+          perception: 'proficient',
+          performance: 'none',
+          persuasion: 'none',
+          religion: 'none',
+          sleight_of_hand: 'none',
+          stealth: 'proficient',
+          survival: 'none',
+        },
+        spellcasting: {
+          ability: 'int',
+          slots: createDefaultDnd5eSlots().map((s) =>
+            s.level === 1
+              ? { level: 1, max: 4, used: 1 }
+              : s.level === 2
+                ? { level: 2, max: 2, used: 0 }
+                : s,
+          ),
+        },
+      }),
+      progression: createDefaultDnd5eProgression({ xpTotal: 6500 }),
+    },
   };
 }
 
@@ -3310,7 +3326,7 @@ export function migrateLegacyDnd5eSheet(sheet: CharacterSheetState): CharacterSh
     return { level: def.level, max, used: Math.max(0, max - avail) };
   });
 
-  const normalized = normalizeDnd5eState(sheet.dnd5eState, {
+  const baseNormalized = normalizeDnd5eState(sheet.dnd5eState, {
     level,
     inspiration: Boolean(inspField?.value),
     tempHp: 0,
@@ -3320,6 +3336,10 @@ export function migrateLegacyDnd5eSheet(sheet: CharacterSheetState): CharacterSh
     skillProficiencies,
     spellcasting: { ability: spellAbility, slots },
   });
+  const normalized: Dnd5eState = {
+    ...baseNormalized,
+    progression: normalizeDnd5eProgression(sheet.dnd5eState?.progression),
+  };
 
   if (sheet.dnd5eState && JSON.stringify(sheet.dnd5eState) === JSON.stringify(normalized)) {
     return sheet;
@@ -4275,12 +4295,15 @@ export function createNewSheetForSystem(
       : {}),
     ...(resolvedId === 'dnd5e'
       ? {
-          dnd5eState: createDefaultDnd5eState({
-            level: 1,
-            inspiration: false,
-            tempHp: 0,
-            hitDice: { die: 'd8', current: 1, max: 1 },
-          }),
+          dnd5eState: {
+            ...createDefaultDnd5eState({
+              level: 1,
+              inspiration: false,
+              tempHp: 0,
+              hitDice: { die: 'd8', current: 1, max: 1 },
+            }),
+            progression: createDefaultDnd5eProgression(),
+          },
         }
       : {}),
     systemId: resolvedId,
@@ -4630,7 +4653,30 @@ const DND5E_STATE_KEYS = new Set([
   'saveProficiencies',
   'skillProficiencies',
   'spellcasting',
+  'progression',
 ]);
+const DND5E_PROGRESSION_KEYS = new Set([
+  'mode',
+  'xpTotal',
+  'sessionsCount',
+  'sessionsPerLevel',
+  'history',
+]);
+const DND5E_PROGRESSION_ENTRY_KEYS = new Set([
+  'id',
+  'timestamp',
+  'kind',
+  'deltaXp',
+  'deltaSessions',
+  'fromLevel',
+  'toLevel',
+  'hpGain',
+  'hpMethod',
+  'note',
+]);
+const DND5E_PROGRESSION_MODES = new Set(['xp', 'milestone']);
+const DND5E_PROGRESSION_KINDS = new Set(['xp_gain', 'session', 'level_up']);
+const DND5E_HP_METHODS = new Set(['average', 'roll', 'manual']);
 const DND5E_HIT_DICE_KEYS = new Set(['die', 'current', 'max']);
 const DND5E_DEATH_SAVE_KEYS = new Set(['successes', 'failures']);
 const DND5E_ABILITY_KEYS = new Set(['str', 'dex', 'con', 'int', 'wis', 'cha']);
@@ -5338,6 +5384,109 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
               errors.push(`${sp}.used: deve ser inteiro entre 0 e 20.`);
             }
           });
+        }
+      }
+      if (ds.progression !== undefined) {
+        const prog = ds.progression;
+        if (checkPlainObject(prog, '$.dnd5eState.progression', DND5E_PROGRESSION_KEYS, errors)) {
+          if (!hasAllowedString(prog.mode, DND5E_PROGRESSION_MODES)) {
+            errors.push('$.dnd5eState.progression.mode: modo inválido.');
+          }
+          if (
+            typeof prog.xpTotal !== 'number' ||
+            !Number.isInteger(prog.xpTotal) ||
+            prog.xpTotal < 0
+          ) {
+            errors.push('$.dnd5eState.progression.xpTotal: deve ser inteiro >= 0.');
+          }
+          if (
+            typeof prog.sessionsCount !== 'number' ||
+            !Number.isInteger(prog.sessionsCount) ||
+            prog.sessionsCount < 0
+          ) {
+            errors.push('$.dnd5eState.progression.sessionsCount: deve ser inteiro >= 0.');
+          }
+          if (
+            prog.sessionsPerLevel !== undefined &&
+            (typeof prog.sessionsPerLevel !== 'number' ||
+              !Number.isInteger(prog.sessionsPerLevel) ||
+              prog.sessionsPerLevel < 1 ||
+              prog.sessionsPerLevel > 20)
+          ) {
+            errors.push('$.dnd5eState.progression.sessionsPerLevel: deve ser inteiro entre 1 e 20.');
+          }
+          if (!Array.isArray(prog.history) || prog.history.length > 100) {
+            errors.push('$.dnd5eState.progression.history: esperado array com até 100 entradas.');
+          } else {
+            prog.history.forEach((entry, hIdx) => {
+              const hp = `$.dnd5eState.progression.history[${hIdx}]`;
+              if (!checkPlainObject(entry, hp, DND5E_PROGRESSION_ENTRY_KEYS, errors)) return;
+              if (typeof entry.id !== 'string' || entry.id.length < 1 || entry.id.length > 64) {
+                errors.push(`${hp}.id: string obrigatória (1..64 caracteres).`);
+              }
+              if (
+                typeof entry.timestamp !== 'string' ||
+                entry.timestamp.length < 1 ||
+                entry.timestamp.length > 40
+              ) {
+                errors.push(`${hp}.timestamp: string obrigatória (1..40 caracteres).`);
+              }
+              if (!hasAllowedString(entry.kind, DND5E_PROGRESSION_KINDS)) {
+                errors.push(`${hp}.kind: tipo inválido.`);
+              }
+              if (
+                entry.deltaXp !== undefined &&
+                (typeof entry.deltaXp !== 'number' || !Number.isInteger(entry.deltaXp))
+              ) {
+                errors.push(`${hp}.deltaXp: deve ser inteiro.`);
+              }
+              if (
+                entry.deltaSessions !== undefined &&
+                (typeof entry.deltaSessions !== 'number' || !Number.isInteger(entry.deltaSessions))
+              ) {
+                errors.push(`${hp}.deltaSessions: deve ser inteiro.`);
+              }
+              if (
+                entry.fromLevel !== undefined &&
+                (typeof entry.fromLevel !== 'number' ||
+                  !Number.isInteger(entry.fromLevel) ||
+                  entry.fromLevel < 1 ||
+                  entry.fromLevel > 20)
+              ) {
+                errors.push(`${hp}.fromLevel: deve ser inteiro entre 1 e 20.`);
+              }
+              if (
+                entry.toLevel !== undefined &&
+                (typeof entry.toLevel !== 'number' ||
+                  !Number.isInteger(entry.toLevel) ||
+                  entry.toLevel < 1 ||
+                  entry.toLevel > 20)
+              ) {
+                errors.push(`${hp}.toLevel: deve ser inteiro entre 1 e 20.`);
+              }
+              if (
+                entry.hpGain !== undefined &&
+                (typeof entry.hpGain !== 'number' ||
+                  !Number.isInteger(entry.hpGain) ||
+                  entry.hpGain < 1 ||
+                  entry.hpGain > 1000)
+              ) {
+                errors.push(`${hp}.hpGain: deve ser inteiro entre 1 e 1000.`);
+              }
+              if (
+                entry.hpMethod !== undefined &&
+                !hasAllowedString(entry.hpMethod, DND5E_HP_METHODS)
+              ) {
+                errors.push(`${hp}.hpMethod: método inválido.`);
+              }
+              if (
+                entry.note !== undefined &&
+                (typeof entry.note !== 'string' || entry.note.length > 240)
+              ) {
+                errors.push(`${hp}.note: string inválida (máx 240 caracteres).`);
+              }
+            });
+          }
         }
       }
     }

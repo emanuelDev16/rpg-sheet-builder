@@ -1,5 +1,4 @@
 import type { SystemId, SystemOption } from './sheetModel.ts';
-
 import { DND5E_EN, DND5E_ES, DND5E_PT_BR } from './i18n/dnd5e.ts';
 import { WOD_EN, WOD_ES, WOD_PT_BR } from './i18n/wod.ts';
 

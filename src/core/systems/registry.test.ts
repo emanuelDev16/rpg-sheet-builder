@@ -26,6 +26,7 @@ test('V5 resolves to wod adapter with wod-v5 layout and capabilities', () => {
   const sheet = createWorldOfDarknessV5Sheet();
   const adapter = getSystemAdapter(sheet);
   assert.equal(adapter.id, 'wod');
+  assert.equal(adapter.progressionKind, 'wod-xp');
   assert.equal(adapter.i18nNamespace, 'wod');
   assert.equal(adapter.resolvePaperLayout?.(sheet), 'wod-v5');
   assert.deepEqual(adapter.capabilities, {
@@ -41,6 +42,7 @@ test('V20 resolves to wod adapter with wod-v20 layout', () => {
   const sheet = createWorldOfDarknessSheet();
   const adapter = getSystemAdapter(sheet);
   assert.equal(adapter.id, 'wod');
+  assert.equal(adapter.progressionKind, 'wod-xp');
   assert.equal(adapter.paperLayout, 'wod-v20');
   assert.equal(adapter.resolvePaperLayout?.(sheet), 'wod-v20');
 });
@@ -48,6 +50,7 @@ test('V20 resolves to wod adapter with wod-v20 layout', () => {
 test('D&D 5e resolves to dnd5e adapter and capabilities', () => {
   const adapter = getSystemAdapter(createDnd5ePreset());
   assert.equal(adapter.id, 'dnd5e');
+  assert.equal(adapter.progressionKind, 'dnd5e-leveling');
   assert.equal(adapter.paperLayout, 'dnd5e');
   assert.equal(adapter.i18nNamespace, 'dnd5e');
   assert.deepEqual(adapter.capabilities, {
@@ -63,6 +66,7 @@ test('Cyberpunk, generic, and blank sheets fall back to defaultAdapter', () => {
   for (const sheet of [createCyberpunkPreset(), createGenericD20Preset(), createBlankSheet()]) {
     const adapter = getSystemAdapter(sheet);
     assert.equal(adapter.id, 'default');
+    assert.equal(adapter.progressionKind, 'generic-xp');
     assert.equal(adapter.paperLayout, 'generic');
     assert.equal(adapter.i18nNamespace, 'generic');
     assert.deepEqual(adapter.capabilities, {
@@ -99,6 +103,7 @@ test('registerSystemAdapter adds, replaces, and unregisters custom adapters clea
   const customCyberpunk: SystemAdapter = {
     id: 'cyberpunk',
     matches: (systemId) => systemId === 'cyberpunk',
+    progressionKind: 'cyberpunk-ip',
     capabilities: {
       supportsXp: true,
       supportsPoolComposer: false,
@@ -116,7 +121,9 @@ test('registerSystemAdapter adds, replaces, and unregisters custom adapters clea
 
   try {
     registerSystemAdapter(customCyberpunk);
-    assert.equal(getSystemAdapter(createCyberpunkPreset()).id, 'cyberpunk');
+    const cpAdapter = getSystemAdapter(createCyberpunkPreset());
+    assert.equal(cpAdapter.id, 'cyberpunk');
+    assert.equal(cpAdapter.progressionKind, 'cyberpunk-ip');
     assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'default', 'cyberpunk']);
 
     registerSystemAdapter({ ...customCyberpunk, i18nNamespace: 'cyberpunk-red' });
@@ -142,6 +149,13 @@ test('migrateSheet normalizes V5, V20, legacy D&D 5e, and blank sheets without c
   assert.equal(migratedDnd5e.systemId, 'dnd5e');
   assert.ok(migratedDnd5e.id && migratedDnd5e.id.length > 0);
   assert.ok(migratedDnd5e.dnd5eState);
+  assert.deepEqual(migratedDnd5e.dnd5eState.progression, {
+    mode: 'xp',
+    xpTotal: 0,
+    sessionsCount: 0,
+    sessionsPerLevel: 3,
+    history: [],
+  });
   assert.equal(getSystemAdapter(migratedDnd5e).id, 'dnd5e');
 
   for (const sheet of [

@@ -132,11 +132,9 @@ import { BentoGridSkeleton } from './components/BentoGridSkeleton';
 import { CustomCardBuilder } from './components/CustomCardBuilder';
 import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
+import { ProgressionWorkspace } from './components/progression/ProgressionWorkspace';
 import { HomeSheetItem, HomeSystemItem, HomeView } from './components/HomeView';
 
-const XpUpgradeWorkspace = lazy(() =>
-  import('./components/XpUpgradeWorkspace').then((m) => ({ default: m.XpUpgradeWorkspace })),
-);
 const RulesSearchPanel = lazy(() =>
   import('./components/RulesSearchPanel').then((m) => ({ default: m.RulesSearchPanel })),
 );
@@ -2469,22 +2467,32 @@ function HydratedAppWorkspace({
               )}
 
               {activeTab === 'xp' ? (
-              <Suspense fallback={<LazySectionFallback label={t.t('app.loadingWorkspace')} />}>
-                <XpUpgradeWorkspace
-                  sheet={sheet}
-                  language={language}
-                  t={t.xp}
-                  onAwardXp={handleAwardXp}
-                  onUpgradeTrait={handleUpgradeTrait}
-                  onBuySpecialty={handleBuySpecialty}
-                  onBuyBackground={handleBuyBackground}
-                  onBuyCatalogSkill={handleBuyCatalogSkill}
-                  onBuyCatalogDiscipline={handleBuyCatalogDiscipline}
-                  onBuyCatalogAdvantage={handleBuyCatalogAdvantage}
-                  onUndoLastUpgrade={handleUndoLastUpgrade}
-                  onSelectRulePreset={handleSelectRulePreset}
-                />
-              </Suspense>
+              <ProgressionWorkspace
+                sheet={sheet}
+                language={language}
+                t={t.t}
+                xpT={t.xp}
+                onUpdateSheet={(updater) =>
+                  setSheet((prev) => touchSheetMetadata(updater(prev)))
+                }
+                onAppendRollLog={(entry) => {
+                  setSheet((prev) => ({
+                    ...prev,
+                    rollLogs: [entry, ...prev.rollLogs].slice(0, 30),
+                  }));
+                  showMobileToastWithTimeout(entry);
+                }}
+                onFlash={triggerFlash}
+                onAwardXp={handleAwardXp}
+                onUpgradeTrait={handleUpgradeTrait}
+                onBuySpecialty={handleBuySpecialty}
+                onBuyBackground={handleBuyBackground}
+                onBuyCatalogSkill={handleBuyCatalogSkill}
+                onBuyCatalogDiscipline={handleBuyCatalogDiscipline}
+                onBuyCatalogAdvantage={handleBuyCatalogAdvantage}
+                onUndoLastUpgrade={handleUndoLastUpgrade}
+                onSelectRulePreset={handleSelectRulePreset}
+              />
             ) : (
               <div
                 data-bento-layout={useTwoColMasonry ? 'masonry-2col' : 'flat-1col'}

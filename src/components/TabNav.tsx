@@ -34,15 +34,17 @@ export const TabNav: React.FC<TabNavProps> = ({
   const rawTabs = getTabLabelsForSystem(systemId, language);
   const tab1 = localizeTabTitle({ id: 'geral', title: rawTabs.tab1, systemId }, language);
   const tab2 = localizeTabTitle({ id: 'magias', title: rawTabs.tab2, systemId }, language);
-  const tab3 = localizeTabTitle({ id: 'xp', title: rawTabs.tab3, systemId }, language);
+  const tab3 =
+    systemId === 'dnd5e'
+      ? t.t('dnd5e.tabProgression')
+      : localizeTabTitle({ id: 'xp', title: rawTabs.tab3, systemId }, language);
   const tabRefs = useRef<Record<TabId, HTMLButtonElement | null>>({
     geral: null,
     magias: null,
     xp: null,
   });
 
-  const showRulePresetPill =
-    Boolean(onSelectRulePreset) && (systemId === 'wod' || rulePreset !== 'storyteller-v20');
+  const showRulePresetPill = Boolean(onSelectRulePreset) && systemId === 'wod';
 
   const rulePresetOptions: Array<{ id: RulePreset; label: string; testId: string }> = [
     { id: 'storyteller-v20', label: t.t('tabNav.rulePresetV20'), testId: 'tabnav-preset-v20' },
