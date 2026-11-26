@@ -1,4 +1,9 @@
 import type { SystemId, SystemOption } from './sheetModel.ts';
+import {
+  DND5E_PROGRESSION_EN,
+  DND5E_PROGRESSION_ES,
+  DND5E_PROGRESSION_PT_BR,
+} from './i18n/dnd5e.ts';
 
 export type AppLanguage = 'pt-BR' | 'en' | 'es';
 
@@ -1288,6 +1293,7 @@ const PT_BR_DICT = {
   'dnd5e.spellSlotToggleAria': 'Alternar espaço de {{level}}º círculo ({{index}}/{{max}})',
   'dnd5e.spellSlotMaxDecAria': 'Diminuir espaços máximos do {{level}}º círculo',
   'dnd5e.spellSlotMaxIncAria': 'Aumentar espaços máximos do {{level}}º círculo',
+  ...DND5E_PROGRESSION_PT_BR,
 } as const;
 
 export type TranslationKey = keyof typeof PT_BR_DICT;
@@ -2542,6 +2548,7 @@ export const EN: TranslationDictionary = {
   'dnd5e.spellSlotToggleAria': 'Toggle level {{level}} spell slot ({{index}}/{{max}})',
   'dnd5e.spellSlotMaxDecAria': 'Decrease max level {{level}} spell slots',
   'dnd5e.spellSlotMaxIncAria': 'Increase max level {{level}} spell slots',
+  ...DND5E_PROGRESSION_EN,
 };
 
 export const ES: TranslationDictionary = {
@@ -3791,6 +3798,7 @@ export const ES: TranslationDictionary = {
   'dnd5e.spellSlotToggleAria': 'Alternar espacio de nivel {{level}} ({{index}}/{{max}})',
   'dnd5e.spellSlotMaxDecAria': 'Reducir espacios máximos de nivel {{level}}',
   'dnd5e.spellSlotMaxIncAria': 'Aumentar espacios máximos de nivel {{level}}',
+  ...DND5E_PROGRESSION_ES,
 };
 
 export const TRANSLATION_DICTIONARIES: Record<AppLanguage, TranslationDictionary> = {

@@ -151,7 +151,7 @@ import { CustomCardBuilder } from './components/CustomCardBuilder';
 import { RollDiceChips, RollLogSidebar } from './components/RollLogSidebar';
 import { StatusBar } from './components/StatusBar';
 import { SheetModal } from './components/SheetModal';
-import { XpUpgradeWorkspace } from './components/XpUpgradeWorkspace';
+import { ProgressionWorkspace } from './components/progression/ProgressionWorkspace';
 import { HomeSheetItem, HomeSystemItem, HomeView } from './components/HomeView';
 import { RulesSearchPanel } from './components/RulesSearchPanel';
 import {
@@ -2674,10 +2674,22 @@ function HydratedAppWorkspace({
               )}
 
               {activeTab === 'xp' ? (
-              <XpUpgradeWorkspace
+              <ProgressionWorkspace
                 sheet={sheet}
                 language={language}
-                t={t.xp}
+                t={t.t}
+                xpT={t.xp}
+                onUpdateSheet={(updater) =>
+                  setSheet((prev) => touchSheetMetadata(updater(prev)))
+                }
+                onAppendRollLog={(entry) => {
+                  setSheet((prev) => ({
+                    ...prev,
+                    rollLogs: [entry, ...prev.rollLogs].slice(0, 30),
+                  }));
+                  showMobileToastWithTimeout(entry);
+                }}
+                onFlash={triggerFlash}
                 onAwardXp={handleAwardXp}
                 onUpgradeTrait={handleUpgradeTrait}
                 onBuySpecialty={handleBuySpecialty}

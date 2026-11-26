@@ -172,6 +172,12 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('es', 'dnd5e.skill.sleight_of_hand')).toBe('Juego de Manos');
     expect(translate('pt-BR', 'dnd5e.rollModeAdv')).toBe('VANTAGEM');
     expect(translate('en', 'dnd5e.rollModeDis')).toBe('DISADVANTAGE');
+    expect(translate('pt-BR', 'dnd5e.tabProgression')).toBe('/03 NÍVEL & PROGRESSÃO');
+    expect(translate('en', 'dnd5e.tabProgression')).toBe('/03 LEVEL & PROGRESSION');
+    expect(translate('es', 'dnd5e.tabProgression')).toBe('/03 NIVEL Y PROGRESIÓN');
+    expect(translate('pt-BR', 'dnd5e.lvl.asiBadge')).toBe('NÍVEL DE ASI / TALENTO');
+    expect(translate('en', 'dnd5e.prog.modeXp')).toBe('BY XP (SRD)');
+    expect(translate('es', 'genericXp.spendBtn')).toBe('- GASTAR PX');
   });
 
   it('maintains identical interpolation placeholders and guards against accidental untranslated PT-BR entries', () => {
