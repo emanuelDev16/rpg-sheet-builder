@@ -123,10 +123,10 @@ export const Dnd5eCombatPanel: React.FC<Dnd5eCombatPanelProps> = ({
           <button
             type="button"
             data-testid="dnd5e-short-rest-btn"
-            disabled={dnd5eState.hitDice.current <= 0}
+            aria-disabled={dnd5eState.hitDice.current <= 0 || undefined}
             title={dnd5eState.hitDice.current <= 0 ? t.t('dnd5e.shortRestNoDice') : undefined}
-            onClick={onShortRest}
-            className="cyber-btn-outline min-h-[36px] flex-1 px-2.5 text-[10px] font-extrabold uppercase cursor-pointer disabled:opacity-45"
+            onClick={() => { if (dnd5eState.hitDice.current <= 0) return; onShortRest(); }}
+            className="cyber-btn-outline min-h-[36px] flex-1 px-2.5 text-[10px] font-extrabold uppercase cursor-pointer aria-[disabled=true]:opacity-45"
           >
             {t.t('dnd5e.shortRestBtn')}
           </button>
@@ -173,7 +173,7 @@ export const Dnd5eCombatPanel: React.FC<Dnd5eCombatPanelProps> = ({
                       data-testid={`dnd5e-death-${field}-${step}`}
                       aria-label={t.t(ariaKey, { count: active && step === count ? step - 1 : step })}
                       onClick={() => onSetDeathSaves({ ...dnd5eState.deathSaves, [field]: active && step === count ? step - 1 : step })}
-                      className={`min-h-[32px] min-w-[28px] px-1 font-mono-tech text-xs font-bold border border-[var(--border-color)] rounded-[var(--radius-pill)] cursor-pointer ${
+                      className={`min-h-[36px] min-w-[32px] px-1 font-mono-tech text-xs font-bold border border-[var(--border-color)] rounded-[var(--radius-pill)] cursor-pointer ${
                         active ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-card)] text-[var(--ink-muted)]'
                       }`}
                     >

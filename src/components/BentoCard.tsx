@@ -1,4 +1,4 @@
-import React, { useEffect, useId, useMemo, useRef, useState } from 'react';
+import React, { Suspense, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ChevronDown, Flame, Minus, Plus, Search, Trash2, X } from 'lucide-react';
 import {
   FrenzyKind,
@@ -33,7 +33,6 @@ import {
   buildCatalogSkillFields,
   getGroupedWodSkillsCatalog,
   isCatalogSkillPresent,
-  isOfficialVampireSheet,
   normalizeCatalogText,
   WodCatalogSkill,
 } from '../core/wodSkillsCatalog';
@@ -61,11 +60,68 @@ import {
 import { AnimatedCounter } from './AnimatedCounter';
 import { DotRating } from './DotRating';
 import { FieldPrimitive } from './FieldPrimitives';
-import { WodStructuredBlocks } from './WodStructuredBlocks';
-import { Dnd5eAbilitiesSkills } from './dnd5e/Dnd5eAbilitiesSkills';
-import { Dnd5eCombatPanel } from './dnd5e/Dnd5eCombatPanel';
-import { Dnd5eSpellSlotsPanel } from './dnd5e/Dnd5eSpellSlotsPanel';
 import { isFullWidthBentoCard } from '../utils/bentoLayout';
+import { getSystemAdapter } from '../core/systems/registry';
+import type { SystemAdapter } from '../core/systems/types';
+
+const WodStructuredBlocks = React.lazy(() =>
+  import('./WodStructuredBlocks').then((m) => ({ default: m.WodStructuredBlocks })),
+);
+const Dnd5eAbilitiesSkills = React.lazy(() =>
+  import('./dnd5e/Dnd5eAbilitiesSkills').then((m) => ({ default: m.Dnd5eAbilitiesSkills })),
+);
+const Dnd5eCombatPanel = React.lazy(() =>
+  import('./dnd5e/Dnd5eCombatPanel').then((m) => ({ default: m.Dnd5eCombatPanel })),
+);
+const Dnd5eSpellSlotsPanel = React.lazy(() =>
+  import('./dnd5e/Dnd5eSpellSlotsPanel').then((m) => ({ default: m.Dnd5eSpellSlotsPanel })),
+);
+
+const LazyCardPanelFallback: React.FC<{ label: string }> = ({ label }) => (
+  <div
+    role="status"
+    aria-busy="true"
+    aria-live="polite"
+    className="p-3 bg-[var(--bg-card)] text-[var(--ink-muted)] border border-[var(--border-subtle)] rounded-[var(--radius-card)] font-mono-tech text-[11px] uppercase tracking-wider"
+  >
+    {label}
+  </div>
+);
+
+type Dnd5ePanelRenderer = (ctx: Dnd5eCardContext, t: AppTranslations['cards']) => React.ReactNode;
+
+/** D&D 5e interactive panels, dispatched by card id when the active adapter is `dnd5e`. */
+const DND5E_PANELS: Record<string, Dnd5ePanelRenderer> = {
+  card_atributos: (ctx, t) => <Dnd5eAbilitiesSkills view="abilities" dnd5eState={ctx.state} abilityScores={ctx.abilityScores} t={t} onChangeAbilityScore={ctx.onChangeAbilityScore} onToggleSaveProf={ctx.onToggleSaveProf} onCycleSkillProf={ctx.onCycleSkillProf} onRollCheck={ctx.onRollCheck} />,
+  card_skills: (ctx, t) => <Dnd5eAbilitiesSkills view="skills" dnd5eState={ctx.state} abilityScores={ctx.abilityScores} t={t} onChangeAbilityScore={ctx.onChangeAbilityScore} onToggleSaveProf={ctx.onToggleSaveProf} onCycleSkillProf={ctx.onCycleSkillProf} onRollCheck={ctx.onRollCheck} />,
+  card_combate: (ctx, t) => (
+    <Dnd5eCombatPanel
+      dnd5eState={ctx.state} currentHp={ctx.hp.current} maxHp={ctx.hp.max} armorClass={ctx.armorClass} initiativeMod={ctx.initiativeMod} t={t}
+      onDamage={ctx.onDamage} onHeal={ctx.onHeal} onSetTempHp={ctx.onSetTempHp} onToggleInspiration={ctx.onToggleInspiration}
+      onChangeHitDieType={ctx.onChangeHitDieType} onShortRest={ctx.onShortRest} onLongRest={ctx.onLongRest}
+      onSetDeathSaves={ctx.onSetDeathSaves} onRollDeathSave={ctx.onRollDeathSave} onRollInitiative={ctx.onRollInitiative}
+    />
+  ),
+  card_arcano: (ctx, t) => <Dnd5eSpellSlotsPanel dnd5eState={ctx.state} abilityScores={ctx.abilityScores} t={t} onChangeSpellAbility={ctx.onChangeSpellAbility} onAdjustSlotMax={ctx.onAdjustSlotMax} onToggleSlotUsed={ctx.onToggleSlotUsed} onRollSpellAttack={ctx.onRollCheck} />,
+};
+
+const DND_SUPPRESSED_IDS_BY_CARD: Record<string, Set<string>> = {
+  card_atributos: new Set([
+    'f_strength', 'f_mod_str', 'f_dexterity', 'f_mod_dex', 'f_constitution', 'f_mod_con',
+    'f_intelligence', 'f_mod_int', 'f_wisdom', 'f_mod_wis', 'f_charisma', 'f_mod_cha',
+  ]),
+  card_skills: new Set([
+    'f_athletics', 'f_perception', 'f_arcana', 'f_stealth',
+    'f_roll_athletics', 'f_roll_perception', 'f_roll_con_save',
+  ]),
+  card_combate: new Set(['f_hp', 'f_hit_dice', 'f_ac', 'f_initiative', 'f_inspiration']),
+  card_arcano: new Set(['f_spell_dc', 'f_spell_atk', 'f_slots_1', 'f_slots_2']),
+};
+
+/** Resolves the adapter from the card's system/preset when the caller does not inject one. */
+function resolveCardAdapter(systemId: SystemId, rulePreset: RulePreset): SystemAdapter {
+  return getSystemAdapter({ systemId, rulePreset } as unknown as Parameters<typeof getSystemAdapter>[0]);
+}
 
 export interface Dnd5eCardContext {
   state: Dnd5eState;
@@ -175,6 +231,8 @@ interface BentoCardProps {
   onUpdateHaven?: (id: string, patch: Partial<Omit<HavenEntry, 'id'>>) => void;
   onRemoveHaven?: (id: string) => void;
   dnd5eContext?: Dnd5eCardContext;
+  /** Active system adapter; resolved from `systemId`/`rulePreset` when omitted. */
+  adapter?: SystemAdapter;
 }
 
 type GuidedFieldTemplateId =
@@ -274,6 +332,7 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   onUpdateHaven,
   onRemoveHaven,
   dnd5eContext,
+  adapter: adapterProp,
 }) => {
   const [newFieldLabel, setNewFieldLabel] = useState('');
   const [catalogQuery, setCatalogQuery] = useState('');
@@ -347,8 +406,15 @@ export const BentoCard: React.FC<BentoCardProps> = ({
   };
   const selectedMeta = guided.templates[selectedTemplate];
 
-  const officialEdition = isOfficialVampireSheet(systemId, rulePreset) ? rulePreset : null;
-  const isWodDossierCard = card.id === 'card_wod_dossier' && Boolean(officialEdition);
+  const adapter = adapterProp ?? resolveCardAdapter(systemId, rulePreset);
+  const officialEdition =
+    adapter.id === 'wod' && (rulePreset === 'vampire-v5' || rulePreset === 'storyteller-v20')
+      ? rulePreset
+      : null;
+  const isWodDossierCard =
+    adapter.capabilities.supportsStructuredDossier &&
+    card.id === 'card_wod_dossier' &&
+    Boolean(officialEdition);
   const showOfficialSkillCatalog = Boolean(officialEdition) && selectedTemplate === 'skill_d10';
   const showOfficialDisciplineCatalog =
     Boolean(officialEdition) && selectedTemplate === 'discipline';
@@ -480,28 +546,12 @@ export const BentoCard: React.FC<BentoCardProps> = ({
 
   const spanClass = isFullWidthBentoCard(card) ? 'lg:col-span-2 bento-span-2' : 'lg:col-span-1';
   const rawFieldsToRender = displayFields ?? card.fields;
-  const isWodCombatCard = systemId === 'wod' && card.id === 'card_combate';
-  const isDnd5eInteractive = Boolean(
-    systemId === 'dnd5e' &&
-      mode === 'jogo' &&
-      dnd5eContext &&
-      (card.id === 'card_atributos' ||
-        card.id === 'card_skills' ||
-        card.id === 'card_combate' ||
-        card.id === 'card_arcano'),
-  );
-  const DND_SUPPRESSED_IDS_BY_CARD: Record<string, Set<string>> = {
-    card_atributos: new Set([
-      'f_strength', 'f_mod_str', 'f_dexterity', 'f_mod_dex', 'f_constitution', 'f_mod_con',
-      'f_intelligence', 'f_mod_int', 'f_wisdom', 'f_mod_wis', 'f_charisma', 'f_mod_cha',
-    ]),
-    card_skills: new Set([
-      'f_athletics', 'f_perception', 'f_arcana', 'f_stealth',
-      'f_roll_athletics', 'f_roll_perception', 'f_roll_con_save',
-    ]),
-    card_combate: new Set(['f_hp', 'f_hit_dice', 'f_ac', 'f_initiative', 'f_inspiration']),
-    card_arcano: new Set(['f_spell_dc', 'f_spell_atk', 'f_slots_1', 'f_slots_2']),
-  };
+  const isWodCombatCard = adapter.id === 'wod' && card.id === 'card_combate';
+  const dnd5ePanel =
+    adapter.id === 'dnd5e' && adapter.capabilities.supportsD20Advantage && mode === 'jogo'
+      ? DND5E_PANELS[card.id]
+      : undefined;
+  const isDnd5eInteractive = Boolean(dnd5ePanel && dnd5eContext);
   const fieldsToRender =
     isWodCombatCard && mode === 'jogo'
       ? rawFieldsToRender.filter((f) => {
@@ -1233,25 +1283,27 @@ export const BentoCard: React.FC<BentoCardProps> = ({
         } ${canUseTwoColBody ? 'bento-card-two-col' : ''}`}
       >
         {isWodDossierCard && officialEdition && (
-          <WodStructuredBlocks
-            edition={officialEdition}
-            cardTitle={displayCardTitle}
-            cardCode={displayCardCode}
-            searchQuery={searchQuery}
-            touchstones={touchstones}
-            meritsFlaws={meritsFlaws}
-            havens={havens}
-            t={t}
-            onAddTouchstone={onAddTouchstone}
-            onUpdateTouchstone={onUpdateTouchstone}
-            onRemoveTouchstone={onRemoveTouchstone}
-            onAddMeritFlaw={onAddMeritFlaw}
-            onUpdateMeritFlaw={onUpdateMeritFlaw}
-            onRemoveMeritFlaw={onRemoveMeritFlaw}
-            onAddHaven={onAddHaven}
-            onUpdateHaven={onUpdateHaven}
-            onRemoveHaven={onRemoveHaven}
-          />
+          <Suspense fallback={<LazyCardPanelFallback label={t.t('app.loadingWorkspace')} />}>
+            <WodStructuredBlocks
+              edition={officialEdition}
+              cardTitle={displayCardTitle}
+              cardCode={displayCardCode}
+              searchQuery={searchQuery}
+              touchstones={touchstones}
+              meritsFlaws={meritsFlaws}
+              havens={havens}
+              t={t}
+              onAddTouchstone={onAddTouchstone}
+              onUpdateTouchstone={onUpdateTouchstone}
+              onRemoveTouchstone={onRemoveTouchstone}
+              onAddMeritFlaw={onAddMeritFlaw}
+              onUpdateMeritFlaw={onUpdateMeritFlaw}
+              onRemoveMeritFlaw={onRemoveMeritFlaw}
+              onAddHaven={onAddHaven}
+              onUpdateHaven={onUpdateHaven}
+              onRemoveHaven={onRemoveHaven}
+            />
+          </Suspense>
         )}
 
         {fieldsToRender.length === 0 && !isWodDossierCard && !isDnd5eInteractive && (
@@ -1276,63 +1328,10 @@ export const BentoCard: React.FC<BentoCardProps> = ({
           </div>
         )}
 
-        {isDnd5eInteractive && dnd5eContext && card.id === 'card_atributos' && (
-          <Dnd5eAbilitiesSkills
-            view="abilities"
-            dnd5eState={dnd5eContext.state}
-            abilityScores={dnd5eContext.abilityScores}
-            t={t}
-            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
-            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
-            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
-            onRollCheck={dnd5eContext.onRollCheck}
-          />
-        )}
-
-        {isDnd5eInteractive && dnd5eContext && card.id === 'card_skills' && (
-          <Dnd5eAbilitiesSkills
-            view="skills"
-            dnd5eState={dnd5eContext.state}
-            abilityScores={dnd5eContext.abilityScores}
-            t={t}
-            onChangeAbilityScore={dnd5eContext.onChangeAbilityScore}
-            onToggleSaveProf={dnd5eContext.onToggleSaveProf}
-            onCycleSkillProf={dnd5eContext.onCycleSkillProf}
-            onRollCheck={dnd5eContext.onRollCheck}
-          />
-        )}
-
-        {isDnd5eInteractive && dnd5eContext && card.id === 'card_combate' && (
-          <Dnd5eCombatPanel
-            dnd5eState={dnd5eContext.state}
-            currentHp={dnd5eContext.hp.current}
-            maxHp={dnd5eContext.hp.max}
-            armorClass={dnd5eContext.armorClass}
-            initiativeMod={dnd5eContext.initiativeMod}
-            t={t}
-            onDamage={dnd5eContext.onDamage}
-            onHeal={dnd5eContext.onHeal}
-            onSetTempHp={dnd5eContext.onSetTempHp}
-            onToggleInspiration={dnd5eContext.onToggleInspiration}
-            onChangeHitDieType={dnd5eContext.onChangeHitDieType}
-            onShortRest={dnd5eContext.onShortRest}
-            onLongRest={dnd5eContext.onLongRest}
-            onSetDeathSaves={dnd5eContext.onSetDeathSaves}
-            onRollDeathSave={dnd5eContext.onRollDeathSave}
-            onRollInitiative={dnd5eContext.onRollInitiative}
-          />
-        )}
-
-        {isDnd5eInteractive && dnd5eContext && card.id === 'card_arcano' && (
-          <Dnd5eSpellSlotsPanel
-            dnd5eState={dnd5eContext.state}
-            abilityScores={dnd5eContext.abilityScores}
-            t={t}
-            onChangeSpellAbility={dnd5eContext.onChangeSpellAbility}
-            onAdjustSlotMax={dnd5eContext.onAdjustSlotMax}
-            onToggleSlotUsed={dnd5eContext.onToggleSlotUsed}
-            onRollSpellAttack={dnd5eContext.onRollCheck}
-          />
+        {dnd5ePanel && dnd5eContext && (
+          <Suspense fallback={<LazyCardPanelFallback label={t.t('app.loadingWorkspace')} />}>
+            {dnd5ePanel(dnd5eContext, t)}
+          </Suspense>
         )}
 
         {wodAttributeGroups ? (
