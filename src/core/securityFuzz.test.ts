@@ -47,12 +47,12 @@ function injectDangerousJson(
     rollLogs: [{ id: 'rl_1', timestamp: '2026-01-01T00:00:00Z', label: 'L', total: 1, formula: '1d10', breakdown: '1' }],
     xp: { totalEarned: 5, spent: 0, ledger: [], customMultipliers: { attribute: 5 } },
   });
-  if (target === 'bundle') return `{"sheets":[${json.replace('"cards":[{', `"cards":[{${pair},`)}]}`;
+  if (target === 'bundle') return `{"sheets":[${json.replace('"cards":[{', () => `"cards":[{${pair},`)}]}`;
   const markers: Record<string, string> = {
     card: '"cards":[{', field: '"fields":[{', touchstone: '"touchstones":[{', merit: '"meritsFlaws":[{',
     haven: '"havens":[{', rollLog: '"rollLogs":[{', dnd5e: '"dnd5eState":{', xpMult: '"customMultipliers":{',
   };
-  return json.replace(markers[target], `${markers[target]}${pair},`);
+  return json.replace(markers[target], () => `${markers[target]}${pair},`);
 }
 
 describe('security fuzzing — JSON importer & schema validator', () => {
@@ -114,6 +114,11 @@ describe('security fuzzing — JSON importer & schema validator', () => {
   });
 
   it('rejects __proto__, constructor, and prototype keys at every nested level', () => {
+    for (const target of ['field', 'bundle'] as const) {
+      const dollarRaw = injectDangerousJson(target, '__proto__', "$& $' $` $$");
+      expect(parseAndValidateImportPayload(dollarRaw).valid).toBe(false);
+      if (target !== 'bundle') expect(validateSheetPayload(JSON.parse(dollarRaw)).valid).toBe(false);
+    }
     const targetArb = fc.constantFrom(
       'root', 'card', 'field', 'touchstone', 'merit', 'haven', 'rollLog', 'dnd5e', 'xpMult', 'bundle',
     );
