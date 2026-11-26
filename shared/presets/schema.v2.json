@@ -491,6 +491,39 @@
         }
       }
     },
+    "Dnd5eProgressionEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "timestamp", "kind"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "timestamp": { "type": "string", "minLength": 1, "maxLength": 40 },
+        "kind": { "type": "string", "enum": ["xp_gain", "session", "level_up"] },
+        "deltaXp": { "type": "integer" },
+        "deltaSessions": { "type": "integer" },
+        "fromLevel": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "toLevel": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "hpGain": { "type": "integer", "minimum": 1, "maximum": 1000 },
+        "hpMethod": { "type": "string", "enum": ["average", "roll", "manual"] },
+        "note": { "type": "string", "maxLength": 240 }
+      }
+    },
+    "Dnd5eProgression": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["mode", "xpTotal", "sessionsCount", "history"],
+      "properties": {
+        "mode": { "type": "string", "enum": ["xp", "milestone"] },
+        "xpTotal": { "type": "integer", "minimum": 0 },
+        "sessionsCount": { "type": "integer", "minimum": 0 },
+        "sessionsPerLevel": { "type": "integer", "minimum": 1, "maximum": 20 },
+        "history": {
+          "type": "array",
+          "maxItems": 100,
+          "items": { "$ref": "#/$defs/Dnd5eProgressionEntry" }
+        }
+      }
+    },
     "Dnd5eState": {
       "type": "object",
       "additionalProperties": false,
@@ -512,7 +545,8 @@
         "deathSaves": { "$ref": "#/$defs/Dnd5eDeathSaves" },
         "saveProficiencies": { "$ref": "#/$defs/Dnd5eSaveProficiencies" },
         "skillProficiencies": { "$ref": "#/$defs/Dnd5eSkillProficiencies" },
-        "spellcasting": { "$ref": "#/$defs/Dnd5eSpellcasting" }
+        "spellcasting": { "$ref": "#/$defs/Dnd5eSpellcasting" },
+        "progression": { "$ref": "#/$defs/Dnd5eProgression" }
       }
     }
   }

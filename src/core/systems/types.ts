@@ -3,6 +3,9 @@ import type { CharacterSheetState } from '../sheetModel.ts';
 /** Known adapter identifiers; open-ended so future systems can register. */
 export type SystemAdapterId = 'wod' | 'dnd5e' | 'default' | (string & {});
 
+/** Progression engine routing kind exposed by each system adapter. */
+export type ProgressionKind = 'wod-xp' | 'dnd5e-leveling' | 'cyberpunk-ip' | 'generic-xp';
+
 /** Paper (print/PDF) layout families supported by the sheet renderer. */
 export type PaperLayout = 'wod-v5' | 'wod-v20' | 'dnd5e' | 'generic';
 
@@ -20,6 +23,7 @@ export interface SystemAdapter {
   readonly id: SystemAdapterId;
   /** Returns true when this adapter owns the given system/preset pair. */
   matches(systemId?: string, rulePreset?: string): boolean;
+  readonly progressionKind: ProgressionKind;
   readonly capabilities: Readonly<SystemCapabilities>;
   /** Paper layout for the sheet (may depend on rule preset). */
   readonly paperLayout: PaperLayout;

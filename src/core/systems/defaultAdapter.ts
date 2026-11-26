@@ -5,6 +5,7 @@ import type { SystemAdapter } from './types.ts';
 export const defaultAdapter: SystemAdapter = {
   id: 'default',
   matches: (systemId) => systemId?.trim().toLowerCase() === 'default',
+  progressionKind: 'generic-xp',
   capabilities: Object.freeze({
     supportsXp: false,
     supportsPoolComposer: false,

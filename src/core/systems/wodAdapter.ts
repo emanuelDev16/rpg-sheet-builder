@@ -24,6 +24,7 @@ export const wodAdapter: SystemAdapter = {
       WOD_CANONICAL_PRESETS.has(normalizeRulePreset(normalizedPreset))
     );
   },
+  progressionKind: 'wod-xp',
   capabilities: Object.freeze({
     supportsXp: true,
     supportsPoolComposer: true,

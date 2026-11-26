@@ -8,6 +8,7 @@ import type { SystemAdapter } from './types.ts';
 export const dnd5eAdapter: SystemAdapter = {
   id: 'dnd5e',
   matches: (systemId) => systemId?.trim().toLowerCase() === 'dnd5e',
+  progressionKind: 'dnd5e-leveling',
   capabilities: Object.freeze({
     supportsXp: false,
     supportsPoolComposer: false,
