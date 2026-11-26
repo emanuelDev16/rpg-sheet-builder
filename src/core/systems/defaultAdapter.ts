@@ -4,7 +4,7 @@ import type { SystemAdapter } from './types.ts';
 /** Safe fallback for blank, generic, Cyberpunk (pending) and unknown systems. */
 export const defaultAdapter: SystemAdapter = {
   id: 'default',
-  matches: (systemId) => systemId === 'default',
+  matches: (systemId) => systemId?.trim().toLowerCase() === 'default',
   capabilities: Object.freeze({
     supportsXp: false,
     supportsPoolComposer: false,
