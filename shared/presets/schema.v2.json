@@ -498,7 +498,7 @@
       "properties": {
         "id": { "type": "string", "minLength": 1, "maxLength": 64 },
         "timestamp": { "type": "string", "minLength": 1, "maxLength": 40 },
-        "kind": { "type": "string", "enum": ["xp_gain", "session", "level_up"] },
+        "kind": { "type": "string", "enum": ["xp_gain", "session", "milestone", "level_up"] },
         "deltaXp": { "type": "integer" },
         "deltaSessions": { "type": "integer" },
         "fromLevel": { "type": "integer", "minimum": 1, "maximum": 20 },
@@ -514,6 +514,7 @@
       "required": ["mode", "xpTotal", "sessionsCount", "history"],
       "properties": {
         "mode": { "type": "string", "enum": ["xp", "milestone"] },
+        "milestoneStyle": { "type": "string", "enum": ["sessions", "free"] },
         "xpTotal": { "type": "integer", "minimum": 0 },
         "sessionsCount": { "type": "integer", "minimum": 0 },
         "sessionsPerLevel": { "type": "integer", "minimum": 1, "maximum": 20 },

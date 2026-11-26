@@ -151,6 +151,7 @@ test('migrateSheet normalizes V5, V20, legacy D&D 5e, and blank sheets without c
   assert.ok(migratedDnd5e.dnd5eState);
   assert.deepEqual(migratedDnd5e.dnd5eState.progression, {
     mode: 'xp',
+    milestoneStyle: 'sessions',
     xpTotal: 0,
     sessionsCount: 0,
     sessionsPerLevel: 3,
