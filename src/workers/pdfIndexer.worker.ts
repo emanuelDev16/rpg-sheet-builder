@@ -1,7 +1,4 @@
-import * as pdfjsLib from 'pdfjs-dist';
-// @ts-expect-error pdfjs-dist ships build/pdf.worker.mjs without an adjacent .d.ts file
-import * as pdfjsWorker from 'pdfjs-dist/build/pdf.worker.mjs';
-import { createWorker } from 'tesseract.js';
+import type * as PdfjsLib from 'pdfjs-dist';
 import {
   computeOcrRenderScale,
   extractPdfPagesWithFailFast,
@@ -93,13 +90,36 @@ export type PdfIndexWorkerResponse =
       error: string;
     };
 
-// Register the bundled PDF.js worker handler directly inside this Web Worker
-// so pdfjs-dist runs off-thread without spawning a nested sub-worker or fetching external assets.
-const workerGlobal = globalThis as typeof globalThis & {
-  pdfjsWorker?: typeof pdfjsWorker;
-};
-if (!workerGlobal.pdfjsWorker) {
-  workerGlobal.pdfjsWorker = pdfjsWorker;
+let pdfjsModulePromise: Promise<typeof PdfjsLib> | null = null;
+
+// Lazily load pdfjs-dist and register its worker handler directly inside this Web Worker
+// only when PDF extraction or OCR is actually invoked.
+async function loadPdfJs(): Promise<typeof PdfjsLib> {
+  if (!pdfjsModulePromise) {
+    pdfjsModulePromise = (async () => {
+      const [pdfjsLib, pdfjsWorker] = await Promise.all([
+        import('pdfjs-dist'),
+        // @ts-expect-error pdfjs-dist ships build/pdf.worker.mjs without an adjacent .d.ts file
+        import('pdfjs-dist/build/pdf.worker.mjs'),
+      ]);
+      const workerGlobal = globalThis as typeof globalThis & {
+        pdfjsWorker?: typeof pdfjsWorker;
+      };
+      if (!workerGlobal.pdfjsWorker) {
+        workerGlobal.pdfjsWorker = pdfjsWorker;
+      }
+      return pdfjsLib;
+    })().catch((err) => {
+      pdfjsModulePromise = null;
+      throw err;
+    });
+  }
+  return pdfjsModulePromise;
+}
+
+async function createDefaultTesseractWorker(lang: OcrLanguage): Promise<OcrWorkerLike> {
+  const { createWorker } = await import('tesseract.js');
+  return createWorker(lang);
 }
 
 function joinPageTextItems(items: Array<{ str?: string; hasEOL?: boolean }>): string {
@@ -116,10 +136,11 @@ async function handleExtractRequest(
   request: Extract<PdfIndexWorkerRequest, { type: 'extract' }>,
 ): Promise<void> {
   let bytesRef: Uint8Array | null = new Uint8Array(request.buffer);
-  let loadingTask: pdfjsLib.PDFDocumentLoadingTask | null = null;
-  let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
+  let loadingTask: PdfjsLib.PDFDocumentLoadingTask | null = null;
+  let pdfDoc: PdfjsLib.PDFDocumentProxy | null = null;
 
   try {
+    const pdfjsLib = await loadPdfJs();
     loadingTask = pdfjsLib.getDocument({
       data: bytesRef,
       useWorkerFetch: false,
@@ -221,9 +242,9 @@ export interface OcrPipelineDeps {
   postMessage?: (msg: PdfIndexWorkerResponse) => void;
   shouldAbort?: () => boolean;
   onWorkerCreated?: (worker: OcrWorkerLike | null) => void;
-  renderPageToImage?: (pdfPage: pdfjsLib.PDFPageProxy) => Promise<Blob | ImageData>;
+  renderPageToImage?: (pdfPage: PdfjsLib.PDFPageProxy) => Promise<Blob | ImageData>;
   loadPdfDocument?: (bytes: Uint8Array) => {
-    promise: Promise<pdfjsLib.PDFDocumentProxy>;
+    promise: Promise<PdfjsLib.PDFDocumentProxy>;
     destroy: () => Promise<void>;
   };
 }
@@ -233,7 +254,7 @@ let abortRequested = false;
 let activeTesseractWorker: OcrWorkerLike | null = null;
 
 async function defaultRenderPageToOcrImage(
-  pdfPage: pdfjsLib.PDFPageProxy,
+  pdfPage: PdfjsLib.PDFPageProxy,
 ): Promise<Blob | ImageData> {
   if (typeof OffscreenCanvas === 'undefined') {
     throw new Error(
@@ -294,27 +315,24 @@ export async function runOcrIndexingPipeline(
   const emit =
     deps.postMessage ?? ((msg: PdfIndexWorkerResponse) => self.postMessage(msg));
   const isAborted = deps.shouldAbort ?? (() => abortRequested && activeOcrJobId === jobId);
-  const createOcrWorkerFn =
-    deps.createOcrWorker ?? (async (lang: OcrLanguage) => createWorker(lang));
+  const createOcrWorkerFn = deps.createOcrWorker ?? createDefaultTesseractWorker;
   const renderPageFn = deps.renderPageToImage ?? defaultRenderPageToOcrImage;
-  const loadDocFn =
-    deps.loadPdfDocument ??
-    ((bytes: Uint8Array) =>
-      pdfjsLib.getDocument({
-        data: bytes,
-        useWorkerFetch: false,
-        disableAutoFetch: true,
-      }));
 
   let bufferRef: ArrayBuffer | null = payload.buffer;
   let bytesRef: Uint8Array | null = new Uint8Array(bufferRef);
-  let loadingTask: { promise: Promise<pdfjsLib.PDFDocumentProxy>; destroy: () => Promise<void> } | null =
+  let loadingTask: { promise: Promise<PdfjsLib.PDFDocumentProxy>; destroy: () => Promise<void> } | null =
     null;
-  let pdfDoc: pdfjsLib.PDFDocumentProxy | null = null;
+  let pdfDoc: PdfjsLib.PDFDocumentProxy | null = null;
   let tesseractWorker: OcrWorkerLike | null = null;
 
   try {
-    loadingTask = loadDocFn(bytesRef);
+    loadingTask = deps.loadPdfDocument
+      ? deps.loadPdfDocument(bytesRef)
+      : (await loadPdfJs()).getDocument({
+          data: bytesRef,
+          useWorkerFetch: false,
+          disableAutoFetch: true,
+        });
     pdfDoc = await loadingTask.promise;
     const pdfTotalPages = pdfDoc.numPages;
 
