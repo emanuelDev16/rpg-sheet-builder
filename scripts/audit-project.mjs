@@ -39,14 +39,23 @@ for (const f of walk('.agent/rules').filter((p) => p.endsWith('.md'))) {
   report(n <= 40, `${rel} <= 40 linhas`, `${n}`);
 }
 
-// 2. Tamanho dos componentes dnd5e
-const dndDir = 'src/components/dnd5e';
-const dnd = existsSync(dndDir) ? readdirSync(dndDir).filter((f) => f.endsWith('.tsx')) : [];
-if (!dnd.length) report(true, `${dndDir}/*.tsx`, 'nenhum arquivo');
-for (const f of dnd) {
-  const n = lines(join(dndDir, f));
-  report(n <= 200, `${dndDir}/${f} <= 220 linhas`, `${n}`, n <= 220 || WARN_SIZE);
+// 2. Tamanho dos componentes modulares (dnd5e e progression)
+for (const dir of ['src/components/dnd5e', 'src/components/progression']) {
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.tsx')) : [];
+  if (!files.length) report(true, `${dir}/*.tsx`, 'nenhum arquivo');
+  for (const f of files) {
+    const n = lines(join(dir, f));
+    const maxLines = dir.endsWith('dnd5e') ? 220 : 200;
+    report(n <= 200, `${dir}/${f} <= ${maxLines} linhas`, `${n}`, n <= maxLines || WARN_SIZE);
+  }
 }
+
+// 3. Marcadores de conflito de merge residuais
+const CONFLICT_RE = /^(?:<{7}\s|={7}$|>{7}\s)/m;
+const conflictDirs = ['src', 'docs', 'shared', '.github'].flatMap((d) => walk(d))
+  .filter((p) => /\.(?:[cm]?[jt]sx?|json|md|ya?ml|css|html)$/i.test(p) && statSync(p).size < 20e6);
+const conflictHits = conflictDirs.filter((f) => CONFLICT_RE.test(readFileSync(f, 'utf8')));
+report(!conflictHits.length, 'Sem marcadores de conflito Git em src/, docs/, shared/, .github/', conflictHits.length ? conflictHits.join(', ') : `${conflictDirs.length} arquivos`);
 
 // 3. Segredos/SDKs proibidos
 const FORBIDDEN = ['@google/genai', 'GEMINI_API_KEY', 'googleSearch', 'SYNC_TOKEN'];

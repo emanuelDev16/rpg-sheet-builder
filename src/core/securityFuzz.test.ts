@@ -5,8 +5,9 @@ import {
   parseAndValidateImportPayload, validateSheetPayload, type CharacterSheetState,
 } from './sheetModel';
 import { generateSingleFilePureHtml, sanitizeUrl } from './pureHtmlExporter';
+import { getFuzzOptions } from './fuzzConfig';
 
-const FUZZ_OPTS = { numRuns: 200 } as const;
+const FUZZ_OPTS = getFuzzOptions(20261126, 200);
 const DANGEROUS_KEYS = ['__proto__', 'constructor', 'prototype'] as const;
 const ADVERSARIAL_VECTORS = [
   '<script>', '</script>', '<script>alert(1)</script>', '<!--', '-->', 'onerror=',

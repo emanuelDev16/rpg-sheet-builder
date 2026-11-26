@@ -6,8 +6,9 @@ import {
   rollDeathSave, setTempHp, spendHitDieShortRest,
   type Dnd5eHitDieType, type Dnd5eRollMode,
 } from './dnd5eRules';
+import { getFuzzOptions } from './fuzzConfig';
 
-const FUZZ_OPTS = { numRuns: 200 } as const;
+const FUZZ_OPTS = getFuzzOptions(20261127, 200);
 const rngUnitArb = fc.double({ min: 0, max: 0.999999, noNaN: true, noDefaultInfinity: true });
 const rngSeqArb = fc.array(rngUnitArb, { minLength: 1, maxLength: 8 });
 const hitDieArb = fc.constantFrom<Dnd5eHitDieType>('d6', 'd8', 'd10', 'd12');

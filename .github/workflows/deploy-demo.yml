@@ -33,6 +33,9 @@ jobs:
       - name: Instalar dependências
         run: npm ci
 
+      - name: Auditoria local de governança e segurança
+        run: npm run audit:local
+
       - name: Verificar tipagem TypeScript
         run: npm run lint
 

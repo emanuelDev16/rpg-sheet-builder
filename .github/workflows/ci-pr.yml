@@ -1,0 +1,49 @@
+name: Web CI (PR Gate)
+
+on:
+  pull_request:
+    branches: [ main ]
+
+concurrency:
+  group: ci-pr-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  web-ci:
+    name: Web CI (Audit, Lint, Tests, Build)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout do código
+        uses: actions/checkout@v7
+
+      - name: Configurar Node.js
+        uses: actions/setup-node@v6
+        with:
+          node-version: '24'
+          cache: 'npm'
+
+      - name: Instalar dependências
+        run: npm ci
+
+      - name: Auditoria local de governança e segurança
+        run: npm run audit:local
+
+      - name: Verificar tipagem TypeScript
+        run: npm run lint
+
+      - name: Executar suíte completa de testes (Vitest + node:test)
+        run: npm run test:all
+
+      - name: Gerar build estático (Vite) e verificar ausência de segredos/sourcemaps
+        env:
+          SYNC_TOKEN: CANARY_SECRET_CI_GUARD
+        run: |
+          npx vite build --base=/rpg-sheet-builder/
+          if grep -rn "CANARY_SECRET_CI_GUARD" dist/; then
+            echo "ERROR: Canary secret leaked into dist/"
+            exit 1
+          fi
+          if [ -n "$(find dist -name '*.map')" ]; then
+            echo "ERROR: Source maps generated in production dist/"
+            exit 1
+          fi

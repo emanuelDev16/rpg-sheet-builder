@@ -6,8 +6,9 @@ import {
   MAX_RECURSION_DEPTH,
   rollDiceExpression,
 } from './formula';
+import { getFuzzOptions } from './fuzzConfig';
 
-const FUZZ_OPTS = { numRuns: 200 } as const;
+const FUZZ_OPTS = getFuzzOptions(20261128, 200);
 
 function makeSeqRng(values: number[]): () => number {
   let idx = 0;
