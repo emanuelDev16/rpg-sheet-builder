@@ -63,13 +63,60 @@ function buildWodCatalogLabelMap(): ReadonlyMap<string, LocaleRecord> {
   return map;
 }
 
+const CYBERPUNK_CARD_TITLE_ENTRIES: readonly PresetLocaleEntry[] = [
+  ['TACTICAL COMBAT & ARMOR', 'COMBATE TÁTICO & BLINDAGEM', 'TACTICAL COMBAT & ARMOR', 'COMBATE TÁCTICO Y BLINDAJE'],
+  ['ARSENAL & WEAPONS', 'ARSENAL & ARMAS', 'ARSENAL & WEAPONS', 'ARSENAL Y ARMAS'],
+  ['CYBERWARE & HUMANITY', 'CYBERWARE & HUMANIDADE', 'CYBERWARE & HUMANITY', 'CYBERWARE Y HUMANIDAD'],
+];
+
+const CYBERPUNK_CARD_TAG_ENTRIES: readonly PresetLocaleEntry[] = [
+  ['//ARMOR_SP', '//BLINDAGEM_SP', '//ARMOR_SP', '//BLINDAJE_SP'],
+  ['//ARSENAL', '//ARSENAL', '//ARSENAL', '//ARSENAL'],
+  ['//CYBERWARE', '//CYBERWARE', '//CYBERWARE', '//CYBERWARE'],
+  ['//NETRUNNING', '//NETRUNNING', '//NETRUNNING', '//NETRUNNING'],
+];
+
+const CYBERPUNK_FIELD_LABEL_ENTRIES: readonly PresetLocaleEntry[] = [
+  ['ARMOR SP (HEAD)', 'SP CABEÇA', 'ARMOR SP (HEAD)', 'SP CABEZA'],
+  ['ARMOR SP (BODY)', 'SP CORPO', 'ARMOR SP (BODY)', 'SP CUERPO'],
+  ['EFFECTIVE EMP', 'EMP EFETIVA', 'EFFECTIVE EMP', 'EMP EFECTIVA'],
+  ['CRITICAL INJURIES', 'FERIMENTOS CRÍTICOS', 'CRITICAL INJURIES', 'HERIDAS CRÍTICAS'],
+  ['CYBERWARE', 'CYBERWARE', 'CYBERWARE', 'CYBERWARE'],
+  ['WEAPONS', 'ARMAS', 'WEAPONS', 'ARMAS'],
+  ['AMMO', 'MUNIÇÃO', 'AMMO', 'MUNICIÓN'],
+  ['HUMANITY LOSS', 'PERDA DE HUMANIDADE', 'HUMANITY LOSS', 'PÉRDIDA DE HUMANIDAD'],
+  ['EXPLODING 1D10', '1D10 EXPLOSIVO', 'EXPLODING 1D10', '1D10 EXPLOSIVO'],
+];
+
+const CYBERPUNK_ROLL_LABEL_ENTRIES: readonly PresetLocaleEntry[] = [
+  ['ROLL EXPLODING 1D10', 'ROLAR 1D10 EXPLOSIVO', 'ROLL EXPLODING 1D10', 'TIRAR 1D10 EXPLOSIVO'],
+];
+
+const CYBERPUNK_TABLE_COLUMN_ENTRIES: readonly PresetLocaleEntry[] = [
+  ['WEAPON', 'ARMA', 'WEAPON', 'ARMA'],
+  ['DAMAGE', 'DANO', 'DAMAGE', 'DAÑO'],
+  ['AMMO', 'MUNIÇÃO', 'AMMO', 'MUNICIÓN'],
+  ['IMPLANT', 'IMPLANTE', 'IMPLANT', 'IMPLANTE'],
+  ['HUMANITY LOSS', 'PERDA HUM.', 'HUMANITY LOSS', 'PÉRD. HUM.'],
+];
+
+const CYBERPUNK_DEFAULT_FIELD_LABEL_BY_KEY: Readonly<Record<string, PresetLocaleTuple>> = {
+  armor_head: ['SP CABEÇA', 'ARMOR SP (HEAD)', 'SP CABEZA'],
+  armor_body: ['SP CORPO', 'ARMOR SP (BODY)', 'SP CUERPO'],
+  effective_emp: ['EMP EFETIVA', 'EFFECTIVE EMP', 'EMP EFECTIVA'],
+  cyberware: ['CYBERWARE', 'CYBERWARE', 'CYBERWARE'],
+  critical_injuries: ['FERIMENTOS CRÍTICOS', 'CRITICAL INJURIES', 'HERIDAS CRÍTICAS'],
+  ammo: ['MUNIÇÃO', 'AMMO', 'MUNICIÓN'],
+  weapons: ['ARMAS', 'WEAPONS', 'ARMAS'],
+};
+
 const SYSTEM_LOOKUP = buildLookupMap(SYSTEM_NAME_ENTRIES);
 const TAB_LOOKUP = buildLookupMap(TAB_TITLE_ENTRIES);
-const CARD_TITLE_LOOKUP = buildLookupMap(CARD_TITLE_ENTRIES);
-const CARD_TAG_LOOKUP = buildLookupMap(CARD_TAG_ENTRIES);
-const FIELD_LABEL_LOOKUP = buildLookupMap(FIELD_LABEL_ENTRIES);
-const ROLL_LABEL_LOOKUP = buildLookupMap(ROLL_LABEL_ENTRIES);
-const TABLE_COLUMN_LOOKUP = buildLookupMap(TABLE_COLUMN_ENTRIES);
+const CARD_TITLE_LOOKUP = buildLookupMap([...CARD_TITLE_ENTRIES, ...CYBERPUNK_CARD_TITLE_ENTRIES]);
+const CARD_TAG_LOOKUP = buildLookupMap([...CARD_TAG_ENTRIES, ...CYBERPUNK_CARD_TAG_ENTRIES]);
+const FIELD_LABEL_LOOKUP = buildLookupMap([...FIELD_LABEL_ENTRIES, ...CYBERPUNK_FIELD_LABEL_ENTRIES]);
+const ROLL_LABEL_LOOKUP = buildLookupMap([...ROLL_LABEL_ENTRIES, ...CYBERPUNK_ROLL_LABEL_ENTRIES]);
+const TABLE_COLUMN_LOOKUP = buildLookupMap([...TABLE_COLUMN_ENTRIES, ...CYBERPUNK_TABLE_COLUMN_ENTRIES]);
 const WOD_CATALOG_LOOKUP = buildWodCatalogLabelMap();
 
 const DEFAULT_CARD_TITLE_BY_ID: Readonly<Record<string, PresetLocaleTuple>> = {
@@ -82,6 +129,9 @@ const DEFAULT_CARD_TITLE_BY_ID: Readonly<Record<string, PresetLocaleTuple>> = {
   card_grimorio: ['PODERES & MÉRITOS', 'DISCIPLINE POWERS & MERITS', 'PODERES Y MÉRITOS'],
   card_wod_dossier: ['CONVICÇÕES, QUALIDADES & REFÚGIOS', 'CONVICTIONS, QUALITIES & HAVENS', 'CONVICCIONES, MÉRITOS Y REFUGIOS'],
   card_notas: ['COTERIE & NOTAS DE SESSÃO', 'COTERIE & SESSION NOTES', 'COTERIE Y NOTAS DE SESIÓN'],
+  card_cyberpunk_combat: ['COMBATE TÁTICO & BLINDAGEM', 'TACTICAL COMBAT & ARMOR', 'COMBATE TÁCTICO Y BLINDAJE'],
+  card_cyberpunk_weapons: ['ARSENAL & ARMAS', 'ARSENAL & WEAPONS', 'ARSENAL Y ARMAS'],
+  card_cyberpunk_cyberware: ['CYBERWARE & HUMANIDADE', 'CYBERWARE & HUMANITY', 'CYBERWARE Y HUMANIDAD'],
 };
 
 const DEFAULT_CARD_TAG_BY_ID: Readonly<Record<string, PresetLocaleTuple>> = {
@@ -94,16 +144,19 @@ const DEFAULT_CARD_TAG_BY_ID: Readonly<Record<string, PresetLocaleTuple>> = {
   card_grimorio: ['//PODERES_&_MÉRITOS', '//MERITS_&_POWERS', '//PODERES_&_MÉRITOS'],
   card_wod_dossier: ['//TRAÇOS_CRÔNICA', '//CHRONICLE_TRAITS', '//RASGOS_CRÓNICA'],
   card_notas: ['//DIÁRIO_CRÔNICA', '//CHRONICLE_LOG', '//DIARIO_CRÓNICA'],
+  card_cyberpunk_combat: ['//BLINDAGEM_SP', '//ARMOR_SP', '//BLINDAJE_SP'],
+  card_cyberpunk_weapons: ['//ARSENAL', '//ARSENAL', '//ARSENAL'],
+  card_cyberpunk_cyberware: ['//CYBERWARE', '//CYBERWARE', '//CYBERWARE'],
 };
 
 export const PRESET_I18N_STATS = {
   systems: SYSTEM_NAME_ENTRIES.length,
   tabs: TAB_TITLE_ENTRIES.length,
-  cardTitles: CARD_TITLE_ENTRIES.length,
-  cardTags: CARD_TAG_ENTRIES.length,
-  fieldLabels: FIELD_LABEL_ENTRIES.length,
-  rollLabels: ROLL_LABEL_ENTRIES.length,
-  tableColumns: TABLE_COLUMN_ENTRIES.length,
+  cardTitles: CARD_TITLE_ENTRIES.length + CYBERPUNK_CARD_TITLE_ENTRIES.length,
+  cardTags: CARD_TAG_ENTRIES.length + CYBERPUNK_CARD_TAG_ENTRIES.length,
+  fieldLabels: FIELD_LABEL_ENTRIES.length + CYBERPUNK_FIELD_LABEL_ENTRIES.length,
+  rollLabels: ROLL_LABEL_ENTRIES.length + CYBERPUNK_ROLL_LABEL_ENTRIES.length,
+  tableColumns: TABLE_COLUMN_ENTRIES.length + CYBERPUNK_TABLE_COLUMN_ENTRIES.length,
 } as const;
 
 export function localizeSystemName(
@@ -168,7 +221,9 @@ export function localizeFieldLabel(
   const raw = field.label ?? '';
   if (!raw.trim()) {
     const keyNorm = field.key?.trim().toLowerCase() ?? '';
-    const tuple = keyNorm ? DEFAULT_FIELD_LABEL_BY_KEY[keyNorm] : undefined;
+    const tuple = keyNorm
+      ? (DEFAULT_FIELD_LABEL_BY_KEY[keyNorm] ?? CYBERPUNK_DEFAULT_FIELD_LABEL_BY_KEY[keyNorm])
+      : undefined;
     return tuple ? toLocaleRecord(tuple)[lang] : '';
   }
   const norm = normalizePresetKey(raw);

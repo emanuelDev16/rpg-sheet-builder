@@ -1,4 +1,5 @@
 import type { SystemId, SystemOption } from './sheetModel.ts';
+import { CYBERPUNK_EN, CYBERPUNK_ES, CYBERPUNK_PT_BR } from './i18n/cyberpunk.ts';
 import { DND5E_EN, DND5E_ES, DND5E_PT_BR } from './i18n/dnd5e.ts';
 import { WOD_EN, WOD_ES, WOD_PT_BR } from './i18n/wod.ts';
 
@@ -44,12 +45,10 @@ export function readStoredLanguage(): AppLanguage {
 }
 
 const PT_BR_DICT = {
+  ...CYBERPUNK_PT_BR,
   ...DND5E_PT_BR,
   ...WOD_PT_BR,
   // Systems
-  'system.cyberpunk.label': 'NET//RUNNER D10 PROTOCOL',
-  'system.cyberpunk.short': 'CYBERPUNK · d10',
-  'system.cyberpunk.desc': 'Sistema cyberpunk 1d10 com Reflexos, Interface e Invasão ICE',
   'system.default.label': 'SISTEMA GENÉRICO EXEMPLO (D20)',
   'system.default.short': 'GENÉRICO · d20',
   'system.default.desc': 'Atributos D20, PV segmentado, mochila com peso e módulo arcano',
@@ -60,9 +59,6 @@ const PT_BR_DICT = {
   'system.blank.systemCode': '/SYS: SISTEMA CUSTOMIZADO',
 
   // Tabs
-  'tabs.cyberpunk.1': '/01 STATS & COMBATE',
-  'tabs.cyberpunk.2': '/02 NETRUNNING & NOTAS',
-  'tabs.cyberpunk.3': '/03 XP & MELHORIAS',
   'tabs.blank.1': '/01 FICHA PRINCIPAL',
   'tabs.blank.2': '/02 EXTRAS & NOTAS',
   'tabs.blank.3': '/03 XP & MELHORIAS',
@@ -921,12 +917,10 @@ export type TranslationDictionary = Record<TranslationKey, string>;
 export const PT_BR: TranslationDictionary = PT_BR_DICT;
 
 export const EN: TranslationDictionary = {
+  ...CYBERPUNK_EN,
   ...DND5E_EN,
   ...WOD_EN,
   // Systems
-  'system.cyberpunk.label': 'NET//RUNNER D10 PROTOCOL',
-  'system.cyberpunk.short': 'CYBERPUNK · d10',
-  'system.cyberpunk.desc': 'Cyberpunk 1d10 system with Reflexes, Interface & ICE Breach',
   'system.default.label': 'GENERIC EXAMPLE SYSTEM (D20)',
   'system.default.short': 'GENERIC · d20',
   'system.default.desc': 'D20 Attributes, segmented HP, weighted gear bag & arcane module',
@@ -937,9 +931,6 @@ export const EN: TranslationDictionary = {
   'system.blank.systemCode': '/SYS: CUSTOM SYSTEM',
 
   // Tabs
-  'tabs.cyberpunk.1': '/01 STATS & COMBAT',
-  'tabs.cyberpunk.2': '/02 NETRUNNING & NOTES',
-  'tabs.cyberpunk.3': '/03 XP & UPGRADES',
   'tabs.blank.1': '/01 MAIN SHEET',
   'tabs.blank.2': '/02 EXTRAS & NOTES',
   'tabs.blank.3': '/03 XP & UPGRADES',
@@ -1793,12 +1784,10 @@ export const EN: TranslationDictionary = {
 };
 
 export const ES: TranslationDictionary = {
+  ...CYBERPUNK_ES,
   ...DND5E_ES,
   ...WOD_ES,
   // Systems
-  'system.cyberpunk.label': 'NET//RUNNER D10 PROTOCOL',
-  'system.cyberpunk.short': 'CYBERPUNK · d10',
-  'system.cyberpunk.desc': 'Sistema cyberpunk 1d10 con Reflejos, Interfaz e Invasión ICE',
   'system.default.label': 'SISTEMA GENÉRICO EJEMPLO (D20)',
   'system.default.short': 'GENÉRICO · d20',
   'system.default.desc': 'Atributos D20, PG segmentado, mochila con peso y módulo arcano',
@@ -1809,9 +1798,6 @@ export const ES: TranslationDictionary = {
   'system.blank.systemCode': '/SYS: SISTEMA PERSONALIZADO',
 
   // Tabs
-  'tabs.cyberpunk.1': '/01 ESTADÍSTICAS Y COMBATE',
-  'tabs.cyberpunk.2': '/02 NETRUNNING Y NOTAS',
-  'tabs.cyberpunk.3': '/03 XP Y MEJORAS',
   'tabs.blank.1': '/01 HOJA PRINCIPAL',
   'tabs.blank.2': '/02 EXTRAS Y NOTAS',
   'tabs.blank.3': '/03 XP Y MEJORAS',
