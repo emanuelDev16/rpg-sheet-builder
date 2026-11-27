@@ -8,6 +8,13 @@ import {
   PT_BR,
   translate,
 } from './core/i18n';
+import {
+  localizeCardTag,
+  localizeCardTitle,
+  localizeFieldLabel,
+  localizeFieldRollLabel,
+  localizeTableColumn,
+} from './core/presetI18n';
 
 describe('Strict i18n dictionary parity & fallback', () => {
   it('enforces exact key parity and non-empty values across pt-BR, en, and es', () => {
@@ -186,6 +193,44 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('en', 'dnd5e.lvl.sessionGoalReachedHint', { current: 3, target: 3 })).toContain('3/3');
   });
 
+  it('provides Cyberpunk combat, weapons, cyberware, and presetI18n translations across pt-BR, en, and es', () => {
+    expect(translate('pt-BR', 'cyberpunk.combat.armorHead')).toBe('SP CABEÇA');
+    expect(translate('en', 'cyberpunk.combat.armorBody')).toBe('BODY SP');
+    expect(translate('es', 'cyberpunk.combat.applyDamageBtn')).toBe('APLICAR DAÑO');
+    expect(translate('pt-BR', 'cyberpunk.combat.repairSpBtn')).toBe('REPARAR SP');
+    expect(translate('en', 'cyberpunk.combat.woundSerious')).toBe('SERIOUSLY WOUNDED (-2)');
+    expect(translate('es', 'cyberpunk.combat.woundMortal')).toBe('MORTALMENTE HERIDO (-4)');
+    expect(translate('pt-BR', 'cyberpunk.combat.critInjuriesHeading')).toBe('FERIMENTOS CRÍTICOS');
+    expect(translate('en', 'cyberpunk.combat.explodingD10Heading')).toBe('EXPLODING 1D10');
+    expect(translate('pt-BR', 'cyberpunk.combat.critBadge')).toBe('CRIT +1D10');
+    expect(translate('es', 'cyberpunk.combat.fumbleBadge')).toBe('PIFIA -1D10');
+    expect(translate('en', 'cyberpunk.weapons.rofLabel')).toBe('ROF');
+    expect(translate('pt-BR', 'cyberpunk.weapons.ammoCounter', { current: 4, max: 8 })).toBe('4/8 MUN.');
+    expect(translate('es', 'cyberpunk.weapons.fireBtn')).toBe('DISPARAR');
+    expect(translate('en', 'cyberpunk.weapons.reloadBtn')).toBe('RELOAD');
+    expect(translate('pt-BR', 'cyberpunk.cyberware.humanityLabel')).toBe('HUMANIDADE');
+    expect(translate('es', 'cyberpunk.cyberware.effectiveEmpLabel')).toBe('EMP EFECTIVA');
+    expect(translate('pt-BR', 'cyberpunk.cyberware.cyberpsychosisRisk')).toBe('RISCO DE CIBERPSICOSE');
+    expect(
+      translate('en', 'cyberpunk.combat.armorAblatedFlash', {
+        location: 'HEAD',
+        before: 11,
+        after: 10,
+        hp: 3,
+      }),
+    ).toBe('// HEAD SP: 11 → 10 (-3 HP)');
+
+    expect(localizeCardTitle({ id: 'card_cyberpunk_combat', title: '' }, 'pt-BR')).toBe('COMBATE TÁTICO & BLINDAGEM');
+    expect(localizeCardTag({ id: 'card_cyberpunk_combat', code: '' }, 'es')).toBe('//BLINDAJE_SP');
+    expect(localizeFieldLabel({ key: 'armor_head', label: 'ARMOR SP (HEAD)' }, 'pt-BR')).toBe('SP CABEÇA');
+    expect(localizeFieldLabel({ key: 'effective_emp', label: '' }, 'es')).toBe('EMP EFECTIVA');
+    expect(localizeFieldLabel({ key: 'armor_head', label: 'Capacete Customizado' }, 'en')).toBe('Capacete Customizado');
+    expect(localizeFieldRollLabel({ key: 'exploding', label: 'EXPLODING 1D10', rollLabel: 'ROLL EXPLODING 1D10' }, 'es')).toBe(
+      'TIRAR 1D10 EXPLOSIVO',
+    );
+    expect(localizeTableColumn('WEAPON', 'pt-BR')).toBe('ARMA');
+  });
+
   it('maps all 4 D&D 5e progression entry kinds to distinct localized badges', () => {
     const tPt = (k: Parameters<typeof translate>[1], v?: Record<string, string | number>) => translate('pt-BR', k, v);
     const tEn = (k: Parameters<typeof translate>[1], v?: Record<string, string | number>) => translate('en', k, v);
@@ -209,6 +254,9 @@ describe('Strict i18n dictionary parity & fallback', () => {
     const ALLOWED_IDENTICAL_PT_EN_KEYS = new Set([
       'sidebar.roll.nat20Badge',
       'sidebar.roll.nat1Badge',
+      'cyberpunk.combat.critBadge',
+      'cyberpunk.combat.fumbleBadge',
+      'cyberpunk.weapons.rofLabel',
       'dnd5e.rollModeNormal',
       'dnd5e.abilityShort.con',
       'dnd5e.abilityShort.int',
