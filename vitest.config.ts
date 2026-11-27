@@ -1,3 +1,4 @@
+import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export const NODE_TEST_FILES = [
@@ -28,13 +29,32 @@ export const NODE_TEST_FILES = [
 
 export default defineConfig({
   test: {
-    include: ['src/**/*.test.ts'],
-    // Existing core unit tests use node:test (run via `npm run test:node`).
-    // Exclude them here so `npx vitest run` executes Vitest suites cleanly.
-    exclude: [
-      '**/node_modules/**',
-      '**/dist/**',
-      ...NODE_TEST_FILES,
+    passWithNoTests: true,
+    projects: [
+      {
+        test: {
+          name: 'unit',
+          environment: 'node',
+          include: ['src/**/*.test.ts'],
+          // Existing core unit tests use node:test (run via `npm run test:node`).
+          // Exclude them here so `npx vitest run` executes Vitest suites cleanly.
+          exclude: [
+            '**/node_modules/**',
+            '**/dist/**',
+            ...NODE_TEST_FILES,
+          ],
+        },
+      },
+      {
+        plugins: [react()],
+        test: {
+          name: 'ui',
+          environment: 'jsdom',
+          include: ['src/**/*.ui.test.tsx'],
+          exclude: ['**/node_modules/**', '**/dist/**'],
+          setupFiles: ['src/test/setupJsdom.ts'],
+        },
+      },
     ],
   },
 });
