@@ -2773,6 +2773,12 @@ select:focus-visible,
   color: var(--ink-primary);
 }
 
+.dnd5e-milestone-badge {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--accent-primary);
+}
+
 .dnd5e-prog-panel [aria-disabled="true"],
 .generic-xp-panel [aria-disabled="true"] {
   opacity: 0.5;
@@ -2804,7 +2810,8 @@ select:focus-visible,
 
 [data-theme="eink"] .dnd5e-prog-mode-btn[aria-pressed="true"],
 [data-theme="eink"] .dnd5e-prog-bar-fill,
-[data-theme="eink"] .dnd5e-asi-badge {
+[data-theme="eink"] .dnd5e-asi-badge,
+[data-theme="eink"] .dnd5e-milestone-badge {
   background-color: var(--ink-primary) !important;
   color: var(--bg-card) !important;
   border-color: var(--ink-primary) !important;
@@ -2817,11 +2824,16 @@ select:focus-visible,
     border: 1px solid CanvasText !important;
   }
 
+  .dnd5e-prog-stepper button {
+    border: 1px solid ButtonText !important;
+  }
+
   .dnd5e-prog-mode-btn[aria-pressed="true"],
-  .dnd5e-prog-bar-fill {
+  .dnd5e-prog-bar-fill,
+  .dnd5e-milestone-badge {
     background-color: Highlight !important;
     color: HighlightText !important;
-    border-color: Highlight !important;
+    border: 1px solid Highlight !important;
     forced-color-adjust: none;
   }
 

@@ -1,7 +1,8 @@
 import React, { useId, useState } from 'react';
 import { CheckCircle2, Dices, Sparkles } from 'lucide-react';
 import {
-  computeLevelUpHpGain, DND5E_MAX_LEVEL, type Dnd5eHpMethod, getDnd5eHitDieAverage, isStandardAsiLevel,
+  computeLevelUpHpGain, DND5E_MAX_LEVEL, type Dnd5eHpMethod, type Dnd5eSessionProgress,
+  getDnd5eHitDieAverage, isStandardAsiLevel,
 } from '../../core/dnd5eProgression';
 import {
   type Dnd5eHitDieType, type Dnd5eState, formatSignedMod, getHitDieSides, getProficiencyBonus,
@@ -17,13 +18,14 @@ export interface Dnd5eLevelUpPanelProps {
   xpToNext: number;
   canLevelUpByXp: boolean;
   mode: 'xp' | 'milestone';
+  sessionProgress?: Dnd5eSessionProgress;
   t: TranslateFn;
   onConfirmLevelUp: (params: { method: 'average' | 'roll'; rolledDie?: number; note?: string }) => void;
   onRollHitDieLog: (params: { die: Dnd5eHitDieType; rolled: number; conMod: number; hpGain: number; nextLevel: number }) => void;
 }
 
 export const Dnd5eLevelUpPanel: React.FC<Dnd5eLevelUpPanelProps> = ({
-  dnd5eState, maxHp, conMod, xpToNext, canLevelUpByXp, mode, t, onConfirmLevelUp, onRollHitDieLog,
+  dnd5eState, maxHp, conMod, xpToNext, canLevelUpByXp, mode, sessionProgress, t, onConfirmLevelUp, onRollHitDieLog,
 }) => {
   const uid = useId();
   const [method, setMethod] = useState<Extract<Dnd5eHpMethod, 'average' | 'roll'>>('average');
@@ -128,6 +130,23 @@ export const Dnd5eLevelUpPanel: React.FC<Dnd5eLevelUpPanelProps> = ({
 
       {!isMaxLevel && mode === 'xp' && !canLevelUpByXp && (
         <p className="font-mono-tech text-[10px] text-[var(--ink-muted)]">{t('dnd5e.lvl.belowXpHint', { xp: xpToNext })}</p>
+      )}
+      {!isMaxLevel && mode === 'milestone' && sessionProgress && (
+        <p
+          data-testid="dnd5e-lvl-milestone-hint"
+          className={`font-mono-tech text-[10px] ${
+            sessionProgress.style === 'sessions' && sessionProgress.isGoalReached
+              ? 'font-bold text-[var(--accent-primary)]'
+              : 'text-[var(--ink-muted)]'
+          }`}
+        >
+          {sessionProgress.style === 'free'
+            ? t('dnd5e.lvl.freeMilestoneHint')
+            : t(sessionProgress.isGoalReached ? 'dnd5e.lvl.sessionGoalReachedHint' : 'dnd5e.lvl.sessionProgressHint', {
+                current: sessionProgress.sessionsInLevel,
+                target: sessionProgress.sessionsPerLevel,
+              })}
+        </p>
       )}
 
       <button type="button" aria-disabled={isMaxLevel} data-testid="dnd5e-levelup-confirm-btn" onClick={handleConfirm} className="cyber-roll-btn min-h-[36px] px-3 py-2 text-xs font-extrabold uppercase tracking-wider cursor-pointer">

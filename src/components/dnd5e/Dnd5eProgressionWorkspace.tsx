@@ -1,13 +1,16 @@
 import React, { useId, useMemo, useState } from 'react';
 import { RotateCcw } from 'lucide-react';
 import {
-  addDnd5eXp, applyDnd5eLevelUp, DND5E_DEFAULT_SESSIONS_PER_LEVEL, type Dnd5eProgressionEntry,
-  getDnd5eXpProgress, logDnd5eSession, normalizeDnd5eProgression, setDnd5eProgressionMode, undoLastDnd5eProgression,
+  addDnd5eXp, applyDnd5eLevelUp, type Dnd5eProgressionEntry,
+  getDnd5eSessionProgress, getDnd5eXpProgress, logDnd5eMilestone, logDnd5eSession,
+  normalizeDnd5eProgression, setDnd5eMilestoneStyle, setDnd5eProgressionMode,
+  setDnd5eSessionsPerLevel, undoLastDnd5eProgression,
 } from '../../core/dnd5eProgression';
 import { type Dnd5eState, formatSignedMod, getAbilityModifier, normalizeDnd5eState } from '../../core/dnd5eRules';
 import type { TranslateFn } from '../../core/i18n';
 import type { CharacterSheetState, RollLogEntry } from '../../core/sheetModel';
 import { Dnd5eLevelUpPanel } from './Dnd5eLevelUpPanel';
+import { Dnd5eMilestonePanel } from './Dnd5eMilestonePanel';
 
 export interface Dnd5eProgressionWorkspaceProps {
   sheet: CharacterSheetState; t: TranslateFn;
@@ -15,6 +18,14 @@ export interface Dnd5eProgressionWorkspaceProps {
   onAppendRollLog: (entry: RollLogEntry) => void; onFlash?: (msg: string) => void;
 }
 const QUICK_XP = [50, 100, 250, 500, 1000] as const;
+
+/** Formats a localized history badge label for any D&D 5e progression entry kind. */
+export function formatDnd5eEntryBadge(entry: Dnd5eProgressionEntry, t: TranslateFn): string {
+  if (entry.kind === 'xp_gain') return t('dnd5e.prog.entryXpBadge', { xp: entry.deltaXp ?? 0 });
+  if (entry.kind === 'session') return t('dnd5e.prog.entrySessionBadge', { count: entry.deltaSessions ?? 1 });
+  if (entry.kind === 'milestone') return t('dnd5e.prog.entryMilestoneBadge');
+  return t('dnd5e.prog.entryLevelBadge', { from: entry.fromLevel ?? 1, to: entry.toLevel ?? 2, hp: entry.hpGain ?? 1 });
+}
 
 function syncFields(prev: CharacterSheetState, next: Dnd5eState, maxHp?: number, curHp?: number): CharacterSheetState {
   return {
@@ -54,11 +65,7 @@ export const Dnd5eProgressionWorkspace: React.FC<Dnd5eProgressionWorkspaceProps>
   }, [sheet.cards, sheet.dnd5eState]);
 
   const xpProg = getDnd5eXpProgress(dnd5eState.level, prog.xpTotal);
-  const targetSessions = Math.max(1, prog.sessionsPerLevel ?? DND5E_DEFAULT_SESSIONS_PER_LEVEL);
-  const lastLvlIdx = prog.history.map((e) => e.kind).lastIndexOf('level_up');
-  const cycleSessions = lastLvlIdx === -1 ? prog.sessionsCount
-    : prog.history.slice(lastLvlIdx + 1).reduce((s, e) => s + (e.kind === 'session' ? (e.deltaSessions ?? 1) : 0), 0);
-  const sessionPct = Math.min(100, Math.round((cycleSessions / targetSessions) * 100));
+  const sessionProg = getDnd5eSessionProgress(dnd5eState);
 
   const mutateProg = (fn: (cur: Dnd5eState) => Dnd5eState) =>
     onUpdateSheet((prev) => syncFields(prev, fn(normalizeDnd5eState(prev.dnd5eState, { level: dnd5eState.level }))));
@@ -68,10 +75,6 @@ export const Dnd5eProgressionWorkspace: React.FC<Dnd5eProgressionWorkspaceProps>
     if (!Number.isFinite(val) || val <= 0) { setErrorMsg(t('dnd5e.prog.errInvalidXp')); return; }
     setErrorMsg(null); mutateProg((cur) => addDnd5eXp(cur, val, { note: noteInput }));
     setNoteInput(''); onFlash?.(t('dnd5e.prog.flashXpAdded', { xp: val }));
-  };
-  const submitSession = () => {
-    setErrorMsg(null); mutateProg((cur) => logDnd5eSession(cur, { note: noteInput }));
-    setNoteInput(''); onFlash?.(t('dnd5e.prog.flashSessionLogged'));
   };
   const handleConfirmLevelUp = (params: { method: 'average' | 'roll'; rolledDie?: number; note?: string }) => {
     let appliedLevel = dnd5eState.level, gained = 0;
@@ -92,11 +95,7 @@ export const Dnd5eProgressionWorkspace: React.FC<Dnd5eProgressionWorkspaceProps>
     onFlash?.(t('dnd5e.prog.flashUndone'));
   };
 
-  const badgeText = (e: Dnd5eProgressionEntry) => e.kind === 'xp_gain' ? t('dnd5e.prog.entryXpBadge', { xp: e.deltaXp ?? 0 })
-    : e.kind === 'session' ? t('dnd5e.prog.entrySessionBadge', { count: e.deltaSessions ?? 1 })
-      : t('dnd5e.prog.entryLevelBadge', { from: e.fromLevel ?? 1, to: e.toLevel ?? 2, hp: e.hpGain ?? 1 });
-
-  const xpInputId = `${uid}-xp-amt`, noteId = `${uid}-prog-note`, targetId = `${uid}-ses-target`;
+  const xpInputId = `${uid}-xp-amt`, noteId = `${uid}-prog-note`;
   const onEnter = (e: React.KeyboardEvent, fn: () => void) => {
     if (!e.nativeEvent.isComposing && e.keyCode !== 229 && e.key === 'Enter') fn();
   };
@@ -108,7 +107,7 @@ export const Dnd5eProgressionWorkspace: React.FC<Dnd5eProgressionWorkspaceProps>
         <div><div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">{t('dnd5e.prog.tag')}</div><h2 className="font-display text-lg font-extrabold uppercase tracking-wide text-[var(--ink-primary)]">{t('dnd5e.prog.title')}</h2></div>
         <div role="group" aria-label={t('dnd5e.prog.modeGroupAria')} className="inline-flex flex-wrap gap-1.5">
           {(['xp', 'milestone'] as const).map((m) => (
-            <button key={m} type="button" aria-pressed={prog.mode === m} data-testid={`dnd5e-mode-${m}`} onClick={() => mutateProg((cur) => setDnd5eProgressionMode(cur, m))} className={`dnd5e-prog-mode-btn min-h-[36px] px-3 py-1.5 border border-[var(--border-color)] rounded-[var(--radius-pill)] font-mono-tech text-xs font-extrabold uppercase cursor-pointer ${prog.mode === m ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-card-alt)] text-[var(--ink-primary)]'}`}>
+            <button key={m} type="button" aria-pressed={prog.mode === m} data-testid={`dnd5e-mode-${m}`} onClick={() => { setErrorMsg(null); mutateProg((cur) => setDnd5eProgressionMode(cur, m)); }} className={`dnd5e-prog-mode-btn min-h-[36px] px-3 py-1.5 border border-[var(--border-color)] rounded-[var(--radius-pill)] font-mono-tech text-xs font-extrabold uppercase cursor-pointer ${prog.mode === m ? 'bg-[var(--accent-primary)] text-[var(--accent-contrast)]' : 'bg-[var(--bg-card-alt)] text-[var(--ink-primary)]'}`}>
               {m === 'xp' ? t('dnd5e.prog.modeXp') : t('dnd5e.prog.modeMilestone')}
             </button>
           ))}
@@ -140,29 +139,20 @@ export const Dnd5eProgressionWorkspace: React.FC<Dnd5eProgressionWorkspaceProps>
               {errorMsg && <p role="alert" className="font-mono-tech text-xs font-bold text-[var(--accent-danger)]">{errorMsg}</p>}
             </>
           ) : (
-            <>
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2 items-end">
-                <div className={kpiBox}><div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">{t('dnd5e.prog.currentLevel')}</div><div className="font-display text-2xl font-extrabold tabular-nums">{dnd5eState.level}</div></div>
-                <div className={kpiBox}><div className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-muted)]">{t('dnd5e.prog.sessionsCount')}</div><div data-testid="dnd5e-sessions-count" className="font-display text-2xl font-extrabold tabular-nums">{prog.sessionsCount}</div></div>
-                <div className="flex flex-col gap-1"><label htmlFor={targetId} className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">{t('dnd5e.prog.sessionsTargetLabel')}</label><input id={targetId} type="number" min={1} max={20} data-testid="dnd5e-sessions-target-input" value={targetSessions} onChange={(e) => mutateProg((cur) => setDnd5eProgressionMode(cur, 'milestone', Math.max(1, Math.min(20, Number.parseInt(e.target.value, 10) || 1))))} className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1.5 font-mono-tech font-bold tabular-nums" /></div>
-              </div>
-              <div className="flex items-center justify-between font-mono-tech text-[11px] font-bold text-[var(--ink-secondary)]">
-                <span>{t('dnd5e.prog.sessionsProgressLabel', { current: cycleSessions, target: targetSessions })}</span>
-                {cycleSessions >= targetSessions && <span className="text-[var(--accent-primary)]">{t('dnd5e.prog.milestoneReady')}</span>}
-              </div>
-              <div role="progressbar" aria-label={t('dnd5e.prog.sessionsProgressLabel', { current: cycleSessions, target: targetSessions })} aria-valuenow={sessionPct} aria-valuemin={0} aria-valuemax={100} className="dnd5e-prog-bar h-3 w-full overflow-hidden"><div className="dnd5e-prog-bar-fill h-full" style={{ width: `${sessionPct}%` }} /></div>
-              <div className="grid grid-cols-1 sm:grid-cols-12 gap-2 items-end">
-                <div className="sm:col-span-8 flex flex-col gap-1"><label htmlFor={noteId} className="font-mono-tech text-[10px] font-bold uppercase text-[var(--ink-secondary)]">{t('dnd5e.prog.noteLabel')}</label><input id={noteId} type="text" value={noteInput} onChange={(e) => setNoteInput(e.target.value)} onKeyDown={(e) => onEnter(e, submitSession)} placeholder={t('dnd5e.prog.sessionNotePlaceholder')} className="cyber-input mobile-touch-input min-h-[36px] px-2.5 py-1.5 text-xs" /></div>
-                <button type="button" data-testid="dnd5e-log-session-btn" onClick={submitSession} className="sm:col-span-4 cyber-roll-btn min-h-[36px] px-3 py-1.5 text-[11px] font-extrabold uppercase cursor-pointer">{t('dnd5e.prog.logSessionBtn')}</button>
-              </div>
-            </>
+            <Dnd5eMilestonePanel
+              level={dnd5eState.level} progress={sessionProg} t={t}
+              onSelectStyle={(style) => mutateProg((cur) => setDnd5eMilestoneStyle(cur, style))}
+              onChangeTarget={(val) => mutateProg((cur) => setDnd5eSessionsPerLevel(cur, val))}
+              onLogSession={(note) => { mutateProg((cur) => logDnd5eSession(cur, { note })); onFlash?.(t('dnd5e.prog.flashSessionLogged')); }}
+              onLogMilestone={(note) => { mutateProg((cur) => logDnd5eMilestone(cur, { note })); onFlash?.(t('dnd5e.prog.flashMilestoneLogged')); }}
+            />
           )}
         </section>
 
         <div className="lg:col-span-5">
           <Dnd5eLevelUpPanel
             dnd5eState={dnd5eState} maxHp={maxHp} currentHp={currentHp} conMod={conMod} xpToNext={xpProg.xpToNext}
-            canLevelUpByXp={xpProg.canLevelUp} mode={prog.mode} t={t} onConfirmLevelUp={handleConfirmLevelUp}
+            canLevelUpByXp={xpProg.canLevelUp} mode={prog.mode} sessionProgress={sessionProg} t={t} onConfirmLevelUp={handleConfirmLevelUp}
             onRollHitDieLog={({ die, rolled, conMod: cMod, hpGain, nextLevel }) => onAppendRollLog({
               id: `log_lvl_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
               timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' }),
@@ -182,7 +172,7 @@ export const Dnd5eProgressionWorkspace: React.FC<Dnd5eProgressionWorkspaceProps>
           <ul className="flex flex-col gap-1.5">
             {[...prog.history].reverse().map((entry) => (
               <li key={entry.id} className="p-2 border border-[var(--border-subtle)] rounded-[var(--radius-card)] bg-[var(--bg-card-alt)] flex flex-wrap items-center justify-between gap-2">
-                <div className="flex flex-wrap items-center gap-2"><span className="px-2 py-0.5 border border-[var(--border-color)] rounded-[var(--radius-pill)] font-mono-tech text-[10px] font-black tabular-nums">{badgeText(entry)}</span>{entry.note && <span className="font-mono-tech text-xs text-[var(--ink-primary)]">{entry.note}</span>}</div>
+                <div className="flex flex-wrap items-center gap-2"><span className={`px-2 py-0.5 border border-[var(--border-color)] rounded-[var(--radius-pill)] font-mono-tech text-[10px] font-black tabular-nums ${entry.kind === 'milestone' ? 'dnd5e-milestone-badge' : ''}`}>{formatDnd5eEntryBadge(entry, t)}</span>{entry.note && <span className="font-mono-tech text-xs text-[var(--ink-primary)]">{entry.note}</span>}</div>
                 <span className="font-mono-tech text-[10px] text-[var(--ink-muted)] tabular-nums">{entry.timestamp.slice(0, 16).replace('T', ' ')}</span>
               </li>
             ))}

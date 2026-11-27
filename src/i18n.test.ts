@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { formatDnd5eEntryBadge } from './components/dnd5e/Dnd5eProgressionWorkspace';
 import {
   EN,
   ES,
@@ -178,6 +179,30 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('pt-BR', 'dnd5e.lvl.asiBadge')).toBe('NÍVEL DE ASI / TALENTO');
     expect(translate('en', 'dnd5e.prog.modeXp')).toBe('BY XP (SRD)');
     expect(translate('es', 'genericXp.spendBtn')).toBe('- GASTAR PX');
+    expect(translate('pt-BR', 'dnd5e.prog.styleSessions')).toBe('META DE SESSÕES');
+    expect(translate('en', 'dnd5e.prog.styleFree')).toBe('FREE MILESTONE');
+    expect(translate('es', 'dnd5e.prog.entryMilestoneBadge')).toBe('HITO');
+    expect(translate('pt-BR', 'dnd5e.lvl.freeMilestoneHint')).toContain('Marco Livre');
+    expect(translate('en', 'dnd5e.lvl.sessionGoalReachedHint', { current: 3, target: 3 })).toContain('3/3');
+  });
+
+  it('maps all 4 D&D 5e progression entry kinds to distinct localized badges', () => {
+    const tPt = (k: Parameters<typeof translate>[1], v?: Record<string, string | number>) => translate('pt-BR', k, v);
+    const tEn = (k: Parameters<typeof translate>[1], v?: Record<string, string | number>) => translate('en', k, v);
+    const tEs = (k: Parameters<typeof translate>[1], v?: Record<string, string | number>) => translate('es', k, v);
+    const base = { id: 'e1', timestamp: '2026-11-26T20:00:00Z' };
+
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'xp_gain', deltaXp: 250 }, tPt)).toBe('+250 XP');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'xp_gain' }, tPt)).toBe('+0 XP');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'session', deltaSessions: 2 }, tEn)).toBe('+2 SESSION');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'session' }, tPt)).toBe('+1 SESSÃO');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'milestone' }, tPt)).toBe('MARCO');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'milestone' }, tEn)).toBe('MILESTONE');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'milestone' }, tEs)).toBe('HITO');
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'level_up', fromLevel: 3, toLevel: 4, hpGain: 7 }, tPt)).toBe(
+      'NV 3 → 4 (+7 PV)',
+    );
+    expect(formatDnd5eEntryBadge({ ...base, kind: 'level_up' }, tPt)).toBe('NV 1 → 2 (+1 PV)');
   });
 
   it('maintains identical interpolation placeholders and guards against accidental untranslated PT-BR entries', () => {
