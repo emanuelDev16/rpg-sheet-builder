@@ -46,8 +46,11 @@ let cachedCatalogPromise: Promise<SystemCatalog> | null = null;
 /** Lazily loads and converts D&D 5e SRD 5.1 modules into a unified SystemCatalog. */
 export function loadDnd5eCatalog(): Promise<SystemCatalog> {
   if (!cachedCatalogPromise) {
-    cachedCatalogPromise = import('./spellsLow.ts').then(({ DND5E_SPELLS_LOW }) => {
-      const entries = DND5E_SPELLS_LOW.map(tupleToDnd5eSpell);
+    cachedCatalogPromise = Promise.all([
+      import('./spellsLow.ts'),
+      import('./spellsMid.ts'),
+    ]).then(([{ DND5E_SPELLS_LOW }, { DND5E_SPELLS_MID }]) => {
+      const entries = [...DND5E_SPELLS_LOW, ...DND5E_SPELLS_MID].map(tupleToDnd5eSpell);
       const levels = Array.from(new Set(entries.map((e) => e.level))).sort((a, b) => a - b);
       const filterGroups: SystemCatalogFilterGroup[] = [
         {

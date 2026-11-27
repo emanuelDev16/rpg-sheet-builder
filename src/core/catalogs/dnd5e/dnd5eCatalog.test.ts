@@ -7,23 +7,29 @@ import {
   formatDnd5eGrimoireRow, loadDnd5eCatalog, parseDnd5eGrimoireMeta, tupleToDnd5eSpell,
 } from './index.ts';
 import { DND5E_SPELLS_LOW } from './spellsLow.ts';
+import { DND5E_SPELLS_MID } from './spellsMid.ts';
 
 const LANGS = ['pt-BR', 'en', 'es'] as const;
+const ALL_SPELLS = [...DND5E_SPELLS_LOW, ...DND5E_SPELLS_MID];
 
-test('DND5E_SPELLS_LOW covers exact SRD 5.1 counts (24 cantrips, 49 1st, 54 2nd) without duplicates', () => {
+function assertSpellBatch(
+  tuples: readonly (typeof DND5E_SPELLS_LOW)[number][],
+  minLevel: number,
+  maxLevel: number,
+  ids: Set<string>,
+  namesByLang: Record<(typeof LANGS)[number], Set<string>>,
+): Map<number, number> {
   const byLevel = new Map<number, number>();
-  const ids = new Set<string>();
-  const namesByLang: Record<(typeof LANGS)[number], Set<string>> = { 'pt-BR': new Set(), en: new Set(), es: new Set() };
   const classSet = new Set<string>(DND5E_SPELL_CLASSES);
   const schoolSet = new Set<string>(DND5E_SPELL_SCHOOLS);
   const resSet = new Set<string>(DND5E_SPELL_RESOLUTIONS);
 
-  for (const tuple of DND5E_SPELLS_LOW) {
+  for (const tuple of tuples) {
     const s = tupleToDnd5eSpell(tuple);
     assert.match(s.id, /^[a-z0-9]+(?:-[a-z0-9]+)*$/, `invalid slug: ${s.id}`);
     assert.equal(ids.has(s.id), false, `duplicate spell id: ${s.id}`);
     ids.add(s.id);
-    assert.ok(s.level >= 0 && s.level <= 2, `unexpected level for ${s.id}: ${s.level}`);
+    assert.ok(s.level >= minLevel && s.level <= maxLevel, `unexpected level for ${s.id}: ${s.level}`);
     byLevel.set(s.level, (byLevel.get(s.level) ?? 0) + 1);
     assert.ok(schoolSet.has(s.school), `invalid school for ${s.id}`);
     assert.ok(s.classes.length > 0 && new Set(s.classes).size === s.classes.length, `bad classes for ${s.id}`);
@@ -41,16 +47,39 @@ test('DND5E_SPELLS_LOW covers exact SRD 5.1 counts (24 cantrips, 49 1st, 54 2nd)
       assert.ok(s.summary[lang].trim().length > 0, `empty summary.${lang} on ${s.id}`);
     }
   }
+  return byLevel;
+}
 
-  assert.equal(byLevel.get(0), 24);
-  assert.equal(byLevel.get(1), 49);
-  assert.equal(byLevel.get(2), 54);
+test('DND5E_SPELLS_LOW and DND5E_SPELLS_MID cover exact SRD 5.1 counts (0-5) without duplicates', () => {
+  const ids = new Set<string>();
+  const namesByLang: Record<(typeof LANGS)[number], Set<string>> = { 'pt-BR': new Set(), en: new Set(), es: new Set() };
+
+  const lowByLevel = assertSpellBatch(DND5E_SPELLS_LOW, 0, 2, ids, namesByLang);
+  assert.equal(lowByLevel.get(0), 24);
+  assert.equal(lowByLevel.get(1), 49);
+  assert.equal(lowByLevel.get(2), 54);
   assert.equal(DND5E_SPELLS_LOW.length, 127);
 
-  for (const required of ['eldritch-blast', 'hideous-laughter', 'acid-arrow', 'arcanists-magic-aura', 'floating-disk']) {
+  const midByLevel = assertSpellBatch(DND5E_SPELLS_MID, 3, 5, ids, namesByLang);
+  assert.equal(midByLevel.get(3), 42);
+  assert.equal(midByLevel.get(4), 31);
+  assert.equal(midByLevel.get(5), 37);
+  assert.equal(DND5E_SPELLS_MID.length, 110);
+  assert.equal(ids.size, 237);
+
+  for (const required of [
+    'eldritch-blast', 'hideous-laughter', 'acid-arrow', 'arcanists-magic-aura', 'floating-disk',
+    'fireball', 'counterspell', 'tiny-hut', 'black-tentacles', 'faithful-hound',
+    'private-sanctum', 'resilient-sphere', 'secret-chest', 'arcane-hand', 'telepathic-bond',
+    'polymorph', 'wall-of-force',
+  ]) {
     assert.ok(ids.has(required), `missing SRD spell ${required}`);
   }
-  for (const nonSrd of ['hex', 'booming-blade', 'chromatic-orb', 'witch-bolt']) {
+  for (const nonSrd of [
+    'hex', 'booming-blade', 'chromatic-orb', 'witch-bolt',
+    'hunger-of-hadar', 'aura-of-vitality', 'feign-death', 'aura-of-life',
+    'charm-monster', 'destructive-wave', 'synaptic-static',
+  ]) {
     assert.equal(ids.has(nonSrd), false, `non-SRD spell leaked: ${nonSrd}`);
   }
 });
@@ -62,14 +91,20 @@ test('loadDnd5eCatalog builds SystemCatalog lazily and supports search & filters
   assert.equal(cat.sections.length, 1);
   const sec = cat.sections[0]!;
   assert.equal(sec.id, 'spells');
-  assert.equal(sec.items.length, 127);
+  assert.equal(sec.items.length, 237);
+  assert.deepEqual(sec.filterGroups?.[0]?.options.map((o) => o.value), ['0', '1', '2', '3', '4', '5']);
 
   const warlockCantrips = sec.items.filter((i) => matchesCatalogFilters(i, { level: '0', classes: 'warlock' }));
   assert.ok(warlockCantrips.some((i) => i.id === 'eldritch-blast'));
   assert.equal(warlockCantrips.some((i) => i.id === 'fire-bolt'), false);
 
+  const wizardLvl3 = sec.items.filter((i) => matchesCatalogFilters(i, { level: '3', classes: 'wizard' }));
+  assert.ok(wizardLvl3.some((i) => i.id === 'fireball'));
+  assert.equal(wizardLvl3.some((i) => i.id === 'spirit-guardians'), false);
+
   const qEs = normalizeCatalogText('Inmovilizar persona');
   assert.ok(sec.items.some((i) => i.id === 'hold-person' && matchesCatalogQuery(i, qEs)));
+  assert.ok(sec.items.some((i) => i.id === 'wall-of-force' && matchesCatalogQuery(i, normalizeCatalogText('Muro de fuerza'))));
 });
 
 test('formatDnd5eGrimoireRow and parseDnd5eGrimoireMeta round-trip all spells in 3 languages', async () => {
@@ -80,8 +115,10 @@ test('formatDnd5eGrimoireRow and parseDnd5eGrimoireMeta round-trip all spells in
   assert.deepEqual(formatDnd5eGrimoireRow(fireBolt, 'pt-BR'), { col1: 'Raio de Fogo', col2: 'TRUQUE · ATK' });
   assert.deepEqual(formatDnd5eGrimoireRow(byId.get('hold-person')!, 'en'), { col1: 'Hold Person', col2: '2ND · CONC · DC WIS' });
   assert.deepEqual(formatDnd5eGrimoireRow(byId.get('silence')!, 'es'), { col1: 'Silencio', col2: '2º · CONC · RITUAL' });
+  assert.deepEqual(formatDnd5eGrimoireRow(byId.get('fireball')!, 'pt-BR'), { col1: 'Bola de Fogo', col2: '3º · CD DES' });
+  assert.deepEqual(formatDnd5eGrimoireRow(byId.get('tiny-hut')!, 'es'), { col1: 'Choza diminuta', col2: '3º · RITUAL' });
 
-  for (const tuple of DND5E_SPELLS_LOW) {
+  for (const tuple of ALL_SPELLS) {
     const entry = tupleToDnd5eSpell(tuple);
     for (const lang of LANGS) {
       const row = formatDnd5eGrimoireRow(entry, lang);
