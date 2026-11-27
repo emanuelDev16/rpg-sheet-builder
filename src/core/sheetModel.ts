@@ -5578,31 +5578,34 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
 
   if (data.cyberpunkState !== undefined) {
     const cs = data.cyberpunkState;
+    const checkIntRange = (val: unknown, path: string, min: number, max: number) => {
+      if (typeof val !== 'number' || !Number.isInteger(val) || val < min || val > max)
+        errors.push(`${path}: deve ser inteiro entre ${min} e ${max}.`);
+    };
+    const checkStrLen = (val: unknown, path: string, min: number, max: number, optional = false) => {
+      if (optional && val === undefined) return;
+      if (typeof val !== 'string' || val.length < min || val.length > max)
+        errors.push(
+          optional
+            ? `${path}: string inválida (máx ${max} caracteres).`
+            : `${path}: string obrigatória (${min}..${max} caracteres).`,
+        );
+    };
     if (checkPlainObject(cs, '$.cyberpunkState', CYBERPUNK_STATE_KEYS, errors)) {
       if (checkPlainObject(cs.armor, '$.cyberpunkState.armor', CYBERPUNK_ARMOR_KEYS, errors)) {
         for (const loc of ['head', 'body'] as const) {
           const piece = cs.armor[loc];
           const lp = `$.cyberpunkState.armor.${loc}`;
           if (checkPlainObject(piece, lp, CYBERPUNK_ARMOR_PIECE_KEYS, errors)) {
-            if (typeof piece.sp !== 'number' || !Number.isInteger(piece.sp) || piece.sp < 0 || piece.sp > 30) {
-              errors.push(`${lp}.sp: deve ser inteiro entre 0 e 30.`);
-            }
-            if (typeof piece.maxSp !== 'number' || !Number.isInteger(piece.maxSp) || piece.maxSp < 0 || piece.maxSp > 30) {
-              errors.push(`${lp}.maxSp: deve ser inteiro entre 0 e 30.`);
-            }
+            checkIntRange(piece.sp, `${lp}.sp`, 0, 30);
+            checkIntRange(piece.maxSp, `${lp}.maxSp`, 0, 30);
           }
         }
       }
       if (checkPlainObject(cs.humanity, '$.cyberpunkState.humanity', CYBERPUNK_HUMANITY_KEYS, errors)) {
-        if (typeof cs.humanity.current !== 'number' || !Number.isInteger(cs.humanity.current) || cs.humanity.current < 0 || cs.humanity.current > 100) {
-          errors.push('$.cyberpunkState.humanity.current: deve ser inteiro entre 0 e 100.');
-        }
-        if (typeof cs.humanity.max !== 'number' || !Number.isInteger(cs.humanity.max) || cs.humanity.max < 0 || cs.humanity.max > 100) {
-          errors.push('$.cyberpunkState.humanity.max: deve ser inteiro entre 0 e 100.');
-        }
-        if (typeof cs.humanity.baseEmp !== 'number' || !Number.isInteger(cs.humanity.baseEmp) || cs.humanity.baseEmp < 1 || cs.humanity.baseEmp > 10) {
-          errors.push('$.cyberpunkState.humanity.baseEmp: deve ser inteiro entre 1 e 10.');
-        }
+        checkIntRange(cs.humanity.current, '$.cyberpunkState.humanity.current', 0, 100);
+        checkIntRange(cs.humanity.max, '$.cyberpunkState.humanity.max', 0, 100);
+        checkIntRange(cs.humanity.baseEmp, '$.cyberpunkState.humanity.baseEmp', 1, 10);
       }
       if (!Array.isArray(cs.cyberware) || cs.cyberware.length > 40) {
         errors.push('$.cyberpunkState.cyberware: esperado array com até 40 itens.');
@@ -5610,21 +5613,11 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         cs.cyberware.forEach((item, cIdx) => {
           const cp = `$.cyberpunkState.cyberware[${cIdx}]`;
           if (!checkPlainObject(item, cp, CYBERPUNK_CYBERWARE_KEYS, errors)) return;
-          if (typeof item.id !== 'string' || item.id.length < 1 || item.id.length > 64) {
-            errors.push(`${cp}.id: string obrigatória (1..64 caracteres).`);
-          }
-          if (typeof item.name !== 'string' || item.name.length < 1 || item.name.length > 120) {
-            errors.push(`${cp}.name: string obrigatória (1..120 caracteres).`);
-          }
-          if (typeof item.slot !== 'string' || item.slot.length < 1 || item.slot.length > 64) {
-            errors.push(`${cp}.slot: string obrigatória (1..64 caracteres).`);
-          }
-          if (typeof item.humanityLoss !== 'number' || !Number.isInteger(item.humanityLoss) || item.humanityLoss < 0 || item.humanityLoss > 30) {
-            errors.push(`${cp}.humanityLoss: deve ser inteiro entre 0 e 30.`);
-          }
-          if (item.notes !== undefined && (typeof item.notes !== 'string' || item.notes.length > 500)) {
-            errors.push(`${cp}.notes: string inválida (máx 500 caracteres).`);
-          }
+          checkStrLen(item.id, `${cp}.id`, 1, 64);
+          checkStrLen(item.name, `${cp}.name`, 1, 120);
+          checkStrLen(item.slot, `${cp}.slot`, 1, 64);
+          checkIntRange(item.humanityLoss, `${cp}.humanityLoss`, 0, 30);
+          checkStrLen(item.notes, `${cp}.notes`, 0, 500, true);
         });
       }
       if (!Array.isArray(cs.weapons) || cs.weapons.length > 20) {
@@ -5633,30 +5626,14 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         cs.weapons.forEach((wpn, wIdx) => {
           const wp = `$.cyberpunkState.weapons[${wIdx}]`;
           if (!checkPlainObject(wpn, wp, CYBERPUNK_WEAPON_KEYS, errors)) return;
-          if (typeof wpn.id !== 'string' || wpn.id.length < 1 || wpn.id.length > 64) {
-            errors.push(`${wp}.id: string obrigatória (1..64 caracteres).`);
-          }
-          if (typeof wpn.name !== 'string' || wpn.name.length < 1 || wpn.name.length > 120) {
-            errors.push(`${wp}.name: string obrigatória (1..120 caracteres).`);
-          }
-          if (typeof wpn.skillKey !== 'string' || wpn.skillKey.length < 1 || wpn.skillKey.length > 64) {
-            errors.push(`${wp}.skillKey: string obrigatória (1..64 caracteres).`);
-          }
-          if (typeof wpn.damageFormula !== 'string' || wpn.damageFormula.length < 1 || wpn.damageFormula.length > 64) {
-            errors.push(`${wp}.damageFormula: string obrigatória (1..64 caracteres).`);
-          }
-          if (typeof wpn.rof !== 'number' || !Number.isInteger(wpn.rof) || wpn.rof < 1 || wpn.rof > 4) {
-            errors.push(`${wp}.rof: deve ser inteiro entre 1 e 4.`);
-          }
-          if (typeof wpn.ammoCurrent !== 'number' || !Number.isInteger(wpn.ammoCurrent) || wpn.ammoCurrent < 0 || wpn.ammoCurrent > 999) {
-            errors.push(`${wp}.ammoCurrent: deve ser inteiro entre 0 e 999.`);
-          }
-          if (typeof wpn.ammoMax !== 'number' || !Number.isInteger(wpn.ammoMax) || wpn.ammoMax < 0 || wpn.ammoMax > 999) {
-            errors.push(`${wp}.ammoMax: deve ser inteiro entre 0 e 999.`);
-          }
-          if (wpn.notes !== undefined && (typeof wpn.notes !== 'string' || wpn.notes.length > 500)) {
-            errors.push(`${wp}.notes: string inválida (máx 500 caracteres).`);
-          }
+          checkStrLen(wpn.id, `${wp}.id`, 1, 64);
+          checkStrLen(wpn.name, `${wp}.name`, 1, 120);
+          checkStrLen(wpn.skillKey, `${wp}.skillKey`, 1, 64);
+          checkStrLen(wpn.damageFormula, `${wp}.damageFormula`, 1, 64);
+          checkIntRange(wpn.rof, `${wp}.rof`, 1, 4);
+          checkIntRange(wpn.ammoCurrent, `${wp}.ammoCurrent`, 0, 999);
+          checkIntRange(wpn.ammoMax, `${wp}.ammoMax`, 0, 999);
+          checkStrLen(wpn.notes, `${wp}.notes`, 0, 500, true);
         });
       }
       if (!Array.isArray(cs.criticalInjuries) || cs.criticalInjuries.length > 20) {
@@ -5665,15 +5642,9 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
         cs.criticalInjuries.forEach((inj, iIdx) => {
           const ip = `$.cyberpunkState.criticalInjuries[${iIdx}]`;
           if (!checkPlainObject(inj, ip, CYBERPUNK_INJURY_KEYS, errors)) return;
-          if (typeof inj.id !== 'string' || inj.id.length < 1 || inj.id.length > 64) {
-            errors.push(`${ip}.id: string obrigatória (1..64 caracteres).`);
-          }
-          if (typeof inj.name !== 'string' || inj.name.length < 1 || inj.name.length > 120) {
-            errors.push(`${ip}.name: string obrigatória (1..120 caracteres).`);
-          }
-          if (typeof inj.effect !== 'string' || inj.effect.length < 1 || inj.effect.length > 240) {
-            errors.push(`${ip}.effect: string obrigatória (1..240 caracteres).`);
-          }
+          checkStrLen(inj.id, `${ip}.id`, 1, 64);
+          checkStrLen(inj.name, `${ip}.name`, 1, 120);
+          checkStrLen(inj.effect, `${ip}.effect`, 1, 240);
           if (typeof inj.treated !== 'boolean') {
             errors.push(`${ip}.treated: deve ser booleano.`);
           }
