@@ -34,8 +34,30 @@ import {
   createDefaultDnd5eProgression,
   normalizeDnd5eProgression,
 } from './dnd5eProgression.ts';
+import {
+  createDefaultCyberpunkState,
+  type CyberpunkArmorLocation,
+  type CyberpunkArmorPiece,
+  type CyberpunkArmorState,
+  type CyberpunkCriticalInjuryEntry,
+  type CyberpunkCyberwareEntry,
+  type CyberpunkHumanityState,
+  type CyberpunkState,
+  type CyberpunkWeaponEntry,
+  normalizeCyberpunkState,
+} from './cyberpunkRules.ts';
 
 export type { RulePreset, SoakDamageType };
+export type {
+  CyberpunkArmorLocation,
+  CyberpunkArmorPiece,
+  CyberpunkArmorState,
+  CyberpunkCriticalInjuryEntry,
+  CyberpunkCyberwareEntry,
+  CyberpunkHumanityState,
+  CyberpunkState,
+  CyberpunkWeaponEntry,
+};
 export type {
   Dnd5eAbilityKey,
   Dnd5eDeathSavesState,
@@ -354,6 +376,7 @@ export interface CharacterSheetState {
   meritsFlaws?: MeritFlawEntry[];
   havens?: HavenEntry[];
   dnd5eState?: Dnd5eState;
+  cyberpunkState?: CyberpunkState;
   cards: SheetCard[];
   rollLogs: RollLogEntry[];
   xp?: XpState;
@@ -1898,6 +1921,32 @@ export function createCyberpunkPreset(): CharacterSheetState {
       }
       return c;
     }),
+    cyberpunkState: createDefaultCyberpunkState({
+      armor: { head: { sp: 11, maxSp: 11 }, body: { sp: 11, maxSp: 11 } },
+      humanity: { current: 53, max: 60, baseEmp: 6 },
+      cyberware: [
+        {
+          id: 'cw_neural_link',
+          name: 'Interface Neural',
+          slot: 'neural',
+          humanityLoss: 7,
+          notes: 'Link direto para deck tático',
+        },
+      ],
+      weapons: [
+        {
+          id: 'wpn_heavy_pistol',
+          name: 'Pistola Pesada Tática',
+          skillKey: 'handgun',
+          damageFormula: '3d6',
+          rof: 2,
+          ammoCurrent: 8,
+          ammoMax: 8,
+          notes: 'Calibre padrão',
+        },
+      ],
+      criticalInjuries: [],
+    }),
   };
 }
 
@@ -3349,6 +3398,25 @@ export function migrateLegacyDnd5eSheet(sheet: CharacterSheetState): CharacterSh
   return { ...sheet, dnd5eState: normalized };
 }
 
+export function migrateLegacyCyberpunkSheet(sheet: CharacterSheetState): CharacterSheetState {
+  if (detectSystemId(sheet) !== 'cyberpunk') return sheet;
+  const empField = sheet.cards
+    .flatMap((c) => c.fields)
+    .find((f) => {
+      const k = f.key.trim().toLowerCase();
+      return k === 'emp' || k === 'empatia' || k === 'empathy';
+    });
+  const rawEmp = typeof empField?.value === 'number' && Number.isFinite(empField.value) ? Math.trunc(empField.value) : 6;
+  const baseEmp = Math.min(10, Math.max(1, rawEmp));
+  const normalized = normalizeCyberpunkState(sheet.cyberpunkState, {
+    humanity: { current: baseEmp * 10, max: baseEmp * 10, baseEmp },
+  });
+  if (sheet.cyberpunkState && JSON.stringify(sheet.cyberpunkState) === JSON.stringify(normalized)) {
+    return sheet;
+  }
+  return { ...sheet, cyberpunkState: normalized };
+}
+
 export function migrateLegacyWodSheet(
   sheet: CharacterSheetState,
   options?: {
@@ -3360,6 +3428,7 @@ export function migrateLegacyWodSheet(
   const withMeta = migrateLegacySheetMetadata(sheet, options);
   const sysId = detectSystemId(withMeta);
   if (sysId === 'dnd5e') return migrateLegacyDnd5eSheet(withMeta);
+  if (sysId === 'cyberpunk') return migrateLegacyCyberpunkSheet(withMeta);
   if (sysId !== 'wod') return withMeta;
   const isV5 = resolveRulePreset(withMeta) === 'vampire-v5';
   const expectedAttrs = isV5 ? WOD_V5_ATTRIBUTE_SPECS : WOD_V20_ATTRIBUTE_SPECS;
@@ -4553,6 +4622,7 @@ const ROOT_SHEET_KEYS = new Set([
   'meritsFlaws',
   'havens',
   'dnd5eState',
+  'cyberpunkState',
   'tabs',
   'cards',
   'rollLogs',
@@ -4688,6 +4758,13 @@ const DND5E_SKILL_KEYS = new Set(DND5E_SKILLS.map((s) => s.key));
 const DND5E_SKILL_PROF_VALUES = new Set(['none', 'proficient', 'expertise']);
 const DND5E_SPELLCASTING_KEYS = new Set(['ability', 'slots']);
 const DND5E_SPELL_SLOT_KEYS = new Set(['level', 'max', 'used']);
+const CYBERPUNK_STATE_KEYS = new Set(['armor', 'humanity', 'cyberware', 'weapons', 'criticalInjuries']);
+const CYBERPUNK_ARMOR_KEYS = new Set(['head', 'body']);
+const CYBERPUNK_ARMOR_PIECE_KEYS = new Set(['sp', 'maxSp']);
+const CYBERPUNK_HUMANITY_KEYS = new Set(['current', 'max', 'baseEmp']);
+const CYBERPUNK_CYBERWARE_KEYS = new Set(['id', 'name', 'slot', 'humanityLoss', 'notes']);
+const CYBERPUNK_WEAPON_KEYS = new Set(['id', 'name', 'skillKey', 'damageFormula', 'rof', 'ammoCurrent', 'ammoMax', 'notes']);
+const CYBERPUNK_INJURY_KEYS = new Set(['id', 'name', 'effect', 'treated']);
 const XP_STATE_KEYS = new Set([
   'totalEarned',
   'spent',
@@ -5495,6 +5572,83 @@ export function validateSheetPayload(data: unknown): SheetPayloadValidationResul
             });
           }
         }
+      }
+    }
+  }
+
+  if (data.cyberpunkState !== undefined) {
+    const cs = data.cyberpunkState;
+    const checkIntRange = (val: unknown, path: string, min: number, max: number) => {
+      if (typeof val !== 'number' || !Number.isInteger(val) || val < min || val > max)
+        errors.push(`${path}: deve ser inteiro entre ${min} e ${max}.`);
+    };
+    const checkStrLen = (val: unknown, path: string, min: number, max: number, optional = false) => {
+      if (optional && val === undefined) return;
+      if (typeof val !== 'string' || val.length < min || val.length > max)
+        errors.push(
+          optional
+            ? `${path}: string inválida (máx ${max} caracteres).`
+            : `${path}: string obrigatória (${min}..${max} caracteres).`,
+        );
+    };
+    if (checkPlainObject(cs, '$.cyberpunkState', CYBERPUNK_STATE_KEYS, errors)) {
+      if (checkPlainObject(cs.armor, '$.cyberpunkState.armor', CYBERPUNK_ARMOR_KEYS, errors)) {
+        for (const loc of ['head', 'body'] as const) {
+          const piece = cs.armor[loc];
+          const lp = `$.cyberpunkState.armor.${loc}`;
+          if (checkPlainObject(piece, lp, CYBERPUNK_ARMOR_PIECE_KEYS, errors)) {
+            checkIntRange(piece.sp, `${lp}.sp`, 0, 30);
+            checkIntRange(piece.maxSp, `${lp}.maxSp`, 0, 30);
+          }
+        }
+      }
+      if (checkPlainObject(cs.humanity, '$.cyberpunkState.humanity', CYBERPUNK_HUMANITY_KEYS, errors)) {
+        checkIntRange(cs.humanity.current, '$.cyberpunkState.humanity.current', 0, 100);
+        checkIntRange(cs.humanity.max, '$.cyberpunkState.humanity.max', 0, 100);
+        checkIntRange(cs.humanity.baseEmp, '$.cyberpunkState.humanity.baseEmp', 1, 10);
+      }
+      if (!Array.isArray(cs.cyberware) || cs.cyberware.length > 40) {
+        errors.push('$.cyberpunkState.cyberware: esperado array com até 40 itens.');
+      } else {
+        cs.cyberware.forEach((item, cIdx) => {
+          const cp = `$.cyberpunkState.cyberware[${cIdx}]`;
+          if (!checkPlainObject(item, cp, CYBERPUNK_CYBERWARE_KEYS, errors)) return;
+          checkStrLen(item.id, `${cp}.id`, 1, 64);
+          checkStrLen(item.name, `${cp}.name`, 1, 120);
+          checkStrLen(item.slot, `${cp}.slot`, 1, 64);
+          checkIntRange(item.humanityLoss, `${cp}.humanityLoss`, 0, 30);
+          checkStrLen(item.notes, `${cp}.notes`, 0, 500, true);
+        });
+      }
+      if (!Array.isArray(cs.weapons) || cs.weapons.length > 20) {
+        errors.push('$.cyberpunkState.weapons: esperado array com até 20 itens.');
+      } else {
+        cs.weapons.forEach((wpn, wIdx) => {
+          const wp = `$.cyberpunkState.weapons[${wIdx}]`;
+          if (!checkPlainObject(wpn, wp, CYBERPUNK_WEAPON_KEYS, errors)) return;
+          checkStrLen(wpn.id, `${wp}.id`, 1, 64);
+          checkStrLen(wpn.name, `${wp}.name`, 1, 120);
+          checkStrLen(wpn.skillKey, `${wp}.skillKey`, 1, 64);
+          checkStrLen(wpn.damageFormula, `${wp}.damageFormula`, 1, 64);
+          checkIntRange(wpn.rof, `${wp}.rof`, 1, 4);
+          checkIntRange(wpn.ammoCurrent, `${wp}.ammoCurrent`, 0, 999);
+          checkIntRange(wpn.ammoMax, `${wp}.ammoMax`, 0, 999);
+          checkStrLen(wpn.notes, `${wp}.notes`, 0, 500, true);
+        });
+      }
+      if (!Array.isArray(cs.criticalInjuries) || cs.criticalInjuries.length > 20) {
+        errors.push('$.cyberpunkState.criticalInjuries: esperado array com até 20 itens.');
+      } else {
+        cs.criticalInjuries.forEach((inj, iIdx) => {
+          const ip = `$.cyberpunkState.criticalInjuries[${iIdx}]`;
+          if (!checkPlainObject(inj, ip, CYBERPUNK_INJURY_KEYS, errors)) return;
+          checkStrLen(inj.id, `${ip}.id`, 1, 64);
+          checkStrLen(inj.name, `${ip}.name`, 1, 120);
+          checkStrLen(inj.effect, `${ip}.effect`, 1, 240);
+          if (typeof inj.treated !== 'boolean') {
+            errors.push(`${ip}.treated: deve ser booleano.`);
+          }
+        });
       }
     }
   }

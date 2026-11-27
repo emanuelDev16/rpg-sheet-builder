@@ -1,19 +1,20 @@
 import type { CharacterSheetState } from '../sheetModel.ts';
 
 /** Known adapter identifiers; open-ended so future systems can register. */
-export type SystemAdapterId = 'wod' | 'dnd5e' | 'default' | (string & {});
+export type SystemAdapterId = 'wod' | 'dnd5e' | 'cyberpunk' | 'default' | (string & {});
 
 /** Progression engine routing kind exposed by each system adapter. */
 export type ProgressionKind = 'wod-xp' | 'dnd5e-leveling' | 'cyberpunk-ip' | 'generic-xp';
 
 /** Paper (print/PDF) layout families supported by the sheet renderer. */
-export type PaperLayout = 'wod-v5' | 'wod-v20' | 'dnd5e' | 'generic';
+export type PaperLayout = 'wod-v5' | 'wod-v20' | 'dnd5e' | 'cyberpunk' | 'generic';
 
 /** Feature flags describing what a system supports in the UI. */
 export interface SystemCapabilities {
   supportsXp: boolean;
   supportsPoolComposer: boolean;
   supportsD20Advantage: boolean;
+  supportsExplodingD10?: boolean;
   supportsStructuredDossier: boolean;
   supportsPaperSheet: boolean;
 }

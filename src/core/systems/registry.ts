@@ -1,4 +1,5 @@
 import { type CharacterSheetState, detectSystemId } from '../sheetModel.ts';
+import { cyberpunkAdapter } from './cyberpunkAdapter.ts';
 import { defaultAdapter } from './defaultAdapter.ts';
 import { dnd5eAdapter } from './dnd5eAdapter.ts';
 import type { SystemAdapter } from './types.ts';
@@ -47,4 +48,5 @@ export function listRegisteredSystems(): string[] {
 
 registerSystemAdapter(wodAdapter);
 registerSystemAdapter(dnd5eAdapter);
+registerSystemAdapter(cyberpunkAdapter);
 registerSystemAdapter(defaultAdapter);

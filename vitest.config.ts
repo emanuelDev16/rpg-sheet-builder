@@ -2,6 +2,7 @@ import react from '@vitejs/plugin-react';
 import { defineConfig } from 'vitest/config';
 
 export const NODE_TEST_FILES = [
+  'src/core/cyberpunkRules.test.ts',
   'src/core/diceAudio.test.ts',
   'src/core/dnd5eProgression.test.ts',
   'src/core/dnd5eRules.test.ts',

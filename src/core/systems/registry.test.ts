@@ -19,7 +19,7 @@ import type { SystemAdapter } from './types.ts';
 import { wodAdapter } from './wodAdapter.ts';
 
 test('registry lists built-in systems', () => {
-  assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'default']);
+  assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'cyberpunk', 'default']);
 });
 
 test('V5 resolves to wod adapter with wod-v5 layout and capabilities', () => {
@@ -62,8 +62,24 @@ test('D&D 5e resolves to dnd5e adapter and capabilities', () => {
   });
 });
 
-test('Cyberpunk, generic, and blank sheets fall back to defaultAdapter', () => {
-  for (const sheet of [createCyberpunkPreset(), createGenericD20Preset(), createBlankSheet()]) {
+test('Cyberpunk resolves to cyberpunk adapter and capabilities', () => {
+  const adapter = getSystemAdapter(createCyberpunkPreset());
+  assert.equal(adapter.id, 'cyberpunk');
+  assert.equal(adapter.progressionKind, 'cyberpunk-ip');
+  assert.equal(adapter.paperLayout, 'cyberpunk');
+  assert.equal(adapter.i18nNamespace, 'cyberpunk');
+  assert.deepEqual(adapter.capabilities, {
+    supportsXp: false,
+    supportsPoolComposer: false,
+    supportsD20Advantage: false,
+    supportsExplodingD10: true,
+    supportsStructuredDossier: false,
+    supportsPaperSheet: true,
+  });
+});
+
+test('generic and blank sheets fall back to defaultAdapter', () => {
+  for (const sheet of [createGenericD20Preset(), createBlankSheet()]) {
     const adapter = getSystemAdapter(sheet);
     assert.equal(adapter.id, 'default');
     assert.equal(adapter.progressionKind, 'generic-xp');
@@ -100,44 +116,45 @@ test('wodAdapter.matches rejects unknown presets and conflicting systemIds', () 
 });
 
 test('registerSystemAdapter adds, replaces, and unregisters custom adapters cleanly', () => {
-  const customCyberpunk: SystemAdapter = {
-    id: 'cyberpunk',
-    matches: (systemId) => systemId === 'cyberpunk',
-    progressionKind: 'cyberpunk-ip',
+  const customShadowrun: SystemAdapter = {
+    id: 'shadowrun',
+    matches: (systemId) => systemId === 'shadowrun',
+    progressionKind: 'generic-xp',
     capabilities: {
       supportsXp: true,
-      supportsPoolComposer: false,
+      supportsPoolComposer: true,
       supportsD20Advantage: false,
       supportsStructuredDossier: false,
       supportsPaperSheet: true,
     },
     paperLayout: 'generic',
-    i18nNamespace: 'cyberpunk',
+    i18nNamespace: 'shadowrun',
     migrateSheet: (sheet) => sheet,
   };
+  const customSheet = { ...createBlankSheet(), systemId: 'shadowrun' } as unknown as CharacterSheetState;
 
-  assert.throws(() => registerSystemAdapter({ ...customCyberpunk, id: '   ' }));
+  assert.throws(() => registerSystemAdapter({ ...customShadowrun, id: '   ' }));
   assert.equal(unregisterSystemAdapter('default'), false);
 
   try {
-    registerSystemAdapter(customCyberpunk);
-    const cpAdapter = getSystemAdapter(createCyberpunkPreset());
-    assert.equal(cpAdapter.id, 'cyberpunk');
-    assert.equal(cpAdapter.progressionKind, 'cyberpunk-ip');
-    assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'default', 'cyberpunk']);
+    registerSystemAdapter(customShadowrun);
+    const srAdapter = getSystemAdapter(customSheet);
+    assert.equal(srAdapter.id, 'shadowrun');
+    assert.equal(srAdapter.progressionKind, 'generic-xp');
+    assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'cyberpunk', 'default', 'shadowrun']);
 
-    registerSystemAdapter({ ...customCyberpunk, i18nNamespace: 'cyberpunk-red' });
-    assert.equal(getSystemAdapter(createCyberpunkPreset()).i18nNamespace, 'cyberpunk-red');
-    assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'default', 'cyberpunk']);
+    registerSystemAdapter({ ...customShadowrun, i18nNamespace: 'shadowrun-6e' });
+    assert.equal(getSystemAdapter(customSheet).i18nNamespace, 'shadowrun-6e');
+    assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'cyberpunk', 'default', 'shadowrun']);
   } finally {
-    assert.equal(unregisterSystemAdapter('cyberpunk'), true);
+    assert.equal(unregisterSystemAdapter('shadowrun'), true);
   }
 
-  assert.equal(getSystemAdapter(createCyberpunkPreset()).id, 'default');
-  assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'default']);
+  assert.equal(getSystemAdapter(customSheet).id, 'default');
+  assert.deepEqual(listRegisteredSystems(), ['wod', 'dnd5e', 'cyberpunk', 'default']);
 });
 
-test('migrateSheet normalizes V5, V20, legacy D&D 5e, and blank sheets without changing ownership', () => {
+test('migrateSheet normalizes V5, V20, legacy D&D 5e, legacy Cyberpunk, and blank sheets without changing ownership', () => {
   const legacyDnd5e = {
     ...createDnd5ePreset(),
     id: '',
@@ -158,6 +175,19 @@ test('migrateSheet normalizes V5, V20, legacy D&D 5e, and blank sheets without c
     history: [],
   });
   assert.equal(getSystemAdapter(migratedDnd5e).id, 'dnd5e');
+
+  const legacyCyberpunk = {
+    ...createCyberpunkPreset(),
+    id: '',
+    systemId: undefined,
+    cyberpunkState: undefined,
+  } as unknown as CharacterSheetState;
+  const migratedCyberpunk = getSystemAdapter(legacyCyberpunk).migrateSheet(legacyCyberpunk);
+  assert.equal(migratedCyberpunk.systemId, 'cyberpunk');
+  assert.ok(migratedCyberpunk.id && migratedCyberpunk.id.length > 0);
+  assert.ok(migratedCyberpunk.cyberpunkState);
+  assert.equal(migratedCyberpunk.cyberpunkState.armor.head.sp, 11);
+  assert.equal(getSystemAdapter(migratedCyberpunk).id, 'cyberpunk');
 
   for (const sheet of [
     createWorldOfDarknessV5Sheet(),
