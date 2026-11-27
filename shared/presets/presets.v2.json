@@ -2128,6 +2128,39 @@
         "totalEarned": 12,
         "spent": 0,
         "ledger": []
+      },
+      "cyberpunkState": {
+        "armor": {
+          "head": { "sp": 11, "maxSp": 11 },
+          "body": { "sp": 11, "maxSp": 11 }
+        },
+        "humanity": {
+          "current": 53,
+          "max": 60,
+          "baseEmp": 6
+        },
+        "cyberware": [
+          {
+            "id": "cw_neural_link",
+            "name": "Interface Neural",
+            "slot": "neural",
+            "humanityLoss": 7,
+            "notes": "Link direto para deck tático"
+          }
+        ],
+        "weapons": [
+          {
+            "id": "wpn_heavy_pistol",
+            "name": "Pistola Pesada Tática",
+            "skillKey": "handgun",
+            "damageFormula": "3d6",
+            "rof": 2,
+            "ammoCurrent": 8,
+            "ammoMax": 8,
+            "notes": "Calibre padrão"
+          }
+        ],
+        "criticalInjuries": []
       }
     },
     "default": {

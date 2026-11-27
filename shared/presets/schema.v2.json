@@ -108,7 +108,8 @@
       "maxItems": 20,
       "items": { "$ref": "#/$defs/HavenEntry" }
     },
-    "dnd5eState": { "$ref": "#/$defs/Dnd5eState" }
+    "dnd5eState": { "$ref": "#/$defs/Dnd5eState" },
+    "cyberpunkState": { "$ref": "#/$defs/CyberpunkState" }
   },
   "$defs": {
     "TabDefinition": {
@@ -548,6 +549,96 @@
         "skillProficiencies": { "$ref": "#/$defs/Dnd5eSkillProficiencies" },
         "spellcasting": { "$ref": "#/$defs/Dnd5eSpellcasting" },
         "progression": { "$ref": "#/$defs/Dnd5eProgression" }
+      }
+    },
+    "CyberpunkArmorPiece": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["sp", "maxSp"],
+      "properties": {
+        "sp": { "type": "integer", "minimum": 0, "maximum": 30 },
+        "maxSp": { "type": "integer", "minimum": 0, "maximum": 30 }
+      }
+    },
+    "CyberpunkArmor": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["head", "body"],
+      "properties": {
+        "head": { "$ref": "#/$defs/CyberpunkArmorPiece" },
+        "body": { "$ref": "#/$defs/CyberpunkArmorPiece" }
+      }
+    },
+    "CyberpunkHumanity": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["current", "max", "baseEmp"],
+      "properties": {
+        "current": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "max": { "type": "integer", "minimum": 0, "maximum": 100 },
+        "baseEmp": { "type": "integer", "minimum": 1, "maximum": 10 }
+      }
+    },
+    "CyberpunkCyberwareEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "slot", "humanityLoss"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "slot": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "humanityLoss": { "type": "integer", "minimum": 0, "maximum": 30 },
+        "notes": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "CyberpunkWeaponEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "skillKey", "damageFormula", "rof", "ammoCurrent", "ammoMax"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "skillKey": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "damageFormula": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "rof": { "type": "integer", "minimum": 1, "maximum": 4 },
+        "ammoCurrent": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "ammoMax": { "type": "integer", "minimum": 0, "maximum": 999 },
+        "notes": { "type": "string", "maxLength": 500 }
+      }
+    },
+    "CyberpunkCriticalInjuryEntry": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["id", "name", "effect", "treated"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1, "maxLength": 64 },
+        "name": { "type": "string", "minLength": 1, "maxLength": 120 },
+        "effect": { "type": "string", "minLength": 1, "maxLength": 240 },
+        "treated": { "type": "boolean" }
+      }
+    },
+    "CyberpunkState": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["armor", "humanity", "cyberware", "weapons", "criticalInjuries"],
+      "properties": {
+        "armor": { "$ref": "#/$defs/CyberpunkArmor" },
+        "humanity": { "$ref": "#/$defs/CyberpunkHumanity" },
+        "cyberware": {
+          "type": "array",
+          "maxItems": 40,
+          "items": { "$ref": "#/$defs/CyberpunkCyberwareEntry" }
+        },
+        "weapons": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/CyberpunkWeaponEntry" }
+        },
+        "criticalInjuries": {
+          "type": "array",
+          "maxItems": 20,
+          "items": { "$ref": "#/$defs/CyberpunkCriticalInjuryEntry" }
+        }
       }
     }
   }
