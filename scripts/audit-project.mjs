@@ -41,7 +41,7 @@ for (const f of walk('.agent/rules').filter((p) => p.endsWith('.md'))) {
 
 // 2. Tamanho dos componentes modulares (dnd5e e progression)
 for (const dir of ['src/components/dnd5e', 'src/components/progression']) {
-  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.tsx')) : [];
+  const files = existsSync(dir) ? readdirSync(dir).filter((f) => f.endsWith('.tsx') && !/\.(?:test|spec)\.tsx$/.test(f)) : [];
   if (!files.length) report(true, `${dir}/*.tsx`, 'nenhum arquivo');
   for (const f of files) {
     const n = lines(join(dir, f));

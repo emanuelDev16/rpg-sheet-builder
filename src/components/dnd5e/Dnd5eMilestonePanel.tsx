@@ -24,6 +24,7 @@ export const Dnd5eMilestonePanel: React.FC<Dnd5eMilestonePanelProps> = ({
   const [note, setNote] = useState('');
   const noteId = `${uid}-ms-note`;
   const isSessions = progress.style === 'sessions';
+  const isMaxLevel = level >= DND5E_MAX_LEVEL;
   const atMin = progress.sessionsPerLevel <= 1;
   const atMax = progress.sessionsPerLevel >= DND5E_MAX_LEVEL;
 
@@ -66,10 +67,12 @@ export const Dnd5eMilestonePanel: React.FC<Dnd5eMilestonePanelProps> = ({
             </div>
             <div className={KPI_BOX}>
               <div className={KPI_LBL}>{t('dnd5e.prog.milestoneGoal')}</div>
-              <div className="font-mono-tech text-xs font-black tabular-nums mt-1">{t('dnd5e.prog.goalSessions', { target: progress.sessionsPerLevel })}</div>
-              <div className={`font-mono-tech text-[10px] tabular-nums ${progress.isGoalReached ? 'font-bold text-[var(--accent-primary)]' : 'text-[var(--ink-secondary)]'}`}>
-                {progress.isGoalReached ? t('dnd5e.prog.readyToLevelShort') : t('dnd5e.prog.sessionsRemaining', { count: progress.sessionsToNext })}
-              </div>
+              <div className="font-mono-tech text-xs font-black tabular-nums mt-1">{isMaxLevel ? t('dnd5e.prog.maxLevelReached') : t('dnd5e.prog.goalSessions', { target: progress.sessionsPerLevel })}</div>
+              {!isMaxLevel && (
+                <div className={`font-mono-tech text-[10px] tabular-nums ${progress.isGoalReached ? 'font-bold text-[var(--accent-primary)]' : 'text-[var(--ink-secondary)]'}`}>
+                  {progress.isGoalReached ? t('dnd5e.prog.readyToLevelShort') : t('dnd5e.prog.sessionsRemaining', { count: progress.sessionsToNext })}
+                </div>
+              )}
             </div>
           </>
         ) : (
