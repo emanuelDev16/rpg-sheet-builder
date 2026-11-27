@@ -909,6 +909,25 @@ const PT_BR_DICT = {
   'sidebar.roll.deathSaveBadge': 'TESTE DE MORTE',
   'sidebar.roll.keptDieAria': 'Dado mantido: {{value}}',
   'sidebar.roll.discardedDieAria': 'Dado descartado: {{value}}',
+
+  // Generic Catalog Picker Modal
+  'catalogPicker.tag': '// CATÁLOGO',
+  'catalogPicker.title': 'SELECIONAR DO CATÁLOGO',
+  'catalogPicker.closeAria': 'Fechar catálogo',
+  'catalogPicker.sectionsAria': 'Seções do catálogo',
+  'catalogPicker.searchLabel': 'Buscar no catálogo',
+  'catalogPicker.searchPlaceholder': 'Filtrar por nome, tag ou efeito...',
+  'catalogPicker.clearFilters': 'LIMPAR FILTROS',
+  'catalogPicker.filterAll': 'TODOS',
+  'catalogPicker.loading': 'Carregando catálogo...',
+  'catalogPicker.error': 'Não foi possível carregar o catálogo.',
+  'catalogPicker.empty': 'Nenhum item encontrado para os filtros atuais.',
+  'catalogPicker.alreadyOnSheet': 'JÁ NA FICHA',
+  'catalogPicker.addAction': 'ADICIONAR',
+  'catalogPicker.addCustom': '+ Item Customizado',
+  'catalogPicker.showMore': 'MOSTRAR MAIS ({{remaining}} RESTANTES)',
+  'catalogPicker.countLabel': '{{shown}} DE {{total}} ITENS',
+  'catalogPicker.closeBtn': 'FECHAR',
 } as const;
 
 export type TranslationKey = keyof typeof PT_BR_DICT;
@@ -1781,6 +1800,25 @@ export const EN: TranslationDictionary = {
   'sidebar.roll.deathSaveBadge': 'DEATH SAVE',
   'sidebar.roll.keptDieAria': 'Kept die: {{value}}',
   'sidebar.roll.discardedDieAria': 'Discarded die: {{value}}',
+
+  // Generic Catalog Picker Modal
+  'catalogPicker.tag': '// CATALOG',
+  'catalogPicker.title': 'SELECT FROM CATALOG',
+  'catalogPicker.closeAria': 'Close catalog',
+  'catalogPicker.sectionsAria': 'Catalog sections',
+  'catalogPicker.searchLabel': 'Search catalog',
+  'catalogPicker.searchPlaceholder': 'Filter by name, tag, or effect...',
+  'catalogPicker.clearFilters': 'CLEAR FILTERS',
+  'catalogPicker.filterAll': 'ALL',
+  'catalogPicker.loading': 'Loading catalog...',
+  'catalogPicker.error': 'Failed to load catalog.',
+  'catalogPicker.empty': 'No items match the current filters.',
+  'catalogPicker.alreadyOnSheet': 'ALREADY ON SHEET',
+  'catalogPicker.addAction': 'ADD',
+  'catalogPicker.addCustom': '+ Custom Item',
+  'catalogPicker.showMore': 'SHOW MORE ({{remaining}} REMAINING)',
+  'catalogPicker.countLabel': '{{shown}} OF {{total}} ITEMS',
+  'catalogPicker.closeBtn': 'CLOSE',
 };
 
 export const ES: TranslationDictionary = {
@@ -2648,6 +2686,25 @@ export const ES: TranslationDictionary = {
   'sidebar.roll.deathSaveBadge': 'SALV. MUERTE',
   'sidebar.roll.keptDieAria': 'Dado conservado: {{value}}',
   'sidebar.roll.discardedDieAria': 'Dado descartado: {{value}}',
+
+  // Generic Catalog Picker Modal
+  'catalogPicker.tag': '// CATÁLOGO',
+  'catalogPicker.title': 'SELECCIONAR DEL CATÁLOGO',
+  'catalogPicker.closeAria': 'Cerrar catálogo',
+  'catalogPicker.sectionsAria': 'Secciones del catálogo',
+  'catalogPicker.searchLabel': 'Buscar en el catálogo',
+  'catalogPicker.searchPlaceholder': 'Filtrar por nombre, etiqueta o efecto...',
+  'catalogPicker.clearFilters': 'LIMPIAR FILTROS',
+  'catalogPicker.filterAll': 'TODOS',
+  'catalogPicker.loading': 'Cargando catálogo...',
+  'catalogPicker.error': 'No se pudo cargar el catálogo.',
+  'catalogPicker.empty': 'Ningún elemento coincide con los filtros actuales.',
+  'catalogPicker.alreadyOnSheet': 'YA EN LA HOJA',
+  'catalogPicker.addAction': 'AÑADIR',
+  'catalogPicker.addCustom': '+ Elemento Personalizado',
+  'catalogPicker.showMore': 'MOSTRAR MÁS ({{remaining}} RESTANTES)',
+  'catalogPicker.countLabel': '{{shown}} DE {{total}} ELEMENTOS',
+  'catalogPicker.closeBtn': 'CERRAR',
 };
 
 export const TRANSLATION_DICTIONARIES: Record<AppLanguage, TranslationDictionary> = {

@@ -191,6 +191,15 @@ describe('Strict i18n dictionary parity & fallback', () => {
     expect(translate('es', 'dnd5e.prog.entryMilestoneBadge')).toBe('HITO');
     expect(translate('pt-BR', 'dnd5e.lvl.freeMilestoneHint')).toContain('Marco Livre');
     expect(translate('en', 'dnd5e.lvl.sessionGoalReachedHint', { current: 3, target: 3 })).toContain('3/3');
+
+    expect(translate('pt-BR', 'catalogPicker.alreadyOnSheet')).toBe('JÁ NA FICHA');
+    expect(translate('en', 'catalogPicker.alreadyOnSheet')).toBe('ALREADY ON SHEET');
+    expect(translate('es', 'catalogPicker.alreadyOnSheet')).toBe('YA EN LA HOJA');
+    expect(translate('pt-BR', 'catalogPicker.addCustom')).toBe('+ Item Customizado');
+    expect(translate('en', 'catalogPicker.addCustom')).toBe('+ Custom Item');
+    expect(translate('es', 'catalogPicker.addCustom')).toBe('+ Elemento Personalizado');
+    expect(translate('pt-BR', 'catalogPicker.showMore', { remaining: 12 })).toBe('MOSTRAR MAIS (12 RESTANTES)');
+    expect(translate('en', 'catalogPicker.countLabel', { shown: 60, total: 85 })).toBe('60 OF 85 ITEMS');
   });
 
   it('provides Cyberpunk combat, weapons, cyberware, and presetI18n translations across pt-BR, en, and es', () => {

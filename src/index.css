@@ -2869,6 +2869,82 @@ div:has(> [data-testid="home-rules-drawer"]) {
   z-index: var(--z-drawer);
 }
 
+/* ============================================================================
+   CATALOG PICKER MODAL (Tri-tema: light / dark / eink + forced-colors)
+   ============================================================================ */
+.catalog-picker-item {
+  border: var(--border-width) solid var(--border-subtle);
+  border-radius: var(--radius-card);
+  background-color: var(--bg-card-alt);
+}
+
+.catalog-picker-tab.is-active,
+.catalog-picker-chip.is-active {
+  background-color: var(--accent-wine-soft);
+  color: var(--ink-primary);
+  border-color: var(--accent-wine);
+}
+
+.catalog-picker-present-badge {
+  background-color: var(--accent-wine-soft);
+  color: var(--accent-wine);
+  border: 1px solid var(--accent-wine);
+}
+
+.catalog-picker-badge {
+  background-color: var(--bg-strip);
+  color: var(--ink-secondary);
+  border: 1px solid var(--border-subtle);
+}
+
+.catalog-picker-dialog [aria-disabled="true"] {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+[data-theme="eink"] .catalog-picker-dialog,
+[data-theme="eink"] .catalog-picker-tab,
+[data-theme="eink"] .catalog-picker-chip,
+[data-theme="eink"] .catalog-picker-item,
+[data-theme="eink"] .catalog-picker-badge,
+[data-theme="eink"] .catalog-picker-present-badge {
+  box-shadow: none !important;
+  background-image: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme="eink"] .catalog-picker-tab.is-active,
+[data-theme="eink"] .catalog-picker-chip.is-active,
+[data-theme="eink"] .catalog-picker-present-badge {
+  background-color: var(--ink-primary) !important;
+  color: var(--bg-card) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+@media (forced-colors: active) {
+  .catalog-picker-tab,
+  .catalog-picker-chip,
+  .catalog-picker-item,
+  .catalog-picker-badge,
+  .catalog-picker-present-badge {
+    border: 1px solid CanvasText !important;
+  }
+
+  .catalog-picker-tab.is-active,
+  .catalog-picker-chip.is-active {
+    background-color: Highlight !important;
+    color: HighlightText !important;
+    border-color: Highlight !important;
+    forced-color-adjust: none;
+  }
+
+  .catalog-picker-dialog [aria-disabled="true"] {
+    color: GrayText !important;
+    border-color: GrayText !important;
+  }
+}
+
 /* Final cascade guard for Ctrl+P isolation */
 @media print {
   html body #root > .app-screen-root,

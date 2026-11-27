@@ -1,4 +1,14 @@
 import type { CharacterSheetState } from '../sheetModel.ts';
+import type { SystemCatalog } from './catalogTypes.ts';
+
+export type {
+  LocalizedText,
+  SystemCatalog,
+  SystemCatalogFilterGroup,
+  SystemCatalogFilterOption,
+  SystemCatalogItem,
+  SystemCatalogSection,
+} from './catalogTypes.ts';
 
 /** Known adapter identifiers; open-ended so future systems can register. */
 export type SystemAdapterId = 'wod' | 'dnd5e' | 'cyberpunk' | 'default' | (string & {});
@@ -31,6 +41,8 @@ export interface SystemAdapter {
   /** Optional preset-aware layout resolver (e.g. V5 vs V20). */
   resolvePaperLayout?(sheet: CharacterSheetState): PaperLayout;
   readonly i18nNamespace: string;
+  /** Optional lazy loader for selectable system catalogs. */
+  loadCatalog?: () => Promise<SystemCatalog>;
   /** Normalizes legacy sheets by delegating to sheetModel normalizers. */
   migrateSheet(sheet: CharacterSheetState): CharacterSheetState;
 }
