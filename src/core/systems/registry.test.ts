@@ -200,3 +200,56 @@ test('migrateSheet normalizes V5, V20, legacy D&D 5e, legacy Cyberpunk, and blan
     assert.equal(getSystemAdapter(migrated).id, adapter.id);
   }
 });
+
+test('loadCatalog is optional, absent on defaultAdapter, and resolves lazily on custom adapters', async () => {
+  assert.equal(getSystemAdapter(createBlankSheet()).loadCatalog, undefined);
+  assert.equal(getSystemAdapter(null).loadCatalog, undefined);
+
+  const customWithCatalog: SystemAdapter = {
+    id: 'catalog-test-sys',
+    matches: (systemId) => systemId === 'catalog-test-sys',
+    progressionKind: 'generic-xp',
+    capabilities: {
+      supportsXp: false,
+      supportsPoolComposer: false,
+      supportsD20Advantage: false,
+      supportsStructuredDossier: false,
+      supportsPaperSheet: true,
+    },
+    paperLayout: 'generic',
+    i18nNamespace: 'generic',
+    loadCatalog: async () => ({
+      systemId: 'catalog-test-sys',
+      attribution: 'Test SRD',
+      sections: [
+        {
+          id: 'gear',
+          label: { 'pt-BR': 'Equipamento', en: 'Gear', es: 'Equipo' },
+          items: [
+            {
+              id: 'rope-50',
+              sectionId: 'gear',
+              name: { 'pt-BR': 'Corda', en: 'Rope', es: 'Cuerda' },
+              summary: { 'pt-BR': '15m', en: '50ft', es: '15m' },
+            },
+          ],
+        },
+      ],
+    }),
+    migrateSheet: (sheet) => sheet,
+  };
+
+  registerSystemAdapter(customWithCatalog);
+  try {
+    const adapter = getSystemAdapter({
+      ...createBlankSheet(),
+      systemId: 'catalog-test-sys',
+    } as unknown as CharacterSheetState);
+    assert.equal(typeof adapter.loadCatalog, 'function');
+    const catalog = await adapter.loadCatalog!();
+    assert.equal(catalog.systemId, 'catalog-test-sys');
+    assert.equal(catalog.sections[0]?.items[0]?.id, 'rope-50');
+  } finally {
+    unregisterSystemAdapter('catalog-test-sys');
+  }
+});

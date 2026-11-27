@@ -15,5 +15,7 @@ export const defaultAdapter: SystemAdapter = {
   }),
   paperLayout: 'generic',
   i18nNamespace: 'generic',
+  // Generic fallback has no bundled rules catalog.
+  loadCatalog: undefined,
   migrateSheet: (sheet) => migrateLegacySheetMetadata(sheet),
 };
