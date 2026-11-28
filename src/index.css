@@ -2845,6 +2845,149 @@ select:focus-visible,
 }
 
 /* ============================================================================
+   CYBERPUNK (NET//RUNNER) TACTICAL PANELS
+   ============================================================================ */
+.cp-card {
+  background-color: var(--bg-card-alt);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-card);
+}
+
+.cp-stat-tile {
+  background-color: var(--bg-card);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-card);
+}
+
+.cp-stat-tile--danger {
+  background-color: var(--accent-danger-soft);
+  border-color: var(--accent-danger);
+  color: var(--accent-danger);
+}
+
+.cp-badge {
+  background-color: var(--bg-strip);
+  color: var(--ink-primary);
+  border: 1px solid var(--border-subtle);
+  border-radius: var(--radius-pill);
+}
+
+.cp-badge--accent {
+  background-color: var(--accent-primary);
+  color: var(--accent-contrast);
+  border-color: var(--accent-primary);
+}
+
+.cp-badge--danger,
+.cp-risk-alert {
+  background-color: var(--accent-danger-soft);
+  color: var(--accent-danger);
+  border: var(--border-width) solid var(--accent-danger);
+  border-radius: var(--radius-card);
+}
+
+.cp-badge--danger {
+  border-radius: var(--radius-pill);
+}
+
+.cp-humanity-bar {
+  background-color: var(--bg-strip);
+  border: var(--border-width) solid var(--border-color);
+  border-radius: var(--radius-pill);
+}
+
+.cp-humanity-bar-fill {
+  background-color: var(--accent-primary);
+}
+
+.cp-humanity-bar-fill.is-danger {
+  background-color: var(--accent-danger);
+}
+
+.cp-panel [aria-disabled="true"] {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.cp-panel [aria-disabled="true"]:hover,
+.cp-panel [aria-disabled="true"]:active {
+  background-color: var(--bg-card);
+  box-shadow: none;
+  transform: none;
+}
+
+@media (max-width: 767px) {
+  .cp-panel input,
+  .cp-panel select,
+  .cp-panel textarea {
+    font-size: 16px;
+  }
+}
+
+[data-theme="eink"] .cp-panel,
+[data-theme="eink"] .cp-panel * {
+  box-shadow: none !important;
+  background-image: none !important;
+  transition: none !important;
+  animation: none !important;
+}
+
+[data-theme="eink"] .cp-panel .tabular-nums {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+}
+
+[data-theme="eink"] .cp-card,
+[data-theme="eink"] .cp-stat-tile {
+  border-color: var(--border-color);
+}
+
+[data-theme="eink"] .cp-stat-tile--danger {
+  background-color: var(--bg-strip);
+  color: var(--ink-primary);
+  border: var(--border-width) solid var(--ink-primary);
+}
+
+[data-theme="eink"] .cp-badge--accent,
+[data-theme="eink"] .cp-badge--danger,
+[data-theme="eink"] .cp-humanity-bar-fill,
+[data-theme="eink"] .cp-humanity-bar-fill.is-danger,
+[data-theme="eink"] .cp-risk-alert {
+  background-color: var(--ink-primary) !important;
+  color: var(--bg-card) !important;
+  border-color: var(--ink-primary) !important;
+}
+
+@media (forced-colors: active) {
+  .cp-card,
+  .cp-stat-tile,
+  .cp-badge,
+  .cp-humanity-bar,
+  .cp-risk-alert {
+    border: 1px solid CanvasText !important;
+  }
+
+  .cp-action-btn {
+    border: 1px solid ButtonText !important;
+  }
+
+  .cp-badge--accent,
+  .cp-badge--danger,
+  .cp-humanity-bar-fill,
+  .cp-risk-alert {
+    background-color: Highlight !important;
+    color: HighlightText !important;
+    border: 1px solid Highlight !important;
+    forced-color-adjust: none;
+  }
+
+  .cp-panel [aria-disabled="true"] {
+    color: GrayText !important;
+    border-color: GrayText !important;
+  }
+}
+
+/* ============================================================================
    CAMADAS DE EMPILHAMENTO (Z-LAYERING) & POPOVER PORTAL
    ============================================================================ */
 .topbar-root {
